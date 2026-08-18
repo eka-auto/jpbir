@@ -1,0 +1,43 @@
+﻿# GODADDY HOSTING VERIFICATION TOOL
+# ================================
+
+## 🔍 CHECK YOUR HOSTING STATUS:
+
+### Method 1: Direct Website Check
+1. Visit: https://jaytibirthday.in
+2. Does it show your website? ✅ YES = Hosting active
+3. Does it show "Coming Soon" or error? ❌ NO = Need hosting
+
+### Method 2: GoDaddy Account Check
+1. Login to: https://www.godaddy.com
+2. Go to "My Products"
+3. Look for jaytibirthday.in
+4. Check if it says:
+   - ✅ "Web Hosting" = Hosting active
+   - ❌ "Domain Only" = No hosting
+
+### Method 3: DNS Check (Command Line)
+Run in PowerShell:
+```powershell
+nslookup jaytibirthday.in
+```
+If you see IP addresses (like 192.x.x.x), hosting is configured.
+
+## 🎯 WHAT YOU NEED:
+1. ✅ Domain: jaytibirthday.in (purchased from GoDaddy)
+2. ❓ Hosting: Need to check if hosting is active
+
+## 📊 TYPICAL GODADDY SETUP:
+- Domain only: $10-20/year
+- Domain + Basic Hosting: $50-100/year
+- Domain + Premium Hosting: $100+/year
+
+## 🔧 NEXT STEPS:
+1. Check your GoDaddy account
+2. See if hosting is included
+3. If not, purchase hosting ($50-100/year)
+4. Upload files to hosting
+
+## 📞 NEED HELP?
+- GoDaddy Support: 1-480-505-8877
+- Ask: "Do I have hosting for jaytibirthday.in?"

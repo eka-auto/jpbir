@@ -1,0 +1,6 @@
+{
+  "tracking_active": true,
+  "dashboard": "http://localhost:3001/dashboard",
+  "script": "jaytibirthday-analytics.js",
+  "email_reports": "ekaaiurgaa@gmail.com"
+}

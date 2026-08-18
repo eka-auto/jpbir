@@ -1,0 +1,708 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Visitor Analytics Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #333;
+            min-height: 100vh;
+        }
+
+        .dashboard-container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            margin-bottom: 25px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 20px;
+        }
+
+        .header-left h1 {
+            color: #2d3748;
+            margin-bottom: 5px;
+            font-size: 1.8rem;
+        }
+
+        .header-left p {
+            color: #718096;
+        }
+
+        .header-right {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 10px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 0.9rem;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-secondary {
+            background: #e2e8f0;
+            color: #4a5568;
+        }
+
+        .btn-danger {
+            background: #f56565;
+            color: white;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(0,0,0,0.15);
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 25px;
+        }
+
+        .stat-card {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+            transition: transform 0.3s ease;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-5px);
+        }
+
+        .stat-value {
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: #667eea;
+            margin-bottom: 10px;
+        }
+
+        .stat-label {
+            color: #718096;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .main-content {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 25px;
+            margin-bottom: 25px;
+        }
+
+        @media (max-width: 1024px) {
+            .main-content {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .card {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+        }
+
+        .card h2 {
+            color: #2d3748;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #f0f0f0;
+            font-size: 1.3rem;
+        }
+
+        .table-container {
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th {
+            background: #f7fafc;
+            color: #4a5568;
+            font-weight: 600;
+            padding: 15px;
+            text-align: left;
+            border-bottom: 2px solid #e2e8f0;
+        }
+
+        td {
+            padding: 15px;
+            border-bottom: 1px solid #e2e8f0;
+            color: #4a5568;
+        }
+
+        tr:hover {
+            background: #f7fafc;
+        }
+
+        .device-list {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .device-item {
+            padding: 15px;
+            border-bottom: 1px solid #e2e8f0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .device-item:last-child {
+            border-bottom: none;
+        }
+
+        .device-info h4 {
+            color: #2d3748;
+            margin-bottom: 5px;
+        }
+
+        .device-info p {
+            color: #718096;
+            font-size: 0.85rem;
+        }
+
+        .device-status {
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+
+        .status-online {
+            background: #c6f6d5;
+            color: #22543d;
+        }
+
+        .status-offline {
+            background: #fed7d7;
+            color: #742a2a;
+        }
+
+        .chart-container {
+            height: 300px;
+            margin-top: 20px;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #718096;
+        }
+
+        .error {
+            text-align: center;
+            padding: 40px;
+            color: #f56565;
+        }
+
+        .search-box {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .search-box input {
+            flex: 1;
+            padding: 12px;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            font-size: 1rem;
+        }
+
+        .search-box button {
+            padding: 12px 24px;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-content {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            max-width: 500px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .modal-header h3 {
+            color: #2d3748;
+        }
+
+        .close-modal {
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            cursor: pointer;
+            color: #718096;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: #4a5568;
+            font-weight: 600;
+        }
+
+        .form-group input,
+        .form-group select {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            font-size: 1rem;
+        }
+
+        .footer {
+            text-align: center;
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 1px solid #e2e8f0;
+            color: #718096;
+            font-size: 0.9rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="dashboard-container">
+        <div class="header">
+            <div class="header-left">
+                <h1>Visitor Analytics Dashboard</h1>
+                <p>Monitor visitor data and manage network devices</p>
+            </div>
+            <div class="header-right">
+                <a href="/" class="btn btn-secondary">Back to Landing</a>
+                <button onclick="refreshAll()" class="btn btn-primary">Refresh Data</button>
+                <button onclick="scanNetwork()" class="btn btn-primary">Scan Network</button>
+                <button onclick="exportData()" class="btn btn-secondary">Export Data</button>
+            </div>
+        </div>
+
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-value" id="totalVisitors">0</div>
+                <div class="stat-label">Total Visitors</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="activeSessions">0</div>
+                <div class="stat-label">Active Sessions</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="avgTime">0s</div>
+                <div class="stat-label">Avg. Time Spent</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="networkDevices">0</div>
+                <div class="stat-label">Network Devices</div>
+            </div>
+        </div>
+
+        <div class="main-content">
+            <div class="card">
+                <h2>Recent Visitors</h2>
+                <div class="search-box">
+                    <input type="text" id="searchVisitors" placeholder="Search visitors by IP or country..." onkeyup="searchVisitors()">
+                    <button onclick="searchVisitors()" class="btn btn-primary">Search</button>
+                </div>
+                <div class="table-container">
+                    <table id="visitorsTable">
+                        <thead>
+                            <tr>
+                                <th>Visitor ID</th>
+                                <th>IP Address</th>
+                                <th>Browser</th>
+                                <th>Country</th>
+                                <th>Time Spent</th>
+                                <th>Last Activity</th>
+                            </tr>
+                        </thead>
+                        <tbody id="visitorsBody">
+                            <tr><td colspan="6" class="loading">Loading visitors...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>Network Devices</h2>
+                <div class="device-list" id="devicesList">
+                    <div class="loading">Scanning network devices...</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>Analytics Summary</h2>
+            <div class="chart-container" id="analyticsChart">
+                <div class="loading">Loading analytics chart...</div>
+            </div>
+        </div>
+
+        <div class="footer">
+            <p>Visitor Analytics Agent v1.0.0 • Powered by Kiro • <a href="/api/status" target="_blank">Agent Status</a></p>
+        </div>
+    </div>
+
+    <!-- Connection Help Modal -->
+    <div class="modal" id="helpModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Connection Help</h3>
+                <button class="close-modal" onclick="closeModal()">&times;</button>
+            </div>
+            <div id="helpContent">
+                Loading connection suggestions...
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let visitorsData = [];
+        let devicesData = [];
+        let analyticsData = {};
+
+        // Initialize dashboard
+        async function initDashboard() {
+            await Promise.all([
+                loadVisitors(),
+                loadNetworkDevices(),
+                loadAnalyticsSummary()
+            ]);
+        }
+
+        // Load visitors data
+        async function loadVisitors() {
+            try {
+                const response = await fetch('/api/admin/visitors?limit=20');
+                const data = await response.json();
+                
+                if (data.success) {
+                    visitorsData = data.visitors;
+                    updateVisitorsTable(visitorsData);
+                    document.getElementById('totalVisitors').textContent = data.total;
+                }
+            } catch (error) {
+                console.error('Error loading visitors:', error);
+                document.getElementById('visitorsBody').innerHTML = 
+                    '<tr><td colspan="6" class="error">Failed to load visitors</td></tr>';
+            }
+        }
+
+        // Update visitors table
+        function updateVisitorsTable(visitors) {
+            const tbody = document.getElementById('visitorsBody');
+            tbody.innerHTML = '';
+
+            if (visitors.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" class="loading">No visitors found</td></tr>';
+                return;
+            }
+
+            visitors.forEach(visitor => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td><small>${visitor.visitor_id.substring(0, 8)}...</small></td>
+                    <td>${visitor.ip_address}</td>
+                    <td>${visitor.browser_name}</td>
+                    <td>${visitor.country || 'Unknown'}</td>
+                    <td>${Math.floor(visitor.total_time_spent / 60)}m ${visitor.total_time_spent % 60}s</td>
+                    <td>${new Date(visitor.last_activity).toLocaleTimeString()}</td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+
+        // Search visitors
+        function searchVisitors() {
+            const query = document.getElementById('searchVisitors').value.toLowerCase();
+            
+            if (!query) {
+                updateVisitorsTable(visitorsData);
+                return;
+            }
+
+            const filtered = visitorsData.filter(visitor => 
+                visitor.ip_address.toLowerCase().includes(query) ||
+                visitor.country.toLowerCase().includes(query) ||
+                visitor.browser_name.toLowerCase().includes(query)
+            );
+
+            updateVisitorsTable(filtered);
+        }
+
+        // Load network devices
+        async function loadNetworkDevices() {
+            try {
+                const response = await fetch('/api/admin/network/status');
+                const data = await response.json();
+                
+                if (data.success) {
+                    devicesData = data.recently_discovered || [];
+                    updateDevicesList(devicesData);
+                    document.getElementById('networkDevices').textContent = data.discovered_devices_count;
+                }
+            } catch (error) {
+                console.error('Error loading network devices:', error);
+                document.getElementById('devicesList').innerHTML = 
+                    '<div class="error">Failed to load network devices</div>';
+            }
+        }
+
+        // Update devices list
+        function updateDevicesList(devices) {
+            const container = document.getElementById('devicesList');
+            
+            if (devices.length === 0) {
+                container.innerHTML = '<div class="loading">No devices found. Click "Scan Network" to discover devices.</div>';
+                return;
+            }
+
+            container.innerHTML = '';
+            devices.forEach(device => {
+                const deviceItem = document.createElement('div');
+                deviceItem.className = 'device-item';
+                deviceItem.innerHTML = `
+                    <div class="device-info">
+                        <h4>${device.hostname}</h4>
+                        <p>${device.ip} • ${device.device_type}</p>
+                        ${device.open_ports && device.open_ports.length > 0 ? 
+                            `<small>Ports: ${device.open_ports.map(p => p.port).join(', ')}</small>` : ''}
+                    </div>
+                    <div class="device-status status-online">Online</div>
+                `;
+                deviceItem.onclick = () => showConnectionHelp(device.ip, device.device_type);
+                container.appendChild(deviceItem);
+            });
+        }
+
+        // Load analytics summary
+        async function loadAnalyticsSummary() {
+            try {
+                const response = await fetch('/api/admin/analytics/summary');
+                const data = await response.json();
+                
+                if (data.success) {
+                    analyticsData = data.summary;
+                    updateAnalyticsDisplay(analyticsData);
+                }
+            } catch (error) {
+                console.error('Error loading analytics:', error);
+                document.getElementById('analyticsChart').innerHTML = 
+                    '<div class="error">Failed to load analytics</div>';
+            }
+        }
+
+        // Update analytics display
+        function updateAnalyticsDisplay(data) {
+            // Update stats
+            if (data.active_sessions) {
+                document.getElementById('activeSessions').textContent = data.active_sessions.count;
+            }
+            
+            if (data.avg_time_spent) {
+                const avgSeconds = Math.floor(data.avg_time_spent.avg_time_spent || 0);
+                document.getElementById('avgTime').textContent = `${Math.floor(avgSeconds / 60)}m ${avgSeconds % 60}s`;
+            }
+
+            // Create simple chart for browser distribution
+            if (data.browser_name) {
+                const chartContainer = document.getElementById('analyticsChart');
+                
+                // Create a simple text-based chart
+                let chartHTML = '<div style="padding: 20px;">';
+                if (Array.isArray(data.browser_name)) {
+                    data.browser_name.forEach(browser => {
+                        if (browser && browser.browser_name) {
+                            const percentage = (browser.count / data.total_visitors.count * 100).toFixed(1);
+                            chartHTML += `
+                                <div style="margin-bottom: 10px;">
+                                    <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                                        <span>${browser.browser_name}</span>
+                                        <span>${browser.count} (${percentage}%)</span>
+                                    </div>
+                                    <div style="background: #e2e8f0; border-radius: 5px; height: 10px;">
+                                        <div style="background: #667eea; width: ${percentage}%; height: 100%; border-radius: 5px;"></div>
+                                    </div>
+                                </div>
+                            `;
+                        }
+                    });
+                }
+                chartHTML += '</div>';
+                chartContainer.innerHTML = chartHTML;
+            }
+        }
+
+        // Scan network
+        async function scanNetwork() {
+            try {
+                const button = event.target;
+                const originalText = button.textContent;
+                button.textContent = 'Scanning...';
+                button.disabled = true;
+
+                const response = await fetch('/api/admin/network/scan');
+                const data = await response.json();
+                
+                if (data.success) {
+                    alert(`Network scan complete! Found ${data.total_devices} devices.`);
+                    loadNetworkDevices();
+                } else {
+                    alert('Network scan failed. Please try again.');
+                }
+            } catch (error) {
+                console.error('Error scanning network:', error);
+                alert('Failed to scan network. Please check console for details.');
+            } finally {
+                button.textContent = originalText;
+                button.disabled = false;
+            }
+        }
+
+        // Show connection help modal
+        async function showConnectionHelp(ip, deviceType) {
+            try {
+                const response = await fetch('/api/admin/network/connect-help', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        target_ip: ip,
+                        device_type: deviceType
+                    })
+                });
+
+                const data = await response.json();
+                
+                if (data.success) {
+                    let helpHTML = `<h4>Connection Help for ${ip}</h4>`;
+                    helpHTML += `<p>Device Type: ${deviceType || 'Unknown'}</p>`;
+                    helpHTML += `<p>Status: ${data.is_online ? 'Online ✅' : 'Offline ⚠️'}</p>`;
+                    
+                    if (data.connection_suggestions && data.connection_suggestions.length > 0) {
+                        helpHTML += '<h5>Suggestions:</h5><ul>';
+                        data.connection_suggestions.forEach(suggestion => {
+                            helpHTML += `<li><strong>${suggestion.type}:</strong> ${suggestion.message || suggestion.description || ''}</li>`;
+                        });
+                        helpHTML += '</ul>';
+                    }
+                    
+                    document.getElementById('helpContent').innerHTML = helpHTML;
+                    document.getElementById('helpModal').style.display = 'flex';
+                }
+            } catch (error) {
+                console.error('Error getting connection help:', error);
+                document.getElementById('helpContent').innerHTML = 
+                    '<div class="error">Failed to load connection suggestions</div>';
+            }
+        }
+
+        // Close modal
+        function closeModal() {
+            document.getElementById('helpModal').style.display = 'none';
+        }
+
+        // Export data
+        async function exportData() {
+            try {
+                const response = await fetch('/api/admin/export/visitors');
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'visitors_export.csv';
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                document.body.removeChild(a);
+            } catch (error) {
+                console.error('Error exporting data:', error);
+                alert('Failed to export data. Please try again.');
+            }
+        }
+
+        // Refresh all data
+        async function refreshAll() {
+            await Promise.all([
+                loadVisitors(),
+                loadNetworkDevices(),
+                loadAnalyticsSummary()
+            ]);
+        }
+
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', initDashboard);
+
+        // Close modal when clicking outside
+        window.onclick = function(event) {
+            const modal = document.getElementById('helpModal');
+            if (event.target === modal) {
+                closeModal();
+            }
+        };
+    </script>
+</body>
+</html>

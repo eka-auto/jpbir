@@ -1,0 +1,29 @@
+﻿# ALTERNATIVE UPLOAD METHOD - SIMPLIFIED
+# This creates a simple way to upload without needing FTP
+
+## Option 1: Email the file
+You can email the file to yourself and upload from email:
+1. Attach: jaytibirthday-analytics.js to an email
+2. Send to: ekaaiurgaa@gmail.com
+3. Download from email on your hosting control panel
+4. Upload to your website
+
+## Option 2: Cloud link
+Upload to a free cloud service:
+1. Upload to: Google Drive, Dropbox, or WeTransfer
+2. Get the shareable link
+3. Use your hosting control panel to download from link
+4. Place in: /assets/js/jaytibirthday-analytics.js
+
+## Option 3: Direct upload script
+If you have SSH access, use this command:
+curl -X PUT -T jaytibirthday-analytics.js https://jaytibirthday.in/assets/js/jaytibirthday-analytics.js
+
+## EASIEST METHOD:
+1. Open your hosting control panel
+2. Find "Upload Files" or "File Manager"
+3. Upload: jaytibirthday-analytics.js
+4. Move to: /assets/js/ folder
+
+## AFTER UPLOAD:
+Add to your HTML: <script async defer src="/assets/js/jaytibirthday-analytics.js"></script>

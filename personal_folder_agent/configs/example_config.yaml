@@ -1,0 +1,119 @@
+# Personal Folder Trained Agent - Configuration
+# Copy this file and adjust values for your environment.
+# See requirements for detailed explanations of each option.
+
+# ───────────────────────────────────────────────────────────────────────────────
+# System-wide settings
+# ───────────────────────────────────────────────────────────────────────────────
+system:
+  # Operating mode: local_only, colab, or hybrid
+  mode: "local_only"
+  # Max distinct folders allowed (hard limit: 100)
+  max_folders: 100
+  # Max total character length across all folder paths (hard limit: 1000)
+  max_path_length: 1000
+
+# ───────────────────────────────────────────────────────────────────────────────
+# Folder paths to crawl
+# ───────────────────────────────────────────────────────────────────────────────
+folders:
+  # Absolute or relative directory paths to include in crawling.
+  # The system will recursively traverse each path.
+  paths:
+    - "C:/Users/yourname/Documents"
+    - "C:/Projects"
+    - "C:/Notes"
+
+  # Maximum recursion depth for directory traversal (1-50, default: 10)
+  max_depth: 10
+
+  # Glob patterns for paths/files to exclude from crawling.
+  # Matched against full file paths.
+  exclude_patterns:
+    - "*.log"
+    - "*.tmp"
+    - "node_modules/**"
+    - ".git/**"
+    - "__pycache__/**"
+    - "*.pyc"
+
+# ───────────────────────────────────────────────────────────────────────────────
+# File processing settings
+# ───────────────────────────────────────────────────────────────────────────────
+processing:
+  # Glob patterns for files to include. Only files matching at least one
+  # pattern will be processed for text extraction.
+  file_filters:
+    - "*.txt"
+    - "*.md"
+    - "*.pdf"
+    - "*.docx"
+    - "*.xlsx"
+    - "*.pptx"
+    - "*.csv"
+    - "*.json"
+    - "*.xml"
+
+  # Text chunking configuration
+  chunking:
+    # Strategy: fixed_size, sentence_aware, or paragraph_aware
+    strategy: "sentence_aware"
+    # Maximum tokens per chunk (128-4096)
+    max_tokens: 1024
+    # Minimum tokens per chunk (1-2048, must be less than max_tokens)
+    min_tokens: 512
+
+# ───────────────────────────────────────────────────────────────────────────────
+# Training hyperparameters
+# ───────────────────────────────────────────────────────────────────────────────
+training:
+  # Base model to fine-tune
+  model: "Qwen2.5-3B-Instruct"
+
+  # Number of training epochs (1-10)
+  epochs: 3
+
+  # Batch size per device (1-16). Reduce if running out of GPU memory.
+  batch_size: 2
+
+  # Learning rate (1e-6 to 1e-3). Common: 2e-5
+  learning_rate: 2.0e-5
+
+  # Gradient accumulation steps (1-16). Effectively multiplies batch size.
+  gradient_accumulation_steps: 4
+
+  # Maximum sequence length in tokens (128-4096)
+  max_length: 1024
+
+  # Use bf16 mixed precision (requires GPU support)
+  bf16: true
+
+  # Directory for saving training checkpoints
+  checkpoint_dir: "./checkpoints"
+
+# ───────────────────────────────────────────────────────────────────────────────
+# Storage settings
+# ───────────────────────────────────────────────────────────────────────────────
+storage:
+  # Local directory for model output and exports
+  local_output: "./output"
+
+  # Google Drive integration (optional)
+  google_drive:
+    # Enable/disable Google Drive upload
+    enabled: false
+    # Google Drive folder ID for uploads (from the Drive URL)
+    folder_id: null
+    # Passphrase for AES-256-GCM encryption of uploaded data
+    encryption_passphrase: null
+
+# ───────────────────────────────────────────────────────────────────────────────
+# Security and privacy settings
+# ───────────────────────────────────────────────────────────────────────────────
+security:
+  # Local-only mode: disables all network connectivity
+  local_only: false
+  # Verify file read permissions before accessing each file
+  verify_permissions: true
+  # Encrypt temporary processing directory
+  temp_dir_encryption: true

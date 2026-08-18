@@ -1,0 +1,36 @@
+{
+  "domain": "jaytibirthday.in",
+  "knowledge_base": [
+    {
+      "content": "[jaytibirthday.in Context] Remember the birthday celebration we had last year for Jayati's birthday",
+      "source_type": "text",
+      "domain": "jaytibirthday.in",
+      "timestamp": "2026-08-18T09:47:11.738911",
+      "processed": true
+    },
+    {
+      "content": "[jaytibirthday.in Context] The website analytics show increased engagement on special occasions",
+      "source_type": "text",
+      "domain": "jaytibirthday.in",
+      "timestamp": "2026-08-18T09:47:11.739029",
+      "processed": true
+    },
+    {
+      "content": "[jaytibirthday.in Context] User feedback mentions emotional connections through personalized messages",
+      "source_type": "text",
+      "domain": "jaytibirthday.in",
+      "timestamp": "2026-08-18T09:47:11.739066",
+      "processed": true
+    }
+  ],
+  "sentiment_data": {
+    "scores": {
+      "positive": 3,
+      "negative": 0,
+      "neutral": 0
+    },
+    "dominant_sentiment": "positive",
+    "analysis_timestamp": "2026-08-18T09:47:11.739487"
+  },
+  "saved_at": "2026-08-18T09:47:11.740400"
+}
