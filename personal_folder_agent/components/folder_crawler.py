@@ -12,10 +12,16 @@ import stat
 from datetime import datetime, timezone
 from fnmatch import fnmatch
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from personal_folder_agent.interfaces import FolderCrawler as FolderCrawlerBase
-from personal_folder_agent.models import CrawlerConfig, CrawlStatistics, FileMetadata, FileStatus
+from personal_folder_agent.models import (
+    CrawlerConfig,
+    CrawlStatistics,
+    FileMetadata,
+    FileStatus,
+    FolderStatistics,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +45,10 @@ class FolderCrawler(FolderCrawlerBase):
         self._statistics = CrawlStatistics()
         self._results: List[FileMetadata] = []
         self._errors: List[Dict[str, Any]] = []
+        # Tracks which configured root folder path is currently being
+        # traversed so per-file bookkeeping can be attributed to the
+        # correct entry in `stats_by_folder` (Requirements 8.1, 8.3).
+        self._current_root_folder: Optional[str] = None
 
         if not config.folder_paths:
             raise ValueError("At least one folder path must be configured.")
@@ -67,8 +77,11 @@ class FolderCrawler(FolderCrawlerBase):
             )
 
         for folder_path in valid_paths:
+            self._statistics.stats_by_folder[folder_path] = FolderStatistics()
+            self._current_root_folder = folder_path
             self._traverse_directory(Path(folder_path), current_depth=0)
 
+        self._current_root_folder = None
         return self._results
 
     def get_statistics(self) -> CrawlStatistics:
@@ -155,9 +168,6 @@ class FolderCrawler(FolderCrawlerBase):
             return
 
         for entry in entries:
-            if self._is_excluded(entry):
-                continue
-
             try:
                 is_dir = entry.is_dir()
                 is_file = (not is_dir) and entry.is_file()
@@ -166,6 +176,20 @@ class FolderCrawler(FolderCrawlerBase):
                 # child with broken/inaccessible metadata). Skip just this
                 # entry and continue with the remaining siblings.
                 self._record_error(entry, exc, "stat directory entry")
+                continue
+
+            if self._is_excluded(entry):
+                # Only file entries count as "skipped files"; excluded
+                # directories are simply not recursed into (Requirements 8.1, 8.3).
+                if is_file:
+                    self._statistics.total_files += 1
+                    self._statistics.files_skipped += 1
+                    if self._current_root_folder is not None:
+                        folder_stats = self._statistics.stats_by_folder[
+                            self._current_root_folder
+                        ]
+                        folder_stats.total_files += 1
+                        folder_stats.files_skipped += 1
                 continue
 
             if is_dir:
@@ -187,6 +211,8 @@ class FolderCrawler(FolderCrawlerBase):
             file_path: Path to the file to process.
         """
         self._statistics.total_files += 1
+        if self._current_root_folder is not None:
+            self._statistics.stats_by_folder[self._current_root_folder].total_files += 1
 
         # Permission check happens before any read attempt (Requirements 1.4, 6.3)
         if not self._has_read_permission(file_path):
@@ -196,6 +222,10 @@ class FolderCrawler(FolderCrawlerBase):
                 "check read permission",
             )
             self._statistics.files_errored += 1
+            if self._current_root_folder is not None:
+                self._statistics.stats_by_folder[
+                    self._current_root_folder
+                ].files_errored += 1
             return
 
         try:
@@ -221,6 +251,10 @@ class FolderCrawler(FolderCrawlerBase):
             self._results.append(metadata)
             self._statistics.files_processed += 1
             self._statistics.total_size_bytes += file_stat.st_size
+            if self._current_root_folder is not None:
+                folder_stats = self._statistics.stats_by_folder[self._current_root_folder]
+                folder_stats.files_processed += 1
+                folder_stats.total_size_bytes += file_stat.st_size
 
         except OSError as exc:
             # Covers PermissionError, file locks (Windows sharing
@@ -228,11 +262,19 @@ class FolderCrawler(FolderCrawlerBase):
             # files removed mid-crawl, and other I/O failures.
             self._record_error(file_path, exc, "read file")
             self._statistics.files_errored += 1
+            if self._current_root_folder is not None:
+                self._statistics.stats_by_folder[
+                    self._current_root_folder
+                ].files_errored += 1
         except (ValueError, UnicodeError) as exc:
             # Defensive: guards against unexpected decode/format errors so
             # a single problematic file never aborts the whole crawl.
             self._record_error(file_path, exc, "read file")
             self._statistics.files_errored += 1
+            if self._current_root_folder is not None:
+                self._statistics.stats_by_folder[
+                    self._current_root_folder
+                ].files_errored += 1
 
     def _has_read_permission(self, file_path: Path) -> bool:
         """Check if the current user has read permission for a file.

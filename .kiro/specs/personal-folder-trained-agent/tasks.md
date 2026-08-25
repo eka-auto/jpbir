@@ -59,12 +59,12 @@ Implement a Python-based system that enables users to create personalized AI age
     - Continue processing other files in the same folder on errors
     - _Requirements: 1.4, 6.3, 9.1_
 
-  - [-] 3.3 Add statistics collection and reporting
+  - [x] 3.3 Add statistics collection and reporting
     - Implement `get_statistics()` returning CrawlStatistics
     - Track files processed, files skipped, errors encountered per folder
     - _Requirements: 8.1, 8.3_
 
-  - [ ] 3.4 Write unit tests for Folder Crawler
+  - [x] 3.4 Write unit tests for Folder Crawler
     - Test recursive directory traversal with mock file system
     - Test permission error handling and graceful continuation
     - Test statistics collection accuracy
@@ -82,18 +82,18 @@ Implement a Python-based system that enables users to create personalized AI age
     - Handle encoding detection and conversion to UTF-8
     - _Requirements: 2.1_
 
-  - [-] 4.3 Add fallback handling for unsupported formats
+  - [x] 4.3 Add fallback handling for unsupported formats
     - Attempt basic text extraction (treat as plain text) for unsupported formats
     - Log warning with file extension if fallback also fails
     - Skip file and continue processing
     - _Requirements: 2.6, 9.1_
 
-  - [ ] 4.4 Write property test for text cleaning
+  - [x] 4.4 Write property test for text cleaning
     - **Property 1: Text Cleaning Preserves Allowed Characters**
     - For any input string, verify cleaning removes exactly the forbidden control characters and preserves all others
     - **Validates: Requirements 2.1**
 
-  - [ ] 4.5 Write integration tests for Text Processor
+  - [x] 4.5 Write integration tests for Text Processor
     - Test text extraction from sample files (PDF, DOCX, XLSX, PPTX, TXT)
     - Test fallback behavior for unsupported formats
     - _Requirements: 2.1, 2.2, 2.6_
@@ -108,14 +108,14 @@ Implement a Python-based system that enables users to create personalized AI age
     - Add chunk size validation (512-1024 tokens)
     - _Requirements: 2.3, 2.4_
 
-  - [~] 6.2 Implement chunking strategies
+  - [x] 6.2 Implement chunking strategies
     - Implement `SentenceAwareChunker`: split at sentence boundaries preserving context
     - Implement `ParagraphAwareChunker`: preserve paragraph structure
     - Implement `FixedSizeChunker`: fixed token size chunks with overlap
     - Only chunk documents larger than 100KB
     - _Requirements: 2.3, 7.3_
 
-  - [~] 6.3 Add source file reference management
+  - [x] 6.3 Add source file reference management
     - Maintain source metadata for each chunk in JSON format
     - Generate chunk IDs: `{file_path}:{chunk_index}`
     - Store file path, chunk index, byte offset, and token count per chunk
@@ -151,12 +151,12 @@ Implement a Python-based system that enables users to create personalized AI age
     - Return clear validation errors listing each invalid parameter and expected format
     - _Requirements: 7.2, 7.4_
 
-  - [~] 7.3 Write property test for configuration validation
+  - [x] 7.3 Write property test for configuration validation
     - **Property 4: Configuration Validation Correctness**
     - For any hyperparameter value, verify validator accepts values in valid ranges and rejects values outside with clear error
     - **Validates: Requirements 7.2, 7.4**
 
-  - [ ] 7.4 Write unit tests for Configuration Manager
+  - [x] 7.4 Write unit tests for Configuration Manager
     - Test YAML parsing with valid and malformed configs
     - Test hyperparameter boundary values
     - Test error message clarity for invalid configurations
@@ -166,13 +166,13 @@ Implement a Python-based system that enables users to create personalized AI age
   - Ensure all tests pass, ask the user if questions arise.
 
 - [ ] 9. Implement Training Pipeline
-  - [~] 9.1 Create TrainingPipeline class with dependency management
+  - [x] 9.1 Create TrainingPipeline class with dependency management
     - Implement automatic dependency installation via pip (datasets, transformers, accelerate, trl, langchain-text-splitters)
     - Handle version constraints for compatibility
     - Set up training environment detection (Colab vs local)
     - _Requirements: 3.1, 10.2_
 
-  - [~] 9.2 Implement data preparation and splitting
+  - [x] 9.2 Implement data preparation and splitting
     - Prepare 80/20 training/validation split with deterministic seed (42)
     - Create dataset objects compatible with Hugging Face transformers
     - Implement efficient batched data loading

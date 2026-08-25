@@ -4,6 +4,7 @@ This module defines all dataclasses used across the system for representing
 file metadata, text extraction results, training chunks, and inference outputs.
 """
 
+import json
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
@@ -115,6 +116,35 @@ class TextChunk:
     chunk_id: str
     metadata: Dict[str, Any] = field(default_factory=dict)
 
+    def to_dict(self) -> Dict[str, Any]:
+        """Return a JSON-serializable dict of this chunk's source metadata.
+
+        Per Requirement 2.5, the source file reference for each chunk is
+        maintained in JSON format including file path, chunk index, byte
+        offset, and token count. The chunk_id (``{file_path}:{chunk_index}``)
+        is also included for unambiguous identification.
+
+        Returns:
+            A dict with keys ``file_path``, ``chunk_index``, ``byte_offset``,
+            ``token_count``, and ``chunk_id``.
+        """
+        return {
+            "file_path": self.source_file,
+            "chunk_index": self.chunk_index,
+            "byte_offset": self.byte_offset,
+            "token_count": self.token_count,
+            "chunk_id": self.chunk_id,
+        }
+
+    def to_json(self) -> str:
+        """Serialize this chunk's source metadata to a JSON string.
+
+        Returns:
+            A JSON string containing file path, chunk index, byte offset,
+            token count, and chunk_id.
+        """
+        return json.dumps(self.to_dict())
+
 
 @dataclass
 class DataStatistics:
@@ -199,6 +229,27 @@ class InferenceResult:
 
 
 @dataclass
+class FolderStatistics:
+    """Per-folder breakdown of crawl statistics for one configured root folder.
+
+    Attributes:
+        total_files: Total files discovered within this folder (recursively).
+        files_processed: Files successfully processed within this folder.
+        files_skipped: Files skipped within this folder (e.g. matched an
+            exclusion pattern).
+        files_errored: Files that encountered errors within this folder.
+        total_size_bytes: Total size in bytes of successfully processed
+            files within this folder.
+    """
+
+    total_files: int = 0
+    files_processed: int = 0
+    files_skipped: int = 0
+    files_errored: int = 0
+    total_size_bytes: int = 0
+
+
+@dataclass
 class CrawlStatistics:
     """Statistics from a folder crawl operation.
 
@@ -209,6 +260,9 @@ class CrawlStatistics:
         files_errored: Files that encountered errors.
         total_size_bytes: Total size of all discovered files.
         folders_traversed: Number of directories traversed.
+        stats_by_folder: Per-folder breakdown keyed by the configured root
+            folder path (as given in CrawlerConfig.folder_paths), each
+            tracking files processed/skipped/errored within that folder.
     """
 
     total_files: int = 0
@@ -217,6 +271,7 @@ class CrawlStatistics:
     files_errored: int = 0
     total_size_bytes: int = 0
     folders_traversed: int = 0
+    stats_by_folder: Dict[str, FolderStatistics] = field(default_factory=dict)
 
 
 @dataclass

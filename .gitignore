@@ -21,3 +21,13 @@ logs/
 # OS / editor
 .DS_Store
 Thumbs.db
+
+.vercel
+
+# Derived data / training artifacts
+runs/
+.claude/
+data/*.db
+*.zip
+*.jsonl
+_tmp_*.mjs

@@ -1,0 +1,258 @@
+#!/usr/bin/env python3
+"""Crawl every directory missing from the corpus and write chunks.
+Runs straight through — no stops.
+
+Missing sources from audit:
+  C:\eka2\
+  C:\eka-agent\
+  C:\eka-runner\
+  C:\jayti\
+  C:\JP\
+  C:\JP_DriveBackup\
+  C:\JP_work\   (only 2 chunks — re-crawl fully)
+  C:\PERSONAL_JAYATI\
+  C:\COMPANY_G4G\
+  C:\Desktop\S24_COMPLETE_BACKUP_20260703_2257\
+  C:\Desktop\JAYATI_ALL_RECOVERED_DATA\
+  D:\  (full D drive)
+  + merge jayti_personal_chunks.jsonl.gz and diac_case_chunks.jsonl.gz
+"""
+
+from __future__ import annotations
+import gzip, json, os, sys, zlib, struct
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
+from tools.scrub_secrets import classify  # noqa
+
+PARTS_DIR = os.environ.get(
+    "JT_PARTS_DIR", os.path.join(ROOT, "runs", "jt_agent", "parts"))
+os.makedirs(PARTS_DIR, exist_ok=True)
+
+CHUNK_CHARS = 4000
+
+SKIP_EXT = {
+    ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".ico", ".webp", ".svg",
+    ".mp3", ".mp4", ".wav", ".ogg", ".mkv", ".avi", ".mov", ".flac",
+    ".zip", ".7z", ".rar", ".gz", ".tar", ".bz2", ".xz",
+    ".exe", ".dll", ".so", ".dylib", ".bin", ".dat", ".db", ".sqlite",
+    ".woff", ".woff2", ".ttf", ".otf", ".eot",
+    ".psd", ".ai", ".fig", ".sketch",
+    ".pyc", ".pyo", ".class", ".obj", ".lib", ".pdb",
+    ".iso", ".img", ".vmdk",
+    ".opus", ".m4a", ".aac", ".flac",
+    ".pdf", ".docx", ".xlsx", ".pptx", ".doc", ".xls", ".ppt",
+}
+
+TEXT_EXT = {
+    ".txt", ".md", ".rst", ".csv", ".tsv", ".json", ".jsonl",
+    ".yaml", ".yml", ".toml", ".ini", ".cfg", ".conf", ".env",
+    ".sh", ".bat", ".ps1", ".cmd",
+    ".py", ".js", ".ts", ".jsx", ".tsx", ".html", ".htm", ".css",
+    ".java", ".go", ".rb", ".rs", ".c", ".cpp", ".h", ".hpp",
+    ".xml", ".log", ".sql", ".r", ".m", ".tf", ".hcl",
+    ".ipynb", ".tex", ".bib", ".vue", ".svelte",
+    ".gitignore", ".dockerignore", ".editorconfig",
+}
+
+
+def try_decode(data: bytes) -> str | None:
+    for enc in ("utf-8", "utf-8-sig", "latin-1"):
+        try:
+            return data.decode(enc)
+        except Exception:
+            continue
+    return None
+
+
+def write_chunks(text: str, source: str, out_fh, counter: list) -> int:
+    written = 0
+    for i in range(0, len(text), CHUNK_CHARS):
+        chunk_text = text[i:i + CHUNK_CHARS].strip()
+        if len(chunk_text) < 60:
+            continue
+        if classify(chunk_text):
+            continue
+        rec = {
+            "text": chunk_text,
+            "source_file": source,
+            "chunk_index": i // CHUNK_CHARS,
+            "byte_offset": i,
+            "token_count": len(chunk_text.split()),
+            "chunk_id": f"{source}::{counter[0]}",
+            "metadata": {"corpus_label": "misc"},
+        }
+        out_fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
+        counter[0] += 1
+        written += 1
+    return written
+
+
+SKIP_DIR_NAMES = {
+    "node_modules", ".git", "__pycache__", ".venv", "venv",
+    "site-packages", ".mypy_cache", "dist", "build",
+    # browser / app caches -- extensionless binary blobs, may hold tokens
+    "cache", "cache_data", "code cache", "gpucache", "shadercache",
+    "dawncache", "graphitedawncache", "cachestorage", "blob_storage",
+    "service worker", "serviceworker", "indexeddb", "crashpad",
+    "local storage", "session storage", "appdata",
+    "component_crx_cache", "optimization_guide_prediction_model_downloads",
+    # dependency / build-tool caches -- third-party source, not personal
+    ".gradle", ".m2", ".nuget", ".cargo", ".npm", ".pub-cache",
+    ".rustup", ".android", ".sdkman", ".gem", ".ivy2", ".pnpm-store",
+    # editor / IDE server installs
+    ".vscode", ".vscode-server", ".vs", ".idea",
+}
+
+
+def _skip_roots() -> set:
+    """Absolute dirs the walk must never descend into.
+
+    PARTS_DIR is included unconditionally: once parts live on the same drive
+    being crawled, the walk would otherwise ingest its own output (.jsonl is
+    in TEXT_EXT) and grow without bound. JT_SKIP_DIRS adds more, ";"-separated.
+    """
+    roots = {os.path.realpath(PARTS_DIR)}
+    for d in os.environ.get("JT_SKIP_DIRS", "").split(";"):
+        if d.strip():
+            roots.add(os.path.realpath(d.strip()))
+    return roots
+
+
+SKIP_ROOTS = _skip_roots()
+
+
+def crawl_dir(root_dir: str, out_path: str, label: str) -> dict:
+    stats = {"files": 0, "chunks": 0, "skipped": 0, "errors": 0}
+    if not os.path.isdir(root_dir):
+        print(f"  SKIP (not found): {root_dir}")
+        return stats
+    counter = [0]
+    with open(out_path, "w", encoding="utf-8") as out_fh:
+        for dirpath, dirnames, filenames in os.walk(root_dir, onerror=lambda e: None):
+            # skip heavy node_modules / .git / venv, plus browser and app
+            # caches -- their contents are extensionless binary blobs
+            # (data_3, f_0000ab, index) that decode to garbage and can carry
+            # auth tokens from cached responses.
+            dirnames[:] = [d for d in dirnames
+                           if d.lower() not in SKIP_DIR_NAMES
+                           and os.path.realpath(os.path.join(dirpath, d))
+                           not in SKIP_ROOTS]
+            for fname in filenames:
+                fpath = os.path.join(dirpath, fname)
+                ext = os.path.splitext(fname)[1].lower()
+                if ext in SKIP_EXT:
+                    stats["skipped"] += 1
+                    continue
+                if ext:
+                    if ext not in TEXT_EXT:
+                        stats["skipped"] += 1
+                        continue
+                else:
+                    # splitext() reports NO extension for both ".credentials"
+                    # and "data_3", so the old `if ext and ext not in TEXT_EXT`
+                    # guard waved every such name through -- runner secrets and
+                    # Chromium cache blobs alike. Require an explicit TEXT_EXT
+                    # match on the whole basename; that is what the
+                    # ".gitignore" / ".env" entries were always for.
+                    if fname.lower() not in TEXT_EXT:
+                        stats["skipped"] += 1
+                        continue
+                try:
+                    size = os.path.getsize(fpath)
+                    if size > 50 * 1024 * 1024:  # skip files > 50 MB
+                        stats["skipped"] += 1
+                        continue
+                    with open(fpath, "rb") as f:
+                        raw = f.read()
+                    text = try_decode(raw)
+                    if text is None or len(text.strip()) < 60:
+                        stats["skipped"] += 1
+                        continue
+                    n = write_chunks(text.strip(), fpath, out_fh, counter)
+                    stats["files"] += 1
+                    stats["chunks"] += n
+                except Exception:
+                    stats["errors"] += 1
+    print(f"  {label}: {stats['files']} files, {stats['chunks']:,} chunks -> {out_path}")
+    return stats
+
+
+def append_gz(gz_path: str, out_path: str, label: str) -> int:
+    if not os.path.isfile(gz_path):
+        print(f"  SKIP (not found): {gz_path}")
+        return 0
+    count = 0
+    with gzip.open(gz_path, "rt", encoding="utf-8", errors="replace") as f_in, \
+         open(out_path, "w", encoding="utf-8") as f_out:
+        for line in f_in:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                json.loads(line)
+                f_out.write(line + "\n")
+                count += 1
+            except Exception:
+                continue
+    print(f"  {label}: {count:,} chunks -> {out_path}")
+    return count
+
+
+import platform
+if platform.system() == "Linux":
+    # WSL — Windows drives mounted under /mnt/
+    C = "/mnt/c"
+    D = "/mnt/d"
+else:
+    C = "C:"
+    D = "D:"
+
+DESKTOP = f"{C}/Users/abcom/Desktop"
+
+DIRS = [
+    (f"{C}/eka2",                                                    "eka2_root"),
+    (f"{C}/eka-agent",                                               "eka_agent_root"),
+    (f"{C}/eka-runner",                                              "eka_runner_root"),
+    (f"{C}/jayti",                                                   "jayti_root"),
+    (f"{C}/JP",                                                      "jp_root"),
+    (f"{C}/JP_DriveBackup",                                          "jp_drivebackup"),
+    (f"{C}/PERSONAL_JAYATI",                                         "personal_jayati"),
+    (f"{C}/COMPANY_G4G",                                             "company_g4g"),
+    (f"{DESKTOP}/S24_COMPLETE_BACKUP_20260703_2257",                 "s24_complete_backup"),
+    (f"{DESKTOP}/JAYATI_ALL_RECOVERED_DATA",                         "jayati_all_recovered"),
+    (f"{D}/",                                                        "d_drive"),
+]
+
+GZ_FILES = [
+    (f"{C}/Users/abcom/jayti_personal_chunks.jsonl.gz",  "jayti_personal"),
+    (f"{C}/Users/abcom/diac_case_chunks.jsonl.gz",       "diac_case"),
+]
+
+
+def main():
+    total_chunks = 0
+
+    print("\n=== Crawling missing directories ===\n")
+    # JT_ONLY=d_drive re-runs a single root without redoing the rest.
+    only = {n.strip() for n in os.environ.get("JT_ONLY", "").split(",") if n.strip()}
+    dirs = [(d, n) for d, n in DIRS if not only or n in only]
+    print(f"  parts dir: {PARTS_DIR}")
+    for src_dir, part_name in dirs:
+        out_path = os.path.join(PARTS_DIR, f"{part_name}.jsonl")
+        stats = crawl_dir(src_dir, out_path, part_name)
+        total_chunks += stats["chunks"]
+
+    print("\n=== Appending .gz chunk files ===\n")
+    for gz_path, part_name in ([] if only else GZ_FILES):
+        out_path = os.path.join(PARTS_DIR, f"{part_name}.jsonl")
+        n = append_gz(gz_path, out_path, part_name)
+        total_chunks += n
+
+    print(f"\n=== Done. Total new chunks: {total_chunks:,} ===")
+    print(f"Parts written to: {PARTS_DIR}")
+    print("Next step: run tools/merge_chunks.py to rebuild chunks.jsonl")
+
+
+if __name__ == "__main__":
+    main()

@@ -71,7 +71,7 @@ def clean_text(text: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-def detect_encoding(raw_bytes: bytes) -> str:
+def detect_encoding(raw_bytes: bytes) -> Optional[str]:
     """Detect the most likely character encoding of raw byte content.
 
     Strategy:
@@ -85,14 +85,16 @@ def detect_encoding(raw_bytes: bytes) -> str:
        legacy codepage such as cp932 or cp1258.
     3. If strict UTF-8 decoding fails, fall back to charset-normalizer's
        statistical detection for legacy/unknown encodings.
-    4. Defaults to 'utf-8' if detection is inconclusive.
+    4. Returns None if detection is inconclusive (i.e. the content is not
+       valid UTF-8 and charset-normalizer cannot confidently identify any
+       encoding). This is a strong signal of binary content.
 
     Args:
         raw_bytes: Raw file content as bytes.
 
     Returns:
-        Detected encoding name (e.g., 'utf-8', 'cp1252'). Defaults to
-        'utf-8' if the input is empty or detection is inconclusive.
+        Detected encoding name (e.g., 'utf-8', 'cp1252'), or None if the
+        content could not be identified as text.
     """
     if not raw_bytes:
         return "utf-8"
@@ -113,27 +115,35 @@ def detect_encoding(raw_bytes: bytes) -> str:
     except Exception as exc:  # pragma: no cover - defensive fallback
         logger.debug("Encoding detection failed, defaulting to utf-8: %s", exc)
 
-    return "utf-8"
+    return None
 
 
 def read_text_with_encoding_detection(file_path: str) -> str:
     """Read a file's text content, auto-detecting its character encoding.
 
     Reads the file as raw bytes, detects the most likely encoding using
-    charset-normalizer, and decodes accordingly. Falls back to latin-1
-    (which can decode any byte sequence without raising) if the detected
-    encoding fails to decode cleanly or names an unrecognized codec.
+    charset-normalizer, and decodes accordingly. If the detected encoding
+    fails to decode cleanly or names an unrecognized codec, falls back to
+    latin-1 (which can decode any byte sequence without raising). If no
+    encoding can be identified at all (binary content), raises ValueError
+    so callers can treat the file as non-text.
 
     Args:
         file_path: Path to the file to read.
 
     Returns:
         Decoded text content.
+
+    Raises:
+        ValueError: If the content cannot be identified as text.
     """
     with open(file_path, "rb") as f:
         raw_bytes = f.read()
 
     encoding = detect_encoding(raw_bytes)
+
+    if encoding is None:
+        raise ValueError("Content could not be identified as text (binary data)")
 
     try:
         return raw_bytes.decode(encoding)
@@ -440,7 +450,13 @@ class ConcreteTextProcessor(TextProcessorInterface):
             )
         except Exception as e:
             elapsed_ms = int((time.perf_counter() - start_time) * 1000)
-            error_msg = f"{type(e).__name__}: {e}"
+            if is_fallback:
+                # Distinguish fallback failures from primary handler failures in the
+                # error_message text itself, since callers/error reports may surface
+                # this field on its own without the extraction_method field.
+                error_msg = f"Plain text fallback extraction failed ({type(e).__name__}): {e}"
+            else:
+                error_msg = f"{type(e).__name__}: {e}"
             logger.error(
                 "Text extraction failed for '%s' using %s: %s",
                 file_path,
