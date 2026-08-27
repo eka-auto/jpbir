@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Slide 9A / 9B &mdash; Are you dealing with a narcissist?</title>
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#0E0A08">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..900;1,9..144,300..700&family=Inter:wght@300;400;500;600;700&family=Noto+Sans+Devanagari:wght@500;600&display=swap" rel="stylesheet">
+<style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    /* ===== tokens — lifted verbatim from index.html ===== */
+    :root {
+        --amber:       #C87A1E;
+        --amber-light: #E4A64A;
+        --amber-glow:  #F0B968;
+        --amber-deep:  #8E4A07;
+        --cream:       #F9F6F0;
+        --paper:       #FFF8EE;
+        --ink:         #221A15;
+        --ink-muted:   #6C5F53;
+        --border:      #E8DFD5;
+        --border-light:#F2ECE4;
+        --serif: 'Fraunces', Georgia, 'Times New Roman', serif;
+        --sans: 'Inter', system-ui, -apple-system, sans-serif;
+    }
+
+    html, body { height: 100%; overflow: hidden; }
+    body { font-family: var(--sans); background: #1C1007; color: var(--ink);
+        line-height: 1.7; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+    ::selection { background: rgba(200,122,30,.4); color: #FFF8EE; }
+    button:focus-visible { outline: 2px solid var(--amber-glow); outline-offset: 3px; }
+
+    /* ===== horizontal deck — same mechanics as the site ===== */
+    .deck { display: flex; width: 100%; height: 100vh; overflow-x: auto; overflow-y: hidden;
+        scroll-snap-type: x mandatory; scroll-behavior: smooth; -webkit-overflow-scrolling: touch; }
+    .deck::-webkit-scrollbar { display: none; }
+    .deck { scrollbar-width: none; }
+    .slide { flex: 0 0 100vw; height: 100vh; scroll-snap-align: start; scroll-snap-stop: always;
+        position: relative; overflow-y: auto; overflow-x: hidden; }
+    .slide::-webkit-scrollbar { width: 0; }
+    .slide { scrollbar-width: none; }
+
+    /* ===== letter slides ===== */
+    .letter-slide { display: flex; flex-direction: column; align-items: center;
+        justify-content: center; padding: 24px 20px 80px; background: #1C1007;
+        position: relative; overflow: hidden; }
+    .letter-slide::before { content: ''; position: absolute; inset: 0; pointer-events: none; z-index: 0;
+        background: radial-gradient(ellipse 70% 55% at 50% 52%, rgba(200,122,30,.13) 0%, rgba(200,122,30,0) 70%); }
+    .letter-slide::after { content: ''; position: absolute; inset: 0; z-index: 0; pointer-events: none; opacity: .045;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E"); }
+
+    .side-ornament { position: absolute; left: clamp(18px, 5vw, 96px); top: 50%;
+        transform: translateY(-50%); width: 18px; height: 44vh; z-index: 1; pointer-events: none; }
+    .side-ornament::before { content: ''; position: absolute; left: 50%; top: 0; bottom: 0; width: 1.5px;
+        transform: translateX(-50%);
+        background: linear-gradient(180deg, rgba(240,185,104,0), rgba(240,185,104,.55) 10%,
+                    rgba(240,185,104,.55) 90%, rgba(240,185,104,0)); }
+    .side-ornament::after { content: ''; position: absolute; left: 50%; bottom: 2vh; width: 14px; height: 14px;
+        transform: translateX(-50%) rotate(45deg);
+        background: linear-gradient(135deg, var(--amber-glow), var(--amber-deep));
+        box-shadow: 0 0 16px rgba(240,185,104,.55), inset 0 0 6px rgba(255,235,200,.9);
+        animation: ornPulse 3.4s ease-in-out infinite; }
+    @keyframes ornPulse {
+        0%, 100% { box-shadow: 0 0 10px rgba(240,185,104,.3), inset 0 0 5px rgba(255,235,200,.8); }
+        50%      { box-shadow: 0 0 26px rgba(240,185,104,.85), inset 0 0 5px rgba(255,235,200,.9); }
+    }
+
+    .slide-chip { position: relative; z-index: 1; display: inline-flex; align-items: center; gap: 14px;
+        font-family: var(--sans); font-size: 10px; font-weight: 700; letter-spacing: 3.5px;
+        text-transform: uppercase; color: var(--amber-glow); margin-bottom: 18px; }
+    .slide-chip::before, .slide-chip::after { content: ''; width: 40px; height: 1px;
+        background: linear-gradient(90deg, transparent, rgba(240,185,104,.5)); }
+    .slide-chip::after { background: linear-gradient(90deg, rgba(240,185,104,.5), transparent); }
+
+    /* ===== the paper card ===== */
+    .letter { position: relative; z-index: 1; width: 100%; max-width: 640px;
+        max-height: calc(100vh - 140px); overflow-y: auto;
+        scrollbar-width: thin; scrollbar-color: rgba(200,122,30,.3) transparent;
+        background: var(--paper); border: 1px solid rgba(255,200,100,.2); border-radius: 20px;
+        padding: 46px 44px;
+        box-shadow: 0 40px 120px -30px rgba(0,0,0,.7), 0 0 0 1px rgba(255,220,160,.15),
+                    inset 0 1px 0 rgba(255,255,255,.6); }
+    .letter::-webkit-scrollbar { width: 5px; }
+    .letter::-webkit-scrollbar-track { background: transparent; }
+    .letter::-webkit-scrollbar-thumb { background: rgba(200,122,30,.3); border-radius: 3px; }
+    .letter::before { content: ''; position: absolute; inset: 0; border-radius: 20px; opacity: .04;
+        pointer-events: none; z-index: 0; background-size: 200px 200px;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E"); }
+    .letter > * { position: relative; z-index: 1; }
+    .letter p { font-family: var(--serif); font-weight: 300; font-size: clamp(15px,1.5vw,17px);
+        line-height: 1.78; color: var(--ink); margin: 0 0 14px; }
+    .letter p:last-child { margin-bottom: 0; }
+    .letter em { font-style: italic; color: var(--amber-deep); }
+    .letter .ps { margin-top: 20px; padding-top: 16px; border-top: 1px solid rgba(200,122,30,.2);
+        font-style: italic; font-size: 12.5px; color: var(--ink-muted); line-height: 1.65; }
+    .letter .ps b { font-style: normal; font-weight: 600; color: var(--amber-deep); letter-spacing: .3px; }
+
+    /* ===== wide reference card — same shape as .ladder-card ===== */
+    .pattern-slide { justify-content: center; padding-top: 18px; padding-bottom: 84px; }
+    .letter.pattern-card { max-width: min(1360px, 94vw); max-height: calc(100vh - 120px);
+        overflow: hidden; padding: 24px 36px 22px; }
+    .pattern-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between;
+        gap: 6px 24px; margin-bottom: 10px; }
+    .pattern-head h2 { font-family: var(--serif); font-weight: 600; font-size: clamp(22px, 2.6vw, 30px);
+        color: var(--ink); letter-spacing: -.3px; }
+    .pattern-head .caveat { font-family: var(--serif); font-style: italic; font-size: 14px; color: var(--amber-deep); }
+    .pattern-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px 40px;
+        align-items: start; padding-top: 4px; border-top: 1px solid var(--border); }
+
+    .col h3 { font-family: var(--sans); font-size: 9.5px; font-weight: 700; letter-spacing: 2.4px;
+        text-transform: uppercase; color: var(--amber-deep); opacity: .8; margin: 14px 0 8px; }
+    .col h3:first-child { margin-top: 10px; }
+    .col p { font-size: clamp(13px, 1.02vw, 15px); line-height: 1.6; margin: 0 0 8px; }
+
+    /* diamond bullets — the site's .q-facts idiom */
+    .facts { list-style: none; margin: 0 0 4px; padding: 0; display: grid; gap: 6px; }
+    .facts li { position: relative; padding-left: 20px; font-family: var(--serif);
+        font-size: clamp(12.5px, .98vw, 14.5px); line-height: 1.5; color: var(--ink); }
+    .facts li::before { content: ''; position: absolute; left: 2px; top: .55em; width: 6px; height: 6px;
+        transform: rotate(45deg); background: linear-gradient(135deg, var(--amber-glow), var(--amber-deep)); }
+    .facts li b { font-weight: 700; }
+
+    /* what was said → what it did */
+    .letter .said { font-family: var(--serif); font-style: italic; font-size: clamp(13.5px, 1.06vw, 15.5px);
+        line-height: 1.5; color: var(--ink); margin: 0; }
+    .letter .did { font-family: var(--sans); font-size: 9.5px; font-weight: 700; letter-spacing: 2.2px;
+        text-transform: uppercase; color: var(--amber-deep); opacity: .75; margin: 3px 0 11px; line-height: 1.7; }
+
+    /* checkboxes */
+    .check { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+    .check li { position: relative; padding-left: 22px; font-family: var(--serif);
+        font-size: clamp(12.5px, .98vw, 14.5px); line-height: 1.5; color: var(--ink); }
+    .check li::before { content: ''; position: absolute; left: 2px; top: .42em; width: 10px; height: 10px;
+        border: 1.4px solid var(--amber); border-radius: 2px; background: rgba(255,255,255,.7); }
+    .letter .ruleof { margin-top: 12px; padding: 10px 14px; background: rgba(240,185,104,.13);
+        border-left: 2px solid var(--amber-deep); border-radius: 3px;
+        font-family: var(--serif); font-size: clamp(12.5px, 1vw, 14.5px); line-height: 1.55; color: var(--ink); }
+    .ruleof b { font-weight: 700; color: #000; }
+
+    /* full-width footnote row — the site's .ladder-note idiom */
+    .pattern-note { grid-column: 1 / -1; margin-top: 10px; padding-top: 10px;
+        border-top: 1px solid var(--border); font-size: 12.5px; color: var(--ink-muted); line-height: 1.5; }
+    .pattern-note > h3 { margin-top: 0; }
+    .note-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px 22px; }
+    .note-grid p { margin: 0; font-size: 12.5px; line-height: 1.5; }
+    .note-grid b { color: var(--ink); font-weight: 600; }
+    .cycle { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px 22px; }
+    .cycle p { margin: 0; font-size: 12.5px; line-height: 1.5; }
+    .cycle b { color: var(--amber-deep); font-weight: 700; }
+    .cycle i { font-family: var(--serif); font-style: italic; color: var(--amber-deep); opacity: .5;
+        margin-right: 5px; }
+    .letter .safety { margin-top: 10px; padding: 9px 14px; border: 1px solid rgba(200,122,30,.45);
+        border-radius: 3px; font-size: 12.5px; line-height: 1.55; color: var(--ink); }
+    .safety b { font-weight: 700; color: var(--amber-deep); }
+
+    /* ===== nav ===== */
+    .nav-bar { position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%); z-index: 50;
+        display: flex; align-items: center; gap: 20px; padding: 10px 20px;
+        background: rgba(20,10,4,.82); backdrop-filter: blur(12px) saturate(1.4);
+        -webkit-backdrop-filter: blur(12px) saturate(1.4);
+        border: 1px solid rgba(240,185,104,.15); border-radius: 999px;
+        box-shadow: 0 12px 40px -16px rgba(0,0,0,.7); }
+    .nav-bar button.nav-arrow { width: 36px; height: 36px; padding: 0; border-radius: 50%;
+        border: 1px solid rgba(200,122,30,.3); background: rgba(200,122,30,.12);
+        color: var(--amber-glow); font-size: 16px; cursor: pointer;
+        display: flex; align-items: center; justify-content: center; transition: background .2s, transform .2s; }
+    .nav-bar button.nav-arrow:hover { background: rgba(200,122,30,.28); transform: scale(1.08); }
+    .nav-bar button.nav-arrow:disabled { opacity: .3; cursor: default; transform: none; }
+    .slide-counter { font-size: 11px; font-weight: 700; letter-spacing: 2px;
+        color: rgba(240,185,104,.7); font-variant-numeric: tabular-nums; min-width: 36px; text-align: center; }
+
+    /* ===== scroll-in reveal ===== */
+    .js-anim .letter-slide .slide-chip,
+    .js-anim .letter-slide .letter { opacity: 0; transform: translateY(26px);
+        transition: opacity .8s ease, transform .8s cubic-bezier(.22,.61,.36,1); }
+    .js-anim .letter-slide .side-ornament { opacity: 0; transform: translateY(calc(-50% + 22px));
+        transition: opacity .9s ease, transform .9s cubic-bezier(.22,.61,.36,1); }
+    .js-anim .letter-slide.in-view .slide-chip { opacity: 1; transform: none; transition-delay: .05s; }
+    .js-anim .letter-slide.in-view .letter { opacity: 1; transform: none; transition-delay: .16s; }
+    .js-anim .letter-slide.in-view .side-ornament { opacity: 1; transform: translateY(-50%); }
+
+    @media (prefers-reduced-motion: reduce) {
+        .side-ornament::after { animation: none; }
+        .deck { scroll-behavior: auto; }
+    }
+    @media (max-width: 1100px) { .note-grid, .cycle { grid-template-columns: 1fr 1fr; } }
+    @media (max-width: 900px) {
+        .letter { padding: 32px 26px; }
+        .letter.pattern-card { padding: 22px 20px 20px; max-height: calc(100vh - 120px); overflow-y: auto; }
+        .pattern-body { grid-template-columns: 1fr; }
+        .note-grid, .cycle { grid-template-columns: 1fr; }
+        .nav-bar { bottom: 18px; gap: 14px; padding: 8px 16px; }
+        .side-ornament { left: 12px; }
+    }
+    @media (max-width: 500px) { .side-ornament { display: none; } }
+    @media print {
+        .nav-bar, .side-ornament { display: none !important; }
+        body { background: #fff; overflow: visible; }
+        .deck { display: block; height: auto; overflow: visible; }
+        .slide { height: auto; overflow: visible; break-after: page; }
+        .letter-slide { background: #fff; padding: 0; }
+        .letter-slide::before, .letter-slide::after { display: none; }
+        .letter { box-shadow: none; border: none; max-width: none; max-height: none; padding: 0; overflow: visible; }
+        .slide-chip { color: #888; }
+    }
+</style>
+</head>
+<body>
+
+<div class="deck" id="deck">
+
+    <!-- ============ SLIDE 9A: RECOGNISING IT ============ -->
+    <section class="slide letter-slide pattern-slide" id="slide-9a">
+        <span class="side-ornament" aria-hidden="true"></span>
+        <div class="slide-chip">Nine A &mdash; recognising the pattern</div>
+        <article class="letter pattern-card">
+
+            <div class="pattern-head">
+                <h2>Are you dealing with a narcissist?</h2>
+                <p class="caveat">Recognition, not diagnosis &mdash; only a clinician diagnoses a personality disorder.</p>
+            </div>
+
+            <div class="pattern-body">
+
+                <div class="col">
+                    <h3>The core</h3>
+                    <p>Grandiosity, a constant need for admiration, and absent empathy &mdash;
+                        <em>pervasive, and lifelong.</em> Everything below is only how that shows up on
+                        an ordinary day.</p>
+
+                    <h3>Two faces, one engine</h3>
+                    <ul class="facts">
+                        <li><b>Grandiose / overt.</b> Loud, dominating, visibly self-important. Easy to spot,
+                            so it gets all the attention.</li>
+                        <li><b>Covert / vulnerable.</b> Quiet, wounded, the perpetual victim. Harder to name,
+                            because it arrives asking for your sympathy.</li>
+                    </ul>
+                    <p style="margin-top:8px">Only the volume differs. The entitlement, and the missing
+                        empathy, are identical.</p>
+
+                    <h3>Under criticism &mdash; the most revealing thirty seconds</h3>
+                    <p class="said">&ldquo;I&rsquo;m sorry you feel that way.&rdquo;</p>
+                    <p class="did">Non-apology &middot; grammatically an apology, functionally a verdict on you</p>
+                    <p class="said">&ldquo;After everything I&rsquo;ve done for you, <em>this</em> is what you bring up?&rdquo;</p>
+                    <p class="did">DARVO &middot; deny, attack, and arrive as the injured party</p>
+                    <p class="said">Three days of silence, then normality &mdash; as if nothing was ever raised.</p>
+                    <p class="did">Narcissistic injury &middot; rage or ice. Reflection is the one thing that never comes.</p>
+                </div>
+
+                <div class="col">
+                    <h3>In conversation</h3>
+                    <ul class="facts">
+                        <li>You mention a hard week; two sentences later they are describing a harder one.
+                            <b>Yours never comes back.</b></li>
+                        <li>&ldquo;You ran 5K? I did a half-marathon on a sprained ankle.&rdquo;</li>
+                        <li>No genuine curiosity &mdash; questions only gather material to talk about themselves.</li>
+                    </ul>
+
+                    <h3>In relationships</h3>
+                    <ul class="facts">
+                        <li><b>Week one:</b> &ldquo;I have never felt this before.&rdquo; <b>Week six:</b>
+                            cold, unexplained &mdash; and you are the one chasing.</li>
+                        <li>You say &ldquo;I felt hurt when&hellip;&rdquo; and somehow end the conversation apologising.</li>
+                        <li>They read your feelings perfectly and still do the thing.
+                            <em>Cognitive empathy, not affective &mdash; it was never a misunderstanding.</em></li>
+                        <li>Scorekeeping: the dinner they paid for months ago exists; your ten things do not.</li>
+                    </ul>
+
+                    <h3>At work &mdash; the waiter test</h3>
+                    <ul class="facts">
+                        <li>Team ships &mdash; &ldquo;<b>I</b> drove this.&rdquo; Project slips &mdash;
+                            &ldquo;my junior dropped the ball.&rdquo;</li>
+                        <li>Charming upward, dismissive downward. <em>How someone treats a person who cannot
+                            help them is the most honest information you will ever get.</em></li>
+                        <li>They take apart a colleague who isn&rsquo;t in the room &mdash; which is the sound
+                            of you, after you leave it.</li>
+                    </ul>
+
+                    <h3>Over years</h3>
+                    <ul class="facts">
+                        <li>A trail of &ldquo;crazy&rdquo; exes, &ldquo;toxic&rdquo; bosses, &ldquo;backstabbing&rdquo;
+                            friends &mdash; and never one word of their own part in it.</li>
+                    </ul>
+                </div>
+
+                <div class="pattern-note">
+                    <h3>The four-part cycle &mdash; and it loops</h3>
+                    <div class="cycle">
+                        <p><i>I</i><b>Love bombing.</b> Overwhelming affection and future-planning at the start.
+                            Builds dependency, lowers your guard.</p>
+                        <p><i>II</i><b>Devaluation.</b> Warmth withdraws; criticism and coldness replace it.
+                            You start performing to get phase one back.</p>
+                        <p><i>III</i><b>Discard.</b> Abrupt exit or shutdown once you stop being useful &mdash;
+                            often once new supply is secured.</p>
+                        <p><i>IV</i><b>Hoovering.</b> Pulling you back after the discard: crisis calls, apologies,
+                            nostalgia, &ldquo;I&rsquo;ve changed.&rdquo; Then back to I.</p>
+                    </div>
+                    <div class="note-grid" style="margin-top:8px">
+                        <p><b>Gaslighting</b> &mdash; denying facts until you doubt your own memory.</p>
+                        <p><b>Triangulation</b> &mdash; &ldquo;even they agree with me.&rdquo;</p>
+                        <p><b>Future faking</b> &mdash; promises that buy compliance now, never delivered.</p>
+                        <p><b>Moving the goalposts</b> &mdash; the standard shifts the moment you meet it.</p>
+                        <p><b>Silent treatment</b> &mdash; punishment by withdrawal until you cave.</p>
+                        <p><b>Smear campaign</b> &mdash; your reputation rewritten before you can speak.</p>
+                        <p><b>Word salad</b> &mdash; circular conflict, exhausting by design. You give up; that was the win.</p>
+                        <p><b>Projection</b> &mdash; accusing you of precisely what they are doing.</p>
+                    </div>
+                </div>
+
+            </div>
+        </article>
+    </section>
+
+    <!-- ============ SLIDE 9B: CHECKING IT, AND WHAT TO DO ============ -->
+    <section class="slide letter-slide pattern-slide" id="slide-9b">
+        <span class="side-ornament" aria-hidden="true"></span>
+        <div class="slide-chip">Nine B &mdash; checking it, and what to do</div>
+        <article class="letter pattern-card">
+
+            <div class="pattern-head">
+                <h2>Check it against yourself first.</h2>
+                <p class="caveat">They can manage their presentation. They cannot manage your nervous system.</p>
+            </div>
+
+            <div class="pattern-body">
+
+                <div class="col">
+                    <h3>The feeling test &mdash; more reliable than any trait list</h3>
+                    <ul class="check">
+                        <li>You feel anxious before seeing them, and drained afterwards.</li>
+                        <li>You rehearse sentences before saying them, and edit yourself constantly.</li>
+                        <li>You increasingly doubt your own memory of events.</li>
+                        <li>You over-explain and over-apologise &mdash; including for things that were never yours.</li>
+                        <li>You leave conversations confused, and cannot reconstruct why.</li>
+                        <li>Your world has quietly shrunk: fewer friends, less family, hobbies dropped.</li>
+                        <li>You have started keeping screenshots and notes, just to stay sane.</li>
+                        <li>The good moments feel like relief rather than joy.</li>
+                        <li>People who know you say you seem different lately.</li>
+                    </ul>
+                    <p class="ruleof"><b>Three or more &mdash; act on it.</b> Whatever the label turns out to be,
+                        and whether or not anyone is ever diagnosed. The label was never the thing you needed.
+                        Your footing was.</p>
+                </div>
+
+                <div class="col">
+                    <h3>What to do &mdash; boundaries are things you do, not things you declare</h3>
+                    <ul class="facts">
+                        <li><b>Stop trying to win it.</b> Insight is the missing part; you cannot supply it from
+                            outside. Chasing the admission is what keeps people hooked for years.</li>
+                        <li><b>Act, don&rsquo;t announce.</b> &ldquo;I won&rsquo;t discuss this while you&rsquo;re
+                            shouting&rdquo; &mdash; and then actually leaving the room.</li>
+                        <li><b>Starve the reaction.</b> For contact you cannot avoid, grey rock: calm tone, short
+                            factual answers, no emotion, no detail. <em>Caveat: under-studied, and it can escalate
+                            cyclically abusive situations.</em></li>
+                        <li><b>Write it down.</b> Dated notes and saved messages &mdash; for your own mind first,
+                            and for any HR or legal question later.</li>
+                        <li><b>Rebuild what got eroded.</b> Isolation is the mechanism, not a side effect.</li>
+                        <li><b>Plan the hoover now,</b> while you are calm &mdash; not at one in the morning,
+                            when you are lonely.</li>
+                        <li><b>Get your own support.</b> Avoid couples counselling as a first step if there is
+                            active abuse &mdash; joint sessions get weaponised.</li>
+                    </ul>
+                </div>
+
+                <div class="pattern-note">
+                    <h3>What this is <em>not</em> &mdash; the word is badly over-used</h3>
+                    <div class="note-grid">
+                        <p><b>Confidence and ambition.</b> Healthy self-esteem is stable; grandiosity is brittle
+                            and needs an audience.</p>
+                        <p><b>A terrible year.</b> Grief, burnout, depression and addiction all produce real
+                            self-absorption &mdash; a bad season, not a personality structure.</p>
+                        <p><b>Neurodivergence.</b> Autistic and ADHD traits get mislabelled constantly. The
+                            difference is intent: not perceiving your feelings is not the same as perceiving
+                            them and using them.</p>
+                        <p><b>One account of a conflict &mdash; including yours.</b> Abusers accuse others of
+                            being narcissists. DARVO looks exactly like this from the inside.</p>
+                    </div>
+                </div>
+
+            </div>
+        </article>
+    </section>
+
+</div>
+
+<nav class="nav-bar" aria-label="Slide navigation">
+    <button class="nav-arrow" id="prev" aria-label="Previous slide">&#8249;</button>
+    <span class="slide-counter" id="counter">9A</span>
+    <button class="nav-arrow" id="next" aria-label="Next slide">&#8250;</button>
+</nav>
+
+<script>
+(function () {
+    var deck = document.getElementById('deck');
+    var slides = [].slice.call(deck.querySelectorAll('.slide'));
+    var labels = ['9A', '9B'];
+    var prev = document.getElementById('prev');
+    var next = document.getElementById('next');
+    var counter = document.getElementById('counter');
+
+    document.body.classList.add('js-anim');
+
+    var io = new IntersectionObserver(function (entries) {
+        entries.forEach(function (e) { e.target.classList.toggle('in-view', e.isIntersecting); });
+    }, { threshold: .35 });
+    slides.forEach(function (s) { io.observe(s); });
+
+    function index() { return Math.round(deck.scrollLeft / deck.clientWidth); }
+    function sync() {
+        var i = index();
+        counter.textContent = labels[i] || labels[0];
+        prev.disabled = i <= 0;
+        next.disabled = i >= slides.length - 1;
+    }
+    function go(i) {
+        i = Math.max(0, Math.min(slides.length - 1, i));
+        deck.scrollTo({ left: i * deck.clientWidth,
+            behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+    }
+    prev.addEventListener('click', function () { go(index() - 1); });
+    next.addEventListener('click', function () { go(index() + 1); });
+    deck.addEventListener('scroll', sync, { passive: true });
+    addEventListener('keydown', function (e) {
+        if (e.key === 'ArrowRight' || e.key === 'PageDown') { e.preventDefault(); go(index() + 1); }
+        if (e.key === 'ArrowLeft' || e.key === 'PageUp') { e.preventDefault(); go(index() - 1); }
+    });
+    sync();
+})();
+</script>
+</body>
+</html>
