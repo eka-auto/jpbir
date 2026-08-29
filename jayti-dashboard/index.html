@@ -1046,9 +1046,11 @@
         var t = e.target;
         while (t && t !== document) {
             if (t.classList && t.classList.contains('clickable')) {
+                if (t.getAttribute('data-device')) return;
                 var params = {};
                 if (t.getAttribute('data-visitor')) params.visitor = t.getAttribute('data-visitor');
                 if (t.getAttribute('data-session')) params.session = t.getAttribute('data-session');
+                if (!params.visitor && !params.session) return;
                 loadVisitor(params);
                 return;
             }
