@@ -78,6 +78,45 @@ export default async function handler(req, res) {
 
     entries.sort((a, b) => (b.visitedAt || '').localeCompare(a.visitedAt || ''));
 
+    // device summary: every device that has sent any event in the window
+    const deviceMap = new Map();
+    for (const d of items) {
+      if (!d.epoch || d.epoch < cutoff) continue;
+      const dev = d.visitorId || 'unknown';
+      const cur = deviceMap.get(dev) || { device: dev, events: 0, types: {}, first: null, last: null, ip: null };
+      cur.events++;
+      cur.types[d.eventType || 'unknown'] = (cur.types[d.eventType || 'unknown'] || 0) + 1;
+      if (d.timestamp) {
+        if (!cur.first || d.timestamp < cur.first) cur.first = d.timestamp;
+        if (!cur.last || d.timestamp > cur.last) cur.last = d.timestamp;
+      }
+      if (d.ip) cur.ip = d.ip;
+      deviceMap.set(dev, cur);
+    }
+    const devices = [...deviceMap.values()].sort((a, b) => (b.last || '').localeCompare(a.last || ''));
+
+    // full event dump for one device when ?device= is given
+    let deviceEvents = null;
+    if (req.query.device) {
+      const dev = req.query.device;
+      const evs = items.filter(i => i.epoch && i.epoch >= cutoff && i.visitorId === dev);
+      evs.sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''));
+      deviceEvents = evs.map(d => ({
+        event_type: d.eventType,
+        timestamp: d.timestamp,
+        page_url: d.pageUrl,
+        page_title: d.pageTitle,
+        ip: d.ip,
+        country: d.country,
+        city: d.city,
+        userAgent: d.userAgent,
+        time_on_page: d.timeOnPage,
+        scroll_percent: d.scrollPercent,
+        fingerprint: d.fingerprint,
+        event_data: d.eventData,
+      }));
+    }
+
     return res.status(200).json({
       success: true,
       source: 'dynamodb',
@@ -85,6 +124,8 @@ export default async function handler(req, res) {
       total_events: historyEvents.length,
       total_entries: entries.length,
       entries: entries.slice(0, 500),
+      devices,
+      device_events: deviceEvents,
     });
   } catch (err) {
     return res.status(500).json({ success: false, error: err.message || 'jp device history failed' });

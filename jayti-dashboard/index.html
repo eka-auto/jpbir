@@ -339,6 +339,41 @@
                         </table>
                     </div>
                 </div>
+                <div class="panel">
+                    <div class="panel-head"><div><h2>Devices</h2><div class="hint" id="devicesHint">Every device that has sent events — click to see all its data</div></div></div>
+                    <div class="table-wrap">
+                        <table id="devicesTable">
+                            <thead><tr>
+                                <th>Device</th>
+                                <th>Events</th>
+                                <th>Event types</th>
+                                <th>IP</th>
+                                <th>First seen</th>
+                                <th>Last seen</th>
+                            </tr></thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="panel" id="deviceDetailPanel" style="display:none">
+                    <div class="panel-head"><div><h2 id="deviceDetailTitle">Device data</h2><div class="hint" id="deviceDetailHint"></div></div>
+                        <div class="tools"><button id="deviceDetailClose">Close</button></div></div>
+                    <div class="table-wrap">
+                        <table id="deviceDetailTable">
+                            <thead><tr>
+                                <th>Time</th>
+                                <th>Event</th>
+                                <th>Page</th>
+                                <th>IP</th>
+                                <th>Location</th>
+                                <th>Time on page</th>
+                                <th>Scroll</th>
+                                <th>Fingerprint</th>
+                            </tr></thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
             </section>
         </main>
     </div>
@@ -860,6 +895,7 @@
     $('daysSel').addEventListener('change', load);
 
     /* ===== DEVICE HISTORY ===== */
+    var DEVICE_DATA = null;
     function loadDeviceHistory() {
         if (!KEY) return;
         $('deviceHint').textContent = 'Loading device history…';
@@ -868,6 +904,7 @@
             .then(function (res) {
                 if (res.status === 401) { showGate(); return; }
                 if (!res.body.success) throw new Error(res.body.error || 'failed');
+                DEVICE_DATA = res.body;
                 var tbody = $('deviceTable').querySelector('tbody');
                 tbody.innerHTML = '';
                 var entries = res.body.entries || [];
@@ -886,12 +923,87 @@
                     });
                 }
                 $('deviceHint').textContent = res.body.total_entries + ' entries · ' + res.body.total_events + ' sync events';
+
+                var dtbody = $('devicesTable').querySelector('tbody');
+                dtbody.innerHTML = '';
+                var devices = res.body.devices || [];
+                if (!devices.length) {
+                    dtbody.innerHTML = '<tr><td colspan="6" style="padding:14px;color:var(--ink-muted)">No devices have sent events yet.</td></tr>';
+                } else {
+                    devices.forEach(function (d) {
+                        var tr = document.createElement('tr');
+                        var types = Object.entries(d.types || {}).map(function (kv) {
+                            return '<span class="pill">' + esc(kv[0]) + ' ' + kv[1] + '</span>';
+                        }).join('');
+                        tr.innerHTML =
+                            '<td><span class="clickable" data-device="' + esc(d.device) + '">' + esc(d.device) + '</span></td>' +
+                            '<td>' + d.events + '</td>' +
+                            '<td>' + types + '</td>' +
+                            '<td class="mono">' + esc(d.ip || '—') + '</td>' +
+                            '<td>' + fmtTime(d.first) + '</td>' +
+                            '<td>' + fmtTime(d.last) + '</td>';
+                        dtbody.appendChild(tr);
+                    });
+                }
+                $('devicesHint').textContent = devices.length + ' devices in window';
             })
             .catch(function (e) {
                 $('deviceHint').textContent = 'Error: ' + e.message;
             });
     }
+
+    function loadDeviceDetail(device) {
+        if (!KEY) return;
+        $('deviceDetailTitle').textContent = 'All data — ' + device;
+        $('deviceDetailHint').textContent = 'Loading…';
+        $('deviceDetailPanel').style.display = 'block';
+        fetch('/api/jp-device?' + new URLSearchParams({ key: KEY, days: 30, device: device }).toString())
+            .then(function (r) { return r.json().then(function (j) { return { status: r.status, body: j }; }); })
+            .then(function (res) {
+                if (res.status === 401) { showGate(); return; }
+                if (!res.body.success) throw new Error(res.body.error || 'failed');
+                var tbody = $('deviceDetailTable').querySelector('tbody');
+                tbody.innerHTML = '';
+                var evs = res.body.device_events || [];
+                if (!evs.length) {
+                    tbody.innerHTML = '<tr><td colspan="8" style="padding:14px;color:var(--ink-muted)">No events for this device.</td></tr>';
+                } else {
+                    evs.forEach(function (e) {
+                        var tr = document.createElement('tr');
+                        var loc = [e.city, e.country].filter(Boolean).join(', ');
+                        tr.innerHTML =
+                            '<td>' + esc(fmtTime(e.timestamp)) + '</td>' +
+                            '<td><span class="pill">' + esc(e.event_type || '—') + '</span></td>' +
+                            '<td style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(e.page_url || '—') + '</td>' +
+                            '<td class="mono">' + esc(e.ip || '—') + '</td>' +
+                            '<td>' + esc(loc || '—') + '</td>' +
+                            '<td>' + esc(fmtDur(e.time_on_page)) + '</td>' +
+                            '<td>' + (e.scroll_percent != null ? e.scroll_percent + '%' : '—') + '</td>' +
+                            '<td class="mono">' + esc(e.fingerprint || '—') + '</td>';
+                        tbody.appendChild(tr);
+                    });
+                }
+                $('deviceDetailHint').textContent = evs.length + ' events';
+            })
+            .catch(function (e) {
+                $('deviceDetailHint').textContent = 'Error: ' + e.message;
+            });
+    }
+
     $('deviceRefreshBtn').addEventListener('click', loadDeviceHistory);
+    $('deviceDetailClose').addEventListener('click', function () {
+        $('deviceDetailPanel').style.display = 'none';
+    });
+    document.addEventListener('click', function (e) {
+        var t = e.target;
+        while (t && t !== document) {
+            if (t.classList && t.classList.contains('clickable') && t.getAttribute('data-device')) {
+                loadDeviceDetail(t.getAttribute('data-device'));
+                return;
+            }
+            t = t.parentNode;
+        }
+    });
     document.querySelectorAll('.nav-item').forEach(function (btn) {
         btn.addEventListener('click', function () {
             if (btn.getAttribute('data-page') === 'device') loadDeviceHistory();
