@@ -90,7 +90,7 @@ export default async function handler(req, res) {
           browser: e.browser || data.browser || null,
           device: idn.canonical,
           deviceLabel: idn.label,
-          ip: d.ip || idn.ip || null,
+          ip: idn.ip || d.ip || null,
         });
       }
     }
@@ -110,8 +110,9 @@ export default async function handler(req, res) {
         if (!cur.first || d.timestamp < cur.first) cur.first = d.timestamp;
         if (!cur.last || d.timestamp > cur.last) cur.last = d.timestamp;
       }
-      if (d.ip) cur.ip = d.ip;
-      if (idn.ip && !cur.ip) cur.ip = idn.ip;
+      // known identity IP wins over whatever network the event arrived from
+      if (idn.ip) cur.ip = idn.ip;
+      else if (d.ip) cur.ip = d.ip;
       deviceMap.set(dev, cur);
     }
     const devices = [...deviceMap.values()].sort((a, b) => (b.last || '').localeCompare(a.last || ''));
@@ -133,7 +134,7 @@ export default async function handler(req, res) {
           timestamp: d.timestamp,
           page_url: d.pageUrl,
           page_title: d.pageTitle,
-          ip: d.ip || idn.ip,
+          ip: idn.ip || d.ip,
           country: d.country,
           city: d.city,
           userAgent: d.userAgent,
