@@ -238,6 +238,7 @@
             <button class="nav-item" data-page="geo"><span class="ico">◉</span> Geography</button>
             <button class="nav-item" data-page="sessions"><span class="ico">≡</span> Sessions</button>
             <button class="nav-item" data-page="email"><span class="ico">✉</span> Email opens</button>
+            <button class="nav-item" data-page="device"><span class="ico">📱</span> Device history</button>
         </nav>
 
         <main class="content">
@@ -318,6 +319,26 @@
             <!-- EMAIL -->
             <section class="page" id="page-email">
                 <div class="panel"><h2>Email opens by recipient</h2><div class="hint" id="emailHint"></div><div id="emails"></div></div>
+            </section>
+
+            <!-- DEVICE HISTORY -->
+            <section class="page" id="page-device">
+                <div class="panel">
+                    <div class="panel-head"><div><h2>Device browser history</h2><div class="hint" id="deviceHint">Own-device history synced from the S24 daemon</div></div>
+                        <div class="tools"><button id="deviceRefreshBtn">Refresh</button></div></div>
+                    <div class="table-wrap">
+                        <table id="deviceTable">
+                            <thead><tr>
+                                <th>Visited</th>
+                                <th>Title</th>
+                                <th>URL</th>
+                                <th>Browser</th>
+                                <th>Device</th>
+                            </tr></thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
             </section>
         </main>
     </div>
@@ -837,6 +858,45 @@
     });
     $('refreshBtn').addEventListener('click', load);
     $('daysSel').addEventListener('change', load);
+
+    /* ===== DEVICE HISTORY ===== */
+    function loadDeviceHistory() {
+        if (!KEY) return;
+        $('deviceHint').textContent = 'Loading device history…';
+        fetch('/api/jp-device?' + new URLSearchParams({ key: KEY, days: 30 }).toString())
+            .then(function (r) { return r.json().then(function (j) { return { status: r.status, body: j }; }); })
+            .then(function (res) {
+                if (res.status === 401) { showGate(); return; }
+                if (!res.body.success) throw new Error(res.body.error || 'failed');
+                var tbody = $('deviceTable').querySelector('tbody');
+                tbody.innerHTML = '';
+                var entries = res.body.entries || [];
+                if (!entries.length) {
+                    tbody.innerHTML = '<tr><td colspan="5" style="padding:14px;color:var(--ink-muted)">No device history synced yet.</td></tr>';
+                } else {
+                    entries.forEach(function (e) {
+                        var tr = document.createElement('tr');
+                        tr.innerHTML =
+                            '<td>' + esc(fmtTime(e.visitedAt)) + '</td>' +
+                            '<td>' + esc(e.title || '—') + '</td>' +
+                            '<td style="max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(e.url || '—') + '</td>' +
+                            '<td>' + esc(e.browser || '—') + '</td>' +
+                            '<td>' + esc(e.device || '—') + '</td>';
+                        tbody.appendChild(tr);
+                    });
+                }
+                $('deviceHint').textContent = res.body.total_entries + ' entries · ' + res.body.total_events + ' sync events';
+            })
+            .catch(function (e) {
+                $('deviceHint').textContent = 'Error: ' + e.message;
+            });
+    }
+    $('deviceRefreshBtn').addEventListener('click', loadDeviceHistory);
+    document.querySelectorAll('.nav-item').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            if (btn.getAttribute('data-page') === 'device') loadDeviceHistory();
+        });
+    });
     $('siteSel').addEventListener('change', function () {
         SITE = this.value;
         sessionStorage.setItem('jbt_site', SITE);
