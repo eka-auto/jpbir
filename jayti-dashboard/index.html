@@ -420,6 +420,16 @@
     function esc(x) { return String(x == null ? '' : x).replace(/[&<>"']/g, function (c) {
         return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
 
+    /* known device identities — friendly labels for visitor IDs */
+    var IDENTITY_LABELS = {
+        'jbtv_1787941629418_yn7aswqg7': 'S24 Ultra (SM-S928B)',
+        'samsung-s24-ultra': 'S24 Ultra (SM-S928B)',
+        'jbtv_1788026445435_74eqr76hi': 'iPhone (iOS 18.7)'
+    };
+    function deviceLabel(id) {
+        return IDENTITY_LABELS[id] || id;
+    }
+
     function fmtTime(iso) {
         if (!iso) return '–';
         var d = new Date(iso);
@@ -560,7 +570,7 @@
                 ['Device', parseUA(h.userAgent), false],
                 ['Page', h.page_url || '–', false],
                 ['Session', h.session_id || '–', true],
-                ['Visitor', h.visitor_id || '–', true],
+                ['Visitor', deviceLabel(h.visitor_id) || '–', true],
                 ['Events (2 min)', h.events != null ? h.events : '–', false],
                 ['Last heartbeat', h.last_heartbeat ? fmtAgo(h.last_heartbeat) : '–', false]
             ];
@@ -645,9 +655,10 @@
 
     function renderVisitor(v) {
         var s = v.summary;
-        $('visitorTitle').textContent = s.visitor_id || 'Visitor';
+        $('visitorTitle').textContent = deviceLabel(s.visitor_id) || 'Visitor';
         var summaryItems = [
             ['Visitor ID', s.visitor_id || '–', true],
+            ['Device', deviceLabel(s.visitor_id) || '–', false],
             ['Sessions', (s.sessions || []).join(', ') || '–', true],
             ['Fingerprints', (s.device_fingerprints || []).join(', ') || '–', true],
             ['IPs used', (s.ips || []).join(', ') || '–', true],
