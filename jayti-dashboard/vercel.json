@@ -35,6 +35,10 @@
     {
       "source": "/api/jp-device",
       "destination": "/api/jp-device.js"
+    },
+    {
+      "source": "/api/jp-agent",
+      "destination": "/api/jp-agent.js"
     }
   ]
 }

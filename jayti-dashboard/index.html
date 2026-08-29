@@ -239,6 +239,7 @@
             <button class="nav-item" data-page="sessions"><span class="ico">≡</span> Sessions</button>
             <button class="nav-item" data-page="email"><span class="ico">✉</span> Email opens</button>
             <button class="nav-item" data-page="device"><span class="ico">📱</span> Device history</button>
+            <button class="nav-item" data-page="agent"><span class="ico">🤖</span> Ask agent</button>
         </nav>
 
         <main class="content">
@@ -372,6 +373,18 @@
                             </tr></thead>
                             <tbody></tbody>
                         </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- AGENT -->
+            <section class="page" id="page-agent">
+                <div class="panel">
+                    <div class="panel-head"><div><h2>Device &amp; IP agent</h2><div class="hint">Ask anything about any device or IP — answers come from live telemetry, site analytics, and synced history</div></div></div>
+                    <div id="agentChat" style="max-height:52vh;overflow-y:auto;margin-bottom:14px"></div>
+                    <div style="display:flex;gap:10px">
+                        <input id="agentInput" type="text" placeholder="e.g. what do we know about 210.16.82.193?" style="flex:1;padding:11px 14px;border:1px solid var(--border);border-radius:10px;background:var(--panel2);color:var(--ink);font-family:var(--sans);font-size:13.5px;outline:none">
+                        <button id="agentAskBtn" class="primary" style="padding:11px 22px;border:none;border-radius:10px;background:linear-gradient(180deg,var(--amber-glow),var(--amber));color:#241505;font-weight:700;font-size:13px;cursor:pointer;font-family:var(--sans)">Ask</button>
                     </div>
                 </div>
             </section>
@@ -1010,6 +1023,45 @@
             if (btn.getAttribute('data-page') === 'device') loadDeviceHistory();
         });
     });
+
+    /* ===== AGENT ===== */
+    function agentAdd(role, text) {
+        var el = $('agentChat');
+        var div = document.createElement('div');
+        div.style.cssText = 'margin-bottom:12px;padding:12px 14px;border-radius:12px;' +
+            (role === 'user'
+                ? 'background:rgba(200,122,30,.14);border:1px solid rgba(200,122,30,.3);text-align:right'
+                : 'background:var(--panel2);border:1px solid var(--border)');
+        div.innerHTML = '<div style="font-size:9px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--ink-muted);margin-bottom:4px">' +
+            (role === 'user' ? 'You' : 'Agent') + '</div>' +
+            '<div style="font-size:13.5px;line-height:1.6;color:var(--ink);white-space:pre-wrap">' + esc(text) + '</div>';
+        el.appendChild(div);
+        el.scrollTop = el.scrollHeight;
+    }
+    function agentAsk() {
+        var q = $('agentInput').value.trim();
+        if (!q || !KEY) return;
+        $('agentInput').value = '';
+        agentAdd('user', q);
+        agentAdd('agent', 'Thinking…');
+        var thinking = $('agentChat').lastElementChild;
+        fetch('/api/jp-agent?' + new URLSearchParams({ key: KEY }).toString(), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ question: q })
+        })
+            .then(function (r) { return r.json().then(function (j) { return { status: r.status, body: j }; }); })
+            .then(function (res) {
+                if (res.status === 401) { showGate(); return; }
+                if (!res.body.success) throw new Error(res.body.error || 'failed');
+                thinking.querySelector('div:last-child').textContent = res.body.answer;
+            })
+            .catch(function (e) {
+                thinking.querySelector('div:last-child').textContent = 'Error: ' + e.message;
+            });
+    }
+    $('agentAskBtn').addEventListener('click', agentAsk);
+    $('agentInput').addEventListener('keydown', function (e) { if (e.key === 'Enter') agentAsk(); });
     $('siteSel').addEventListener('change', function () {
         SITE = this.value;
         sessionStorage.setItem('jbt_site', SITE);
