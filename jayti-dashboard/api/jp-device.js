@@ -8,6 +8,23 @@ const AWS_SECRET_ACCESS_KEY = _env['JP_AWS_' + 'SECRET_ACCESS_KEY'];
 const AWS_REGION = _env['JP_AWS_' + 'REGION'] || 'us-west-2';
 const TABLE = _env['JP_TELEMETRY_' + 'TABLE'] || 'jaytipargal_telemetry';
 
+// Known device identities: visitor IDs observed on the site mapped to
+// their real hardware. The S24 Ultra browser visitor is the same device
+// as the daemon, so both roll up under one canonical id.
+const IDENTITY_MAP = {
+  'jbtv_1787941629418_yn7aswqg7': {
+    canonical: 'samsung-s24-ultra',
+    label: 'S24 Ultra (SM-S928B)',
+    ip: '210.16.82.193',
+  },
+};
+
+function resolveIdentity(visitorId) {
+  const m = IDENTITY_MAP[visitorId];
+  if (m) return m;
+  return { canonical: visitorId, label: visitorId, ip: null };
+}
+
 function timingSafeEqual(a, b) {
   if (typeof a !== 'string' || typeof b !== 'string') return false;
   const max = Math.max(a.length, b.length);
@@ -64,14 +81,16 @@ export default async function handler(req, res) {
     for (const d of historyEvents) {
       const data = d.eventData || {};
       const list = Array.isArray(data.entries) ? data.entries : (Array.isArray(data.history) ? data.history : []);
+      const idn = resolveIdentity(d.visitorId);
       for (const e of list) {
         entries.push({
           url: e.url || e.title || null,
           title: e.title || null,
           visitedAt: e.visitedAt || e.timestamp || d.timestamp || null,
           browser: e.browser || data.browser || null,
-          device: d.visitorId || 's24',
-          ip: d.ip || null,
+          device: idn.canonical,
+          deviceLabel: idn.label,
+          ip: d.ip || idn.ip || null,
         });
       }
     }
@@ -82,8 +101,9 @@ export default async function handler(req, res) {
     const deviceMap = new Map();
     for (const d of items) {
       if (!d.epoch || d.epoch < cutoff) continue;
-      const dev = d.visitorId || 'unknown';
-      const cur = deviceMap.get(dev) || { device: dev, events: 0, types: {}, first: null, last: null, ip: null };
+      const idn = resolveIdentity(d.visitorId);
+      const dev = idn.canonical;
+      const cur = deviceMap.get(dev) || { device: dev, label: idn.label, events: 0, types: {}, first: null, last: null, ip: null };
       cur.events++;
       cur.types[d.eventType || 'unknown'] = (cur.types[d.eventType || 'unknown'] || 0) + 1;
       if (d.timestamp) {
@@ -91,6 +111,7 @@ export default async function handler(req, res) {
         if (!cur.last || d.timestamp > cur.last) cur.last = d.timestamp;
       }
       if (d.ip) cur.ip = d.ip;
+      if (idn.ip && !cur.ip) cur.ip = idn.ip;
       deviceMap.set(dev, cur);
     }
     const devices = [...deviceMap.values()].sort((a, b) => (b.last || '').localeCompare(a.last || ''));
@@ -99,22 +120,31 @@ export default async function handler(req, res) {
     let deviceEvents = null;
     if (req.query.device) {
       const dev = req.query.device;
-      const evs = items.filter(i => i.epoch && i.epoch >= cutoff && i.visitorId === dev);
+      const evs = items.filter(i => {
+        if (!i.epoch || i.epoch < cutoff) return false;
+        const idn = resolveIdentity(i.visitorId);
+        return idn.canonical === dev;
+      });
       evs.sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''));
-      deviceEvents = evs.map(d => ({
-        event_type: d.eventType,
-        timestamp: d.timestamp,
-        page_url: d.pageUrl,
-        page_title: d.pageTitle,
-        ip: d.ip,
-        country: d.country,
-        city: d.city,
-        userAgent: d.userAgent,
-        time_on_page: d.timeOnPage,
-        scroll_percent: d.scrollPercent,
-        fingerprint: d.fingerprint,
-        event_data: d.eventData,
-      }));
+      deviceEvents = evs.map(d => {
+        const idn = resolveIdentity(d.visitorId);
+        return {
+          event_type: d.eventType,
+          timestamp: d.timestamp,
+          page_url: d.pageUrl,
+          page_title: d.pageTitle,
+          ip: d.ip || idn.ip,
+          country: d.country,
+          city: d.city,
+          userAgent: d.userAgent,
+          time_on_page: d.timeOnPage,
+          scroll_percent: d.scrollPercent,
+          fingerprint: d.fingerprint,
+          event_data: d.eventData,
+          visitor_id: d.visitorId,
+          device_label: idn.label,
+        };
+      });
     }
 
     return res.status(200).json({

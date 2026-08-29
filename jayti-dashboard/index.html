@@ -935,8 +935,9 @@
                         var types = Object.entries(d.types || {}).map(function (kv) {
                             return '<span class="pill">' + esc(kv[0]) + ' ' + kv[1] + '</span>';
                         }).join('');
+                        var name = d.label && d.label !== d.device ? d.label + ' <span style="color:var(--ink-muted);font-size:10px">(' + esc(d.device) + ')</span>' : esc(d.device);
                         tr.innerHTML =
-                            '<td><span class="clickable" data-device="' + esc(d.device) + '">' + esc(d.device) + '</span></td>' +
+                            '<td><span class="clickable" data-device="' + esc(d.device) + '">' + name + '</span></td>' +
                             '<td>' + d.events + '</td>' +
                             '<td>' + types + '</td>' +
                             '<td class="mono">' + esc(d.ip || '—') + '</td>' +
