@@ -145,6 +145,10 @@ export default async function handler(req, res) {
         input_type: d.input_type,
         pwa_state: d.pwa_state,
         advanced_capabilities: d.advanced_capabilities,
+        network_info: d.network_info,
+        browser_info: d.browser_info,
+        screen_info: d.screen_info,
+        battery_info: d.battery_info,
         web_vitals: d.event_type === 'web_vitals' ? {
           lcp: d.lcp, cls: d.cls, inp: d.inp, fid: d.fid, ttfb: d.ttfb, reason: d.reason
         } : undefined,

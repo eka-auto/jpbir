@@ -679,14 +679,48 @@
             ['Proxy', n.proxy || '–', false]
         ];
 
-        // Find latest device_probe and web_vitals events
-        var probe = null, vitals = null;
+        // Find latest device_probe, web_vitals, and page_view events
+        var probe = null, vitals = null, pageView = null;
         for (var i = v.events.length - 1; i >= 0; i--) {
             var e = v.events[i];
             if (!probe && e.event_type === 'device_probe') probe = e;
             if (!vitals && e.event_type === 'web_vitals') vitals = e;
-            if (probe && vitals) break;
+            if (!pageView && (e.event_type === 'page_view' || e.event_type === 'pageview')) pageView = e;
+            if (probe && vitals && pageView) break;
         }
+
+        // Device type + network summary from the richest event
+        var rich = pageView || probe || (v.events && v.events[0]) || {};
+        var bi = rich.browser_info || {};
+        var ni = rich.network_info || {};
+        var si = rich.screen_info || {};
+        var bai = rich.battery_info || {};
+        var it = rich.input_type || {};
+
+        var deviceType = 'unknown';
+        if (bi.maxTouchPoints > 0 || it.coarsePointer) deviceType = 'mobile / tablet';
+        else if (bi.userAgent && /Mobile|Android|iPhone|iPad|iPod/i.test(bi.userAgent)) deviceType = 'mobile';
+        else deviceType = 'desktop / laptop';
+
+        var netType = 'unknown';
+        if (ni.available) {
+            netType = (ni.type || ni.effectiveType || 'unknown') +
+                (ni.downlink != null ? ' · ' + ni.downlink + ' Mbps' : '') +
+                (ni.rtt != null ? ' · rtt ' + ni.rtt + 'ms' : '');
+        } else {
+            netType = 'not exposed by browser';
+        }
+
+        var deviceSummaryHtml = '<div class="panel" style="box-shadow:none;margin-bottom:14px"><h2>Device &amp; network</h2><div class="kv-grid">' +
+            '<div class="kv-item"><div class="k">Device type</div><div class="v">' + esc(deviceType) + '</div></div>' +
+            '<div class="kv-item"><div class="k">Network</div><div class="v">' + esc(netType) + '</div></div>' +
+            '<div class="kv-item"><div class="k">Touch points</div><div class="v">' + (bi.maxTouchPoints != null ? bi.maxTouchPoints : '–') + '</div></div>' +
+            '<div class="kv-item"><div class="k">CPU cores</div><div class="v">' + (bi.hardwareConcurrency || '–') + '</div></div>' +
+            '<div class="kv-item"><div class="k">Device memory</div><div class="v">' + (bi.deviceMemory ? bi.deviceMemory + ' GB' : '–') + '</div></div>' +
+            '<div class="kv-item"><div class="k">Screen</div><div class="v">' + (si.width ? si.width + '×' + si.height : '–') + '</div></div>' +
+            '<div class="kv-item"><div class="k">Battery</div><div class="v">' + (bai.level != null ? bai.level + '%' + (bai.charging ? ' (charging)' : '') : '–') + '</div></div>' +
+            '<div class="kv-item"><div class="k">Online</div><div class="v">' + (bi.onLine ? 'yes' : 'no') + '</div></div>' +
+            '</div></div>';
 
         var deviceHtml = '';
         if (probe) {
@@ -791,7 +825,7 @@
             netItems.map(function (it) {
                 return '<div class="kv-item"><div class="k">' + it[0] + '</div><div class="v' + (it[2] ? ' mono' : '') + '">' + esc(it[1]) + '</div></div>';
             }).join('') + '</div></div>' +
-            deviceHtml + vitalsHtml +
+            deviceSummaryHtml + deviceHtml + vitalsHtml +
             '<div class="panel" style="box-shadow:none"><h2>Event timeline (' + v.events.length + ')</h2>' + eventsHtml + '</div>';
     }
 
