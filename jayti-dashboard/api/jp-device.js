@@ -22,6 +22,11 @@ const IDENTITY_MAP = {
     label: 'S24 Ultra (SM-S928B)',
     ip: '210.16.82.193',
   },
+  'jbtv_1788026445435_74eqr76hi': {
+    canonical: 'iphone-london',
+    label: 'iPhone (iOS 18.7)',
+    ip: '172.226.0.6',
+  },
 };
 
 function resolveIdentity(visitorId) {
