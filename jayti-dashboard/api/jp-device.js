@@ -17,6 +17,11 @@ const IDENTITY_MAP = {
     label: 'S24 Ultra (SM-S928B)',
     ip: '210.16.82.193',
   },
+  'samsung-s24-ultra': {
+    canonical: 'samsung-s24-ultra',
+    label: 'S24 Ultra (SM-S928B)',
+    ip: '210.16.82.193',
+  },
 };
 
 function resolveIdentity(visitorId) {
