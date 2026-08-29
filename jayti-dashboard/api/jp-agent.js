@@ -9,6 +9,7 @@ const AWS_SECRET_ACCESS_KEY = _env['JP_AWS_' + 'SECRET_ACCESS_KEY'];
 const AWS_REGION = _env['JP_AWS_' + 'REGION'] || 'us-west-2';
 const TABLE = _env['JP_TELEMETRY_' + 'TABLE'] || 'jaytipargal_telemetry';
 const GEMINI_KEY = _env['GEMINI_' + 'API_KEY'];
+const ANTHROPIC_KEY = _env['ANTHROPIC_' + 'API_KEY'];
 const BLOB_TOKEN = _env['BLOB_' + 'READ_WRITE_TOKEN'];
 
 const IDENTITY_MAP = {
@@ -158,8 +159,8 @@ export default async function handler(req, res) {
     res.setHeader('Allow', 'POST');
     return res.status(405).json({ success: false, error: 'Method not allowed' });
   }
-  if (!GEMINI_KEY) {
-    return res.status(500).json({ success: false, error: 'GEMINI_API_KEY not configured' });
+  if (!ANTHROPIC_KEY) {
+    return res.status(500).json({ success: false, error: 'ANTHROPIC_API_KEY not configured' });
   }
 
   let body = req.body || {};
@@ -175,25 +176,25 @@ export default async function handler(req, res) {
     const ctx = await gatherContext(question);
     const prompt = buildPrompt(question, ctx);
 
-    const geminiRes = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_KEY}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.2, maxOutputTokens: 1024 },
-        }),
-      }
-    );
-    if (!geminiRes.ok) {
-      const errText = await geminiRes.text();
-      return res.status(502).json({ success: false, error: 'Gemini error: ' + errText.slice(0, 200) });
+    const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': ANTHROPIC_KEY,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-5-20250929',
+        max_tokens: 1024,
+        messages: [{ role: 'user', content: prompt }],
+      }),
+    });
+    if (!aiRes.ok) {
+      const errText = await aiRes.text();
+      return res.status(502).json({ success: false, error: 'AI error: ' + errText.slice(0, 200) });
     }
-    const g = await geminiRes.json();
-    const answer = (g.candidates && g.candidates[0] && g.candidates[0].content &&
-      g.candidates[0].content.parts && g.candidates[0].content.parts[0] &&
-      g.candidates[0].content.parts[0].text) || 'No answer produced.';
+    const g = await aiRes.json();
+    const answer = (g.content && g.content[0] && g.content[0].text) || 'No answer produced.';
 
     return res.status(200).json({
       success: true,
