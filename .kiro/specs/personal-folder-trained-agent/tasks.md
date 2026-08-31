@@ -98,7 +98,7 @@ Implement a Python-based system that enables users to create personalized AI age
     - Test fallback behavior for unsupported formats
     - _Requirements: 2.1, 2.2, 2.6_
 
-- [~] 5. Checkpoint - Verify data extraction components
+- [ ] 5. Checkpoint - Verify data extraction components
   - Ensure all tests pass, ask the user if questions arise.
 
 - [ ] 6. Implement Text Chunker component
@@ -162,7 +162,7 @@ Implement a Python-based system that enables users to create personalized AI age
     - Test error message clarity for invalid configurations
     - _Requirements: 7.1, 7.4_
 
-- [~] 8. Checkpoint - Verify configuration and chunking
+- [ ] 8. Checkpoint - Verify configuration and chunking
   - Ensure all tests pass, ask the user if questions arise.
 
 - [ ] 9. Implement Training Pipeline
@@ -178,13 +178,13 @@ Implement a Python-based system that enables users to create personalized AI age
     - Implement efficient batched data loading
     - _Requirements: 3.2_
 
-  - [~] 9.3 Configure Qwen 2.5-3B model fine-tuning
+  - [ ] 9.3 Configure Qwen 2.5-3B model fine-tuning
     - Load Qwen 2.5-3B-Instruct model from Hugging Face
     - Set hyperparameters: 3 epochs, batch_size=2, learning_rate=2e-5, gradient_accumulation_steps=4, bf16=True, max_length=1024
     - Configure precision: bf16 for GPU, fp32 for CPU
     - _Requirements: 3.3_
 
-  - [~] 9.4 Add training monitoring and checkpointing
+  - [ ] 9.4 Add training monitoring and checkpointing
     - Monitor loss and accuracy metrics every epoch
     - Save checkpoints after each epoch (model weights, optimizer state, metadata)
     - Implement OOM recovery: reduce batch size by 50%, restart from last checkpoint
@@ -203,18 +203,18 @@ Implement a Python-based system that enables users to create personalized AI age
     - _Requirements: 3.2, 3.4, 3.5_
 
 - [ ] 10. Implement Model Exporter component
-  - [~] 10.1 Create ModelExporter with local storage
+  - [ ] 10.1 Create ModelExporter with local storage
     - Implement `export_model()` saving to configured local output directory
     - Precondition check: training completed successfully AND files > 0 AND tokens > 0
     - Create `model_metadata.json` with file count, total tokens, folder list, hyperparameters, performance metrics
     - _Requirements: 4.1, 4.2_
 
-  - [~] 10.2 Add versioned archive creation and serialization
+  - [ ] 10.2 Add versioned archive creation and serialization
     - Create versioned zip archives: `personal_agent_v{major}.{minor}.{patch}_{YYYY-MM-DDTHH-MM-SS}.zip`
     - Serialize model using pickle protocol version 4+ (Python 3.8+ compatible)
     - _Requirements: 4.4, 4.5_
 
-  - [~] 10.3 Implement Google Drive upload
+  - [ ] 10.3 Implement Google Drive upload
     - Implement OAuth2 authentication via credentials.json or interactive browser auth
     - Upload model and metadata to configured Google Drive folder with user confirmation
     - Handle upload even if local save fails
@@ -231,29 +231,29 @@ Implement a Python-based system that enables users to create personalized AI age
     - Test versioned archive creation
     - _Requirements: 4.1, 4.2, 4.3_
 
-- [~] 11. Checkpoint - Verify training and export components
+- [ ] 11. Checkpoint - Verify training and export components
   - Ensure all tests pass, ask the user if questions arise.
 
 - [ ] 12. Implement Inference Engine component
-  - [~] 12.1 Create InferenceEngine with model loading
+  - [ ] 12.1 Create InferenceEngine with model loading
     - Implement `__init__()` loading trained model from pickle file
     - Add checksum validation during model deserialization
     - Verify model integrity before use
     - _Requirements: 5.1_
 
-  - [~] 12.2 Implement query processing and response generation
+  - [ ] 12.2 Implement query processing and response generation
     - Add query validation: reject queries >2000 characters or with invalid syntax, return error and stop processing
     - Implement `generate_response()` with temperature=0.7, max_new_tokens=512
     - Add 30-second timeout for response generation
     - _Requirements: 5.2, 5.5_
 
-  - [~] 12.3 Add semantic search and context retrieval
+  - [ ] 12.3 Add semantic search and context retrieval
     - Implement semantic search using sentence-transformers with cosine similarity
     - Retrieve top 3 most relevant text chunks for context
     - Support file location matching and organizational pattern queries
     - _Requirements: 5.3, 5.4_
 
-  - [~] 12.4 Implement inaccessible file handling
+  - [ ] 12.4 Implement inaccessible file handling
     - Notify user which files could not be accessed (permission denied, not found)
     - Continue processing with available files
     - _Requirements: 5.6_
@@ -266,21 +266,21 @@ Implement a Python-based system that enables users to create personalized AI age
     - _Requirements: 5.1, 5.2, 5.4, 5.6_
 
 - [ ] 13. Implement Progress Monitor component
-  - [~] 13.1 Create ProgressMonitor with real-time updates
+  - [ ] 13.1 Create ProgressMonitor with real-time updates
     - Display current folder name, files processed per folder, total files processed
     - Update file processing display at least every 10 seconds
     - Display training metrics: loss (4 decimal places), steps completed, ETA (minutes)
     - Update training display every 30 seconds
     - _Requirements: 8.1, 8.2_
 
-  - [~] 13.2 Add diagnostic information and reporting
+  - [ ] 13.2 Add diagnostic information and reporting
     - Trigger diagnostics when single file/folder processing exceeds 60 seconds
     - Show CPU usage %, memory usage MB, specific file path causing delay
     - Generate JSON summary report: total files, total tokens, training duration, final loss, errors list
     - Save reports to configured output directory
     - _Requirements: 8.3, 8.4, 8.5_
 
-  - [~] 13.3 Implement error classification system
+  - [ ] 13.3 Implement error classification system
     - Classify errors: critical (stops pipeline), warning (continue with logging), info (record only)
     - Handle each severity appropriately per classification rules
     - _Requirements: 9.5_
@@ -291,23 +291,23 @@ Implement a Python-based system that enables users to create personalized AI age
     - Test error classification logic
     - _Requirements: 8.1, 8.4, 9.5_
 
-- [~] 14. Checkpoint - Verify inference and monitoring components
+- [ ] 14. Checkpoint - Verify inference and monitoring components
   - Ensure all tests pass, ask the user if questions arise.
 
 - [ ] 15. Implement Security and Privacy Features
-  - [~] 15.1 Add file permission checking
+  - [ ] 15.1 Add file permission checking
     - Check file read permissions before reading any file
     - Skip files where the current user lacks read permissions
     - Integrate permission checking into Folder Crawler flow
     - _Requirements: 6.3_
 
-  - [~] 15.2 Implement restricted resource handling
+  - [ ] 15.2 Implement restricted resource handling
     - Detect attempts to access restricted system folders
     - Log warning with violation details to system log
     - Skip the restricted resource and continue processing
     - _Requirements: 6.2_
 
-  - [~] 15.3 Implement temporary file management
+  - [ ] 15.3 Implement temporary file management
     - Store temporary files in system's standard temporary directory (`tempfile.gettempdir()`)
     - Delete temporary files when processing completes or is terminated
     - Register `atexit` handler for cleanup on unexpected termination
@@ -320,20 +320,20 @@ Implement a Python-based system that enables users to create personalized AI age
     - _Requirements: 6.2, 6.3, 6.4_
 
 - [ ] 16. Implement Google Colab Integration
-  - [~] 16.1 Add Colab environment detection and optimization
+  - [ ] 16.1 Add Colab environment detection and optimization
     - Detect Colab via COLAB_GPU or IN_COLAB environment variables
     - Automatically select available GPU in Colab
     - Configure memory-efficient data loading
     - Allow GPU optimizations outside Colab as well
     - _Requirements: 10.2, 10.5_
 
-  - [~] 16.2 Implement Google Drive mounting and authentication
+  - [ ] 16.2 Implement Google Drive mounting and authentication
     - Add Google Drive mounting with OAuth2 (credentials.json or interactive browser auth)
     - Handle credential management and storage
     - Provide ready-to-run Colab notebook templates with pre-configured cells
     - _Requirements: 10.1, 10.3_
 
-  - [~] 16.3 Add session timeout recovery
+  - [ ] 16.3 Add session timeout recovery
     - Save intermediate progress to Google Drive every 30 minutes (configurable)
     - Implement retry logic and local caching for failed saves
     - Support resume from Google Drive checkpoints after session disconnect
@@ -345,29 +345,29 @@ Implement a Python-based system that enables users to create personalized AI age
     - Test session recovery functionality
     - _Requirements: 10.2, 10.4_
 
-- [~] 17. Checkpoint - Verify security and Colab integration
+- [ ] 17. Checkpoint - Verify security and Colab integration
   - Ensure all tests pass, ask the user if questions arise.
 
 - [ ] 18. Implement Error Handling and Recovery System
-  - [~] 18.1 Create error handler with retry logic
+  - [ ] 18.1 Create error handler with retry logic
     - Implement automatic retry for transient failures (network timeouts, temporary file locks)
     - Configure max 3 retries spaced 5 seconds apart
     - Distinguish transient vs permanent failures
     - _Requirements: 9.4_
 
-  - [~] 18.2 Implement training recovery from checkpoints
+  - [ ] 18.2 Implement training recovery from checkpoints
     - Resume from last checkpoint (model weights + optimizer state + metadata)
     - When no checkpoint exists, restart training from beginning
     - Handle interruptions: power loss, system crash, manual termination
     - _Requirements: 9.2_
 
-  - [~] 18.3 Add actionable error messages
+  - [ ] 18.3 Add actionable error messages
     - Include specific Python exception type and details
     - Include affected file paths
     - Provide step-by-step recovery instructions for common failure scenarios
     - _Requirements: 9.3_
 
-  - [~] 18.4 Implement file processing error recovery
+  - [ ] 18.4 Implement file processing error recovery
     - Skip corrupted/locked/encoding-error files and continue
     - Log error with file path and specific failure reason
     - Continue processing other files in the same directory
@@ -380,20 +380,20 @@ Implement a Python-based system that enables users to create personalized AI age
     - _Requirements: 9.1, 9.2, 9.4_
 
 - [ ] 19. Final integration and wiring
-  - [~] 19.1 Create main pipeline orchestrator
+  - [ ] 19.1 Create main pipeline orchestrator
     - Implement `PersonalFolderAgent` class orchestrating all components
     - Wire components in order: Config → Crawler → TextProcessor → Chunker → Training → Export
     - Propagate configuration to all components
     - Connect Progress Monitor to all stages
     - _Requirements: 3.6, 7.1_
 
-  - [~] 19.2 Implement command-line interface
+  - [ ] 19.2 Implement command-line interface
     - Create CLI with commands: `crawl`, `train`, `query`, `export`
     - Add argument parsing with help documentation
     - Support configuration file path as argument
     - _Requirements: 7.1, 8.5_
 
-  - [~] 19.3 Add optional web interface (FastAPI)
+  - [ ] 19.3 Add optional web interface (FastAPI)
     - Implement REST API endpoints for querying the trained model
     - Add progress monitoring endpoint
     - Include OpenAPI/Swagger documentation
@@ -405,7 +405,7 @@ Implement a Python-based system that enables users to create personalized AI age
     - Test error recovery across the full pipeline
     - _Requirements: 9.1, 9.2_
 
-- [~] 20. Final checkpoint - Complete system verification
+- [ ] 20. Final checkpoint - Complete system verification
   - Ensure all tests pass, ask the user if questions arise.
 
 ## Notes
