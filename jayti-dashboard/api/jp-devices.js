@@ -87,7 +87,8 @@ export default async function handler(req, res) {
 
     const now = Date.now();
     const devices = (data.documents || []).map((d) => {
-      const f = dec(d.fields) || {};
+      const f = {};
+      for (const [k, v] of Object.entries(d.fields || {})) f[k] = dec(v);
       const lastSeen = f.lastSeen || null;
       const interval = typeof f.heartbeatIntervalSeconds === 'number' ? f.heartbeatIntervalSeconds : 45;
       const ageMs = lastSeen ? now - new Date(lastSeen).getTime() : null;
