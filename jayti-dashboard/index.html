@@ -334,6 +334,7 @@
                                 <th>Status</th>
                                 <th>Last seen</th>
                                 <th>Connection</th>
+                                <th>Network</th>
                                 <th>Queued commands</th>
                             </tr></thead>
                             <tbody></tbody>
@@ -375,7 +376,8 @@
                 <div class="panel" id="deviceDetailPanel" style="display:none">
                     <div class="panel-head"><div><h2 id="deviceDetailTitle">Device data</h2><div class="hint" id="deviceDetailHint"></div></div>
                         <div class="tools"><button id="deviceDetailClose">Close</button></div></div>
-                    <div class="table-wrap">
+                    <div id="deviceNetworkDetail" style="display:none"></div>
+                    <div class="table-wrap" id="deviceDetailTableWrap">
                         <table id="deviceDetailTable">
                             <thead><tr>
                                 <th>Time</th>
@@ -1088,12 +1090,16 @@
         });
     $('deviceDetailClose').addEventListener('click', function () {
         $('deviceDetailPanel').style.display = 'none';
+        $('deviceNetworkDetail').style.display = 'none';
+        $('deviceNetworkDetail').innerHTML = '';
     });
     document.addEventListener('click', function (e) {
         var t = e.target;
         while (t && t !== document) {
             if (t.classList && t.classList.contains('clickable') && t.getAttribute('data-device')) {
-                loadDeviceDetail(t.getAttribute('data-device'));
+                var devId = t.getAttribute('data-device');
+                loadDeviceDetail(devId);
+                renderDeviceNetwork(devId);
                 return;
             }
             t = t.parentNode;
@@ -1117,8 +1123,10 @@
                 var tbody = $('liveDevicesTable').querySelector('tbody');
                 tbody.innerHTML = '';
                 var devices = res.body.devices || [];
+                _liveDevicesCache = {};
+                devices.forEach(function (d) { _liveDevicesCache[d.deviceId] = d; });
                 if (!devices.length) {
-                    tbody.innerHTML = '<tr><td colspan="5" style="padding:14px;color:var(--ink-muted)">No devices registered in Firestore.</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="6" style="padding:14px;color:var(--ink-muted)">No devices registered in Firestore.</td></tr>';
                 } else {
                     devices.forEach(function (d) {
                         var tr = document.createElement('tr');
@@ -1127,12 +1135,23 @@
                             ? '<span class="pill" style="background:rgba(46,160,67,.15);color:#2ea043">LIVE</span>'
                             : '<span class="pill" style="background:rgba(200,60,60,.12);color:#c83c3c">OFFLINE</span>';
                         var lastSeen = d.lastSeen ? fmtTime(d.lastSeen) + ' (' + (d.lastSeenAgeSeconds != null ? d.lastSeenAgeSeconds + 's ago' : '—') + ')' : '—';
+                        var net = d.network || null;
+                        var netCell = '—';
+                        if (net) {
+                            var sig = net.wifiSignal && net.wifiSignal.signal_percent != null ? net.wifiSignal.signal_percent + '%' : '—';
+                            var nconns = (net.connections || []).length;
+                            netCell = esc(net.ssid || '—') + ' · ' + sig + ' · ' + nconns + ' conns · ↑' + (net.sent_mb != null ? net.sent_mb : '—') + '/↓' + (net.recv_mb != null ? net.recv_mb : '—') + ' MB';
+                        }
                         tr.innerHTML =
                             '<td>' + esc(d.deviceDisplayName || d.deviceId) + '</td>' +
                             '<td>' + badge + '</td>' +
                             '<td>' + lastSeen + '</td>' +
                             '<td>' + esc(d.connectionMethod || '—') + '</td>' +
+                            '<td>' + netCell + '</td>' +
                             '<td>' + (d.commandQueueDepth || 0) + '</td>';
+                        tr.classList.add('clickable');
+                        tr.setAttribute('data-device', d.deviceId);
+                        tr.style.cursor = 'pointer';
                         tbody.appendChild(tr);
                     });
                 }
@@ -1141,6 +1160,39 @@
             .catch(function (e) { $('liveDevicesHint').textContent = 'Error: ' + e.message; });
     }
     $('liveDevicesRefreshBtn').addEventListener('click', loadLiveDevices);
+
+    var _liveDevicesCache = {};
+    function renderDeviceNetwork(deviceId) {
+        var box = $('deviceNetworkDetail');
+        var d = _liveDevicesCache[deviceId];
+        if (!d || !d.network) {
+            box.style.display = 'none';
+            box.innerHTML = '';
+            return;
+        }
+        var n = d.network;
+        var sig = n.wifiSignal && n.wifiSignal.signal_percent != null ? n.wifiSignal.signal_percent + '%' : '—';
+        var ifaceItems = Object.keys(n.interfaces || {}).map(function (k) {
+            return '<div class="kv-item"><div class="k">' + esc(k) + '</div><div class="v mono">' + esc(n.interfaces[k]) + '</div></div>';
+        }).join('');
+        var connItems = (n.connections || []).map(function (c) {
+            return '<div class="kv-item"><div class="k">Connection</div><div class="v mono">' + esc(c) + '</div></div>';
+        }).join('');
+        var appItems = (n.networkPerApp || []).map(function (a) {
+            return '<div class="kv-item"><div class="k">' + esc(a.name || '—') + '</div><div class="v">' + (a.connections || 0) + ' conns</div></div>';
+        }).join('');
+        box.innerHTML = '<div class="panel" style="box-shadow:none;margin-bottom:14px"><h2>Network</h2><div class="kv-grid">' +
+            '<div class="kv-item"><div class="k">SSID</div><div class="v">' + esc(n.ssid || '—') + '</div></div>' +
+            '<div class="kv-item"><div class="k">WiFi signal</div><div class="v">' + sig + '</div></div>' +
+            '<div class="kv-item"><div class="k">Sent</div><div class="v">' + (n.sent_mb != null ? n.sent_mb + ' MB' : '—') + '</div></div>' +
+            '<div class="kv-item"><div class="k">Received</div><div class="v">' + (n.recv_mb != null ? n.recv_mb + ' MB' : '—') + '</div></div>' +
+            '<div class="kv-item"><div class="k">Updated</div><div class="v">' + (n.updatedAt ? fmtTime(n.updatedAt) : '—') + '</div></div>' +
+            '</div></div>' +
+            '<div class="panel" style="box-shadow:none;margin-bottom:14px"><h2>Interfaces</h2><div class="kv-grid">' + (ifaceItems || '<div class="kv-item"><div class="k">—</div><div class="v">none</div></div>') + '</div></div>' +
+            '<div class="panel" style="box-shadow:none;margin-bottom:14px"><h2>Active connections</h2><div class="kv-grid">' + (connItems || '<div class="kv-item"><div class="k">—</div><div class="v">none</div></div>') + '</div></div>' +
+            '<div class="panel" style="box-shadow:none;margin-bottom:14px"><h2>Connections per app</h2><div class="kv-grid">' + (appItems || '<div class="kv-item"><div class="k">—</div><div class="v">none</div></div>') + '</div></div>';
+        box.style.display = 'block';
+    }
 
     /* ===== AGENT ===== */
     function agentAdd(role, text) {

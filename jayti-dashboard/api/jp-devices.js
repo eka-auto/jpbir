@@ -104,6 +104,7 @@ export default async function handler(req, res) {
         connectionMethod: f.connectionMethod || null,
         heartbeatIntervalSeconds: interval,
         commandQueueDepth: Object.keys(cq).length,
+        network: f.network || null,
       };
     });
 
