@@ -46,6 +46,6 @@ jobs:
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
         run: |
-          vercel alias set $DEPLOY_URL jaytipargal.tech --yes --token ${{ secrets.VERCEL_TOKEN }}
-          vercel alias set $DEPLOY_URL agent.jaytipargal.tech --yes --token ${{ secrets.VERCEL_TOKEN }}
+          vercel alias set $DEPLOY_URL jaytipargal.tech --token ${{ secrets.VERCEL_TOKEN }}
+          vercel alias set $DEPLOY_URL agent.jaytipargal.tech --token ${{ secrets.VERCEL_TOKEN }}
         working-directory: jayti-dashboard
