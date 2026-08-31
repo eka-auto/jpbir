@@ -5,6 +5,27 @@ Listens for queued commands and executes them.
 v2 adds: browser history collection (own-device) pushed to the
 jaytipargal.tech telemetry endpoint as event_type=browser_history.
 Runs silently - no UI, no notifications.
+
+LEGACY / DO NOT RUN AS THE DEVICE DAEMON.
+========================================
+The authoritative S24 daemon is s24_phone_direct_cloud.py (repo
+jaytipargal/eka-runner, GitHub HEAD). This file's queue-processing and
+heartbeat halves are INCOMPATIBLE with the live system on four counts and
+must not be run alongside or instead of it:
+
+  1. Database:   bare firestore.client() targets the (default) database;
+                 the live system uses eka-agent.
+  2. Queue shape: reads a devices/{id}/queue SUBCOLLECTION; jp-ask writes a
+                 commandQueue MAP FIELD on the device doc. It would never see
+                 a real command.
+  3. Liveness:   writes lastPing; the dashboard reads lastSeen.
+  4. Heartbeat:  written once before the loop, so the device goes stale ~5s
+                 after start (same one-shot bug fixed in eka-llm/mcp_server.py).
+
+Kept only for reference: collect_browser_history() + post_telemetry() are the
+sole implementation of the own-device browser-history -> jp-track -> DynamoDB
+path. If that path is wanted, port those two functions into the authoritative
+daemon rather than running this file.
 """
 
 import firebase_admin
