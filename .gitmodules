@@ -1,0 +1,4 @@
+[submodule "jaytibirthday-site"]
+	path = jaytibirthday-site
+	url = https://github.com/jaytipargal/jaytibirthday-site.git
+	branch = main
