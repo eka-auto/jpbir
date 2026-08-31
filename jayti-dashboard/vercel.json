@@ -43,6 +43,10 @@
     {
       "source": "/api/jp-ask",
       "destination": "/api/jp-ask.js"
+    },
+    {
+      "source": "/api/jp-devices",
+      "destination": "/api/jp-devices.js"
     }
   ]
 }

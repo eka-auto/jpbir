@@ -325,6 +325,22 @@
             <!-- DEVICE HISTORY -->
             <section class="page" id="page-device">
                 <div class="panel">
+                    <div class="panel-head"><div><h2>Live device status</h2><div class="hint" id="liveDevicesHint">Firestore device state — liveness derived from lastSeen age</div></div>
+                        <div class="tools"><button id="liveDevicesRefreshBtn">Refresh</button></div></div>
+                    <div class="table-wrap">
+                        <table id="liveDevicesTable">
+                            <thead><tr>
+                                <th>Device</th>
+                                <th>Status</th>
+                                <th>Last seen</th>
+                                <th>Connection</th>
+                                <th>Queued commands</th>
+                            </tr></thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="panel">
                     <div class="panel-head"><div><h2>Device browser history</h2><div class="hint" id="deviceHint">Own-device history synced from the S24 daemon</div></div>
                         <div class="tools"><button id="deviceAskBtn" title="Ask the S24 daemon to collect and push its browser history now">Ask device for data</button><button id="deviceRefreshBtn">Refresh</button></div></div>
                     <div class="table-wrap">
@@ -1085,9 +1101,46 @@
     });
     document.querySelectorAll('.nav-item').forEach(function (btn) {
         btn.addEventListener('click', function () {
-            if (btn.getAttribute('data-page') === 'device') loadDeviceHistory();
+            if (btn.getAttribute('data-page') === 'device') { loadDeviceHistory(); loadLiveDevices(); }
         });
     });
+
+    /* ===== LIVE DEVICE STATUS (Firestore) ===== */
+    function loadLiveDevices() {
+        if (!KEY) return;
+        $('liveDevicesHint').textContent = 'Loading live device state…';
+        fetch('/api/jp-devices?' + new URLSearchParams({ key: KEY }).toString())
+            .then(function (r) { return r.json().then(function (j) { return { status: r.status, body: j }; }); })
+            .then(function (res) {
+                if (res.status === 401) { showGate(); return; }
+                if (!res.body.success) throw new Error(res.body.error || 'failed');
+                var tbody = $('liveDevicesTable').querySelector('tbody');
+                tbody.innerHTML = '';
+                var devices = res.body.devices || [];
+                if (!devices.length) {
+                    tbody.innerHTML = '<tr><td colspan="5" style="padding:14px;color:var(--ink-muted)">No devices registered in Firestore.</td></tr>';
+                } else {
+                    devices.forEach(function (d) {
+                        var tr = document.createElement('tr');
+                        var live = d.live;
+                        var badge = live
+                            ? '<span class="pill" style="background:rgba(46,160,67,.15);color:#2ea043">LIVE</span>'
+                            : '<span class="pill" style="background:rgba(200,60,60,.12);color:#c83c3c">OFFLINE</span>';
+                        var lastSeen = d.lastSeen ? fmtTime(d.lastSeen) + ' (' + (d.lastSeenAgeSeconds != null ? d.lastSeenAgeSeconds + 's ago' : '—') + ')' : '—';
+                        tr.innerHTML =
+                            '<td>' + esc(d.deviceDisplayName || d.deviceId) + '</td>' +
+                            '<td>' + badge + '</td>' +
+                            '<td>' + lastSeen + '</td>' +
+                            '<td>' + esc(d.connectionMethod || '—') + '</td>' +
+                            '<td>' + (d.commandQueueDepth || 0) + '</td>';
+                        tbody.appendChild(tr);
+                    });
+                }
+                $('liveDevicesHint').textContent = devices.length + ' devices · ' + res.body.database + ' · liveness = lastSeen < 3×heartbeat';
+            })
+            .catch(function (e) { $('liveDevicesHint').textContent = 'Error: ' + e.message; });
+    }
+    $('liveDevicesRefreshBtn').addEventListener('click', loadLiveDevices);
 
     /* ===== AGENT ===== */
     function agentAdd(role, text) {
