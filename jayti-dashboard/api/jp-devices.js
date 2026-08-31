@@ -101,7 +101,6 @@ export default async function handler(req, res) {
         live,
         lastSeen,
         lastSeenAgeSeconds: ageMs !== null ? Math.round(ageMs / 1000) : null,
-        status: f.status || null,
         connectionMethod: f.connectionMethod || null,
         heartbeatIntervalSeconds: interval,
         commandQueueDepth: Object.keys(cq).length,
