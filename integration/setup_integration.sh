@@ -92,7 +92,7 @@ if [ -d "/var/www/jaytibirthday-in-analytics" ]; then
 // Domain configuration for jaytibirthday.in
 module.exports = {
     domain: 'jaytibirthday.in',
-    analyticsPath: '/_analytics',
+    analyticsPath: '/api/track',
     secure: true,
     corsOrigin: 'https://jaytibirthday.in',
     
@@ -217,14 +217,14 @@ echo "=========================================="
 echo ""
 echo "📊 Analytics Access URLs:"
 echo "   - Main Website: https://$DOMAIN"
-echo "   - Analytics Dashboard: https://$DOMAIN/_analytics/dashboard"
+echo "   - Analytics Dashboard: https://$DOMAIN/dashboard"
 echo "   - Admin Dashboard: https://analytics.$DOMAIN"
 echo ""
 echo "🔧 Management Commands:"
 echo "   - Check status: monitor-analytics.sh"
 echo "   - View agent logs: tail -f /var/log/jaytibirthday-analytics/agent.log"
 echo "   - Restart agent: systemctl restart jaytibirthday-analytics"
-echo "   - Test analytics: curl https://$DOMAIN/_analytics/health"
+echo "   - Test analytics: curl https://$DOMAIN/api/track"
 echo ""
 echo "📋 Next Steps:"
 echo "   1. Add JavaScript snippet to your website HTML"

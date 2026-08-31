@@ -57,6 +57,23 @@ const analyticsLimiter = rateLimit({
 app.use('/api/analytics', analyticsLimiter, analyticsRoutes(visitorLogger));
 app.use('/api/admin', adminRoutes(visitorLogger, networkScanner));
 
+// Standalone tracking endpoint (matches deployed /api/track on Vercel)
+app.post('/api/track', analyticsLimiter, async (req, res) => {
+  try {
+    let event = req.body || {};
+    if (typeof event === 'string') {
+      try { event = JSON.parse(event); } catch { event = { raw: event }; }
+    }
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+    const visitorData = await visitorLogger.logVisitor(req, event);
+    await visitorLogger.logActivity(visitorData.visitor_id, event.event_type || 'page_view', event.page_url || '/', { referrer: event.referrer || 'direct' });
+    res.status(200).json({ success: true, eventId: id, persisted: true });
+  } catch (error) {
+    console.error('[api/track] error:', error);
+    res.status(500).json({ success: false, error: error.message || 'Failed to track event' });
+  }
+});
+
 // Serve landing page
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));

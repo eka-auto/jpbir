@@ -8,7 +8,7 @@ module.exports = {
     domain: {
         main: 'jaytibirthday.in',
         analyticsSubdomain: '_analytics.jaytibirthday.in',
-        analyticsPath: '/_analytics',
+        analyticsPath: '/api/track',
         secure: true,
         sslEnabled: true
     },
@@ -72,8 +72,8 @@ module.exports = {
         enabled: true,
         logLevel: 'info',
         logPath: '/var/log/jaytibirthday-analytics.log',
-        healthCheckEndpoint: '/_analytics/health',
-        metricsEndpoint: '/_analytics/metrics',
+        healthCheckEndpoint: '/api/health',
+        metricsEndpoint: '/api/metrics',
         alertThresholds: {
             errorRate: 0.01, // 1%
             responseTime: 500, // 500ms
@@ -102,13 +102,13 @@ module.exports = {
     
     // API endpoints mapping
     apiEndpoints: {
-        track: '/_analytics/api/track',
-        heartbeat: '/_analytics/api/heartbeat',
-        session: '/_analytics/api/session',
-        visitor: '/_analytics/api/visitor',
-        analytics: '/_analytics/api/analytics',
-        dashboard: '/_analytics/dashboard',
-        admin: '/_analytics/admin'
+        track: '/api/track',
+        heartbeat: '/api/heartbeat',
+        session: '/api/session',
+        visitor: '/api/visitor',
+        analytics: '/api/analytics',
+        dashboard: '/api/dashboard',
+        admin: '/api/admin'
     },
     
     // Security settings

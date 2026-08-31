@@ -27,7 +27,7 @@ Your Visitor Analytics Agent has been successfully integrated with `jaytibirthda
 ### 4. **Integration Configuration** ✅
 - Both Nginx (Linux) and IIS (Windows) configs
 - SEO protection headers
-- Background routing through `/_analytics/` path
+- Background routing through `/api/` path
 - Comprehensive setup scripts
 
 ## 🚀 **Quick Start Instructions**

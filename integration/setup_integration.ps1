@@ -92,7 +92,7 @@ if (Get-Command "Import-Module" -ErrorAction SilentlyContinue) {
             <rules>
                 <!-- Route analytics requests to local agent -->
                 <rule name="Analytics API" stopProcessing="true">
-                    <match url="^_analytics/api/(.*)" />
+                    <match url="^api/(.*)" />
                     <action type="Rewrite" url="http://localhost:3001/api/{R:1}" />
                     <serverVariables>
                         <set name="HTTP_X_ORIGINAL_HOST" value="{HTTP_HOST}" />
@@ -101,13 +101,13 @@ if (Get-Command "Import-Module" -ErrorAction SilentlyContinue) {
                 
                 <!-- Route analytics dashboard -->
                 <rule name="Analytics Dashboard" stopProcessing="true">
-                    <match url="^_analytics/dashboard(.*)" />
+                    <match url="^api/dashboard(.*)" />
                     <action type="Rewrite" url="http://localhost:3001/dashboard{R:1}" />
                 </rule>
                 
                 <!-- Route health check -->
                 <rule name="Analytics Health" stopProcessing="true">
-                    <match url="^_analytics/health" />
+                    <match url="^api/health" />
                     <action type="Rewrite" url="http://localhost:3001/health" />
                 </rule>
             </rewrite>
@@ -116,7 +116,7 @@ if (Get-Command "Import-Module" -ErrorAction SilentlyContinue) {
                 <!-- Fix response headers -->
                 <rule name="Fix Analytics Headers" preCondition="ResponseIsHtml">
                     <match filterByTags="A, Form, Img" pattern="^http(s)?://localhost:3001/(.*)" />
-                    <action type="Rewrite" value="http{R:1}://$DOMAIN/_analytics/{R:2}" />
+                    <action type="Rewrite" value="http{R:1}://$DOMAIN/api/{R:2}" />
                 </rule>
                 <preConditions>
                     <preCondition name="ResponseIsHtml">
@@ -148,9 +148,9 @@ if (Get-Command "Import-Module" -ErrorAction SilentlyContinue) {
 "@
         
         # Save web.config for analytics
-        $webConfigPath = "$WEB_ROOT\_analytics\web.config"
-        if (-not (Test-Path "$WEB_ROOT\_analytics")) {
-            New-Item -ItemType Directory -Force -Path "$WEB_ROOT\_analytics" | Out-Null
+        $webConfigPath = "$WEB_ROOT\api\web.config"
+        if (-not (Test-Path "$WEB_ROOT\api")) {
+            New-Item -ItemType Directory -Force -Path "$WEB_ROOT\api" | Out-Null
         }
         Set-Content -Path $webConfigPath -Value $webConfigContent
         Write-Host "   ✅ IIS rewrite rules configured at: $webConfigPath" -ForegroundColor Green
@@ -262,9 +262,9 @@ Analytics agent has been integrated with $DOMAIN to collect visitor data in the 
 
 ## Access URLs
 - Main Website: https://$DOMAIN
-- Analytics Dashboard: https://$DOMAIN/_analytics/dashboard
-- API Status: https://$DOMAIN/_analytics/api/status
-- Health Check: https://$DOMAIN/_analytics/health
+- Analytics Dashboard: https://$DOMAIN/dashboard
+- API Status: https://$DOMAIN/api/analytics/status
+- Health Check: https://$DOMAIN/api/health
 
 ## Integration Details
 
@@ -278,9 +278,9 @@ Add this to your website's HTML (before </head>):
 
 ### 2. Analytics Endpoints
 All analytics requests are routed through:
-- API: /_analytics/api/* → localhost:3001/api/*
-- Dashboard: /_analytics/dashboard → localhost:3001/dashboard
-- Health: /_analytics/health → localhost:3001/health
+- API: /api/* → localhost:3001/api/*
+- Dashboard: /dashboard → localhost:3001/dashboard
+- Health: /api/health → localhost:3001/health
 
 ### 3. Data Collection
 The tracker collects:

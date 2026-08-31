@@ -9,7 +9,7 @@
     const CONFIG = {
         // Domain-specific settings
         DOMAIN: 'jaytibirthday.in',
-        ANALYTICS_ENDPOINT: 'https://jaytibirthday.in/_analytics/api/track',
+        ANALYTICS_ENDPOINT: '/api/track',
         WEBSITE_NAME: 'Jayati Birthday Website',
         
         // Tracking settings

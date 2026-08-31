@@ -11,7 +11,7 @@
     
     // Configuration
     const config = {
-        analyticsEndpoint: 'https://jaytibirthday.in/_analytics/api/track',
+        analyticsEndpoint: '/api/track',
         heartbeatInterval: 30000, // 30 seconds
         dataCollectionInterval: 60000, // 1 minute
         sessionTimeout: 1800000, // 30 minutes

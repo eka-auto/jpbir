@@ -39,6 +39,10 @@
     {
       "source": "/api/jp-agent",
       "destination": "/api/jp-agent.js"
+    },
+    {
+      "source": "/api/jp-ask",
+      "destination": "/api/jp-ask.js"
     }
   ]
 }
