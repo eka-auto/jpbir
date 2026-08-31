@@ -47,6 +47,16 @@
     {
       "source": "/api/jp-devices",
       "destination": "/api/jp-devices.js"
+    },
+    {
+      "source": "/api/check-stale",
+      "destination": "/api/check-stale.js"
+    }
+  ],
+  "crons": [
+    {
+      "path": "/api/check-stale",
+      "schedule": "*/5 * * * *"
     }
   ]
 }
