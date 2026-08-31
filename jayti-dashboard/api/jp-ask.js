@@ -4,6 +4,7 @@ const _env = (typeof process !== 'undefined' ? process : globalThis['proc' + 'es
 const STATS_KEY = _env['STATS_' + 'KEY'];
 const FIREBASE_SA_JSON = _env['FIREBASE_' + 'SERVICE_ACCOUNT_JSON'];
 const FIRESTORE_DB = _env['FIRESTORE_' + 'DB'] || 'eka-agent';
+const MAX_QUEUE_ENTRIES = Number(_env['JP_MAX_QUEUE_ENTRIES']) || 25;
 
 const ALLOWED_ACTIONS = new Set(['sync-now', 'collect-history', 'status-only', 'heartbeat', 'start-ssh']);
 
@@ -65,6 +66,39 @@ function enc(v) {
   return { stringValue: String(v) };
 }
 
+/* Sort key for a queue entry, oldest first. Entries are Firestore-encoded, so
+   requestedAt sits at entry.mapValue.fields.requestedAt.stringValue. Falls back
+   to the millisecond stamp in the `dash_<ms>_<hex>` key, then to 0 so anything
+   malformed sorts oldest and is evicted first rather than throwing. */
+function queueEntryTime(key, entry) {
+  const iso = entry && entry.mapValue && entry.mapValue.fields
+    && entry.mapValue.fields.requestedAt
+    && entry.mapValue.fields.requestedAt.stringValue;
+  if (iso) {
+    const t = Date.parse(iso);
+    if (!Number.isNaN(t)) return t;
+  }
+  const m = /^dash_(\d+)_/.exec(String(key));
+  if (m) {
+    const t = Number(m[1]);
+    if (Number.isFinite(t)) return t;
+  }
+  return 0;
+}
+
+/* Keep only the newest `limit` entries. Safe to drop keys here because the PATCH
+   below masks the whole commandQueue field, so omitted keys are deleted by that
+   same write — no extra request needed. */
+function pruneQueue(entries, limit) {
+  const keys = Object.keys(entries);
+  if (keys.length <= limit) return { kept: entries, evicted: 0 };
+  keys.sort((a, b) => queueEntryTime(a, entries[a]) - queueEntryTime(b, entries[b]));
+  const drop = keys.length - limit;
+  const kept = {};
+  for (const k of keys.slice(drop)) kept[k] = entries[k];
+  return { kept, evicted: drop };
+}
+
 async function queueCommand(device, action) {
   const sa = JSON.parse(FIREBASE_SA_JSON);
   const projectId = sa.project_id;
@@ -92,16 +126,25 @@ async function queueCommand(device, action) {
   };
 
   const existing = current.commandQueue && current.commandQueue.mapValue
-    ? current.commandQueue.mapValue.fields
+    ? current.commandQueue.mapValue.fields || {}
     : {};
-  const merged = { ...existing, [reqId]: enc(cmd) };
+  // Reserve one slot for the entry being added, so the result never exceeds the cap.
+  const { kept, evicted } = pruneQueue(existing, Math.max(0, MAX_QUEUE_ENTRIES - 1));
+  const merged = { ...kept, [reqId]: enc(cmd) };
 
   const patchUrl = `${base}?updateMask.fieldPaths=${encodeURIComponent('commandQueue')}`;
   const body = JSON.stringify({ fields: { commandQueue: { mapValue: { fields: merged } } } });
   const res = await fetch(patchUrl, { method: 'PATCH', headers, body });
   if (!res.ok) throw new Error('firestore patch failed: ' + (await res.text()).slice(0, 300));
 
-  return { reqId, action, queuedAt: nowIso, device };
+  return {
+    reqId,
+    action,
+    queuedAt: nowIso,
+    device,
+    queueDepth: Object.keys(merged).length,
+    evicted,
+  };
 }
 
 export default async function handler(req, res) {
