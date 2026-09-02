@@ -21,7 +21,6 @@ from pathlib import Path
 import psutil
 
 from broker_client import BrokerAuthError, BrokerClient, BrokerError
-from firestore_client import FirestoreClient, decode_value
 from signer import make_signer
 from single_instance import GuardHeldError, acquire_guard, release_guard
 
@@ -178,6 +177,8 @@ def run(config_path, device_id, single_iteration=False):
     if cfg.get("transport", "firestore") == "broker":
         run_broker(cfg, Path(config_path), device_id, device_cfg, single_iteration)
         return
+
+    from firestore_client import FirestoreClient
 
     client = FirestoreClient(
         project=cfg["project"],
@@ -352,6 +353,8 @@ def send_heartbeat(client, collection, device_id, device_cfg, local, hb_interval
     log.debug("heartbeat sent for %s", device_id)
 
 def process_command_queue(client, collection, device_id, allowed):
+    from firestore_client import decode_value
+
     doc = client.get_doc(collection, device_id)
     if not doc:
         return
