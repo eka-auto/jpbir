@@ -154,7 +154,6 @@ def api_keys():
     for name, env_name in [
         ("primary", "SSH_PUBKEY_PRIMARY"),
         ("phone", "SSH_PUBKEY_PHONE"),
-        ("kailash", "SSH_PUBKEY_KAILASH"),
         ("gce", "SSH_PUBKEY_GCE"),
     ]:
         pub = os.environ.get(env_name)
