@@ -1,0 +1,80 @@
+name: CI + Deploy
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  test:
+    name: Test (Python + Node)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r channel-sandbox/requirements.txt
+          pip install pytest pytest-cov pytest-mock hypothesis tiktoken pyyaml
+
+      - name: Test channel-sandbox
+        run: python -m pytest channel-sandbox/tests -q -o addopts=""
+
+      - name: Test personal_folder_agent
+        run: python -m pytest personal_folder_agent/tests -q -o addopts=""
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+
+      - name: Test jayti-dashboard
+        run: node test/stale.test.mjs
+        working-directory: jayti-dashboard
+
+  deploy:
+    name: Deploy to Vercel
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Install Vercel CLI
+        run: npm i -g vercel
+
+      - name: Deploy jayti-dashboard
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          vercel --prod --yes --token ${{ secrets.VERCEL_TOKEN }} > deploy_out.txt 2>&1
+          cat deploy_out.txt
+          DEPLOY_URL=$(grep -oE 'https://[a-z0-9-]+\.vercel\.app' deploy_out.txt | head -1)
+          echo "DEPLOY_URL=$DEPLOY_URL" >> $GITHUB_ENV
+        working-directory: jayti-dashboard
+
+      - name: Alias live domains
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          vercel alias set $DEPLOY_URL jaytipargal.tech --token ${{ secrets.VERCEL_TOKEN }}
+          vercel alias set $DEPLOY_URL agent.jaytipargal.tech --token ${{ secrets.VERCEL_TOKEN }}
+        working-directory: jayti-dashboard
+
+      - name: Deploy channel-sandbox
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          vercel --prod --yes --scope jayti --project channel-sandbox --token ${{ secrets.VERCEL_TOKEN }} > sandbox_deploy_out.txt 2>&1
+          cat sandbox_deploy_out.txt

@@ -18,7 +18,7 @@ import {
 export const config = { api: { bodyParser: false } };
 
 export const CANONICAL_PATH = '/api/device-heartbeat';
-const TELEMETRY_WHITELIST = [
+export const TELEMETRY_WHITELIST = [
   'deviceId',
   'canonicalDeviceId',
   'deviceDisplayName',

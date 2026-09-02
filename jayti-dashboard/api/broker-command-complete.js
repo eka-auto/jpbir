@@ -110,7 +110,7 @@ export default async function handler(req, res) {
         return sendError(res, 409, `command is ${entry.status}, not claimed`, 'complete-state-not-claimed', { keyId: env.keyId, deviceId, commandId, state: entry.status });
       }
       if (entry.claimToken !== claimToken) {
-        return sendError(res, 409, 'claimToken does not match active claim', 'complete-token-mismatch', { keyId: env.keyId, deviceId, commandId });
+        return sendError(res, 403, 'claimToken does not match active claim', 'complete-token-mismatch', { keyId: env.keyId, deviceId, commandId });
       }
       if (entry.leaseUntil && Date.parse(entry.leaseUntil) < Date.now()) {
         return sendError(res, 409, 'claim lease expired; re-claim required', 'complete-lease-stale', { keyId: env.keyId, deviceId, commandId });

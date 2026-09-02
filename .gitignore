@@ -37,3 +37,9 @@ data/*.db
 *.zip
 *.jsonl
 _tmp_*.mjs
+
+# Local pipeline artifacts
+hash_output.txt
+STATUS_SUMMARY.txt
+deploy_out.txt
+sandbox_deploy_out.txt
