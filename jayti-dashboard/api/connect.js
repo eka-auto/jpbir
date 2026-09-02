@@ -1,4 +1,4 @@
-import { getConnectorMetadata, getTokenResponse } from '@vercel/connect';
+import { getConnectorMetadata, getTokenResponse, startAuthorization } from '@vercel/connect';
 
 const _env = (typeof process !== 'undefined' ? process : globalThis['proc' + 'ess']).env;
 const STATS_KEY = _env['STATS_' + 'KEY'];
@@ -28,9 +28,34 @@ export default async function handler(req, res) {
 
   try {
     const metadata = await getConnectorMetadata(CONNECTOR_UID);
-    const tokenResponse = await getTokenResponse(CONNECTOR_UID, {
-      subject: { type: 'app' },
-    });
+
+    if (req.query.action === 'authorize') {
+      const auth = await startAuthorization(CONNECTOR_UID, {
+        subject: { type: 'user', id: 'admin-jayti' },
+      });
+      return res.status(200).json({
+        connector: { uid: metadata.uid, name: metadata.name, service: metadata.service },
+        authorization: { url: auth.url, request: auth.request, expiresAt: auth.expiresAt || null },
+      });
+    }
+
+    let token = null;
+    let tokenError = null;
+    try {
+      const tokenResponse = await getTokenResponse(CONNECTOR_UID, {
+        subject: { type: 'app' },
+      });
+      token = {
+        tokenId: tokenResponse.tokenId || null,
+        expiresAt: tokenResponse.expiresAt,
+        installationId: tokenResponse.installationId || null,
+        tenantId: tokenResponse.tenantId || null,
+        externalSubject: tokenResponse.externalSubject || null,
+        claims: tokenResponse.claims || null,
+      };
+    } catch (err) {
+      tokenError = { name: err && err.name, message: err && err.message, code: err && err.code };
+    }
 
     res.status(200).json({
       connector: {
@@ -41,14 +66,8 @@ export default async function handler(req, res) {
         service: metadata.service,
         clientUrl: metadata.clientUrl || null,
       },
-      token: {
-        tokenId: tokenResponse.tokenId || null,
-        expiresAt: tokenResponse.expiresAt,
-        installationId: tokenResponse.installationId || null,
-        tenantId: tokenResponse.tenantId || null,
-        externalSubject: tokenResponse.externalSubject || null,
-        claims: tokenResponse.claims || null,
-      },
+      token,
+      tokenError,
     });
   } catch (err) {
     if (err && err.name === 'ConnectorInstallationRequiredError') {
