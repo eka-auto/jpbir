@@ -129,6 +129,45 @@ def api_status():
     return jsonify({"name": "channel-sandbox-dashboard", "status": "ok", "version": "1.0"})
 
 
+@app.get("/api/keys")
+def api_keys():
+    """Report configured SSH key fingerprints (public halves only).
+
+    Devices present their public key when connecting; this endpoint lets the
+    operator confirm which keys the sandbox knows about without ever exposing
+    a private key. Private keys live only in Vercel env secrets.
+    """
+    import hashlib
+    import base64
+
+    def fingerprint(pubkey_line):
+        parts = pubkey_line.strip().split()
+        if len(parts) < 2:
+            return None
+        try:
+            raw = base64.b64decode(parts[1])
+        except Exception:  # noqa: BLE001 - malformed key is reported, not raised
+            return None
+        return "SHA256:" + base64.b64encode(hashlib.sha256(raw).digest()).decode().rstrip("=")
+
+    keys = []
+    for name, env_name in [
+        ("primary", "SSH_PUBKEY_PRIMARY"),
+        ("phone", "SSH_PUBKEY_PHONE"),
+        ("kailash", "SSH_PUBKEY_KAILASH"),
+        ("gce", "SSH_PUBKEY_GCE"),
+    ]:
+        pub = os.environ.get(env_name)
+        if not pub:
+            continue
+        keys.append({
+            "name": name,
+            "fingerprint": fingerprint(pub),
+            "comment": pub.strip().split()[-1] if len(pub.strip().split()) >= 3 else None,
+        })
+    return jsonify({"keys": keys})
+
+
 @app.get("/api/devices")
 def api_devices():
     cfg = app.config["SANDBOX_CFG"]

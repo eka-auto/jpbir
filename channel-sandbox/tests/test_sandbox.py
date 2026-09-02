@@ -245,6 +245,30 @@ class DashboardAuthTests(unittest.TestCase):
             )
         self.assertEqual(response.status_code, 200)
 
+    def test_keys_endpoint_reports_fingerprints_without_private_keys(self):
+        pub = (
+            "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBYkFrKFeBgyD5/trJjLVyJ1mHYPKbAGXnCoCRGTAl0p"
+            " your_email@example.com"
+        )
+        with patch.dict(
+            os.environ,
+            {"STATS_KEY": "correct", "SSH_PUBKEY_PRIMARY": pub},
+            clear=True,
+        ):
+            response = self.http.get("/api/keys?key=correct")
+        self.assertEqual(response.status_code, 200)
+        body = response.get_json()
+        self.assertEqual(len(body["keys"]), 1)
+        self.assertEqual(body["keys"][0]["name"], "primary")
+        self.assertEqual(body["keys"][0]["comment"], "your_email@example.com")
+        self.assertTrue(body["keys"][0]["fingerprint"].startswith("SHA256:"))
+        self.assertNotIn("PRIVATE", response.get_data(as_text=True))
+
+    def test_keys_endpoint_requires_auth(self):
+        with patch.dict(os.environ, {}, clear=True):
+            response = self.http.get("/api/keys")
+        self.assertEqual(response.status_code, 503)
+
 
 class DashboardEnvConfigTests(unittest.TestCase):
     """Vercel imports dashboard_api:app, so config must come from the env."""
