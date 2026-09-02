@@ -32,6 +32,7 @@ Thumbs.db
 # Derived data / training artifacts
 runs/
 .claude/
+.qwen/
 data/*.db
 *.zip
 *.jsonl
