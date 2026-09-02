@@ -145,7 +145,8 @@ class BrokerClient:
             "attestation": attestation or self.signer.attestation(),
             "hardware": hardware,
         }
-        result = self._request("/api/device/enroll", body, seq=0)
+        # Use direct function path (rewrite may not be applied)
+        result = self._request("/api/device-enroll", body, seq=0)
         self._state["enrolled"] = True
         self._state["keyId"] = result.get("keyId", self.key_id)
         self._save_state()
@@ -155,19 +156,17 @@ class BrokerClient:
         body = {"hardware": hardware}
         if telemetry:
             body["telemetry"] = telemetry
-        return self._request("/api/device/heartbeat", body)
+        return self._request("/api/device-heartbeat", body)
 
     def poll(self):
-        return self._request("/api/device/commands/poll", {})
+        return self._request("/api/device-commands-poll", {})
 
     def claim(self, command_id, worker_session_id):
-        return self._request(
-            f"/api/device/commands/{command_id}/claim",
+        return self._request(f"/api/device-command-claim/{command_id}",
             {"workerSessionId": worker_session_id},
         )
 
     def complete(self, command_id, claim_token, result):
-        return self._request(
-            f"/api/device/commands/{command_id}/complete",
+        return self._request(f"/api/device-command-complete/{command_id}",
             {"claimToken": claim_token, "result": result},
         )
