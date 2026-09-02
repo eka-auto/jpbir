@@ -1,0 +1,9 @@
+# Vercel's Flask builder scans the default entrypoint locations (app.py,
+# main.py, index.py, api/index.py) and fails the build when none of them
+# exists. This project's Flask app lives in dashboard_api.py, so point the
+# builder at the module:variable explicitly.
+#
+# Deliberately contains no [project] table: dependencies stay in
+# requirements.txt, which both Vercel and the local sandbox already use.
+[tool.vercel]
+entrypoint = "dashboard_api:app"

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 import tempfile
 import threading
@@ -168,7 +169,14 @@ class DashboardTests(unittest.TestCase):
         }
         self.firestore = Mock()
         dashboard_api.app.config["FIRESTORE"] = self.firestore
+        dashboard_api.app.config["SANDBOX_AUTH_DISABLED"] = True
+        self.addCleanup(self._reset_app_config)
         self.http = dashboard_api.app.test_client()
+
+    @staticmethod
+    def _reset_app_config():
+        for key in ("SANDBOX_CFG", "FIRESTORE", "SANDBOX_AUTH_DISABLED"):
+            dashboard_api.app.config.pop(key, None)
 
     def test_devices_decodes_fields(self):
         self.firestore.get_doc.return_value = {
@@ -188,6 +196,90 @@ class DashboardTests(unittest.TestCase):
         )
         self.firestore.get_doc.assert_not_called()
         self.firestore.update_command_queue.assert_not_called()
+
+
+class DashboardAuthTests(unittest.TestCase):
+    """The deployed dashboard is public, so the key gate must fail closed."""
+
+    def setUp(self):
+        dashboard_api.app.config["TESTING"] = True
+        dashboard_api.app.config["SANDBOX_CFG"] = {
+            "collection": "sandbox_devices",
+            "devices": [{"id": "known", "display_name": "Known"}],
+            "allowed_commands": ["ping"],
+        }
+        self.firestore = Mock()
+        self.firestore.get_doc.return_value = {"fields": {}}
+        dashboard_api.app.config["FIRESTORE"] = self.firestore
+        dashboard_api.app.config.pop("SANDBOX_AUTH_DISABLED", None)
+        self.addCleanup(DashboardTests._reset_app_config)
+        self.http = dashboard_api.app.test_client()
+
+    def test_status_is_reachable_without_a_key(self):
+        with patch.dict(os.environ, {}, clear=True):
+            self.assertEqual(self.http.get("/api/status").status_code, 200)
+
+    def test_unset_stats_key_refuses_rather_than_allows(self):
+        with patch.dict(os.environ, {}, clear=True):
+            response = self.http.get("/api/devices")
+        self.assertEqual(response.status_code, 503)
+        self.firestore.get_doc.assert_not_called()
+
+    def test_wrong_key_is_rejected_before_firestore(self):
+        with patch.dict(os.environ, {"STATS_KEY": "correct"}, clear=True):
+            response = self.http.post(
+                "/api/devices/known/commands?key=wrong", json={"action": "ping"}
+            )
+        self.assertEqual(response.status_code, 401)
+        self.firestore.update_command_queue.assert_not_called()
+
+    def test_correct_key_in_query_string_is_accepted(self):
+        with patch.dict(os.environ, {"STATS_KEY": "correct"}, clear=True):
+            response = self.http.get("/api/devices?key=correct")
+        self.assertEqual(response.status_code, 200)
+
+    def test_correct_key_in_header_is_accepted(self):
+        with patch.dict(os.environ, {"STATS_KEY": "correct"}, clear=True):
+            response = self.http.get(
+                "/api/devices", headers={"X-Stats-Key": "correct"}
+            )
+        self.assertEqual(response.status_code, 200)
+
+
+class DashboardEnvConfigTests(unittest.TestCase):
+    """Vercel imports dashboard_api:app, so config must come from the env."""
+
+    def test_missing_config_env_is_reported_not_raised_as_keyerror(self):
+        with patch.dict(os.environ, {}, clear=True):
+            with self.assertRaises(dashboard_api.ConfigError) as caught:
+                dashboard_api.load_config_from_env()
+        self.assertIn("SANDBOX_CONFIG_JSON", str(caught.exception))
+
+    def test_real_mode_reads_the_service_account_from_the_env(self):
+        env = {
+            "SANDBOX_CONFIG_JSON": json.dumps(
+                {"project": "p", "database": "(default)", "collection": "c",
+                 "firestore_scope": "s", "devices": []}
+            ),
+            "FIREBASE_SERVICE_ACCOUNT_JSON": json.dumps({"client_email": "a@b.c"}),
+        }
+        with patch.dict(os.environ, env, clear=True):
+            cfg = dashboard_api.load_config_from_env()
+        self.assertEqual(cfg["mode"], "real")
+        self.assertEqual(cfg["service_account_info"], {"client_email": "a@b.c"})
+        self.assertNotIn("service_account_key", cfg)
+
+    def test_real_mode_without_a_service_account_is_refused(self):
+        env = {
+            "SANDBOX_CONFIG_JSON": json.dumps(
+                {"project": "p", "database": "(default)", "collection": "c",
+                 "firestore_scope": "s", "devices": []}
+            ),
+        }
+        with patch.dict(os.environ, env, clear=True):
+            with self.assertRaises(dashboard_api.ConfigError) as caught:
+                dashboard_api.load_config_from_env()
+        self.assertIn("FIREBASE_SERVICE_ACCOUNT_JSON", str(caught.exception))
 
 
 class AgentAndGuardTests(unittest.TestCase):

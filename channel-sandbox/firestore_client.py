@@ -27,6 +27,7 @@ class FirestoreClient:
         collection=None,
         emulator_host="127.0.0.1:8080",
         allow_production_devices=False,
+        service_account_info=None,
     ):
         if mode not in {"emulator", "real"}:
             raise ValueError(f"unsupported Firestore mode: {mode}")
@@ -49,9 +50,16 @@ class FirestoreClient:
         self._token_expiry = 0.0
         self._creds = None
         if mode == "real":
-            self._creds = service_account.Credentials.from_service_account_file(
-                service_account_key, scopes=[scope]
-            )
+            if service_account_info is not None:
+                # Serverless hosts have no key file on disk, so the credential
+                # arrives as a parsed JSON object from the environment instead.
+                self._creds = service_account.Credentials.from_service_account_info(
+                    service_account_info, scopes=[scope]
+                )
+            else:
+                self._creds = service_account.Credentials.from_service_account_file(
+                    service_account_key, scopes=[scope]
+                )
 
     def _ensure_token(self):
         if self.mode == "emulator":
