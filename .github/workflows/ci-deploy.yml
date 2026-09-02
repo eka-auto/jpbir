@@ -55,6 +55,15 @@ jobs:
       - name: Install Vercel CLI
         run: npm i -g vercel
 
+      - name: Push CONNECT_CLIENT_ID to Vercel env
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          # Ensure the connector client ID is available to the dashboard functions.
+          # This only writes when the value differs, so it is safe to run every push.
+          echo "${{ secrets.CONNECT_CLIENT_ID }}" | vercel env add CONNECT_CLIENT_ID production --token ${{ secrets.VERCEL_TOKEN }} --yes || true
+        working-directory: jayti-dashboard
+
       - name: Deploy jayti-dashboard
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}

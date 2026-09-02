@@ -3,6 +3,7 @@ import { getConnectorMetadata, getTokenResponse, startAuthorization } from '@ver
 const _env = (typeof process !== 'undefined' ? process : globalThis['proc' + 'ess']).env;
 const STATS_KEY = _env['STATS_' + 'KEY'];
 const CONNECTOR_UID = _env['CONNECT_' + 'CONNECTOR_UID'] || 'vercel/red-marble';
+const CONNECT_CLIENT_ID = _env['CONNECT_' + 'CLIENT_ID'] || null;
 
 function timingSafeEqual(a, b) {
   if (typeof a !== 'string' || typeof b !== 'string') return false;
@@ -65,6 +66,7 @@ export default async function handler(req, res) {
         type: metadata.type,
         service: metadata.service,
         clientUrl: metadata.clientUrl || null,
+        clientId: CONNECT_CLIENT_ID,
       },
       token,
       tokenError,
