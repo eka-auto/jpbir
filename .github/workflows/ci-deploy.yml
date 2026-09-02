@@ -26,6 +26,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r channel-sandbox/requirements.txt
           pip install pytest pytest-cov pytest-mock hypothesis tiktoken pyyaml
+          pip install pdfplumber python-docx openpyxl python-pptx pandas pillow lxml charset-normalizer
 
       - name: Test channel-sandbox
         run: python -m pytest channel-sandbox/tests -q -o addopts=""
