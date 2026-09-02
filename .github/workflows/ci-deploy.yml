@@ -93,5 +93,9 @@ jobs:
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
         run: |
+          # The root vercel.json belongs to the Express (jpbir) project and
+          # confuses the channel-sandbox build (project root is channel-sandbox).
+          mv vercel.json vercel.json.express-bak 2>/dev/null || true
           vercel --prod --yes --scope jayti --project channel-sandbox --token ${{ secrets.VERCEL_TOKEN }} > sandbox_deploy_out.txt 2>&1
           cat sandbox_deploy_out.txt
+          mv vercel.json.express-bak vercel.json 2>/dev/null || true

@@ -26,6 +26,8 @@ docs/
 .pytest_cache/
 .qwen/
 .vscode/
+vscode-office/
+yarn.lock
 *.jsonl
 *.zip
 *.db
