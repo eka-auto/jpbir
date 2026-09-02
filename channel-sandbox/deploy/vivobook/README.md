@@ -1,27 +1,22 @@
 # ASUS VivoBook Deploy Kit
 
-Copy this folder to the real ASUS VivoBook and run `install_vivobook.ps1` once.
+This kit enrolls only the physical ASUS VivoBook as `jayti-asus-vivobook`.
+The device keeps a non-exportable P-256 signing key in the Windows TPM and
+dials out to the HTTPS broker. No Google service-account key is installed.
 
-## Contents
-- `devices.json` — production config (real mode, eka-agent, devices collection, explicit opt-in)
-- `device_agent.py` — the daemon (heartbeat + command queue, single-instance guard)
-- `firestore_client.py` — REST+JWT client with CAS-protected queue writes
-- `single_instance.py` — pidfile + psutil guard
-- `run_vivobook.bat` — foreground launcher
-- `install_vivobook.ps1` — one-time setup: key placement + scheduled task
+## Install
 
-## One-time setup (on the VivoBook)
-1. Copy this folder to `C:\eka-agent\agent\`
-2. Place the VivoBook service-account key at `C:\eka-agent\agent\serviceAccountKey.json`
-   (minted for `vivobook-daemon@intrepid-stage-495117-q1.iam.gserviceaccount.com`)
-3. Run: `powershell -ExecutionPolicy Bypass -File install_vivobook.ps1`
+1. From the admin machine, mint a code bound to `jayti-asus-vivobook`:
+   `python channel-sandbox/mint_enrollment_code.py mint jayti-asus-vivobook`
+2. Copy this directory to the VivoBook.
+3. On the VivoBook, run PowerShell as the intended signed-in user:
+   `powershell -ExecutionPolicy Bypass -File .\install_vivobook.ps1`
+4. Enter the 32-character code when prompted.
 
-## What happens
-- The daemon heartbeats `devices/jayti-asus-vivobook` every 45s
-- The dashboard flips it LIVE when lastSeen is fresh
-- Commands queued via jp-ask are claimed, executed, and acked
+The installer rejects Lenovo hardware, requires an ASUS/ASUSTeK VivoBook,
+copies broker files bundled from a pinned commit, verifies SHA-256 hashes, creates
+an isolated Python environment, proves enrollment with a signed heartbeat,
+then registers `EKA-VivoBook-Daemon`.
 
-## Safety
-- `allow_production_devices: true` is an explicit opt-in in devices.json
-- The single-instance guard refuses duplicate daemons for the same device
-- No surveillance features (no mic, no screenshots, no lock)
+The one-time code file is deleted after successful enrollment. The allowed
+commands are limited to `status-only`, `ping`, and `echo`.

@@ -1,30 +1,27 @@
-# S24 Deploy Kit
+# Samsung S24 Ultra Deploy Kit
 
-For the Samsung S24 Ultra (Termux). The phone is on a different network
-(210.16.82.193) and unreachable from here — it must dial OUT to Firestore.
+This kit enrolls only a Samsung `SM-S928*` device as
+`samsung-s24-ultra`. It uses an AndroidKeyStore P-256 key through
+Termux:API and makes signed outbound HTTPS requests to the broker. It does
+not place a Google service-account key on the phone or expose an inbound
+control service.
 
-## What to do when you have the phone
+## Install With The Phone In Hand
 
-1. Open Termux
-2. Copy `install_s24.sh` to the phone (or run the one-liner below)
-3. Run: `bash install_s24.sh`
+1. Install Termux and the matching Termux:API app from the same trusted
+   distribution source, then grant the API app access when Android prompts.
+2. From the admin machine, mint a short-lived code:
+   `python channel-sandbox/mint_enrollment_code.py mint samsung-s24-ultra`
+3. Transfer this complete directory to the phone and immediately run:
+   `bash install_s24.sh`
+4. Enter the one-time code when prompted.
 
-## One-liner (no file copy needed)
+The installer fails closed unless Android reports manufacturer `Samsung`,
+model `SM-S928*`, and a P-256 key inside secure hardware. It verifies each
+bundled artifact against a pinned SHA-256 digest, creates an isolated Python
+environment, proves enrollment with a signed heartbeat, and only then adds
+Termux boot/watchdog startup.
 
-```bash
-curl -sL https://raw.githubusercontent.com/jaytipargal/eka-runner/main/termux/install_s24_direct_cloud.sh | bash
-```
-
-## What happens
-
-- Clones `jaytipargal/eka-runner` (the S24 daemon repo)
-- Fetches the service-account key from `(default)/bootstrap/s24key` (public read)
-- Registers a Termux watchdog job (restarts the daemon if it dies)
-- Enables ADB TCP on 5555 + sshd on 8022
-- Starts the daemon → heartbeats `devices/samsung-s24-ultra` every 300s
-
-## Verification
-
-- Dashboard: `samsung-s24-ultra` flips LIVE within 5 minutes
-- `runtime_contract.json` in this folder is the reference contract
-  (deviceId, allowlisted actions, transport URLs) — the repo's copy governs
+The command surface is intentionally limited to `status-only`, `ping`, and
+`echo`. A dashboard LIVE badge alone is not an operational proof; verify a
+fresh signed heartbeat and a command that reaches completed status.

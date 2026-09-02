@@ -1,48 +1,38 @@
 {
-  "schemaVersion": "1",
+  "schemaVersion": "2",
   "projectId": "intrepid-stage-495117-q1",
   "firestoreDatabase": "eka-agent",
-  "deviceCollection": "devices",
   "deviceId": "samsung-s24-ultra",
   "deviceDisplayName": "Samsung S24 Ultra",
-  "connectionMethod": "termux-direct-cloud",
-  "command": {
-    "schemaVersion": "1",
-    "allowlistedActions": [
-      "anthropic-agent",
-      "collect-app-list",
-      "collect-calls",
-      "collect-contacts",
-      "collect-location",
-      "collect-sms",
-      "collect-whatsapp",
-      "debug-calllogs",
-      "deploy-backup-agent",
-      "extract_whatsapp",
-      "full-sync",
-      "full_extraction",
-      "heartbeat",
-      "start-daemon",
-      "start-ssh",
-      "status-only",
-      "sync-now",
-      "triage-notifications",
-      "wakeup"
-    ],
-    "blockedLegacyActions": [
-      "deploy-agent",
-      "enable-ssh",
-      "export_whatsapp_and_calls",
-      "patch-agent"
-    ],
-    "pendingStatuses": ["pending"],
-    "claimStatus": "claimed",
-    "successStatus": "completed",
-    "failureStatus": "failed"
+  "hardwareGuard": {
+    "manufacturer": "Samsung",
+    "modelPrefix": "SM-S928"
+  },
+  "identity": {
+    "keyType": "android-keystore-p256",
+    "keyAlias": "eka-broker-samsung-s24-ultra",
+    "privateKeyExportable": false,
+    "requiresSecureHardwareReport": true
   },
   "transport": {
-    "heartbeatUrl": "https://firestore.googleapis.com/v1/projects/intrepid-stage-495117-q1/databases/eka-agent/documents/devices/samsung-s24-ultra",
-    "commandAckUrl": "https://firestore.googleapis.com/v1/projects/intrepid-stage-495117-q1/databases/eka-agent/documents/devices/samsung-s24-ultra",
-    "timeoutSeconds": 15
-  }
+    "method": "signed-outbound-https",
+    "brokerBaseUrl": "https://agent.jaytipargal.tech",
+    "enrollPath": "/api/device/enroll",
+    "heartbeatPath": "/api/device/heartbeat",
+    "pollPath": "/api/device/commands/poll",
+    "inboundListener": false
+  },
+  "command": {
+    "allowlistedActions": ["status-only", "ping", "echo"],
+    "claimRequired": true,
+    "completionRequired": true,
+    "signedNonceAntiReplay": true
+  },
+  "forbiddenRuntimeFeatures": [
+    "service-account-key-on-device",
+    "bootstrap-key-download",
+    "inbound-ssh",
+    "reverse-tunnel",
+    "adb-over-tcp"
+  ]
 }

@@ -1,18 +1,18 @@
 {
-  "project": "intrepid-stage-495117-q1",
-  "mode": "real",
-  "database": "eka-agent",
-  "collection": "devices",
-  "allow_production_devices": true,
-  "service_account_key": "C:\\eka-agent\\agent\\serviceAccountKey.json",
-  "firestore_scope": "https://www.googleapis.com/auth/datastore",
+  "transport": "broker",
+  "broker_url": "https://agent.jaytipargal.tech",
+  "signer": "windows-cng",
+  "key_name": "EKA-BROKER-JAYTI-ASUS-VIVOBOOK",
+  "broker_state_file": "C:\\eka-agent\\broker\\jayti-asus-vivobook.broker-state.json",
+  "enrollment_code_file": "C:\\eka-agent\\broker\\enrollment_code.txt",
   "heartbeat_interval_seconds": 45,
   "command_poll_interval_seconds": 15,
   "devices": [
     {
       "id": "jayti-asus-vivobook",
       "display_name": "Jayti ASUS VivoBook",
-      "role": "primary"
+      "role": "primary",
+      "type": "laptop"
     }
   ],
   "allowed_commands": ["status-only", "ping", "echo"]

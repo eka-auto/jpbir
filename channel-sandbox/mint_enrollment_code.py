@@ -4,6 +4,7 @@
 Usage:
   python mint_enrollment_code.py mint <deviceId> [--key-type tpm-cng-p256] [--allow-software]
   python mint_enrollment_code.py revoke <code>
+  python mint_enrollment_code.py revoke-device <deviceId>
   python mint_enrollment_code.py list
 
 Codes are stored ONLY as SHA-256 hashes (doc id = sha256(code)); the raw code
@@ -109,7 +110,7 @@ def fs_patch(token, path, fields):
     r = requests.patch(
         f"{base_uri()}{path}?{mask}",
         headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
-        json={"fields": enc(fields)},
+        json={"fields": {key: enc(value) for key, value in fields.items()}},
         timeout=20,
     )
     r.raise_for_status()
@@ -173,6 +174,26 @@ def cmd_revoke(args):
     return 0
 
 
+def cmd_revoke_device(args):
+    if args.device_id not in ALLOWED_DEVICES:
+        print(f"ERROR: unknown device id. Allowed: {sorted(ALLOWED_DEVICES)}", file=sys.stderr)
+        return 2
+    token = adc_token()
+    revoked = 0
+    now = datetime.now(timezone.utc).isoformat()
+    for doc in fs_list(token, "enrollmentCodes"):
+        fields = {key: dec(value) for key, value in (doc.get("fields") or {}).items()}
+        if fields.get("deviceId") != args.device_id:
+            continue
+        if fields.get("consumed") is True or fields.get("revoked") is True:
+            continue
+        document_id = doc["name"].rsplit("/", 1)[-1]
+        fs_patch(token, f"/enrollmentCodes/{document_id}", {"revoked": True, "revokedAt": now})
+        revoked += 1
+    print(f"revoked {revoked} active code(s) for {args.device_id}")
+    return 0
+
+
 def cmd_list(args):
     token = adc_token()
     docs = fs_list(token, "enrollmentCodes")
@@ -182,7 +203,7 @@ def cmd_list(args):
     for doc in docs:
         f = {k: dec(v) for k, v in (doc.get("fields") or {}).items()}
         print(
-            f"hash={doc['name'].split('/')[-1][:12]}… device={f.get('deviceId')} "
+            f"hash={doc['name'].split('/')[-1][:12]}... device={f.get('deviceId')} "
             f"keyType={f.get('keyType')} consumed={f.get('consumed')} revoked={f.get('revoked')} "
             f"attempts={f.get('attempts')}/{f.get('maxAttempts')} expiresAt={f.get('expiresAt')}"
         )
@@ -201,10 +222,18 @@ def main():
     pr = sub.add_parser("revoke", help="revoke a code by its raw value")
     pr.add_argument("code")
 
+    prd = sub.add_parser("revoke-device", help="revoke every unconsumed code for a device")
+    prd.add_argument("device_id")
+
     sub.add_parser("list", help="list code metadata (hashes only)")
 
     args = p.parse_args()
-    handlers = {"mint": cmd_mint, "revoke": cmd_revoke, "list": cmd_list}
+    handlers = {
+        "mint": cmd_mint,
+        "revoke": cmd_revoke,
+        "revoke-device": cmd_revoke_device,
+        "list": cmd_list,
+    }
     sys.exit(handlers[args.cmd](args))
 
 
