@@ -9,6 +9,7 @@ import {
   fsPatch,
   fsRollback,
   keyIdFromPem,
+  normalizeHardwareFingerprint,
   parseEnvelope,
   rateLimitOk,
   readRawBody,
@@ -16,6 +17,7 @@ import {
   slog,
   verifyHardwareFingerprint,
   verifyP256,
+  verifySignerAttestation,
 } from '../lib/broker.js';
 
 export const config = { api: { bodyParser: false } };
@@ -128,6 +130,12 @@ export default async function handler(req, res) {
       await failAttempt(codeDoc, c.attempts);
       return sendError(res, 403, hwErr, 'enroll-hardware-rejected', { keyId: env.keyId, deviceId });
     }
+    const attestationErr = verifySignerAttestation(keyType, attestation);
+    if (attestationErr) {
+      await failAttempt(codeDoc, c.attempts);
+      return sendError(res, 403, attestationErr, 'enroll-attestation-rejected', { keyId: env.keyId, deviceId, keyType });
+    }
+    const enrolledHardware = normalizeHardwareFingerprint(hardware);
 
     const existingKey = await fsGet(`/deviceKeys/${env.keyId}`);
     if (existingKey) {
@@ -157,6 +165,7 @@ export default async function handler(req, res) {
             publicKeyPem,
             keyType,
             attestation,
+            hardwareFingerprint: enrolledHardware,
             status: 'active',
             enrolledAt: nowIso,
             expiresAt: keyExpiresAt,

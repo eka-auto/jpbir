@@ -8,6 +8,9 @@ Production signers hold non-exportable hardware-backed ECDSA P-256 keys:
 - SoftwareP256Signer: exportable PEM key. ONLY for emulator/sandbox tests;
   the broker rejects software keys unless the enrollment code explicitly
   permits them.
+- TermuxKeystoreSigner: P-256 key generated and used by AndroidKeyStore via
+  Termux:API. Enrollment fails if Termux reports that the key is not inside
+  secure hardware.
 
 All signers emit DER-encoded ECDSA signatures over SHA-256, matching Node's
 crypto.createVerify('SHA256') and Android Keystore output.
@@ -181,6 +184,91 @@ class WindowsCngSigner:
         }
 
 
+def ec_public_key_from_xy(x_hex, y_hex):
+    numbers = ec.EllipticCurvePublicNumbers(
+        int(x_hex, 16),
+        int(y_hex, 16),
+        ec.SECP256R1(),
+    )
+    return numbers.public_key()
+
+
+class TermuxKeystoreSigner:
+    """Hardware-backed AndroidKeyStore signer exposed by Termux:API."""
+
+    key_type = "android-keystore-p256"
+
+    def __init__(self, alias="eka-broker-device-key"):
+        self.alias = alias
+        self._command = shutil.which("termux-keystore")
+        self._details = None
+        self._pubkey_pem = None
+        if not self._command:
+            raise SignerError("termux-keystore is required (install the matching Termux:API app and package)")
+        self._ensure_key()
+
+    def _run(self, *args, input_bytes=None):
+        try:
+            result = subprocess.run(
+                [self._command, *args],
+                input=input_bytes,
+                capture_output=True,
+                timeout=30,
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            raise SignerError(f"termux-keystore failed to run: {exc}") from exc
+        if result.returncode != 0:
+            detail = result.stderr.decode("utf-8", errors="replace").strip()[:300]
+            raise SignerError(f"termux-keystore {' '.join(args)} failed: {detail}")
+        return result.stdout
+
+    def _list_details(self):
+        try:
+            items = json.loads(self._run("list", "-d").decode("utf-8"))
+        except (UnicodeDecodeError, ValueError) as exc:
+            raise SignerError("termux-keystore returned invalid key metadata") from exc
+        return next((item for item in items if item.get("alias") == self.alias), None)
+
+    def _ensure_key(self):
+        details = self._list_details()
+        if details is None:
+            self._run("generate", self.alias, "-a", "EC", "-s", "256")
+            details = self._list_details()
+        if details is None:
+            raise SignerError("AndroidKeyStore key was not created")
+        if details.get("algorithm") != "EC" or int(details.get("size", 0)) != 256:
+            raise SignerError("AndroidKeyStore alias exists with the wrong algorithm or curve")
+        if details.get("inside_secure_hardware") is not True:
+            raise SignerError("AndroidKeyStore key is not reported inside secure hardware")
+        if not details.get("x") or not details.get("y"):
+            raise SignerError("AndroidKeyStore did not return P-256 public coordinates")
+        self._details = details
+
+    def public_key_pem(self):
+        if self._pubkey_pem is None:
+            key = ec_public_key_from_xy(self._details["x"], self._details["y"])
+            self._pubkey_pem = key.public_bytes(
+                encoding=serialization.Encoding.PEM,
+                format=serialization.PublicFormat.SubjectPublicKeyInfo,
+            ).decode("ascii")
+        return self._pubkey_pem
+
+    def sign(self, data):
+        signature = self._run("sign", self.alias, "SHA256withECDSA", input_bytes=data)
+        if not signature:
+            raise SignerError("AndroidKeyStore returned an empty signature")
+        return signature
+
+    def attestation(self):
+        return {
+            "provider": "AndroidKeyStore",
+            "alias": self.alias,
+            "algorithm": "EC",
+            "keySize": 256,
+            "insideSecureHardware": True,
+        }
+
+
 def make_signer(cfg):
     kind = cfg.get("signer", "software")
     if kind == "windows-cng":
@@ -190,4 +278,6 @@ def make_signer(cfg):
     if kind == "software":
         key_path = cfg.get("key_path") or str(Path(__file__).resolve().parent / "keys" / "software-p256.pem")
         return SoftwareP256Signer(key_path)
+    if kind == "android-keystore":
+        return TermuxKeystoreSigner(cfg.get("key_alias", "eka-broker-device-key"))
     raise SignerError(f"unknown signer kind: {kind}")

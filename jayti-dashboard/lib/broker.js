@@ -365,6 +365,38 @@ export function verifyHardwareFingerprint(deviceId, hardware, expected) {
   return null;
 }
 
+export function normalizeHardwareFingerprint(hardware) {
+  const out = {};
+  for (const key of ['manufacturer', 'model', 'serialHash']) {
+    const value = String((hardware && hardware[key]) || '').trim();
+    if (value) out[key] = value.slice(0, 256);
+  }
+  return out;
+}
+
+export function verifyEnrolledHardware(enrolled, presented) {
+  const expected = normalizeHardwareFingerprint(enrolled);
+  const actual = normalizeHardwareFingerprint(presented);
+  for (const [key, value] of Object.entries(expected)) {
+    if (actual[key] !== value) return `hardware mismatch: ${key} changed after enrollment`;
+  }
+  return null;
+}
+
+export function verifySignerAttestation(keyType, attestation) {
+  const a = attestation && typeof attestation === 'object' ? attestation : {};
+  if (keyType === 'tpm-cng-p256') {
+    if (a.provider !== 'Microsoft Platform Crypto Provider' || a.exportable !== false) {
+      return 'TPM CNG signer metadata is missing or invalid';
+    }
+  } else if (keyType === 'android-keystore-p256') {
+    if (a.provider !== 'AndroidKeyStore' || a.insideSecureHardware !== true || a.algorithm !== 'EC' || a.keySize !== 256) {
+      return 'AndroidKeyStore secure-hardware metadata is missing or invalid';
+    }
+  }
+  return null;
+}
+
 export function sendError(res, status, error, event, extra) {
   slog(event || 'request-rejected', { status, error, ...(extra || {}) });
   return res.status(status).json({ success: false, error });

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import atexit
+import hashlib
 import json
 import logging
 import os
@@ -39,19 +40,34 @@ def collect_hardware_identity():
         try:
             out = subprocess.run(
                 ['powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command',
-                 'Get-CimInstance Win32_ComputerSystem | Select-Object -First 1 Manufacturer,Model | ConvertTo-Json -Compress'],
+                 '$c=Get-CimInstance Win32_ComputerSystem | Select-Object -First 1 Manufacturer,Model; '
+                 '$p=Get-CimInstance Win32_ComputerSystemProduct | Select-Object -First 1 UUID; '
+                 '[pscustomobject]@{Manufacturer=$c.Manufacturer;Model=$c.Model;UUID=$p.UUID} | ConvertTo-Json -Compress'],
                 capture_output=True, text=True, timeout=10, encoding='utf-8', errors='replace', **_SW
             )
             if out.returncode == 0 and out.stdout.strip():
                 data = json.loads(out.stdout)
                 identity["manufacturer"] = data.get("Manufacturer", "")
                 identity["model"] = data.get("Model", "")
+                stable_id = str(data.get("UUID", "")).strip()
+                if stable_id:
+                    identity["serialHash"] = hashlib.sha256(stable_id.encode("utf-8")).hexdigest()
         except Exception as e:
             log.warning("hardware identity collection failed: %s", e)
     else:
         try:
-            out = subprocess.run(['getprop', 'ro.product.model'], capture_output=True, text=True, timeout=5, **_SW)
-            identity["model"] = out.stdout.strip()
+            for prop, field in (
+                ("ro.product.manufacturer", "manufacturer"),
+                ("ro.product.model", "model"),
+            ):
+                out = subprocess.run(['getprop', prop], capture_output=True, text=True, timeout=5, **_SW)
+                identity[field] = out.stdout.strip()
+            for prop in ("ro.boot.serialno", "ro.serialno"):
+                out = subprocess.run(['getprop', prop], capture_output=True, text=True, timeout=5, **_SW)
+                stable_id = out.stdout.strip()
+                if stable_id:
+                    identity["serialHash"] = hashlib.sha256(stable_id.encode("utf-8")).hexdigest()
+                    break
         except Exception:
             pass
     return identity

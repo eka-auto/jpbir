@@ -11,6 +11,7 @@ import {
   sendError,
   slog,
   verifyHardwareFingerprint,
+  verifyEnrolledHardware,
   verifyP256,
 } from '../lib/broker.js';
 
@@ -76,6 +77,11 @@ export default async function handler(req, res) {
     if (hwErr) {
       audit(env.keyId, 'heartbeat-hardware-mismatch', deviceId, hwErr);
       return sendError(res, 403, hwErr, 'heartbeat-hardware-rejected', { keyId: env.keyId, deviceId });
+    }
+    const enrolledHwErr = verifyEnrolledHardware(k.hardwareFingerprint, hardware);
+    if (enrolledHwErr) {
+      audit(env.keyId, 'heartbeat-enrolled-hardware-mismatch', deviceId, enrolledHwErr);
+      return sendError(res, 403, enrolledHwErr, 'heartbeat-hardware-rejected', { keyId: env.keyId, deviceId });
     }
 
     for (let attempt = 0; attempt < 5; attempt++) {

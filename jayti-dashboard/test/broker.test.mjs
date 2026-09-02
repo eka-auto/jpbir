@@ -7,7 +7,13 @@ import { strictEqual } from 'node:assert';
 import { deepStrictEqual, throws } from 'node:assert';
 import { generateKeyPairSync } from 'node:crypto';
 
-import { encodeDocumentFields, expandFieldPaths } from '../lib/broker.js';
+import {
+  encodeDocumentFields,
+  expandFieldPaths,
+  normalizeHardwareFingerprint,
+  verifyEnrolledHardware,
+  verifySignerAttestation,
+} from '../lib/broker.js';
 import { isP256Pem } from '../api/device-enroll.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -69,4 +75,28 @@ test('broker v2: enrollment accepts P-256 and rejects other EC curves', () => {
     .export({ type: 'spki', format: 'pem' });
   strictEqual(isP256Pem(p256), true);
   strictEqual(isP256Pem(p384), false);
+});
+
+test('broker v2: enrolled hardware remains bound to exact identity', () => {
+  const enrolled = normalizeHardwareFingerprint({
+    manufacturer: 'LENOVO', model: '82KA', serialHash: 'abc123', hostname: 'ignored',
+  });
+  strictEqual(verifyEnrolledHardware(enrolled, enrolled), null);
+  strictEqual(
+    verifyEnrolledHardware(enrolled, { ...enrolled, serialHash: 'changed' }),
+    'hardware mismatch: serialHash changed after enrollment',
+  );
+});
+
+test('broker v2: production signer metadata fails closed', () => {
+  strictEqual(verifySignerAttestation('tpm-cng-p256', {
+    provider: 'Microsoft Platform Crypto Provider', exportable: false,
+  }), null);
+  strictEqual(verifySignerAttestation('tpm-cng-p256', { exportable: false }), 'TPM CNG signer metadata is missing or invalid');
+  strictEqual(verifySignerAttestation('android-keystore-p256', {
+    provider: 'AndroidKeyStore', insideSecureHardware: true, algorithm: 'EC', keySize: 256,
+  }), null);
+  strictEqual(verifySignerAttestation('android-keystore-p256', {
+    provider: 'AndroidKeyStore', insideSecureHardware: false, algorithm: 'EC', keySize: 256,
+  }), 'AndroidKeyStore secure-hardware metadata is missing or invalid');
 });

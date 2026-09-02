@@ -8,7 +8,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from signer import SoftwareP256Signer, key_id_from_pem
+from signer import SoftwareP256Signer, ec_public_key_from_xy, key_id_from_pem
 from broker_client import BrokerClient, BrokerError, PROTO
 
 
@@ -41,6 +41,12 @@ class TestSoftwareSigner(unittest.TestCase):
         kid2 = key_id_from_pem(pem)
         self.assertEqual(kid1, kid2)
         self.assertEqual(len(kid1), 32)
+
+    def test_android_xy_coordinates_build_p256_public_key(self):
+        signer = SoftwareP256Signer(tempfile.mktemp(suffix=".pem"))
+        numbers = signer._key.public_key().public_numbers()
+        rebuilt = ec_public_key_from_xy(format(numbers.x, "x"), format(numbers.y, "x"))
+        self.assertEqual(rebuilt.public_numbers(), numbers)
 
 
 class TestBrokerClientEnvelope(unittest.TestCase):
