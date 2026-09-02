@@ -1,4 +1,4 @@
-name: CI + Deploy
+name: CI
 
 on:
   push:
@@ -49,52 +49,3 @@ jobs:
           node test/broker.test.mjs
           node test/connect.test.mjs
         working-directory: jayti-dashboard
-
-  deploy:
-    name: Deploy to Vercel
-    needs: test
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v5
-
-      - name: Install Vercel CLI
-        run: npm i -g vercel
-
-      - name: Push CONNECT_CLIENT_ID to Vercel env
-        env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-        run: |
-          # Ensure the connector client ID is available to the dashboard functions.
-          # This only writes when the value differs, so it is safe to run every push.
-          echo "${{ secrets.CONNECT_CLIENT_ID }}" | vercel env add CONNECT_CLIENT_ID production --scope jayti --project jayti-dashboard --token ${{ secrets.VERCEL_TOKEN }} --yes || true
-
-      - name: Deploy jayti-dashboard
-        env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-        run: |
-          vercel --prod --yes --token ${{ secrets.VERCEL_TOKEN }} > deploy_out.txt 2>&1
-          cat deploy_out.txt
-          DEPLOY_URL=$(grep -oE 'https://[a-z0-9-]+\.vercel\.app' deploy_out.txt | head -1)
-          echo "DEPLOY_URL=$DEPLOY_URL" >> $GITHUB_ENV
-        working-directory: jayti-dashboard
-
-      - name: Alias live domains
-        env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-        run: |
-          vercel alias set $DEPLOY_URL jaytipargal.tech --token ${{ secrets.VERCEL_TOKEN }}
-          vercel alias set $DEPLOY_URL agent.jaytipargal.tech --token ${{ secrets.VERCEL_TOKEN }}
-        working-directory: jayti-dashboard
-
-      - name: Deploy channel-sandbox
-        env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-        run: |
-          # The root vercel.json belongs to the Express (jpbir) project and
-          # confuses the channel-sandbox build (project root is channel-sandbox).
-          mv vercel.json vercel.json.express-bak 2>/dev/null || true
-          vercel --prod --yes --scope jayti --project channel-sandbox --token ${{ secrets.VERCEL_TOKEN }} > sandbox_deploy_out.txt 2>&1
-          cat sandbox_deploy_out.txt
-          mv vercel.json.express-bak vercel.json 2>/dev/null || true

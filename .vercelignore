@@ -1,33 +1,9 @@
+# Heavy local-only dirs (no project deploys from repo root anymore)
 runs/
 venv/
 .venv/
-node_modules/
-data/
-logs/
-personal_folder_agent/
-jayti-dashboard/
-jaytibirthday-site/
-jaytibirthday_analytics_deployment/
-permanent_agent/
-email_notifications/
-integration/
-scripts/
-slides/
-test/
-tools/
-website_assets/
-config/
-docs/
-# Keep public/, routes/, utils/ for the Express server
-.claude/
-.github/
-.hypothesis/
-.kiro/
-.pytest_cache/
-.qwen/
-.vscode/
 vscode-office/
-yarn.lock
+data/
 *.jsonl
 *.zip
 *.db
