@@ -40,7 +40,10 @@ jobs:
           node-version: '24'
 
       - name: Test jayti-dashboard
-        run: node test/stale.test.mjs
+        run: |
+          node test/stale.test.mjs
+          node test/broker.test.mjs
+          node test/connect.test.mjs
         working-directory: jayti-dashboard
 
   deploy:

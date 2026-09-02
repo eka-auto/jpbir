@@ -1,4 +1,11 @@
-import { getConnectorMetadata, getTokenResponse, startAuthorization } from '@vercel/connect';
+import {
+  deleteTokenCacheEntry,
+  getConnectorMetadata,
+  getToken,
+  getTokenResponse,
+  revokeToken,
+  startAuthorization,
+} from '@vercel/connect';
 
 const _env = (typeof process !== 'undefined' ? process : globalThis['proc' + 'ess']).env;
 const STATS_KEY = _env['STATS_' + 'KEY'];
@@ -21,31 +28,101 @@ function sendError(res, status, message, code) {
   res.status(status).json({ error: message, code });
 }
 
+const ERROR_MAP = [
+  ['NoValidTokenError', 502, 'no valid token for this request', 'no-valid-token'],
+  ['UserAuthorizationRequiredError', 400, 'user authorization required', 'user-authorization-required'],
+  ['ConnectorInstallationRequiredError', 400, 'connector installation required', 'connector-installation-required'],
+  ['ConnectorNotFoundError', 404, 'connector not found', 'connector-not-found'],
+  ['ClientNotLinkedToProjectError', 403, 'project not linked to connector', 'client-not-linked'],
+  ['ClientNotEnabledForEnvironmentError', 403, 'connector not enabled for this environment', 'client-not-enabled'],
+];
+
+export function mapConnectError(err) {
+  for (const [name, status, message, code] of ERROR_MAP) {
+    if (err && err.name === name) {
+      return { status, message, code };
+    }
+  }
+  return { status: 502, message: err && err.message ? err.message : 'connect failed', code: 'connect-error' };
+}
+
+export function buildSubject(query) {
+  const type = query.subject || 'app';
+  if (type === 'user') {
+    return { type: 'user', id: query.subjectId || 'admin-jayti' };
+  }
+  if (type === 'jwt-bearer') {
+    return { type: 'jwt-bearer', sub: query.subjectId || '' };
+  }
+  return { type: 'app' };
+}
+
+export function buildParams(query) {
+  const params = { subject: buildSubject(query) };
+  if (query.installationId) params.installationId = query.installationId;
+  if (query.scopes) params.scopes = String(query.scopes).split(',');
+  if (query.audience) params.audience = String(query.audience).split(',');
+  if (query.resources) params.resources = String(query.resources).split(',');
+  if (query.validityBufferMs) params.validityBufferMs = Number(query.validityBufferMs);
+  return params;
+}
+
+export function buildOptions(query) {
+  const options = {};
+  if (query.forceRefresh === '1' || query.forceRefresh === 'true') options.forceRefresh = true;
+  if (query.region) options.region = query.region;
+  return options;
+}
+
 export default async function handler(req, res) {
   const presented = req.query.key || req.headers['x-stats-key'] || '';
   if (!STATS_KEY || !timingSafeEqual(presented, STATS_KEY)) {
     return sendError(res, 401, 'unauthorized', 'unauthorized');
   }
 
-  try {
-    const metadata = await getConnectorMetadata(CONNECTOR_UID);
+  const action = req.query.action || 'status';
+  const params = buildParams(req.query);
+  const options = buildOptions(req.query);
 
-    if (req.query.action === 'authorize') {
-      const auth = await startAuthorization(CONNECTOR_UID, {
-        subject: { type: 'user', id: 'admin-jayti' },
-      });
+  try {
+    if (action === 'authorize') {
+      const auth = await startAuthorization(CONNECTOR_UID, params, options);
       return res.status(200).json({
-        connector: { uid: metadata.uid, name: metadata.name, service: metadata.service },
+        connector: CONNECTOR_UID,
         authorization: { url: auth.url, request: auth.request, expiresAt: auth.expiresAt || null },
       });
     }
 
+    if (action === 'token') {
+      const token = await getToken(CONNECTOR_UID, params, options);
+      return res.status(200).json({ connector: CONNECTOR_UID, token });
+    }
+
+    if (action === 'token-response') {
+      const response = await getTokenResponse(CONNECTOR_UID, params, options);
+      return res.status(200).json({ connector: CONNECTOR_UID, tokenResponse: response });
+    }
+
+    if (action === 'revoke') {
+      await revokeToken(CONNECTOR_UID, params, options);
+      return res.status(200).json({ connector: CONNECTOR_UID, revoked: true });
+    }
+
+    if (action === 'cache-delete') {
+      deleteTokenCacheEntry(CONNECTOR_UID, params);
+      return res.status(200).json({ connector: CONNECTOR_UID, cacheEntryDeleted: true });
+    }
+
+    if (action === 'metadata') {
+      const metadata = await getConnectorMetadata(CONNECTOR_UID, options);
+      return res.status(200).json({ connector: metadata });
+    }
+
+    const metadata = await getConnectorMetadata(CONNECTOR_UID, options);
     let token = null;
     let tokenError = null;
     try {
-      const tokenResponse = await getTokenResponse(CONNECTOR_UID, {
-        subject: { type: 'app' },
-      });
+      const tokenResponse = await getTokenResponse(CONNECTOR_UID, params, options);
       token = {
         tokenId: tokenResponse.tokenId || null,
         expiresAt: tokenResponse.expiresAt,
@@ -58,7 +135,7 @@ export default async function handler(req, res) {
       tokenError = { name: err && err.name, message: err && err.message, code: err && err.code };
     }
 
-    res.status(200).json({
+    return res.status(200).json({
       connector: {
         uid: metadata.uid,
         id: metadata.id,
@@ -72,12 +149,7 @@ export default async function handler(req, res) {
       tokenError,
     });
   } catch (err) {
-    if (err && err.name === 'ConnectorInstallationRequiredError') {
-      return sendError(res, 400, 'connector installation required', 'connector-installation-required');
-    }
-    if (err && err.name === 'UserAuthorizationRequiredError') {
-      return sendError(res, 400, 'user authorization required', 'user-authorization-required');
-    }
-    return sendError(res, 502, err && err.message ? err.message : 'connect failed', 'connect-error');
+    const mapped = mapConnectError(err);
+    return sendError(res, mapped.status, mapped.message, mapped.code);
   }
 }
