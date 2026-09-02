@@ -1,0 +1,24 @@
+{
+  "project": "intrepid-stage-495117-q1",
+  "mode": "emulator",
+  "emulator_host": "127.0.0.1:8080",
+  "database": "(default)",
+  "collection": "sandbox_devices",
+  "service_account_key": "C:\\Users\\abcom\\Go4Garage\\Eka Runner\\serviceAccountKey.json",
+  "firestore_scope": "https://www.googleapis.com/auth/datastore",
+  "heartbeat_interval_seconds": 10,
+  "command_poll_interval_seconds": 5,
+  "devices": [
+    {
+      "id": "test-scaffold-1",
+      "display_name": "Sandbox Device Alpha",
+      "role": "primary"
+    },
+    {
+      "id": "test-scaffold-2",
+      "display_name": "Sandbox Device Beta",
+      "role": "secondary"
+    }
+  ],
+  "allowed_commands": ["status-only", "ping", "echo"]
+}
