@@ -76,9 +76,9 @@ class BrokerClient:
         self._save_state()
         return self._state["seq"]
 
-    def _headers(self, canonical_path, seq, raw_body):
-        ts = int(time.time() * 1000)
-        request_id = str(uuid.uuid4())
+    def _headers(self, canonical_path, seq, raw_body, timestamp=None, request_id=None):
+        ts = timestamp if timestamp is not None else int(time.time() * 1000)
+        request_id = request_id or str(uuid.uuid4())
         digest = hashlib.sha256(raw_body).hexdigest()
         canonical = "\n".join([
             "v" + PROTO,
@@ -111,9 +111,11 @@ class BrokerClient:
             seq = self._next_seq()
         url = f"{self.base_url}{path}"
         last_exc = None
+        timestamp = int(time.time() * 1000)
+        request_id = str(uuid.uuid4())
+        headers = self._headers(path, seq, raw, timestamp=timestamp, request_id=request_id)
         for attempt in range(3):
             try:
-                headers = self._headers(path, seq, raw)
                 resp = requests.post(url, data=raw, headers=headers, timeout=self.timeout)
                 if resp.status_code in (401, 403):
                     raise BrokerAuthError(

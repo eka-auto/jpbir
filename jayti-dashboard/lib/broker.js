@@ -7,6 +7,7 @@ export const MAX_BODY_BYTES = 64 * 1024;
 export const MAX_RESULT_BYTES = 32 * 1024;
 export const TIMESTAMP_WINDOW_MS = 5 * 60 * 1000;
 export const MAX_RECENT_REQUESTS = 50;
+export const MAX_RECENT_RESULTS = 10;
 export const CLAIM_LEASE_MS = 120 * 1000;
 export const MAX_CLAIM_ATTEMPTS = 3;
 export const RATE_LIMIT_PER_MIN = 30;
@@ -395,6 +396,28 @@ export function verifySignerAttestation(keyType, attestation) {
     }
   }
   return null;
+}
+
+export function findIdempotentResult(enrollment, env, canonicalPath) {
+  const records = Array.isArray(enrollment && enrollment.recentResults) ? enrollment.recentResults : [];
+  const record = records.find((item) => item && item.requestId === env.requestId);
+  if (!record) return null;
+  if (record.seq !== env.seq || record.path !== canonicalPath || record.bodySha256 !== env.bodySha256) {
+    return { error: 'requestId was reused with a different signed request' };
+  }
+  return { status: record.status, body: record.body };
+}
+
+export function rememberIdempotentResult(enrollment, env, canonicalPath, status, body) {
+  const existing = Array.isArray(enrollment && enrollment.recentResults) ? enrollment.recentResults : [];
+  return [{
+    requestId: env.requestId,
+    seq: env.seq,
+    path: canonicalPath,
+    bodySha256: env.bodySha256,
+    status,
+    body,
+  }, ...existing.filter((item) => item && item.requestId !== env.requestId)].slice(0, MAX_RECENT_RESULTS);
 }
 
 export function sendError(res, status, error, event, extra) {

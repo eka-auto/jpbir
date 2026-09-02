@@ -260,7 +260,7 @@ def run_broker(cfg, config_dir, device_id, device_cfg, single_iteration):
             "canonicalDeviceId": device_id,
             "deviceDisplayName": device_cfg.get("display_name", device_id),
             "deviceRole": device_cfg.get("role", "unknown"),
-            "deviceType": "laptop",
+            "deviceType": device_cfg.get("type", "laptop"),
             "connectionMethod": "channel-sandbox-broker",
             "agentVersion": "channel-sandbox-2.0",
             "heartbeatIntervalSeconds": hb_interval,

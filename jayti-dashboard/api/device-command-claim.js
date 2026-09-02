@@ -5,11 +5,13 @@ import {
   dec,
   fsGet,
   fsPatch,
+  findIdempotentResult,
   MAX_CLAIM_ATTEMPTS,
   MAX_RECENT_REQUESTS,
   parseEnvelope,
   rateLimitOk,
   readRawBody,
+  rememberIdempotentResult,
   sendError,
   slog,
   verifyP256,
@@ -29,7 +31,7 @@ export default async function handler(req, res) {
   }
 
   const commandId = String(req.query.commandId || '').trim();
-  if (!commandId || !/^[\w.-]{1,128}$/.test(commandId)) {
+    if (!commandId || !/^[A-Za-z0-9_-]{1,128}$/.test(commandId)) {
     return sendError(res, 400, 'malformed commandId', 'claim-schema-rejected');
   }
 
@@ -72,6 +74,14 @@ export default async function handler(req, res) {
 
       if (enrollment.activeKeyId !== env.keyId) {
         return sendError(res, 403, 'key is not the active device key', 'claim-key-superseded', { keyId: env.keyId, deviceId });
+      }
+      const priorResult = findIdempotentResult(enrollment, env, canonicalClaimPath(commandId));
+      if (priorResult && priorResult.error) {
+        return sendError(res, 401, priorResult.error, 'claim-reqid-reused', { keyId: env.keyId, deviceId, commandId });
+      }
+      if (priorResult) {
+        slog('claim-idempotent-replay', { keyId: env.keyId, deviceId, commandId });
+        return res.status(priorResult.status).json(priorResult.body);
       }
       if (env.seq <= (enrollment.seq || 0)) {
         return sendError(res, 401, 'sequence replay rejected', 'claim-seq-replay', { keyId: env.keyId, deviceId });
@@ -125,6 +135,16 @@ export default async function handler(req, res) {
       const claimToken = crypto.randomBytes(16).toString('hex');
       const leaseUntilIso = new Date(now + CLAIM_LEASE_MS).toISOString();
       const q = `commandQueue.${commandId}`;
+      const responseBody = {
+        success: true,
+        deviceId,
+        commandId,
+        claimToken,
+        leaseUntil: leaseUntilIso,
+        attempt: priorAttempts + 1,
+        action: entry.action,
+        payload: entry.payload || {},
+      };
       try {
         await fsPatch(
           `/devices/${deviceId}`,
@@ -137,6 +157,9 @@ export default async function handler(req, res) {
             [`${q}.claimedAt`]: nowIso,
             'enrollment.seq': env.seq,
             'enrollment.lastRequestIds': [env.requestId, ...recent].slice(0, MAX_RECENT_REQUESTS),
+            'enrollment.recentResults': rememberIdempotentResult(
+              enrollment, env, canonicalClaimPath(commandId), 200, responseBody,
+            ),
           },
           { updateTime: devDoc.updateTime },
         );
@@ -146,16 +169,7 @@ export default async function handler(req, res) {
       }
 
       slog('claim-ok', { keyId: env.keyId, deviceId, commandId, attempt: priorAttempts + 1 });
-      return res.status(200).json({
-        success: true,
-        deviceId,
-        commandId,
-        claimToken,
-        leaseUntil: leaseUntilIso,
-        attempt: priorAttempts + 1,
-        action: entry.action,
-        payload: entry.payload || {},
-      });
+      return res.status(200).json(responseBody);
     }
     return sendError(res, 409, 'too many write conflicts', 'claim-conflict', { keyId: env.keyId });
   } catch (err) {

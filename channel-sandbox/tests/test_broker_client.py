@@ -7,6 +7,9 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
+
+import requests
 
 from signer import SoftwareP256Signer, ec_public_key_from_xy, key_id_from_pem
 from broker_client import BrokerClient, BrokerError, PROTO
@@ -32,7 +35,7 @@ class TestSoftwareSigner(unittest.TestCase):
         sig = signer.sign(data)
         # DER signature length varies; just check it's valid DER
         self.assertGreater(len(sig), 8)
-        self.assertLess(len(sig), 72)
+        self.assertLessEqual(len(sig), 72)
 
     def test_key_id_stability(self):
         signer = SoftwareP256Signer(tempfile.mktemp(suffix=".pem"))
@@ -86,6 +89,24 @@ class TestBrokerClientEnvelope(unittest.TestCase):
         # Sign and verify round-trip
         sig = signer.sign(canonical.encode("utf-8"))
         self.assertGreater(len(sig), 0)
+
+    def test_network_retry_reuses_the_same_signed_envelope(self):
+        class Response:
+            status_code = 200
+            text = ""
+
+            @staticmethod
+            def json():
+                return {"success": True}
+
+        with tempfile.TemporaryDirectory() as td:
+            signer = SoftwareP256Signer(Path(td) / "key.pem")
+            client = BrokerClient("https://example.com", signer, "test-device", Path(td) / "state.json")
+            with patch("broker_client.requests.post", side_effect=[requests.ConnectionError("lost"), Response()]) as post:
+                self.assertEqual(client._request("/api/device/heartbeat", {}), {"success": True})
+            first = post.call_args_list[0].kwargs["headers"]
+            second = post.call_args_list[1].kwargs["headers"]
+            self.assertEqual(first, second)
 
 
 if __name__ == "__main__":

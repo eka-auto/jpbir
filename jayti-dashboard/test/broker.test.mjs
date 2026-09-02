@@ -10,7 +10,9 @@ import { generateKeyPairSync } from 'node:crypto';
 import {
   encodeDocumentFields,
   expandFieldPaths,
+  findIdempotentResult,
   normalizeHardwareFingerprint,
+  rememberIdempotentResult,
   verifyEnrolledHardware,
   verifySignerAttestation,
 } from '../lib/broker.js';
@@ -99,4 +101,18 @@ test('broker v2: production signer metadata fails closed', () => {
   strictEqual(verifySignerAttestation('android-keystore-p256', {
     provider: 'AndroidKeyStore', insideSecureHardware: false, algorithm: 'EC', keySize: 256,
   }), 'AndroidKeyStore secure-hardware metadata is missing or invalid');
+});
+
+test('broker v2: command results are idempotent only for the same signed request', () => {
+  const env = { requestId: 'request-1', seq: 8, bodySha256: 'body-hash' };
+  const body = { success: true, claimToken: 'token' };
+  const recentResults = rememberIdempotentResult({}, env, '/api/device/commands/c1/claim', 200, body);
+  deepStrictEqual(
+    findIdempotentResult({ recentResults }, env, '/api/device/commands/c1/claim'),
+    { status: 200, body },
+  );
+  deepStrictEqual(
+    findIdempotentResult({ recentResults }, { ...env, bodySha256: 'changed' }, '/api/device/commands/c1/claim'),
+    { error: 'requestId was reused with a different signed request' },
+  );
 });

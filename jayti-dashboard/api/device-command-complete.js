@@ -3,11 +3,13 @@ import {
   dec,
   fsGet,
   fsPatch,
+  findIdempotentResult,
   MAX_BODY_BYTES,
   MAX_RECENT_REQUESTS,
   parseEnvelope,
   rateLimitOk,
   readRawBody,
+  rememberIdempotentResult,
   sendError,
   slog,
   verifyP256,
@@ -29,7 +31,7 @@ export default async function handler(req, res) {
   }
 
   const commandId = String(req.query.commandId || '').trim();
-  if (!commandId || !/^[\w.-]{1,128}$/.test(commandId)) {
+    if (!commandId || !/^[A-Za-z0-9_-]{1,128}$/.test(commandId)) {
     return sendError(res, 400, 'malformed commandId', 'complete-schema-rejected');
   }
 
@@ -86,6 +88,14 @@ export default async function handler(req, res) {
       if (enrollment.activeKeyId !== env.keyId) {
         return sendError(res, 403, 'key is not the active device key', 'complete-key-superseded', { keyId: env.keyId, deviceId });
       }
+      const priorResult = findIdempotentResult(enrollment, env, canonicalCompletePath(commandId));
+      if (priorResult && priorResult.error) {
+        return sendError(res, 401, priorResult.error, 'complete-reqid-reused', { keyId: env.keyId, deviceId, commandId });
+      }
+      if (priorResult) {
+        slog('complete-idempotent-replay', { keyId: env.keyId, deviceId, commandId });
+        return res.status(priorResult.status).json(priorResult.body);
+      }
       if (env.seq <= (enrollment.seq || 0)) {
         return sendError(res, 401, 'sequence replay rejected', 'complete-seq-replay', { keyId: env.keyId, deviceId });
       }
@@ -109,6 +119,7 @@ export default async function handler(req, res) {
       const nowIso = new Date().toISOString();
       const finalStatus = RESULT_STATUS_MAP[resultStatus];
       const q = `commandQueue.${commandId}`;
+      const responseBody = { success: true, deviceId, commandId, status: finalStatus, completedAt: nowIso };
       try {
         await fsPatch(
           `/devices/${deviceId}`,
@@ -119,6 +130,9 @@ export default async function handler(req, res) {
             [`${q}.claimToken`]: '',
             'enrollment.seq': env.seq,
             'enrollment.lastRequestIds': [env.requestId, ...recent].slice(0, MAX_RECENT_REQUESTS),
+            'enrollment.recentResults': rememberIdempotentResult(
+              enrollment, env, canonicalCompletePath(commandId), 200, responseBody,
+            ),
             lastCommandAckAt: nowIso,
             lastCommandAckId: commandId,
             lastCommandAckStatus: finalStatus,
@@ -132,7 +146,7 @@ export default async function handler(req, res) {
 
       audit(env.keyId, `command-${finalStatus}`, deviceId, `commandId=${commandId}`);
       slog('complete-ok', { keyId: env.keyId, deviceId, commandId, finalStatus });
-      return res.status(200).json({ success: true, deviceId, commandId, status: finalStatus, completedAt: nowIso });
+      return res.status(200).json(responseBody);
     }
     return sendError(res, 409, 'too many write conflicts', 'complete-conflict', { keyId: env.keyId });
   } catch (err) {
