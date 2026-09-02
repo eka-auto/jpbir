@@ -3,7 +3,29 @@
 # exists. This project's Flask app lives in dashboard_api.py, so point the
 # builder at the module:variable explicitly.
 #
-# Deliberately contains no [project] table: dependencies stay in
-# requirements.txt, which both Vercel and the local sandbox already use.
+# The mere presence of this file also switches Vercel's Python build from
+# pip/requirements.txt to uv, which errors out without a [project] table.
+# So dependencies are restated here -- but only the three the dashboard
+# lambda actually imports (flask, plus requests + google-auth by way of
+# firestore_client). requirements.txt stays the local sandbox's list and
+# additionally carries psutil and cryptography for device_agent.py and
+# signer.py, neither of which is deployed.
+
+[project]
+name = "channel-sandbox-dashboard"
+version = "1.0.0"
+description = "Flask dashboard API for the channel sandbox"
+requires-python = ">=3.12"
+dependencies = [
+    "flask==3.1.3",
+    "requests==2.34.2",
+    "google-auth==2.56.2",
+]
+
+[tool.uv]
+# Nothing here is importable as an installed distribution; the entrypoint is a
+# plain module next to this file. Keep uv from trying to build a wheel.
+package = false
+
 [tool.vercel]
 entrypoint = "dashboard_api:app"
