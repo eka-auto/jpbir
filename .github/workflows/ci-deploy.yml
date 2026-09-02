@@ -39,6 +39,10 @@ jobs:
         with:
           node-version: '24'
 
+      - name: Install dashboard dependencies
+        run: npm ci
+        working-directory: jayti-dashboard
+
       - name: Test jayti-dashboard
         run: |
           node test/stale.test.mjs
