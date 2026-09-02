@@ -1,0 +1,19 @@
+{
+  "project": "intrepid-stage-495117-q1",
+  "mode": "real",
+  "database": "eka-agent",
+  "collection": "devices",
+  "allow_production_devices": true,
+  "service_account_key": "C:\\Users\\abcom\\jpbir\\channel-sandbox\\keys\\lenovo.json",
+  "firestore_scope": "https://www.googleapis.com/auth/datastore",
+  "heartbeat_interval_seconds": 45,
+  "command_poll_interval_seconds": 15,
+  "devices": [
+    {
+      "id": "g4g-lenovo-laptop",
+      "display_name": "Jayti's Lenovo 82KA",
+      "role": "primary"
+    }
+  ],
+  "allowed_commands": ["status-only", "ping", "echo"]
+}

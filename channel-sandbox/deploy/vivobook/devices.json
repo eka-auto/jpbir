@@ -1,0 +1,19 @@
+{
+  "project": "intrepid-stage-495117-q1",
+  "mode": "real",
+  "database": "eka-agent",
+  "collection": "devices",
+  "allow_production_devices": true,
+  "service_account_key": "C:\\eka-agent\\agent\\serviceAccountKey.json",
+  "firestore_scope": "https://www.googleapis.com/auth/datastore",
+  "heartbeat_interval_seconds": 45,
+  "command_poll_interval_seconds": 15,
+  "devices": [
+    {
+      "id": "jayti-asus-vivobook",
+      "display_name": "Jayti ASUS VivoBook",
+      "role": "primary"
+    }
+  ],
+  "allowed_commands": ["status-only", "ping", "echo"]
+}

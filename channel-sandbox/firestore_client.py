@@ -26,11 +26,15 @@ class FirestoreClient:
         mode="emulator",
         collection=None,
         emulator_host="127.0.0.1:8080",
+        allow_production_devices=False,
     ):
         if mode not in {"emulator", "real"}:
             raise ValueError(f"unsupported Firestore mode: {mode}")
-        if mode == "real" and collection == "devices":
-            raise ValueError("real mode may not target the production devices collection")
+        if mode == "real" and collection == "devices" and not allow_production_devices:
+            raise ValueError(
+                "real mode may not target the production devices collection "
+                "without allow_production_devices=True"
+            )
         if mode == "emulator" and not emulator_host:
             raise ValueError("emulator mode requires emulator_host")
 

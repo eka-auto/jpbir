@@ -1,0 +1,48 @@
+{
+  "schemaVersion": "1",
+  "projectId": "intrepid-stage-495117-q1",
+  "firestoreDatabase": "eka-agent",
+  "deviceCollection": "devices",
+  "deviceId": "samsung-s24-ultra",
+  "deviceDisplayName": "Samsung S24 Ultra",
+  "connectionMethod": "termux-direct-cloud",
+  "command": {
+    "schemaVersion": "1",
+    "allowlistedActions": [
+      "anthropic-agent",
+      "collect-app-list",
+      "collect-calls",
+      "collect-contacts",
+      "collect-location",
+      "collect-sms",
+      "collect-whatsapp",
+      "debug-calllogs",
+      "deploy-backup-agent",
+      "extract_whatsapp",
+      "full-sync",
+      "full_extraction",
+      "heartbeat",
+      "start-daemon",
+      "start-ssh",
+      "status-only",
+      "sync-now",
+      "triage-notifications",
+      "wakeup"
+    ],
+    "blockedLegacyActions": [
+      "deploy-agent",
+      "enable-ssh",
+      "export_whatsapp_and_calls",
+      "patch-agent"
+    ],
+    "pendingStatuses": ["pending"],
+    "claimStatus": "claimed",
+    "successStatus": "completed",
+    "failureStatus": "failed"
+  },
+  "transport": {
+    "heartbeatUrl": "https://firestore.googleapis.com/v1/projects/intrepid-stage-495117-q1/databases/eka-agent/documents/devices/samsung-s24-ultra",
+    "commandAckUrl": "https://firestore.googleapis.com/v1/projects/intrepid-stage-495117-q1/databases/eka-agent/documents/devices/samsung-s24-ultra",
+    "timeoutSeconds": 15
+  }
+}
