@@ -10,7 +10,7 @@ LOG_PATH="$INSTALL_ROOT/logs/$DEVICE_ID.log"
 BOOT_DIR="$HOME/.termux/boot"
 BOOT_PATH="$BOOT_DIR/start_eka_s24_broker.sh"
 JOB_ID='240619'
-PINNED_COMMIT='b549b823e1e63d7879f133416414db1c4e6281b3'
+PINNED_COMMIT='183e600d0acd7e6171e35be904c657e7fe967384'
 KIT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
 fail() {
@@ -52,7 +52,7 @@ install_verified() {
 }
 
 install_verified 'device_agent.py' '70a74469a2e004f671897b30f85a8759f684aca4ce1f5860bf39c7e12396d2f7'
-install_verified 'broker_client.py' '88c2f1dab3649d2d6322d495f64bebd7af2e4f4bd0c412e37a626c4a196a663a'
+install_verified 'broker_client.py' 'e380867c5843e49c21d7e46704db20607389a9f1faad4b3cf61f9b4eab173bb1'
 install_verified 'signer.py' '8aabf8e5fff25a067b02901ef4798d061a9c2b3d5844d72e59db1419112632f7'
 install_verified 'single_instance.py' '1a572f39dc96599e8df55debe9ccd9bd8232cffecac08bbc898ff5fff4f9ef46'
 printf '[ok] copied and verified bundled broker artifacts from commit %s\n' "$PINNED_COMMIT"

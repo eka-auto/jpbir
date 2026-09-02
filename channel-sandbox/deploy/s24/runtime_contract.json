@@ -17,9 +17,9 @@
   "transport": {
     "method": "signed-outbound-https",
     "brokerBaseUrl": "https://agent.jaytipargal.tech",
-    "enrollPath": "/api/device/enroll",
-    "heartbeatPath": "/api/device/heartbeat",
-    "pollPath": "/api/device/commands/poll",
+    "enrollPath": "/api/device-enroll",
+    "heartbeatPath": "/api/device-heartbeat",
+    "pollPath": "/api/device-commands-poll",
     "inboundListener": false
   },
   "command": {

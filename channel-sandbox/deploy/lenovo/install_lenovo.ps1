@@ -12,12 +12,12 @@ $Target = 'C:\eka-agent\broker'
 $StatePath = Join-Path $Target "$DeviceId.broker-state.json"
 $CodePath = Join-Path $Target 'enrollment_code.txt'
 $LogPath = Join-Path $Target "logs\$DeviceId.log"
-$PinnedCommit = 'b549b823e1e63d7879f133416414db1c4e6281b3'
+$PinnedCommit = '183e600d0acd7e6171e35be904c657e7fe967384'
 $Here = Split-Path -Parent $MyInvocation.MyCommand.Path
 
 $Artifacts = @(
     [pscustomobject]@{ Name = 'device_agent.py'; Hash = '70A74469A2E004F671897B30F85A8759F684ACA4CE1F5860BF39C7E12396D2F7' },
-    [pscustomobject]@{ Name = 'broker_client.py'; Hash = '88C2F1DAB3649D2D6322D495F64BEBD7AF2E4F4BD0C412E37A626C4A196A663A' },
+    [pscustomobject]@{ Name = 'broker_client.py'; Hash = 'E380867C5843E49C21D7E46704DB20607389A9F1FAAD4B3CF61F9B4EAB173BB1' },
     [pscustomobject]@{ Name = 'signer.py'; Hash = '8AABF8E5FFF25A067B02901EF4798D061A9C2B3D5844D72E59DB1419112632F7' },
     [pscustomobject]@{ Name = 'single_instance.py'; Hash = '1A572F39DC96599E8DF55DEBE9CCD9BD8232CFFECAC08BBC898FF5FFF4F9EF46' },
     [pscustomobject]@{ Name = 'requirements-broker.txt'; Hash = '37B13C7D746D596E7DA6E73098DFBA792EAB1A49C8ACC7E0A5AB287B56B107D5' }
