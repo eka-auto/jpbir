@@ -68,8 +68,7 @@ jobs:
         run: |
           # Ensure the connector client ID is available to the dashboard functions.
           # This only writes when the value differs, so it is safe to run every push.
-          echo "${{ secrets.CONNECT_CLIENT_ID }}" | vercel env add CONNECT_CLIENT_ID production --token ${{ secrets.VERCEL_TOKEN }} --yes || true
-        working-directory: jayti-dashboard
+          echo "${{ secrets.CONNECT_CLIENT_ID }}" | vercel env add CONNECT_CLIENT_ID production --scope jayti --project jayti-dashboard --token ${{ secrets.VERCEL_TOKEN }} --yes || true
 
       - name: Deploy jayti-dashboard
         env:
