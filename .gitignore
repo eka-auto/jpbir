@@ -43,3 +43,11 @@ hash_output.txt
 STATUS_SUMMARY.txt
 deploy_out.txt
 sandbox_deploy_out.txt
+
+# Local tooling (not part of the repo)
+vscode-office/
+yarn.lock
+inventory_stale_dbs*.py
+stale_db_refs.txt
+stale_db_inventory.md
+script.py
