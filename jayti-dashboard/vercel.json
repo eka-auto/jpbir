@@ -59,6 +59,10 @@
                          "destination":  "/api/check-stale.js"
                      },
                      {
+                         "source":  "/api/connect",
+                         "destination":  "/api/connect.js"
+                     },
+                     {
                          "source":  "/api/device-command-claim",
                          "destination":  "/api/broker-command-claim"
                      },
