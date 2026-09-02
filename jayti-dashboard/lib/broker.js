@@ -80,6 +80,12 @@ export function baseUri() {
   return `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${db}/documents`;
 }
 
+export function firestoreDocumentName(projectId, db, path) {
+  const cleanPath = String(path || '').replace(/^\/+/, '');
+  if (!cleanPath || cleanPath.includes('..')) throw new Error('invalid Firestore document path');
+  return `projects/${projectId}/databases/${db}/documents/${cleanPath}`;
+}
+
 export function enc(v) {
   if (v === null || v === undefined) return { nullValue: null };
   if (typeof v === 'boolean') return { booleanValue: v };
@@ -210,7 +216,7 @@ export async function fsCommit(transaction, writes) {
   const named = writes.map((w) => {
     const out = { ...w };
     out.update = {
-      name: `${baseUri()}/${w.path}`,
+      name: firestoreDocumentName(projectId, db, w.path),
       fields: encodeDocumentFields(expandFieldPaths(w.fields)),
     };
     if (w.updateMask) out.updateMask = { fieldPaths: w.updateMask };

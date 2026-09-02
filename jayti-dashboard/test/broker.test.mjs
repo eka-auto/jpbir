@@ -11,6 +11,7 @@ import {
   encodeDocumentFields,
   expandFieldPaths,
   findIdempotentResult,
+  firestoreDocumentName,
   normalizeHardwareFingerprint,
   rememberIdempotentResult,
   verifyEnrolledHardware,
@@ -63,6 +64,14 @@ test('broker v2: Firestore document fields use the REST document shape', () => {
     },
     online: { booleanValue: true },
   });
+});
+
+test('broker v2: Firestore transaction writes use resource names, not URLs', () => {
+  strictEqual(
+    firestoreDocumentName('project-id', 'eka-agent', '/deviceKeys/key-id'),
+    'projects/project-id/databases/eka-agent/documents/deviceKeys/key-id',
+  );
+  throws(() => firestoreDocumentName('project-id', 'eka-agent', '../other'), /invalid/);
 });
 
 test('broker v2: conflicting or unsafe Firestore field paths fail closed', () => {
