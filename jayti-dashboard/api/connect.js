@@ -74,6 +74,13 @@ export function buildOptions(query) {
   return options;
 }
 
+export function buildAuthorizeParams(params, query) {
+  if (params.subject.type === 'app') {
+    return { ...params, subject: { type: 'user', id: query.subjectId || 'admin-jayti' } };
+  }
+  return params;
+}
+
 export default async function handler(req, res) {
   const presented = req.query.key || req.headers['x-stats-key'] || '';
   if (!STATS_KEY || !timingSafeEqual(presented, STATS_KEY)) {
@@ -86,7 +93,8 @@ export default async function handler(req, res) {
 
   try {
     if (action === 'authorize') {
-      const auth = await startAuthorization(CONNECTOR_UID, params, options);
+      const authParams = buildAuthorizeParams(params, req.query);
+      const auth = await startAuthorization(CONNECTOR_UID, authParams, options);
       return res.status(200).json({
         connector: CONNECTOR_UID,
         authorization: { url: auth.url, request: auth.request, expiresAt: auth.expiresAt || null },

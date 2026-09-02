@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import { deepStrictEqual, strictEqual } from 'node:assert';
 
 import {
+  buildAuthorizeParams,
   buildOptions,
   buildParams,
   buildSubject,
@@ -78,4 +79,19 @@ test('mapConnectError handles null', () => {
   const mapped = mapConnectError(null);
   strictEqual(mapped.status, 502);
   strictEqual(mapped.code, 'connect-error');
+});
+
+test('buildAuthorizeParams coerces app subject to user', () => {
+  const coerced = buildAuthorizeParams({ subject: { type: 'app' } }, {});
+  deepStrictEqual(coerced, { subject: { type: 'user', id: 'admin-jayti' } });
+});
+
+test('buildAuthorizeParams honors explicit subjectId', () => {
+  const coerced = buildAuthorizeParams({ subject: { type: 'app' } }, { subjectId: 'u_42' });
+  deepStrictEqual(coerced, { subject: { type: 'user', id: 'u_42' } });
+});
+
+test('buildAuthorizeParams leaves user subject untouched', () => {
+  const params = { subject: { type: 'user', id: 'u_7' }, scopes: ['a'] };
+  deepStrictEqual(buildAuthorizeParams(params, {}), params);
 });
