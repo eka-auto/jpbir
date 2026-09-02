@@ -51,3 +51,5 @@ if ($LASTEXITCODE -ne 0) { Pop-Location; throw "channel-sandbox deploy failed" }
 Pop-Location
 
 Write-Host "Pipeline complete." -ForegroundColor Green
+
+# verification: 2026-09-03 04:11
