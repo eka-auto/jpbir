@@ -232,8 +232,8 @@ const handlers = {
   '/api/device-enroll': (await import('../../jayti-dashboard/api/device-enroll.js')).default,
   '/api/device-heartbeat': (await import('../../jayti-dashboard/api/device-heartbeat.js')).default,
   '/api/device-commands-poll': (await import('../../jayti-dashboard/api/device-commands-poll.js')).default,
-  '/api/device-command-claim': (await import('../../jayti-dashboard/api/device-command-claim.js')).default,
-  '/api/device-command-complete': (await import('../../jayti-dashboard/api/device-command-complete.js')).default,
+  '/api/device-command-claim': (await import('../../jayti-dashboard/api/broker-command-claim.js')).default,
+  '/api/device-command-complete': (await import('../../jayti-dashboard/api/broker-command-complete.js')).default,
 };
 
 function authorized(req) {

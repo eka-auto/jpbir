@@ -59,24 +59,20 @@
                          "destination":  "/api/check-stale.js"
                      },
                      {
-                         "source":  "/api/device-enroll",
-                         "destination":  "/api/device-enroll.js"
-                     },
-                     {
-                         "source":  "/api/device-heartbeat",
-                         "destination":  "/api/device-heartbeat.js"
-                     },
-                     {
-                         "source":  "/api/device-commands-poll",
-                         "destination":  "/api/device-commands-poll.js"
+                         "source":  "/api/device-command-claim",
+                         "destination":  "/api/broker-command-claim"
                      },
                      {
                          "source":  "/api/device-command-claim/:commandId",
-                         "destination":  "/api/device-command-claim.js?commandId=:commandId"
+                         "destination":  "/api/broker-command-claim"
+                     },
+                     {
+                         "source":  "/api/device-command-complete",
+                         "destination":  "/api/broker-command-complete"
                      },
                      {
                          "source":  "/api/device-command-complete/:commandId",
-                         "destination":  "/api/device-command-complete.js?commandId=:commandId"
+                         "destination":  "/api/broker-command-complete"
                      },
                      {
                          "source":  "/api/device/enroll",
@@ -92,11 +88,11 @@
                      },
                      {
                          "source":  "/api/device/commands/:commandId/claim",
-                         "destination":  "/api/device-command-claim?commandId=:commandId"
+                         "destination":  "/api/broker-command-claim"
                      },
                      {
                          "source":  "/api/device/commands/:commandId/complete",
-                         "destination":  "/api/device-command-complete?commandId=:commandId"
+                         "destination":  "/api/broker-command-complete"
                      }
                  ],
     "crons":  [

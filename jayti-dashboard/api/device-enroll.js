@@ -104,13 +104,17 @@ export default async function handler(req, res) {
       return sendError(res, 403, 'unknown enrollment code', 'enroll-code-unknown', { keyId: env.keyId });
     }
     const c = dec({ mapValue: { fields: codeDoc.fields } }) || {};
+    const configuredMaxAttempts = Number(c.maxAttempts);
+    const maxAttempts = Number.isSafeInteger(configuredMaxAttempts) && configuredMaxAttempts > 0
+      ? Math.min(configuredMaxAttempts, 5)
+      : 5;
 
     if (c.revoked) return sendError(res, 403, 'enrollment code revoked', 'enroll-code-revoked', { keyId: env.keyId });
     if (c.consumed) return sendError(res, 403, 'enrollment code already consumed', 'enroll-code-consumed', { keyId: env.keyId });
     if (c.expiresAt && Date.parse(c.expiresAt) < Date.now()) {
       return sendError(res, 403, 'enrollment code expired', 'enroll-code-expired', { keyId: env.keyId });
     }
-    if ((c.attempts || 0) >= 5) {
+    if ((c.attempts || 0) >= maxAttempts) {
       return sendError(res, 403, 'enrollment code attempt limit reached', 'enroll-code-attempts', { keyId: env.keyId });
     }
     if (c.deviceId !== deviceId) {
@@ -122,6 +126,7 @@ export default async function handler(req, res) {
       return sendError(res, 403, 'enrollment code requires a different key type', 'enroll-code-keytype-mismatch', { keyId: env.keyId, keyType });
     }
     if (keyType === 'software-p256' && c.allowSoftware !== true) {
+      await failAttempt(codeDoc, c.attempts);
       return sendError(res, 403, 'software keys require an explicit software-permitted code', 'enroll-software-key-rejected', { keyId: env.keyId });
     }
 

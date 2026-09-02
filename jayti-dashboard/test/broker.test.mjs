@@ -23,8 +23,8 @@ import {
 import { CANONICAL_PATH as ENROLL_PATH, isP256Pem } from '../api/device-enroll.js';
 import { CANONICAL_PATH as HEARTBEAT_PATH } from '../api/device-heartbeat.js';
 import { CANONICAL_PATH as POLL_PATH } from '../api/device-commands-poll.js';
-import { canonicalClaimPath } from '../api/device-command-claim.js';
-import { canonicalCompletePath } from '../api/device-command-complete.js';
+import { canonicalClaimPath } from '../api/broker-command-claim.js';
+import { canonicalCompletePath } from '../api/broker-command-complete.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -97,24 +97,23 @@ test('broker v2: every handler uses the flat canonical path contract', () => {
   strictEqual(canonicalCompletePath('c1'), '/api/device-command-complete/c1');
 });
 
-test('broker v2: Vercel exposes every flat wire route', () => {
+test('broker v2: Vercel maps command aliases away from filesystem collisions', () => {
   const rewrites = new Map(vercelConfig.rewrites.map(({ source, destination }) => [source, destination]));
-  deepStrictEqual(Object.fromEntries([
-    '/api/device-enroll',
-    '/api/device-heartbeat',
-    '/api/device-commands-poll',
-  ].map((source) => [source, rewrites.get(source)])), {
-    '/api/device-enroll': '/api/device-enroll.js',
-    '/api/device-heartbeat': '/api/device-heartbeat.js',
-    '/api/device-commands-poll': '/api/device-commands-poll.js',
-  });
+  strictEqual(
+    rewrites.get('/api/device-command-claim'),
+    '/api/broker-command-claim',
+  );
   strictEqual(
     rewrites.get('/api/device-command-claim/:commandId'),
-    '/api/device-command-claim.js?commandId=:commandId',
+    '/api/broker-command-claim',
+  );
+  strictEqual(
+    rewrites.get('/api/device-command-complete'),
+    '/api/broker-command-complete',
   );
   strictEqual(
     rewrites.get('/api/device-command-complete/:commandId'),
-    '/api/device-command-complete.js?commandId=:commandId',
+    '/api/broker-command-complete',
   );
 });
 

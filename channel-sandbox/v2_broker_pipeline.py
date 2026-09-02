@@ -444,6 +444,7 @@ def main():
             final_state = get_control_state(base_url, control_token)
             assert final_state["codes"]["valid"]["consumed"] is True
             assert final_state["codes"]["valid"]["attempts"] == 4
+            assert final_state["codes"]["software_blocked"]["attempts"] == 1
             assert final_state["codes"]["expired"]["consumed"] is False
             assert final_state["codes"]["exhausted"]["attempts"] == 5
             assert final_state["device"]["online"] is True
