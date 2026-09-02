@@ -20,7 +20,7 @@ import {
 export const config = { api: { bodyParser: false } };
 
 export function canonicalClaimPath(commandId) {
-  return `/api/device/commands/${commandId}/claim`;
+  return `/api/device-command-claim/${commandId}`;
 }
 
 export default async function handler(req, res) {

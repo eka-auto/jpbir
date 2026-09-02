@@ -20,7 +20,7 @@ export const config = { api: { bodyParser: false } };
 const RESULT_STATUS_MAP = { ok: 'completed', rejected: 'rejected', failed: 'failed', error: 'failed' };
 
 export function canonicalCompletePath(commandId) {
-  return `/api/device/commands/${commandId}/complete`;
+  return `/api/device-command-complete/${commandId}`;
 }
 
 export default async function handler(req, res) {

@@ -13,7 +13,7 @@ import {
 
 export const config = { api: { bodyParser: false } };
 
-const CANONICAL_PATH = '/api/device/commands/poll';
+export const CANONICAL_PATH = '/api/device-commands-poll';
 
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');

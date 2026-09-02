@@ -1,10 +1,9 @@
 {
   "description": "Broker v2 canonical envelope fixture (Python -> Node verify)",
-  "keyId": "1ca32a0db31a53f1bfacb85a377758cc",
-  "publicKeyPem": "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEG5+1fABZZ5ApPRJfB7qXXbHhC1j9\n1z3Vrk8d3fJXffk1Iv4M/wJZ26efYTcWrat8TUXUSgv/kx7uXES0lE/kdQ==\n-----END PUBLIC KEY-----\n",
-  "privateKeyPem": "-----BEGIN PRIVATE KEY-----\nMIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgVBEIlDI9uD2P8G7B\nprA/NhBfl2dc7XdD/xgCNADxCQWhRANCAAQbn7V8AFlnkCk9El8HupddseELWP3X\nPdWuTx3d8ld9+TUi/gz/Alnbp59hNxatq3xNRdRKC/+THu5cRLSUT+R1\n-----END PRIVATE KEY-----\n",
-  "canonical": "v2\n1ca32a0db31a53f1bfacb85a377758cc\nPOST\n/api/device/enroll\n1\n1725278400000\n550e8400-e29b-41d4-a716-446655440000\n6281a2c8f982b73219f0e8a68f97522fada2afc2d9758763823adb90a83e3c6f",
+  "keyId": "740588e51c728d60a14b3ec62c00ae13",
+  "publicKeyPem": "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE0GMXhhvbsZa1ZWypNMeIH0Sbi0CH\nmYT4OKEdXXjNqrNOTvaxn9GKAj7bumE6qG8MDEA4EM98TSyYEN9RmVcFRQ==\n-----END PUBLIC KEY-----\n",
+  "canonical": "v2\n740588e51c728d60a14b3ec62c00ae13\nPOST\n/api/device-enroll\n0\n1725278400000\n550e8400-e29b-41d4-a716-446655440000\n6281a2c8f982b73219f0e8a68f97522fada2afc2d9758763823adb90a83e3c6f",
   "bodySha256": "6281a2c8f982b73219f0e8a68f97522fada2afc2d9758763823adb90a83e3c6f",
-  "signatureBase64": "MEUCIHH8QZ/kT36i51DmQnPNGSo9C0iJt15WL7bY4Et3V730AiEA1iS5UCNSWMdN4vhwu0k7vnF6F/+tRACPCQ6DuEcPSQE=",
+  "signatureBase64": "MEUCIQDYYwmTbOgdUO86sg8qsJzYZ8gKgQRdvZxO4ktU3nX0TAIgIrxWZsnDPikTOPmHtkgxYsutA1wNhdeF+nvjolKRDJA=",
   "expectedVerify": true
 }

@@ -22,7 +22,7 @@ import {
 
 export const config = { api: { bodyParser: false } };
 
-const CANONICAL_PATH = '/api/device/enroll';
+export const CANONICAL_PATH = '/api/device-enroll';
 
 function isP256Pem(pem) {
   try {

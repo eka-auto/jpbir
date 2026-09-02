@@ -101,7 +101,7 @@ class TestBrokerClientEnvelope(unittest.TestCase):
             "v" + PROTO,
             key_id,
             "POST",
-            "/api/device/enroll",
+            "/api/device-enroll",
             str(seq),
             str(ts),
             rid,
@@ -124,7 +124,7 @@ class TestBrokerClientEnvelope(unittest.TestCase):
             signer = SoftwareP256Signer(Path(td) / "key.pem")
             client = BrokerClient("https://example.com", signer, "test-device", Path(td) / "state.json")
             with patch("broker_client.requests.post", side_effect=[requests.ConnectionError("lost"), Response()]) as post:
-                self.assertEqual(client._request("/api/device/heartbeat", {}), {"success": True})
+                self.assertEqual(client._request(WIRE_PATHS["heartbeat"], {}), {"success": True})
             first = post.call_args_list[0].kwargs["headers"]
             second = post.call_args_list[1].kwargs["headers"]
             self.assertEqual(first, second)
@@ -165,7 +165,7 @@ class TestBrokerClientEnvelope(unittest.TestCase):
                 ec.ECDSA(hashes.SHA256()),
             )
 
-    def test_command_wire_urls_keep_nested_canonical_paths(self):
+    def test_command_wire_urls_keep_flat_canonical_paths(self):
         class Response:
             status_code = 200
             text = ""
@@ -192,8 +192,8 @@ class TestBrokerClientEnvelope(unittest.TestCase):
                 "https://example.com/api/device-command-complete?commandId=command_1",
             )
             for call, canonical_path in (
-                (claim_call, "/api/device/commands/command_1/claim"),
-                (complete_call, "/api/device/commands/command_1/complete"),
+                (claim_call, "/api/device-command-claim/command_1"),
+                (complete_call, "/api/device-command-complete/command_1"),
             ):
                 headers = call.kwargs["headers"]
                 raw = call.kwargs["data"]

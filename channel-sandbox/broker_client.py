@@ -29,9 +29,9 @@ log = logging.getLogger("channel_sandbox.broker")
 PROTO = "2"
 
 CANONICAL_PATHS = {
-    "enroll": "/api/device/enroll",
-    "heartbeat": "/api/device/heartbeat",
-    "poll": "/api/device/commands/poll",
+    "enroll": "/api/device-enroll",
+    "heartbeat": "/api/device-heartbeat",
+    "poll": "/api/device-commands-poll",
 }
 
 WIRE_PATHS = {
@@ -192,7 +192,7 @@ class BrokerClient:
         return self._request(
             f"/api/device-command-claim?commandId={encoded_id}",
             {"workerSessionId": worker_session_id},
-            canonical_path=f"/api/device/commands/{command_id}/claim",
+            canonical_path=f"/api/device-command-claim/{command_id}",
         )
 
     def complete(self, command_id, claim_token, result):
@@ -200,5 +200,5 @@ class BrokerClient:
         return self._request(
             f"/api/device-command-complete?commandId={encoded_id}",
             {"claimToken": claim_token, "result": result},
-            canonical_path=f"/api/device/commands/{command_id}/complete",
+            canonical_path=f"/api/device-command-complete/{command_id}",
         )

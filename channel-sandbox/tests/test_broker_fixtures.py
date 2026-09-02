@@ -14,7 +14,6 @@ from pathlib import Path
 
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
-from cryptography.hazmat.primitives.asymmetric.utils import encode_dss_signature
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -26,12 +25,7 @@ def main():
     private_key = ec.generate_private_key(ec.SECP256R1())
     public_key = private_key.public_key()
 
-    # Export PEMs
-    priv_pem = private_key.private_bytes(
-        encoding=serialization.Encoding.PEM,
-        format=serialization.PrivateFormat.PKCS8,
-        encryption_algorithm=serialization.NoEncryption(),
-    ).decode("ascii")
+    # Export only the public key. Test private material is never persisted.
     pub_pem = public_key.public_bytes(
         encoding=serialization.Encoding.PEM,
         format=serialization.PublicFormat.SubjectPublicKeyInfo,
@@ -47,14 +41,14 @@ def main():
     # Canonical envelope string
     body = b'{"code":"deadbeef12345678deadbeef12345678","deviceId":"g4g-lenovo-laptop","publicKeyPem":"...","keyType":"tpm-cng-p256","attestation":{},"hardware":{"manufacturer":"LENOVO","model":"82KA"}}'
     body_sha256 = hashlib.sha256(body).hexdigest()
-    seq = 1
+    seq = 0
     timestamp = 1725278400000  # fixed epoch for reproducibility
     request_id = "550e8400-e29b-41d4-a716-446655440000"
     canonical = "\n".join([
         "v2",
         key_id,
         "POST",
-        "/api/device/enroll",
+        "/api/device-enroll",
         str(seq),
         str(timestamp),
         request_id,
@@ -69,7 +63,6 @@ def main():
         "description": "Broker v2 canonical envelope fixture (Python -> Node verify)",
         "keyId": key_id,
         "publicKeyPem": pub_pem,
-        "privateKeyPem": priv_pem,
         "canonical": canonical,
         "bodySha256": body_sha256,
         "signatureBase64": signature_b64,

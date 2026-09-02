@@ -20,7 +20,11 @@ import {
   verifyP256,
   verifySignerAttestation,
 } from '../lib/broker.js';
-import { isP256Pem } from '../api/device-enroll.js';
+import { CANONICAL_PATH as ENROLL_PATH, isP256Pem } from '../api/device-enroll.js';
+import { CANONICAL_PATH as HEARTBEAT_PATH } from '../api/device-heartbeat.js';
+import { CANONICAL_PATH as POLL_PATH } from '../api/device-commands-poll.js';
+import { canonicalClaimPath } from '../api/device-command-claim.js';
+import { canonicalCompletePath } from '../api/device-command-complete.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -55,7 +59,7 @@ test('broker v2: exact envelope accepts ECDSA P-256 DER signatures', () => {
   const bodySha256 = createHash('sha256').update(rawBody).digest('hex');
   const timestamp = Date.now();
   const requestId = '550e8400-e29b-41d4-a716-446655440000';
-  const path = '/api/device/heartbeat';
+  const path = '/api/device-heartbeat';
   const canonical = canonicalString({
     keyId,
     method: 'POST',
@@ -82,6 +86,14 @@ test('broker v2: exact envelope accepts ECDSA P-256 DER signatures', () => {
   strictEqual(env.error, undefined);
   strictEqual(env.canonical, canonical);
   strictEqual(verifyP256(publicKeyPem, env.canonical, env.signature), true);
+});
+
+test('broker v2: every handler uses the flat canonical path contract', () => {
+  strictEqual(ENROLL_PATH, '/api/device-enroll');
+  strictEqual(HEARTBEAT_PATH, '/api/device-heartbeat');
+  strictEqual(POLL_PATH, '/api/device-commands-poll');
+  strictEqual(canonicalClaimPath('c1'), '/api/device-command-claim/c1');
+  strictEqual(canonicalCompletePath('c1'), '/api/device-command-complete/c1');
 });
 
 test('broker v2: Firestore document fields use the REST document shape', () => {
@@ -156,13 +168,13 @@ test('broker v2: production signer metadata fails closed', () => {
 test('broker v2: command results are idempotent only for the same signed request', () => {
   const env = { requestId: 'request-1', seq: 8, bodySha256: 'body-hash' };
   const body = { success: true, claimToken: 'token' };
-  const recentResults = rememberIdempotentResult({}, env, '/api/device/commands/c1/claim', 200, body);
+  const recentResults = rememberIdempotentResult({}, env, '/api/device-command-claim/c1', 200, body);
   deepStrictEqual(
-    findIdempotentResult({ recentResults }, env, '/api/device/commands/c1/claim'),
+    findIdempotentResult({ recentResults }, env, '/api/device-command-claim/c1'),
     { status: 200, body },
   );
   deepStrictEqual(
-    findIdempotentResult({ recentResults }, { ...env, bodySha256: 'changed' }, '/api/device/commands/c1/claim'),
+    findIdempotentResult({ recentResults }, { ...env, bodySha256: 'changed' }, '/api/device-command-claim/c1'),
     { error: 'requestId was reused with a different signed request' },
   );
 });
