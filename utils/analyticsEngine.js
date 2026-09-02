@@ -3,16 +3,22 @@ const path = require('path');
 
 class AnalyticsEngine {
   constructor() {
-    this.dbPath = path.join(__dirname, '..', 'data', 'analytics.db');
+    // Vercel serverless only allows writes under /tmp; locally we keep using ./data
+    const isVercel = process.env.VERCEL === '1';
+    this.dataDir = process.env.DATA_DIR || (isVercel ? '/tmp/data' : path.join(__dirname, '..', 'data'));
+    this.dbPath = path.join(this.dataDir, 'analytics.db');
     this.initializeDatabase();
   }
 
   initializeDatabase() {
     // Ensure data directory exists
     const fs = require('fs');
-    const dataDir = path.join(__dirname, '..', 'data');
-    if (!fs.existsSync(dataDir)) {
-      fs.mkdirSync(dataDir, { recursive: true });
+    if (!fs.existsSync(this.dataDir)) {
+      try {
+        fs.mkdirSync(this.dataDir, { recursive: true });
+      } catch (err) {
+        console.error('Error creating analytics data directory:', this.dataDir, err);
+      }
     }
 
     this.db = new sqlite3.Database(this.dbPath, (err) => {

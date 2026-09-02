@@ -338,8 +338,12 @@ app.use((req, res) => {
   res.status(404).json({ error: 'Not Found' });
 });
 
-// Start server
-const server = app.listen(PORT, () => {
+// Export for Vercel serverless / local tests
+module.exports = app;
+
+// Start server only when run directly (npm start / node server.js)
+if (require.main === module) {
+  const server = app.listen(PORT, () => {
   console.log(`
   =============================================
   Visitor Analytics Agent Started Successfully!
@@ -405,3 +409,4 @@ process.on('SIGINT', () => {
     process.exit(0);
   });
 });
+}
