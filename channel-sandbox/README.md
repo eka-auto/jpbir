@@ -10,6 +10,7 @@ Isolated dev scaffold for a device-to-dashboard channel. It uses the local Fires
 - run_agent.bat               per-device launch script (single-instance guard)
 - start_dashboard.bat         dashboard launcher
 - e2e_engineering_sandbox_test.py    live emulator end-to-end verification
+- v2_broker_pipeline.py       one-command v2 broker protocol pipeline
 
 ## What is NOT in here
 
@@ -18,6 +19,21 @@ Isolated dev scaffold for a device-to-dashboard channel. It uses the local Fires
 - No production collection writes
 
 ## How to run
+
+### Broker v2 pipeline (recommended)
+
+From this directory, run:
+
+    py -3.12 v2_broker_pipeline.py
+
+This imports the production Vercel handlers behind a localhost HTTP adapter,
+emulates OAuth and Firestore transactions in memory, and drives the handlers
+with the real Python broker client and `device_agent.py --once`. It verifies
+signed enrollment, code gates, raw-body hashing, P-256 DER signatures,
+sequence/requestId replay handling, polling, leases, idempotent retries, and
+command completion. It does not use cloud credentials or contact Firestore.
+
+### Legacy Firestore emulator scaffold
 
   1. Install dependencies with `C:\Users\abcom\AppData\Local\Programs\Python\Python312\python.exe -m pip install -r requirements.txt`.
   2. Start the Firestore emulator on `127.0.0.1:8080`.

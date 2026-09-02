@@ -190,7 +190,7 @@ class BrokerClient:
     def claim(self, command_id, worker_session_id):
         encoded_id = quote(command_id, safe="")
         return self._request(
-            f"/api/device-command-claim?commandId={encoded_id}",
+            f"/api/device-command-claim/{encoded_id}",
             {"workerSessionId": worker_session_id},
             canonical_path=f"/api/device-command-claim/{command_id}",
         )
@@ -198,7 +198,7 @@ class BrokerClient:
     def complete(self, command_id, claim_token, result):
         encoded_id = quote(command_id, safe="")
         return self._request(
-            f"/api/device-command-complete?commandId={encoded_id}",
+            f"/api/device-command-complete/{encoded_id}",
             {"claimToken": claim_token, "result": result},
             canonical_path=f"/api/device-command-complete/{command_id}",
         )

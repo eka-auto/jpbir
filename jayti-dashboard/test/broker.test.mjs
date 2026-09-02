@@ -30,6 +30,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const fixturePath = join(__dirname, '..', '..', 'channel-sandbox', 'tests', 'fixtures', 'python_to_node.json');
 const fixture = JSON.parse(readFileSync(fixturePath, 'utf-8'));
+const vercelConfig = JSON.parse(readFileSync(join(__dirname, '..', 'vercel.json'), 'utf-8'));
 
 test('broker v2: Python-generated signature verifies in Node', () => {
   const { publicKeyPem, canonical, signatureBase64, expectedVerify, keyId } = fixture;
@@ -94,6 +95,27 @@ test('broker v2: every handler uses the flat canonical path contract', () => {
   strictEqual(POLL_PATH, '/api/device-commands-poll');
   strictEqual(canonicalClaimPath('c1'), '/api/device-command-claim/c1');
   strictEqual(canonicalCompletePath('c1'), '/api/device-command-complete/c1');
+});
+
+test('broker v2: Vercel exposes every flat wire route', () => {
+  const rewrites = new Map(vercelConfig.rewrites.map(({ source, destination }) => [source, destination]));
+  deepStrictEqual(Object.fromEntries([
+    '/api/device-enroll',
+    '/api/device-heartbeat',
+    '/api/device-commands-poll',
+  ].map((source) => [source, rewrites.get(source)])), {
+    '/api/device-enroll': '/api/device-enroll.js',
+    '/api/device-heartbeat': '/api/device-heartbeat.js',
+    '/api/device-commands-poll': '/api/device-commands-poll.js',
+  });
+  strictEqual(
+    rewrites.get('/api/device-command-claim/:commandId'),
+    '/api/device-command-claim.js?commandId=:commandId',
+  );
+  strictEqual(
+    rewrites.get('/api/device-command-complete/:commandId'),
+    '/api/device-command-complete.js?commandId=:commandId',
+  );
 });
 
 test('broker v2: Firestore document fields use the REST document shape', () => {

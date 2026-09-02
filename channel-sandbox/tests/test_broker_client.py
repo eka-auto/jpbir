@@ -185,11 +185,11 @@ class TestBrokerClientEnvelope(unittest.TestCase):
 
             self.assertEqual(
                 claim_call.args[0],
-                "https://example.com/api/device-command-claim?commandId=command_1",
+                "https://example.com/api/device-command-claim/command_1",
             )
             self.assertEqual(
                 complete_call.args[0],
-                "https://example.com/api/device-command-complete?commandId=command_1",
+                "https://example.com/api/device-command-complete/command_1",
             )
             for call, canonical_path in (
                 (claim_call, "/api/device-command-claim/command_1"),
