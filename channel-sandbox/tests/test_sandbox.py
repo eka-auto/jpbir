@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sys
 import tempfile
 import threading
@@ -271,6 +272,27 @@ class AgentAndGuardTests(unittest.TestCase):
                 device_agent.main()
         self.assertEqual(caught.exception.code, 2)
         acquire.assert_not_called()
+
+    def test_broker_launchers_share_guard_beside_broker_state(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            state = root / "shared" / "device.broker-state.json"
+            configs = []
+            for name in ("task", "startup"):
+                config = root / name / "devices.json"
+                config.parent.mkdir()
+                config.write_text(
+                    json.dumps({
+                        "transport": "broker",
+                        "broker_state_file": str(state),
+                    }),
+                    encoding="utf-8",
+                )
+                configs.append(config)
+
+            paths = [device_agent.guard_pidfile(config, "device-1") for config in configs]
+            self.assertEqual(paths[0], paths[1])
+            self.assertEqual(paths[0], state.parent / "logs" / "device-1.pid")
 
 
 if __name__ == "__main__":

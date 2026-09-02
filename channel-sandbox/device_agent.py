@@ -175,7 +175,13 @@ def run(config_path, device_id, single_iteration=False):
         raise SystemExit(f"device id not found in config: {device_id}")
 
     if cfg.get("transport", "firestore") == "broker":
-        run_broker(cfg, Path(config_path), device_id, device_cfg, single_iteration)
+        run_broker(
+            cfg,
+            Path(config_path).resolve().parent,
+            device_id,
+            device_cfg,
+            single_iteration,
+        )
         return
 
     from firestore_client import FirestoreClient
@@ -221,7 +227,9 @@ def _find_enrollment_code(cfg, config_dir):
     code = os.environ.get("EKA_ENROLLMENT_CODE", "").strip()
     if code:
         return code, None
-    code_file = Path(cfg.get("enrollment_code_file") or (config_dir / "enrollment_code.txt"))
+    code_file = Path(cfg.get("enrollment_code_file") or "enrollment_code.txt")
+    if not code_file.is_absolute():
+        code_file = config_dir / code_file
     if code_file.exists():
         return code_file.read_text(encoding="utf-8").strip(), code_file
     return None, None
@@ -229,7 +237,9 @@ def _find_enrollment_code(cfg, config_dir):
 
 def run_broker(cfg, config_dir, device_id, device_cfg, single_iteration):
     signer = make_signer(cfg)
-    state_path = Path(cfg.get("broker_state_file") or (config_dir / f"{device_id}.broker-state.json"))
+    state_path = Path(cfg.get("broker_state_file") or f"{device_id}.broker-state.json")
+    if not state_path.is_absolute():
+        state_path = config_dir / state_path
     client = BrokerClient(cfg["broker_url"], signer, device_id, state_path)
     hb_interval = cfg["heartbeat_interval_seconds"]
     poll_interval = cfg["command_poll_interval_seconds"]
@@ -387,6 +397,22 @@ def process_command_queue(client, collection, device_id, allowed):
         client.update_command_queue_entries(collection, device_id, updates)
 
 
+def guard_pidfile(config_path, device_id):
+    """Use the broker-state directory so launchers share one process guard."""
+    default = Path(__file__).resolve().parent / "logs" / f"{device_id}.pid"
+    try:
+        config_file = Path(config_path).resolve()
+        cfg = json.loads(config_file.read_text(encoding="utf-8"))
+        if cfg.get("transport") != "broker" or not cfg.get("broker_state_file"):
+            return default
+        state_path = Path(os.path.expandvars(cfg["broker_state_file"])).expanduser()
+        if not state_path.is_absolute():
+            state_path = config_file.parent / state_path
+        return state_path.resolve().parent / "logs" / f"{device_id}.pid"
+    except (OSError, ValueError, TypeError):
+        return default
+
+
 def main():
     p = argparse.ArgumentParser(description="Channel-sandbox device agent")
     p.add_argument("config", help="path to devices.json")
@@ -407,8 +433,7 @@ def main():
         force=True,
     )
 
-    here = Path(__file__).resolve().parent
-    pidfile = here / "logs" / f"{args.device_id}.pid"
+    pidfile = guard_pidfile(args.config, args.device_id)
 
     guarded = not args.once
     if guarded:
