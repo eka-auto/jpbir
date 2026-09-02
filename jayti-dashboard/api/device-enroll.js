@@ -25,13 +25,14 @@ const CANONICAL_PATH = '/api/device/enroll';
 function isP256Pem(pem) {
   try {
     const key = crypto.createPublicKey(pem);
-    const detail = key.asymmetricKeyType;
-    if (detail === 'ec') return true;
-    return false;
+    const curve = key.asymmetricKeyDetails && key.asymmetricKeyDetails.namedCurve;
+    return key.asymmetricKeyType === 'ec' && ['prime256v1', 'secp256r1', 'P-256'].includes(curve);
   } catch {
     return false;
   }
 }
+
+export { isP256Pem };
 
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');

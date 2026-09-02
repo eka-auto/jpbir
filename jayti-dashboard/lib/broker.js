@@ -93,6 +93,37 @@ export function enc(v) {
   return { stringValue: String(v) };
 }
 
+export function encodeDocumentFields(values) {
+  const fields = {};
+  for (const [key, value] of Object.entries(values || {})) fields[key] = enc(value);
+  return fields;
+}
+
+export function expandFieldPaths(values) {
+  const expanded = {};
+  for (const [fieldPath, value] of Object.entries(values || {})) {
+    const parts = fieldPath.split('.');
+    if (parts.some((part) => !part || ['__proto__', 'prototype', 'constructor'].includes(part))) {
+      throw new Error(`invalid Firestore field path: ${fieldPath}`);
+    }
+    let cursor = expanded;
+    for (const part of parts.slice(0, -1)) {
+      if (Object.prototype.hasOwnProperty.call(cursor, part) &&
+          (typeof cursor[part] !== 'object' || cursor[part] === null || Array.isArray(cursor[part]))) {
+        throw new Error(`conflicting Firestore field path: ${fieldPath}`);
+      }
+      if (!Object.prototype.hasOwnProperty.call(cursor, part)) cursor[part] = {};
+      cursor = cursor[part];
+    }
+    const leaf = parts.at(-1);
+    if (Object.prototype.hasOwnProperty.call(cursor, leaf)) {
+      throw new Error(`duplicate Firestore field path: ${fieldPath}`);
+    }
+    cursor[leaf] = value;
+  }
+  return expanded;
+}
+
 export function dec(v) {
   if (!v) return null;
   if ('stringValue' in v) return v.stringValue;
@@ -136,7 +167,7 @@ export async function fsPatch(path, fields, precondition) {
   const r = await fsFetch(`${path}?${qs}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ fields: enc(fields) }),
+    body: JSON.stringify({ fields: encodeDocumentFields(expandFieldPaths(fields)) }),
   });
   if (r.status === 409 || r.status === 412) {
     const err = new Error('firestore precondition conflict');
@@ -154,7 +185,7 @@ export async function fsCreateAutoId(collection, fields) {
   const r = await fetch(`${baseUri()}/${collection}`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ fields: enc(fields) }),
+    body: JSON.stringify({ fields: encodeDocumentFields(fields) }),
   });
   if (!r.ok) throw new Error('firestore create failed: ' + (await r.text()).slice(0, 300));
   return r.json();
@@ -179,7 +210,7 @@ export async function fsCommit(transaction, writes) {
     const out = { ...w };
     out.update = {
       name: `${baseUri()}/${w.path}`,
-      fields: enc(w.fields),
+      fields: encodeDocumentFields(expandFieldPaths(w.fields)),
     };
     if (w.updateMask) out.updateMask = { fieldPaths: w.updateMask };
     if (w.precondition && w.precondition.updateTime) {

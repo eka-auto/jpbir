@@ -60,23 +60,23 @@
                      },
                      {
                          "source":  "/api/device/enroll",
-                         "destination":  "/api/device-enroll.js"
+                         "destination":  "/api/device-enroll"
                      },
                      {
                          "source":  "/api/device/heartbeat",
-                         "destination":  "/api/device-heartbeat.js"
+                         "destination":  "/api/device-heartbeat"
                      },
                      {
                          "source":  "/api/device/commands/poll",
-                         "destination":  "/api/device-commands-poll.js"
+                         "destination":  "/api/device-commands-poll"
                      },
                      {
                          "source":  "/api/device/commands/:commandId/claim",
-                         "destination":  "/api/device-command-claim.js"
+                         "destination":  "/api/device-command-claim?commandId=:commandId"
                      },
                      {
                          "source":  "/api/device/commands/:commandId/complete",
-                         "destination":  "/api/device-command-complete.js"
+                         "destination":  "/api/device-command-complete?commandId=:commandId"
                      }
                  ],
     "crons":  [

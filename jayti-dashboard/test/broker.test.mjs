@@ -4,6 +4,11 @@ import { fileURLToPath } from 'url';
 import { createVerify, createPublicKey, createHash } from 'crypto';
 import { test } from 'node:test';
 import { strictEqual } from 'node:assert';
+import { deepStrictEqual, throws } from 'node:assert';
+import { generateKeyPairSync } from 'node:crypto';
+
+import { encodeDocumentFields, expandFieldPaths } from '../lib/broker.js';
+import { isP256Pem } from '../api/device-enroll.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -27,4 +32,41 @@ test('broker v2: keyId derivation matches Python', () => {
   const derived = createHash('sha256').update(der).digest('hex').slice(0, 32);
   strictEqual(derived, keyId, 'keyId derivation mismatch');
   console.log(`✓ keyId derivation matches: ${keyId}`);
+});
+
+test('broker v2: Firestore document fields use the REST document shape', () => {
+  const expanded = expandFieldPaths({
+    'enrollment.seq': 7,
+    'enrollment.lastRequestIds': ['request-1'],
+    online: true,
+  });
+  deepStrictEqual(expanded, {
+    enrollment: { seq: 7, lastRequestIds: ['request-1'] },
+    online: true,
+  });
+  deepStrictEqual(encodeDocumentFields(expanded), {
+    enrollment: {
+      mapValue: {
+        fields: {
+          seq: { integerValue: 7 },
+          lastRequestIds: { arrayValue: { values: [{ stringValue: 'request-1' }] } },
+        },
+      },
+    },
+    online: { booleanValue: true },
+  });
+});
+
+test('broker v2: conflicting or unsafe Firestore field paths fail closed', () => {
+  throws(() => expandFieldPaths({ enrollment: 1, 'enrollment.seq': 2 }), /conflicting/);
+  throws(() => expandFieldPaths({ '__proto__.polluted': true }), /invalid/);
+});
+
+test('broker v2: enrollment accepts P-256 and rejects other EC curves', () => {
+  const p256 = generateKeyPairSync('ec', { namedCurve: 'prime256v1' }).publicKey
+    .export({ type: 'spki', format: 'pem' });
+  const p384 = generateKeyPairSync('ec', { namedCurve: 'secp384r1' }).publicKey
+    .export({ type: 'spki', format: 'pem' });
+  strictEqual(isP256Pem(p256), true);
+  strictEqual(isP256Pem(p384), false);
 });
