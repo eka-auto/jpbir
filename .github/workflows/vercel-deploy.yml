@@ -30,7 +30,7 @@ jobs:
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
         run: |
-          vercel deploy --prod --yes --token ${{ secrets.VERCEL_TOKEN }} > deploy_out.txt 2>&1
+          vercel --prod --yes --token ${{ secrets.VERCEL_TOKEN }} > deploy_out.txt 2>&1
           cat deploy_out.txt
           DEPLOY_URL=$(grep -oE 'https://[a-z0-9-]+\.vercel\.app' deploy_out.txt | head -1)
           echo "DEPLOY_URL=$DEPLOY_URL" >> $GITHUB_ENV
