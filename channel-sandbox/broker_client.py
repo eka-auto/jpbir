@@ -18,6 +18,7 @@ import logging
 import time
 import uuid
 from pathlib import Path
+from urllib.parse import quote
 
 import requests
 
@@ -26,6 +27,18 @@ from signer import SignerError, key_id_from_pem
 log = logging.getLogger("channel_sandbox.broker")
 
 PROTO = "2"
+
+CANONICAL_PATHS = {
+    "enroll": "/api/device/enroll",
+    "heartbeat": "/api/device/heartbeat",
+    "poll": "/api/device/commands/poll",
+}
+
+WIRE_PATHS = {
+    "enroll": "/api/device-enroll",
+    "heartbeat": "/api/device-heartbeat",
+    "poll": "/api/device-commands-poll",
+}
 
 
 class BrokerError(RuntimeError):
@@ -105,32 +118,33 @@ class BrokerClient:
             "X-Signature": base64.b64encode(signature).decode("ascii"),
         }
 
-    def _request(self, path, body_obj, seq=None):
+    def _request(self, wire_path, body_obj, seq=None, canonical_path=None):
+        canonical_path = canonical_path or wire_path
         raw = json.dumps(body_obj, separators=(",", ":"), sort_keys=True).encode("utf-8")
         if seq is None:
             seq = self._next_seq()
-        url = f"{self.base_url}{path}"
+        url = f"{self.base_url}{wire_path}"
         last_exc = None
         timestamp = int(time.time() * 1000)
         request_id = str(uuid.uuid4())
-        headers = self._headers(path, seq, raw, timestamp=timestamp, request_id=request_id)
+        headers = self._headers(canonical_path, seq, raw, timestamp=timestamp, request_id=request_id)
         for attempt in range(3):
             try:
                 resp = requests.post(url, data=raw, headers=headers, timeout=self.timeout)
                 if resp.status_code in (401, 403):
                     raise BrokerAuthError(
-                        f"{path} rejected: {resp.status_code} {resp.text[:200]}",
+                        f"{canonical_path} rejected: {resp.status_code} {resp.text[:200]}",
                         status=resp.status_code,
                     )
                 if resp.status_code >= 400:
                     raise BrokerError(
-                        f"{path} failed: {resp.status_code} {resp.text[:200]}",
+                        f"{canonical_path} failed: {resp.status_code} {resp.text[:200]}",
                         status=resp.status_code,
                     )
                 return resp.json()
             except requests.RequestException as e:
                 last_exc = e
-                log.warning("broker request %s attempt %s failed: %s", path, attempt, e)
+                log.warning("broker request %s attempt %s failed: %s", canonical_path, attempt, e)
                 time.sleep(0.5 * (attempt + 1))
         raise BrokerError(f"broker unreachable after 3 attempts: {url} ({last_exc})")
 
@@ -145,8 +159,12 @@ class BrokerClient:
             "attestation": attestation or self.signer.attestation(),
             "hardware": hardware,
         }
-        # Use direct function path (rewrite may not be applied)
-        result = self._request("/api/device-enroll", body, seq=0)
+        result = self._request(
+            WIRE_PATHS["enroll"],
+            body,
+            seq=0,
+            canonical_path=CANONICAL_PATHS["enroll"],
+        )
         self._state["enrolled"] = True
         self._state["keyId"] = result.get("keyId", self.key_id)
         self._save_state()
@@ -156,17 +174,31 @@ class BrokerClient:
         body = {"hardware": hardware}
         if telemetry:
             body["telemetry"] = telemetry
-        return self._request("/api/device-heartbeat", body)
+        return self._request(
+            WIRE_PATHS["heartbeat"],
+            body,
+            canonical_path=CANONICAL_PATHS["heartbeat"],
+        )
 
     def poll(self):
-        return self._request("/api/device-commands-poll", {})
+        return self._request(
+            WIRE_PATHS["poll"],
+            {},
+            canonical_path=CANONICAL_PATHS["poll"],
+        )
 
     def claim(self, command_id, worker_session_id):
-        return self._request(f"/api/device-command-claim/{command_id}",
+        encoded_id = quote(command_id, safe="")
+        return self._request(
+            f"/api/device-command-claim?commandId={encoded_id}",
             {"workerSessionId": worker_session_id},
+            canonical_path=f"/api/device/commands/{command_id}/claim",
         )
 
     def complete(self, command_id, claim_token, result):
-        return self._request(f"/api/device-command-complete/{command_id}",
+        encoded_id = quote(command_id, safe="")
+        return self._request(
+            f"/api/device-command-complete?commandId={encoded_id}",
             {"claimToken": claim_token, "result": result},
+            canonical_path=f"/api/device/commands/{command_id}/complete",
         )

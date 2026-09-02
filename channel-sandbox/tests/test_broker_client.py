@@ -2,6 +2,7 @@
 """Unit tests for broker v2 signer and client."""
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import tempfile
@@ -10,9 +11,12 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 import requests
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
 
 from signer import SoftwareP256Signer, WindowsCngSigner, ec_public_key_from_xy, key_id_from_pem
-from broker_client import BrokerClient, BrokerError, PROTO
+from broker_client import BrokerClient, BrokerError, CANONICAL_PATHS, PROTO, WIRE_PATHS
 
 
 class TestSoftwareSigner(unittest.TestCase):
@@ -33,9 +37,11 @@ class TestSoftwareSigner(unittest.TestCase):
         signer = SoftwareP256Signer(tempfile.mktemp(suffix=".pem"))
         data = b"v2\nkeyid\nPOST\n/api/test\n1\n1234567890\nreq-id\nabcdef"
         sig = signer.sign(data)
-        # DER signature length varies; just check it's valid DER
         self.assertGreater(len(sig), 8)
         self.assertLessEqual(len(sig), 72)
+        r, s = decode_dss_signature(sig)
+        self.assertGreater(r, 0)
+        self.assertGreater(s, 0)
 
     def test_key_id_stability(self):
         signer = SoftwareP256Signer(tempfile.mktemp(suffix=".pem"))
@@ -122,6 +128,90 @@ class TestBrokerClientEnvelope(unittest.TestCase):
             first = post.call_args_list[0].kwargs["headers"]
             second = post.call_args_list[1].kwargs["headers"]
             self.assertEqual(first, second)
+
+    def test_direct_wire_path_is_signed_with_canonical_v2_path(self):
+        class Response:
+            status_code = 200
+            text = ""
+
+            @staticmethod
+            def json():
+                return {"success": True}
+
+        with tempfile.TemporaryDirectory() as td:
+            signer = SoftwareP256Signer(Path(td) / "key.pem")
+            client = BrokerClient("https://example.com", signer, "test-device", Path(td) / "state.json")
+            with patch("broker_client.requests.post", return_value=Response()) as post:
+                client.heartbeat({"manufacturer": "test"})
+
+            call = post.call_args
+            self.assertEqual(call.args[0], f"https://example.com{WIRE_PATHS['heartbeat']}")
+            headers = call.kwargs["headers"]
+            raw = call.kwargs["data"]
+            canonical = "\n".join([
+                "v" + PROTO,
+                headers["X-Key-Id"],
+                "POST",
+                CANONICAL_PATHS["heartbeat"],
+                headers["X-Device-Seq"],
+                headers["X-Timestamp"],
+                headers["X-Request-Id"],
+                hashlib.sha256(raw).hexdigest(),
+            ])
+            public_key = serialization.load_pem_public_key(signer.public_key_pem().encode("ascii"))
+            public_key.verify(
+                base64.b64decode(headers["X-Signature"]),
+                canonical.encode("utf-8"),
+                ec.ECDSA(hashes.SHA256()),
+            )
+
+    def test_command_wire_urls_keep_nested_canonical_paths(self):
+        class Response:
+            status_code = 200
+            text = ""
+
+            @staticmethod
+            def json():
+                return {"success": True}
+
+        with tempfile.TemporaryDirectory() as td:
+            signer = SoftwareP256Signer(Path(td) / "key.pem")
+            client = BrokerClient("https://example.com", signer, "test-device", Path(td) / "state.json")
+            with patch("broker_client.requests.post", return_value=Response()) as post:
+                client.claim("command_1", "worker-1")
+                claim_call = post.call_args
+                client.complete("command_1", "0" * 32, {"status": "ok"})
+                complete_call = post.call_args
+
+            self.assertEqual(
+                claim_call.args[0],
+                "https://example.com/api/device-command-claim?commandId=command_1",
+            )
+            self.assertEqual(
+                complete_call.args[0],
+                "https://example.com/api/device-command-complete?commandId=command_1",
+            )
+            for call, canonical_path in (
+                (claim_call, "/api/device/commands/command_1/claim"),
+                (complete_call, "/api/device/commands/command_1/complete"),
+            ):
+                headers = call.kwargs["headers"]
+                raw = call.kwargs["data"]
+                canonical = "\n".join([
+                    "v" + PROTO,
+                    headers["X-Key-Id"],
+                    "POST",
+                    canonical_path,
+                    headers["X-Device-Seq"],
+                    headers["X-Timestamp"],
+                    headers["X-Request-Id"],
+                    hashlib.sha256(raw).hexdigest(),
+                ])
+                serialization.load_pem_public_key(signer.public_key_pem().encode("ascii")).verify(
+                    base64.b64decode(headers["X-Signature"]),
+                    canonical.encode("utf-8"),
+                    ec.ECDSA(hashes.SHA256()),
+                )
 
 
 if __name__ == "__main__":
