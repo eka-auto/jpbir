@@ -7,11 +7,11 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import requests
 
-from signer import SoftwareP256Signer, ec_public_key_from_xy, key_id_from_pem
+from signer import SoftwareP256Signer, WindowsCngSigner, ec_public_key_from_xy, key_id_from_pem
 from broker_client import BrokerClient, BrokerError, PROTO
 
 
@@ -50,6 +50,21 @@ class TestSoftwareSigner(unittest.TestCase):
         numbers = signer._key.public_key().public_numbers()
         rebuilt = ec_public_key_from_xy(format(numbers.x, "x"), format(numbers.y, "x"))
         self.assertEqual(rebuilt.public_numbers(), numbers)
+
+
+class TestWindowsCngSigner(unittest.TestCase):
+    def test_helper_passes_operation_and_key_name_via_environment(self):
+        signer = WindowsCngSigner.__new__(WindowsCngSigner)
+        signer.key_name = "EKA-TEST-KEY"
+        completed = Mock(returncode=0, stdout=b"exists\r\n", stderr=b"")
+        with patch("signer.subprocess.run", return_value=completed) as run:
+            self.assertEqual(signer._run("exists"), "exists")
+
+        command = run.call_args.args[0]
+        self.assertEqual(command[-2], "-Command")
+        self.assertNotIn("exists", command)
+        self.assertEqual(run.call_args.kwargs["env"]["EKA_CNG_OP"], "exists")
+        self.assertEqual(run.call_args.kwargs["env"]["EKA_CNG_KEY_NAME"], "EKA-TEST-KEY")
 
 
 class TestBrokerClientEnvelope(unittest.TestCase):

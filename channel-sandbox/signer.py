@@ -21,6 +21,7 @@ import base64
 import hashlib
 import json
 import logging
+import os
 import shutil
 import subprocess
 import sys
@@ -36,8 +37,11 @@ _POWERSHELL = shutil.which("powershell") or "powershell"
 
 _CNG_HELPER = r"""
 $ErrorActionPreference = 'Stop'
-$op = $args[0]
-$keyName = $args[1]
+$op = $env:EKA_CNG_OP
+$keyName = $env:EKA_CNG_KEY_NAME
+if ([string]::IsNullOrWhiteSpace($op) -or [string]::IsNullOrWhiteSpace($keyName)) {
+  throw 'CNG operation and key name are required'
+}
 $platform = [System.Security.Cryptography.CngProvider]::new('Microsoft Platform Crypto Provider')
 switch ($op) {
   'exists' {
@@ -48,14 +52,15 @@ switch ($op) {
   }
   'create' {
     $params = New-Object System.Security.Cryptography.CngKeyCreationParameters
+    $params.Provider = $platform
     $params.KeyUsage = [System.Security.Cryptography.CngKeyUsages]::Signing
-    $k = [System.Security.Cryptography.CngKey]::Create([System.Security.Cryptography.CngAlgorithm]::ECDsaP256, $keyName, $platform, $params)
+    $params.ExportPolicy = [System.Security.Cryptography.CngExportPolicies]::None
+    $k = [System.Security.Cryptography.CngKey]::Create([System.Security.Cryptography.CngAlgorithm]::ECDsaP256, $keyName, $params)
     Write-Output 'created'
   }
   'pubkey' {
     $k = [System.Security.Cryptography.CngKey]::Open($keyName, $platform)
-    $e = New-Object System.Security.Cryptography.ECDsaCng($k)
-    Write-Output ([Convert]::ToBase64String($e.ExportSubjectPublicKeyInfo()))
+    Write-Output ([Convert]::ToBase64String($k.Export([System.Security.Cryptography.CngKeyBlobFormat]::EccPublicBlob)))
   }
   'sign' {
     $b64 = [Console]::In.ReadToEnd().Trim()
@@ -134,13 +139,17 @@ class WindowsCngSigner:
         self._ensure_key()
 
     def _run(self, op, stdin_b64=None):
-        cmd = [_POWERSHELL, "-NoProfile", "-NonInteractive", "-Command", _CNG_HELPER, op, self.key_name]
+        cmd = [_POWERSHELL, "-NoProfile", "-NonInteractive", "-Command", _CNG_HELPER]
+        env = os.environ.copy()
+        env["EKA_CNG_OP"] = op
+        env["EKA_CNG_KEY_NAME"] = self.key_name
         try:
             out = subprocess.run(
                 cmd,
                 input=stdin_b64.encode("ascii") if stdin_b64 else None,
                 capture_output=True,
                 timeout=30,
+                env=env,
             )
         except (OSError, subprocess.SubprocessError) as e:
             raise SignerError(f"CNG helper failed to run: {e}") from e
@@ -159,9 +168,17 @@ class WindowsCngSigner:
 
     def public_key_pem(self):
         if self._pubkey_pem is None:
-            spki_b64 = self._run("pubkey")
-            der = base64.b64decode(spki_b64)
-            self._pubkey_pem = serialization.load_der_public_key(der).public_bytes(
+            blob = base64.b64decode(self._run("pubkey"), validate=True)
+            if len(blob) < 8:
+                raise SignerError("CNG returned an invalid ECC public blob")
+            coordinate_size = int.from_bytes(blob[4:8], "little")
+            if coordinate_size != 32 or len(blob) != 8 + (coordinate_size * 2):
+                raise SignerError("CNG key is not ECDSA P-256")
+            key = ec_public_key_from_xy(
+                blob[8:8 + coordinate_size].hex(),
+                blob[8 + coordinate_size:].hex(),
+            )
+            self._pubkey_pem = key.public_bytes(
                 encoding=serialization.Encoding.PEM,
                 format=serialization.PublicFormat.SubjectPublicKeyInfo,
             ).decode("ascii")
