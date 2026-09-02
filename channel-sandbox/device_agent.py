@@ -19,12 +19,42 @@ from pathlib import Path
 
 import psutil
 
+from broker_client import BrokerAuthError, BrokerClient, BrokerError
 from firestore_client import FirestoreClient, decode_value
+from signer import make_signer
 from single_instance import GuardHeldError, acquire_guard, release_guard
 
 log = logging.getLogger("channel_sandbox.agent")
 
 _SW = {'creationflags': 0x08000000} if platform.system() == 'Windows' else {}
+
+
+def collect_hardware_identity():
+    """Collect hardware identity for enrollment verification."""
+    identity = {
+        "hostname": socket.gethostname(),
+        "os": platform.system(),
+    }
+    if platform.system() == "Windows":
+        try:
+            out = subprocess.run(
+                ['powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command',
+                 'Get-CimInstance Win32_ComputerSystem | Select-Object -First 1 Manufacturer,Model | ConvertTo-Json -Compress'],
+                capture_output=True, text=True, timeout=10, encoding='utf-8', errors='replace', **_SW
+            )
+            if out.returncode == 0 and out.stdout.strip():
+                data = json.loads(out.stdout)
+                identity["manufacturer"] = data.get("Manufacturer", "")
+                identity["model"] = data.get("Model", "")
+        except Exception as e:
+            log.warning("hardware identity collection failed: %s", e)
+    else:
+        try:
+            out = subprocess.run(['getprop', 'ro.product.model'], capture_output=True, text=True, timeout=5, **_SW)
+            identity["model"] = out.stdout.strip()
+        except Exception:
+            pass
+    return identity
 
 
 def collect_network():
@@ -129,6 +159,10 @@ def run(config_path, device_id, single_iteration=False):
     if device_cfg is None:
         raise SystemExit(f"device id not found in config: {device_id}")
 
+    if cfg.get("transport", "firestore") == "broker":
+        run_broker(cfg, Path(config_path), device_id, device_cfg, single_iteration)
+        return
+
     client = FirestoreClient(
         project=cfg["project"],
         database=cfg["database"],
@@ -164,6 +198,118 @@ def run(config_path, device_id, single_iteration=False):
         except Exception as e:
             log.warning("command poll failed: %s", e)
         time.sleep(min(poll_interval, max(1.0, hb_interval - (now - last_hb))))
+
+
+def _find_enrollment_code(cfg, config_dir):
+    code = os.environ.get("EKA_ENROLLMENT_CODE", "").strip()
+    if code:
+        return code, None
+    code_file = Path(cfg.get("enrollment_code_file") or (config_dir / "enrollment_code.txt"))
+    if code_file.exists():
+        return code_file.read_text(encoding="utf-8").strip(), code_file
+    return None, None
+
+
+def run_broker(cfg, config_dir, device_id, device_cfg, single_iteration):
+    signer = make_signer(cfg)
+    state_path = Path(cfg.get("broker_state_file") or (config_dir / f"{device_id}.broker-state.json"))
+    client = BrokerClient(cfg["broker_url"], signer, device_id, state_path)
+    hb_interval = cfg["heartbeat_interval_seconds"]
+    poll_interval = cfg["command_poll_interval_seconds"]
+    allowed = cfg.get("allowed_commands", [])
+    worker_session = f"{socket.gethostname()}-{os.getpid()}-{int(time.time())}"
+
+    if not client.enrolled:
+        code, code_file = _find_enrollment_code(cfg, config_dir)
+        if not code:
+            raise SystemExit(
+                "device is not enrolled and no enrollment code was found "
+                "(set EKA_ENROLLMENT_CODE or place enrollment_code.txt next to the config)"
+            )
+        hardware = collect_hardware_identity()
+        result = client.enroll(code, hardware)
+        if code_file is not None:
+            try:
+                code_file.unlink()
+            except OSError:
+                pass
+        log.info("enrolled with broker: keyId=%s", result.get("keyId"))
+
+    log.info("starting broker device=%s hb=%ss poll=%ss", device_id, hb_interval, poll_interval)
+
+    def one_heartbeat():
+        hardware = collect_hardware_identity()
+        telemetry = {
+            "deviceId": device_id,
+            "canonicalDeviceId": device_id,
+            "deviceDisplayName": device_cfg.get("display_name", device_id),
+            "deviceRole": device_cfg.get("role", "unknown"),
+            "deviceType": "laptop",
+            "connectionMethod": "channel-sandbox-broker",
+            "agentVersion": "channel-sandbox-2.0",
+            "heartbeatIntervalSeconds": hb_interval,
+            "local": collect_local_status(),
+        }
+        try:
+            telemetry["network"] = collect_network()
+        except Exception as e:
+            log.warning("network collection failed, heartbeat continues: %s", e)
+        client.heartbeat(hardware, telemetry)
+        log.debug("broker heartbeat sent for %s", device_id)
+
+    def one_poll():
+        polled = client.poll()
+        for cmd in polled.get("commands", []):
+            cmd_id = cmd["commandId"]
+            action = cmd.get("action", "")
+            try:
+                if action not in allowed:
+                    if cmd.get("state") == "lease-expired":
+                        continue
+                    claimed = client.claim(cmd_id, worker_session)
+                    client.complete(cmd_id, claimed["claimToken"], {
+                        "status": "rejected",
+                        "error": f"action not allowed: {action}",
+                        "ts": datetime.now(timezone.utc).isoformat(),
+                    })
+                    log.info("command %s rejected on %s: action not allowed", cmd_id, device_id)
+                    continue
+                claimed = client.claim(cmd_id, worker_session)
+                outcome = handle_command(action, claimed.get("payload") or {})
+                status = outcome["status"] if outcome["status"] in ("ok", "rejected", "failed", "error") else "failed"
+                client.complete(cmd_id, claimed["claimToken"], {
+                    "status": status,
+                    **(outcome["result"] or {}),
+                    "completedAt": outcome["completed_at"],
+                })
+                log.info("command %s executed on %s: %s", cmd_id, device_id, status)
+            except BrokerError as e:
+                if e.status == 409:
+                    log.info("command %s skipped (conflict/lease): %s", cmd_id, e)
+                else:
+                    log.warning("command %s processing failed: %s", cmd_id, e)
+
+    if single_iteration:
+        one_heartbeat()
+        one_poll()
+        return
+
+    last_hb = 0.0
+    while True:
+        try:
+            now = time.time()
+            if now - last_hb >= hb_interval:
+                one_heartbeat()
+                last_hb = now
+            one_poll()
+        except BrokerAuthError as e:
+            log.error("broker rejected this device key (revoked, superseded, or re-enrollment required): %s", e)
+            raise SystemExit(3)
+        except BrokerError as e:
+            log.warning("broker iteration failed: %s", e)
+        except Exception as e:
+            log.warning("iteration failed: %s", e)
+        time.sleep(min(poll_interval, max(1.0, hb_interval - (time.time() - last_hb))))
 
 
 def send_heartbeat(client, collection, device_id, device_cfg, local, hb_interval=45):
