@@ -15,7 +15,10 @@ class GuardHeldError(RuntimeError):
 def cmdline_matches(tokens, device_id):
     """Return whether tokenized process arguments identify this exact agent."""
     return (
-        any(os.path.basename(token).lower() == "device_agent.py" for token in tokens)
+        any(
+            os.path.basename(token.replace("\\", "/")).lower() == "device_agent.py"
+            for token in tokens
+        )
         and device_id in tokens
     )
 
