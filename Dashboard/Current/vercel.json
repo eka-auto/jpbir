@@ -19,6 +19,14 @@
                 ],
     "rewrites":  [
                      {
+                         "source":  "/",
+                         "destination":  "/frontend/index.html"
+                     },
+                     {
+                         "source":  "/jp-tracker.js",
+                         "destination":  "/frontend/jp-tracker.js"
+                     },
+                     {
                          "source":  "/api/stats",
                          "destination":  "/api/stats.js"
                      },
