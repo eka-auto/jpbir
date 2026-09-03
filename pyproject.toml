@@ -1,88 +1,12 @@
-[build-system]
-requires = ["setuptools>=68.0", "wheel"]
-build-backend = "setuptools.build_meta"
-
-[project]
-name = "personal-folder-agent"
-version = "0.1.0"
-description = "A personalized AI agent fine-tuned on your personal folder structure and content"
-readme = "README.md"
-license = {text = "MIT"}
-requires-python = ">=3.8"
-authors = [
-    {name = "Personal Folder Agent Team"}
-]
-keywords = ["ai", "agent", "fine-tuning", "qwen", "personal-data"]
-classifiers = [
-    "Development Status :: 3 - Alpha",
-    "Intended Audience :: Developers",
-    "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.8",
-    "Programming Language :: Python :: 3.9",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
-    "Programming Language :: Python :: 3.12",
-    "Topic :: Scientific/Engineering :: Artificial Intelligence",
-]
-
-dependencies = [
-    "transformers>=4.45.0",
-    "accelerate>=0.30.0",
-    "trl>=0.10.0",
-    "tiktoken>=0.7.0",
-    "sentence-transformers>=3.0.0",
-    "datasets>=2.18.0",
-    "langchain-text-splitters>=0.2.0",
-    "torch>=2.1.0",
-    "pdfplumber>=0.11.0",
-    "python-docx>=0.8.11",
-    "openpyxl>=3.1.0",
-    "python-pptx>=0.6.23",
-    "pandas>=2.0.0",
-    "google-auth>=2.0.0",
-    "google-auth-oauthlib>=1.0.0",
-    "google-auth-httplib2>=0.1.0",
-    "cryptography>=42.0.0",
-    "pyyaml>=6.0.0",
-]
-
-[project.optional-dependencies]
-web = [
-    "fastapi>=0.110.0",
-    "uvicorn>=0.29.0",
-]
-dev = [
-    "pytest>=7.0.0",
-    "pytest-cov>=4.0.0",
-    "pytest-mock>=3.10.0",
-    "mypy>=1.0.0",
-]
-
-[project.scripts]
-personal-folder-agent = "personal_folder_agent.cli:main"
-
-[project.urls]
-Homepage = "https://github.com/personal-folder-agent"
-Repository = "https://github.com/personal-folder-agent"
-
-[tool.setuptools.packages.find]
-where = ["."]
-include = ["personal_folder_agent*"]
+# Root tooling config. The personal_folder_agent package was removed;
+# this now only configures test/lint tooling for the remaining Sandbox tests.
 
 [tool.pytest.ini_options]
-testpaths = ["tests", "personal_folder_agent/tests"]
-addopts = "--cov=personal_folder_agent --cov-report=term-missing"
+testpaths = ["Sandbox/Configuration/tests"]
+addopts = ""
 
 [tool.mypy]
 python_version = "3.8"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
-
-[tool.coverage.run]
-source = ["personal_folder_agent"]
-omit = ["*/tests/*", "*/test_*"]
-
-[tool.coverage.report]
-fail_under = 80
-show_missing = true
