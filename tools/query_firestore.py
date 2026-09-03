@@ -112,8 +112,8 @@ except ImportError:
         token = data['access_token']
         print(f"[OK] OAuth token obtained")
 
-# Query Firestore
-base_url = f"https://firestore.googleapis.com/v1/projects/{project_id}/databases/(default)/documents"
+# Query Firestore (dashboard reads the eka-agent named database, NOT default)
+base_url = f"https://firestore.googleapis.com/v1/projects/{project_id}/databases/eka-agent/documents"
 headers = {'Authorization': f'Bearer {token}'}
 
 print(f"\n{'='*60}")
@@ -227,7 +227,7 @@ create_url = f"{base_url}:commit"
 commit_body = {
     "writes": [{
         "update": {
-            "name": f"projects/{project_id}/databases/(default)/documents/devices/samsung-s24-ultra",
+            "name": f"projects/{project_id}/databases/eka-agent/documents/devices/samsung-s24-ultra",
             "fields": device_data["fields"]
         }
     }]

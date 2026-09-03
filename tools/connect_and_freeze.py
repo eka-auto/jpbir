@@ -54,10 +54,12 @@ def init_firebase():
     project_id = cred.project_id
     print(f"[OK] Project ID: {project_id}")
     
+    # Connect to the eka-agent named database (dashboard reads eka-agent, not default)
     try:
         app = firebase_admin.initialize_app(credential=cred, options={})
-        print(f"[OK] Connected to Firestore")
-        return firestore.client(app), project_id
+        db = firestore.client(app, database_id="eka-agent")
+        print(f"[OK] Connected to Firestore database: eka-agent")
+        return db, project_id
     except Exception as e:
         print(f"[ERROR] Failed to initialize Firebase: {e}")
         return None, None
@@ -71,18 +73,23 @@ def connect_device(db, device_id, display_name, device_type="phone", online=True
     
     device_ref = db.collection("devices").document(device_id)
     doc = device_ref.get()
-    
+    now_iso = datetime.now(timezone.utc).isoformat()
+
     if doc.exists:
-        print(f"[INFO] Device '{device_id}' already exists")
-        data = doc.to_dict()
-        print(f"  Current state:")
+        # Device already enrolled: refresh heartbeat so it shows online.
+        print(f"[INFO] Device '{device_id}' already exists - refreshing heartbeat")
+        device_ref.update({
+            "online": online,
+            "lastSeen": now_iso,
+            "updatedAt": now_iso,
+        })
+        data = device_ref.get().to_dict()
+        print(f"  Updated state:")
         print(f"    Display: {data.get('deviceDisplayName', 'N/A')}")
         print(f"    Online: {data.get('online', False)}")
         print(f"    Last Seen: {data.get('lastSeen', 'N/A')}")
         return True, data
-    
-    now_iso = datetime.now(timezone.utc).isoformat()
-    
+
     device_data = {
         "deviceId": device_id,
         "deviceDisplayName": display_name,

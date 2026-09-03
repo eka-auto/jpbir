@@ -35,6 +35,17 @@
     .live-dot { width: 8px; height: 8px; border-radius: 50%; background: #4CAF50;
         box-shadow: 0 0 8px rgba(76,175,80,.9); animation: pulse 1.8s ease-in-out infinite; }
     .live-dot.off { background: #888; box-shadow: none; animation: none; }
+
+    .status-light { width: 22px; height: 22px; border-radius: 50%; flex: none;
+        background: #888; box-shadow: none; }
+    .status-light.green { background: #2ea043; box-shadow: 0 0 14px rgba(46,160,67,.9);
+        animation: pulse 1.2s ease-in-out infinite; }
+    .status-light.red { background: #c83c3c; box-shadow: 0 0 10px rgba(200,60,60,.7); }
+    .diag { margin-top: 14px; padding: 12px 16px; border-radius: 10px; font-size: 13px; line-height: 1.55; }
+    .diag.ok { background: rgba(46,160,67,.10); border: 1px solid rgba(46,160,67,.35); color: #22633a; }
+    .diag.bad { background: rgba(200,60,60,.08); border: 1px solid rgba(200,60,60,.35); color: #8c2f2f; }
+    .diag .diag-title { font-weight: 700; letter-spacing: .5px; text-transform: uppercase; font-size: 11px; margin-bottom: 4px; }
+    .diag code { font-family: var(--mono); font-size: 12px; background: rgba(0,0,0,.06); padding: 1px 6px; border-radius: 5px; }
     @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
     .topbar a { font-size: 12.5px; color: #F4E9DC; text-decoration: none; padding: 7px 12px;
         border: 1px solid rgba(240,185,104,.3); border-radius: 9px; }
@@ -106,6 +117,15 @@
         <div>
             <h1>Samsung S24 Ultra</h1>
             <div class="sub">SM-S928B · Device ID: samsung-s24-ultra · Primary phone</div>
+        </div>
+        <div class="spacer"></div>
+        <div class="status-light" id="statusLight" title="Device connection light"></div>
+    </div>
+
+    <div class="panel">
+        <div class="diag" id="diagBox" style="margin-top:0">
+            <div class="diag-title" id="diagTitle">Checking device connection…</div>
+            <div id="diagBody">Querying Firestore device state.</div>
         </div>
     </div>
 
@@ -207,6 +227,15 @@
 
     var _deviceData = null;
 
+    function setLight(green, title, bodyHtml) {
+        var light = $('statusLight');
+        light.className = 'status-light ' + (green ? 'green' : 'red');
+        var box = $('diagBox');
+        box.className = 'diag ' + (green ? 'ok' : 'bad');
+        $('diagTitle').textContent = title;
+        $('diagBody').innerHTML = bodyHtml;
+    }
+
     function loadLive() {
         if (!KEY) { showGate(); return; }
         $('liveHint').textContent = 'Loading live device state…';
@@ -221,12 +250,31 @@
                     $('liveDetail').innerHTML = '<div class="state">Device not found in Firestore. Waiting for first heartbeat…</div>';
                     $('liveDot').classList.add('off');
                     $('liveText').textContent = 'OFFLINE';
+                    setLight(false, 'Device not connected',
+                        'No document for <code>samsung-s24-ultra</code> in Firestore <code>eka-agent/devices</code>. ' +
+                        'Fix: run the connect script once — <code>python Dashboard/S24/tools/connect_and_freeze.py --device samsung-s24-ultra --display "Samsung S24 Ultra"</code>');
                     return;
                 }
                 _deviceData = dev;
                 var live = dev.live;
                 $('liveDot').classList.toggle('off', !live);
                 $('liveText').textContent = live ? 'LIVE' : 'OFFLINE';
+
+                var threshold = 3 * (dev.heartbeatIntervalSeconds || 45);
+                if (live) {
+                    setLight(true, 'Device connected — ONLINE',
+                        'Heartbeat received ' + (dev.lastSeenAgeSeconds != null ? dev.lastSeenAgeSeconds + 's ago' : 'just now') +
+                        ' (live threshold ' + threshold + 's). Green light blinks while the phone daemon keeps heartbeating.');
+                } else if (!dev.lastSeen) {
+                    setLight(false, 'Device registered but never heartbeated',
+                        '<code>lastSeen</code> is empty — the S24 phone daemon (<code>s24_phone_direct_cloud.py</code>) has never published to Firestore. ' +
+                        'Fix: start the daemon in Termux on the phone (see <code>Sandbox/S24/</code>), or run the connect script for a one-time sync.');
+                } else {
+                    setLight(false, 'Device OFFLINE — heartbeat stale',
+                        'Last heartbeat ' + (dev.lastSeenAgeSeconds != null ? dev.lastSeenAgeSeconds + 's' : '?') + ' ago exceeds the ' +
+                        threshold + 's live threshold. The phone daemon stopped checking in. ' +
+                        'Fix: start <code>s24_phone_direct_cloud.py</code> in Termux, or re-run the connect script.');
+                }
 
                 $('kpiStatus').textContent = live ? 'LIVE' : 'OFFLINE';
                 $('kpiStatus').className = 'value ' + (live ? 'good' : 'bad');
@@ -260,7 +308,11 @@
                 renderNetwork(dev);
                 renderQueue(dev);
             })
-            .catch(function (e) { $('liveHint').textContent = 'Error: ' + e.message; });
+            .catch(function (e) {
+                $('liveHint').textContent = 'Error: ' + e.message;
+                setLight(false, 'Failed to load device state',
+                    'Could not query the dashboard API: <code>' + esc(e.message) + '</code>. Check that a valid stats key is set and the API is deployed.');
+            });
     }
 
     function renderNetwork(dev) {

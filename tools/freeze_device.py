@@ -65,16 +65,13 @@ def init_firebase():
     project_id = cred.project_id
     print(f"[+] Project ID: {project_id}")
     
-    # Try to initialize app
+    # Initialize app and connect to the eka-agent named database
+    # (the dashboard reads eka-agent, NOT the default database)
     db_name = "eka-agent"
     try:
-        # Initialize with explicit project ID
         app = firebase_admin.initialize_app(credential=cred, options={})
-        print(f"[+] Connected to Firestore (default database)")
-        db = firestore.client(app)
-        # Verify we can access the eka-agent database
-        devices_ref = db.collection("devices")
-        print(f"[+] Using database: {db_name}")
+        db = firestore.client(app, database_id=db_name)
+        print(f"[+] Connected to Firestore database: {db_name}")
         return db
     except Exception as e:
         print(f"[!] Failed to initialize Firebase: {e}")
