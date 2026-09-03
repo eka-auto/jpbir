@@ -1,0 +1,232 @@
+<style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        background: #1a1a2e;
+        color: #eee;
+        padding: 2rem;
+        line-height: 1.6;
+    }
+    .container { max-width: 1400px; margin: 0 auto; }
+    h1 { color: #00d9ff; margin-bottom: 0.5rem; }
+    .subtitle { color: #888; margin-bottom: 2rem; }
+    
+    .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 1rem;
+        margin: 2rem 0;
+    }
+    .stat-card {
+        background: #16213e;
+        border-radius: 8px;
+        padding: 1.5rem;
+        border-left: 4px solid #00d9ff;
+    }
+    .stat-card.danger { border-left-color: #ff4757; }
+    .stat-card.warning { border-left-color: #ffa502; }
+    .stat-card.success { border-left-color: #2ed573; }
+    .stat-number { font-size: 2rem; font-weight: bold; color: #00d9ff; }
+    .stat-label { color: #888; font-size: 0.9rem; }
+    
+    .phase {
+        background: #16213e;
+        border-radius: 8px;
+        padding: 1.5rem;
+        margin: 1.5rem 0;
+    }
+    .phase h2 { color: #00d9ff; margin-bottom: 1rem; }
+    .phase.complete { border: 1px solid #2ed573; }
+    
+    .file-list {
+        background: #0f0f23;
+        border-radius: 4px;
+        padding: 1rem;
+        max-height: 400px;
+        overflow-y: auto;
+        font-family: 'Consolas', monospace;
+        font-size: 0.85rem;
+    }
+    .file-item {
+        padding: 0.5rem;
+        border-bottom: 1px solid #222;
+        word-break: break-all;
+    }
+    .file-item:last-child { border-bottom: none; }
+    .tree-tag {
+        display: inline-block;
+        padding: 0.2rem 0.5rem;
+        border-radius: 3px;
+        font-size: 0.75rem;
+        margin-left: 0.5rem;
+        white-space: nowrap;
+    }
+    .tree-tag.eka { background: #0066cc; }
+    .tree-tag.clean { background: #00cc66; }
+    .tree-tag.main { background: #cc6600; }
+    .tree-tag.runner { background: #cc0066; }
+    
+    .action-btn {
+        background: #00d9ff;
+        color: #1a1a2e;
+        border: none;
+        padding: 0.75rem 1.5rem;
+        border-radius: 4px;
+        font-weight: bold;
+        cursor: pointer;
+        margin: 0.5rem 0.5rem 0 0;
+    }
+    .action-btn:hover { background: #00b8d4; }
+    .action-btn.danger { background: #ff4757; color: white; }
+    .action-btn.danger:hover { background: #ff3838; }
+    
+    .category-summary {
+        display: flex;
+        gap: 1rem;
+        flex-wrap: wrap;
+        margin: 1rem 0;
+    }
+    .category-pill {
+        background: #0f0f23;
+        padding: 0.5rem 1rem;
+        border-radius: 20px;
+        font-size: 0.85rem;
+    }
+    .category-pill span { color: #00d9ff; font-weight: bold; }
+</style>
+
+<div class="container">
+    <h1>🔧 Stale Firestore DB Fix Dashboard</h1>
+    <p class="subtitle">Generated 2026-09-03 • Project: intrepid-stage-495117-q1 • Canonical DB: <strong>eka-agent</strong></p>
+    
+    <div class="stats-grid">
+        <div class="stat-card danger">
+            <div class="stat-number">161</div>
+            <div class="stat-label">Safe to Delete</div>
+        </div>
+        <div class="stat-card warning">
+            <div class="stat-number">345</div>
+            <div class="stat-label">Needs Fix</div>
+        </div>
+        <div class="stat-card warning">
+            <div class="stat-number">428</div>
+            <div class="stat-label">Needs Review</div>
+        </div>
+        <div class="stat-card success">
+            <div class="stat-number">106</div>
+            <div class="stat-label">Already Correct</div>
+        </div>
+    </div>
+    
+    <div class="phase complete">
+        <h2>✓ Phase 2a Complete: Config Defaults</h2>
+        <p>Fixed <code>claude_sdk_unified_config.py</code> in all 4 trees — default database now <code>eka-agent</code></p>
+        <div class="file-list">
+            <div class="file-item">github-repos/eka-agent/claude_sdk_unified_config.py <span class="tree-tag eka">eka-agent</span></div>
+            <div class="file-item">Go4Garage/eka-agent-clean/claude_sdk_unified_config.py <span class="tree-tag clean">eka-agent-clean</span></div>
+            <div class="file-item">Downloads/eka_agent_extract/eka-agent-main/claude_sdk_unified_config.py <span class="tree-tag main">eka-agent-main</span></div>
+            <div class="file-item">Go4Garage/Eka Runner/claude_sdk_unified_config.py <span class="tree-tag runner">Eka Runner</span></div>
+        </div>
+        <p style="margin-top: 1rem; color: #2ed573;">
+            <strong>Change:</strong> <code>database_id="swarn"</code> → <code>database_id="eka-agent"</code>
+        </p>
+    </div>
+    
+    <div class="phase">
+        <h2>⏳ Phase 1: Safe Deletions (161 files)</h2>
+        <div class="category-summary">
+            <div class="category-pill">DESTRUCTIVE: <span>~28</span></div>
+            <div class="category-pill">BUILD/SCRATCH: <span>~133</span></div>
+        </div>
+        <p style="margin-bottom: 1rem; color: #888;">Destructive scripts targeting dead databases + build intermediates</p>
+        <div class="file-list" id="delete-list">Loading deletion list...</div>
+        <button class="action-btn danger" onclick="showDeleteConfirmation()">Delete Selected Files</button>
+    </div>
+    
+    <div class="phase">
+        <h2>⏳ Phase 2b: Firebase Config Files</h2>
+        <div class="category-summary">
+            <div class="category-pill">CONFIG: <span id="config-count">~84</span></div>
+        </div>
+        <p style="margin-bottom: 1rem; color: #888;">Update firebase.json and config/firebase/*.json files</p>
+        <div class="file-list" id="config-list">Loading config files...</div>
+        <button class="action-btn" onclick="showFixPreview()">Preview Fixes</button>
+    </div>
+    
+    <div class="phase">
+        <h2>⏳ Phase 3: Case-by-Case Review</h2>
+        <div class="category-summary">
+            <div class="category-pill">NEEDS_REVIEW: <span>428</span></div>
+        </div>
+        <p style="margin-bottom: 1rem; color: #888;">OPS scripts, documentation, tests - needs human review</p>
+        <button class="action-btn" onclick="showReviewInterface()">Review with AI</button>
+    </div>
+</div>
+
+<script>
+    // Load data from audit report
+    fetch('stale_db_audit_report.json')
+        .then(r => r.json())
+        .then(data => {
+            // Populate delete list
+            const deleteList = document.getElementById('delete-list');
+            const safeToDelete = data['SAFE_TO_DELETE'] || [];
+            
+            if (safeToDelete.length === 0) {
+                deleteList.innerHTML = '<div class="file-item" style="color: #ffa502">No files loaded. Run stale_db_audit.py first.</div>';
+            } else {
+                deleteList.innerHTML = safeToDelete.slice(0, 100).map(f => `
+                    <div class="file-item">
+                        ${f.file_path.split('\\').slice(-3).join('\\')}
+                        <span class="tree-tag ${getTreeClass(f.tree)}">${f.tree}</span>
+                        <span style="color: #888; margin-left: 0.5rem">${f.category}</span>
+                    </div>
+                `).join('') + (safeToDelete.length > 100 ? `<div class="file-item" style="color: #888">... and ${safeToDelete.length - 100} more</div>` : '');
+            }
+            
+            // Populate config list
+            const configList = document.getElementById('config-list');
+            const needsFix = data['NEEDS_FIX'] || [];
+            const configFiles = needsFix.filter(f => f.category === 'CONFIG');
+            document.getElementById('config-count').textContent = configFiles.length;
+            
+            if (configFiles.length === 0) {
+                configList.innerHTML = '<div class="file-item" style="color: #ffa502">No files loaded. Run stale_db_audit.py first.</div>';
+            } else {
+                configList.innerHTML = configFiles.slice(0, 100).map(f => `
+                    <div class="file-item">
+                        ${f.file_path.split('\\').slice(-3).join('\\')}
+                        <span class="tree-tag ${getTreeClass(f.tree)}">${f.tree}</span>
+                        <span style="color: #888; margin-left: 0.5rem">${f.stale_dbs ? Object.keys(f.stale_dbs).join(', ') : ''}</span>
+                    </div>
+                `).join('') + (configFiles.length > 100 ? `<div class="file-item" style="color: #888">... and ${configFiles.length - 100} more</div>` : '');
+            }
+        })
+        .catch(err => {
+            console.error('Failed to load audit report:', err);
+            document.getElementById('delete-list').innerHTML = '<div class="file-item" style="color: #ff4757">Failed to load stale_db_audit_report.json. Run stale_db_audit.py first.</div>';
+            document.getElementById('config-list').innerHTML = '<div class="file-item" style="color: #ff4757">Failed to load audit report.</div>';
+        });
+    
+    function getTreeClass(treeName) {
+        const map = {
+            'eka-agent': 'eka',
+            'eka-agent-clean': 'clean',
+            'eka-agent-main': 'main',
+            'Eka Runner': 'runner'
+        };
+        return map[treeName] || 'eka';
+    }
+    
+    function showDeleteConfirmation() {
+        alert('⚠️ DELETION PREVIEW\n\nThis would delete 161 files:\n- 28 DESTRUCTIVE scripts (target dead DBs)\n- 133 BUILD/SCRATCH intermediates\n\nImplement with:\n1. Checkbox selection UI\n2. Dry-run preview\n3. Confirmation dialog\n4. Actual deletion with rollback option');
+    }
+    
+    function showFixPreview() {
+        alert('🔧 CONFIG FIX PREVIEW\n\nThis would update ~84 config files:\n- firebase.json files\n- config/firebase/*.json files\n- DEPLOYMENT_CONFIG.json\n\nChange: "swarn"/"eka-validation"/etc → "eka-agent"\n\nImplement with:\n1. Side-by-side diff preview\n2. Batch apply with backup\n3. Verify after edit');
+    }
+    
+    function showReviewInterface() {
+        alert('🤖 AI REVIEW INTERFACE\n\nThis would open vscode-office AI to:\n1. Load NEEDS_REVIEW files\n2. Classify: keep+fix vs delete\n3. Suggest edits for OPS scripts\n4. Flag documentation updates\n\nImplement by integrating with vditor AI dialog');
+    }
+</script>
