@@ -4,6 +4,3 @@
 [submodule "eka-runner"]
 	path = eka-runner
 	url = https://github.com/jaytipargal/eka-runner.git
-[submodule "ccl_chromium_reader"]
-	path = ccl_chromium_reader
-	url = https://github.com/jaytipargal/ccl_chromium_reader.git
