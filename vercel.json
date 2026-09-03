@@ -1,0 +1,16 @@
+{
+  "version": 2,
+  "builds": [
+    { "src": "channel-sandbox/dashboard_api.py", "use": "@vercel/python" }
+  ],
+  "routes": [
+    {
+      "src": "/api/(.*)",
+      "dest": "channel-sandbox/dashboard_api.py"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "channel-sandbox/dashboard/index.html"
+    }
+  ]
+}
