@@ -199,6 +199,53 @@ def api_device_status(device_id):
     return jsonify({"deviceId": device_id, "status": status})
 
 
+DATA_SUBCOLLECTIONS = {
+    "whatsapp": "whatsappMedia",
+    "calls": "callLogs",
+    "sms": "sms",
+    "contacts": "contacts",
+}
+
+
+@app.get("/api/data/<kind>")
+def api_data(kind):
+    """Return the latest collected records for a device data kind.
+
+    The S24 daemon persists collected records as subcollection documents
+    under each device document (callLogs, sms, contacts, whatsappMedia).
+    This endpoint reads those subcollections and returns the newest
+    ``limit`` records (default 50) across all configured devices.
+    """
+    subcollection = DATA_SUBCOLLECTIONS.get(kind)
+    if subcollection is None:
+        return jsonify({"error": f"unknown data kind: {kind}"}), 404
+    try:
+        limit = int(request.args.get("limit", 50))
+    except ValueError:
+        return jsonify({"error": "limit must be an integer"}), 400
+    limit = max(1, min(limit, 200))
+
+    cfg = app.config["SANDBOX_CFG"]
+    client = app.config["FIRESTORE"]
+    collection = cfg["collection"]
+    records = []
+    for dev in cfg["devices"]:
+        try:
+            docs = client.list_docs(collection, dev["id"], subcollection, limit=limit)
+        except Exception as exc:  # noqa: BLE001 - one device must not break the rest
+            log.warning("data read failed for %s/%s: %s", dev["id"], subcollection, exc)
+            continue
+        for doc in docs:
+            doc["deviceId"] = dev["id"]
+            records.append(doc)
+
+    def sort_key(rec):
+        return rec.get("backed_up_at") or rec.get("date") or ""
+
+    records.sort(key=sort_key, reverse=True)
+    return jsonify({"data": records[:limit]})
+
+
 @app.post("/api/devices/<device_id>/commands")
 def api_post_command(device_id):
     cfg = app.config["SANDBOX_CFG"]

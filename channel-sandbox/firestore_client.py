@@ -144,6 +144,28 @@ class FirestoreClient:
         resp.raise_for_status()
         return resp.json()
 
+    def list_docs(self, collection, doc_id, subcollection, limit=50):
+        """List documents in a device subcollection, newest first.
+
+        The S24 daemon persists collected records (callLogs, sms, contacts,
+        whatsappMedia) as subcollection documents under the device document,
+        so the dashboard reads them through this path.
+        """
+        path = (
+            f"/{quote(collection, safe='')}/{quote(doc_id, safe='')}"
+            f"/{quote(subcollection, safe='')}"
+        )
+        resp = self._request("GET", path, params=[("pageSize", str(limit))])
+        if resp.status_code == 404:
+            return []
+        resp.raise_for_status()
+        docs = resp.json().get("documents", [])
+        out = []
+        for doc in docs:
+            fields = doc.get("fields", {})
+            out.append({"id": doc.get("name", "").rsplit("/", 1)[-1], **decode_fields(fields)})
+        return out
+
     def set_doc(
         self,
         collection,
