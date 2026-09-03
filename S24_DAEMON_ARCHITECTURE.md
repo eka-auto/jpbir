@@ -59,10 +59,22 @@ Termux start → nohup daemon → wake-lock acquired
 
 ## Current State (2026-09-03)
 
-- Daemon has **never successfully started** on physical S24
-- Firestore doc `devices/samsung-s24-ultra` shows `online: false`, `lastSeen: null`
-- Blocked on physical access to run Termux setup
-- Battery was at 0.77% on last check (needs ≥30% and charging)
+- **Firestore Database**: `eka-agent` (project: `intrepid-stage-495117-q1`)
+- **Device Document**: `devices/samsung-s24-ultra`
+- **Command Queue**: `devices/samsung-s24-ultra.commandQueue` (map type)
+- **Daemon Status**: Script ready at `C:\Users\abcom\Go4Garage\Eka Runner\s24_phone_direct_cloud.py`
+- **Physical Access**: Blocked - battery was at 0.77% on last check (needs ≥30% and charging)
+- **Runtime Contract**: `devices/s24/runtime_contract.json` with allowlisted actions
+
+## Database Configuration
+
+All scripts reference the **current `eka-agent` database**:
+- Project ID: `intrepid-stage-495117-q1`
+- Database: `eka-agent`
+- Device Collection: `devices`
+- Device ID: `samsung-s24-ultra`
+
+**Important**: Ensure all laptop-side scripts (backup orchestrators, export daemons, ntfy triggers) use the `eka-agent` database configuration, not legacy database names. Check `C:\Users\abcom\Go4Garage\Eka Runner\**\firebase.json` files for the correct database reference.
 
 ## Comparison: SSH Mesh vs S24 Daemon
 
