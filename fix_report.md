@@ -1,0 +1,335 @@
+# Stale Firestore DB Fix Report
+Generated: 2026-09-03 04:54:52
+
+## Summary
+- Canonical project: `intrepid-stage-495117-q1`
+- Canonical database: `eka-agent`
+- Stale DBs replaced: `eka-validation, eka-llm, eka-runner, swarn, jarvis`
+
+## Results by tree
+
+### eka-agent
+- Fixed: 36 files
+- Skipped: 4174 files
+- Errors: 0 files
+
+**Changes:**
+  - `01_real_backup_orchestrator.py` (2 changes)
+    - json_db: eka-validation → eka-agent
+    - json_db: eka-validation → eka-agent
+  - `04_setup_ssh_and_firestore.py` (1 changes)
+    - json_db: eka-validation → eka-agent
+  - `06_final_real_backup_collection.py` (1 changes)
+    - yaml_db: ('Database:              ', 'eka-validation') → eka-agent
+  - `07_firestore_direct_download.py` (1 changes)
+    - json_db: eka-validation → eka-agent
+  - `12_final_firestore_export.py` (1 changes)
+    - json_db: eka-validation → eka-agent
+  - `check_wipe_status_once.py` (1 changes)
+    - db_string_single: eka-validation → eka-agent
+  - `clean_jarvis_db.py` (1 changes)
+    - db_string_single: jarvis → eka-agent
+  - `execute_backup_and_save.py` (1 changes)
+    - json_db: eka-validation → eka-agent
+  - `execute_device_exports.py` (1 changes)
+    - json_db: eka-validation → eka-agent
+  - `export_network_details.py` (1 changes)
+    - json_db: eka-validation → eka-agent
+  - `factory_reset_s24_eka_validation_fast.py` (1 changes)
+    - db_string_single: eka-validation → eka-agent
+  - `final_deployment_go.py` (1 changes)
+    - json_db: eka-validation → eka-agent
+  - `migrate_s24.py` (1 changes)
+    - db_string_single: jarvis → eka-agent
+  - `monitor_export_progress.py` (1 changes)
+    - json_db: eka-validation → eka-agent
+  - `notification_sync_eka_validation.py` (1 changes)
+    - json_db: eka-validation → eka-agent
+  - `notification_sync_isolated.py` (1 changes)
+    - json_db: eka-validation → eka-agent
+  - `push_exports_to_firestore.py` (2 changes)
+    - json_db: eka-validation → eka-agent
+    - json_db: eka-validation → eka-agent
+  - `push_s24_setup_via_vivobook.py` (1 changes)
+    - database_id_default: eka-runner → eka-agent
+  - `quick_eka_val_check.py` (1 changes)
+    - db_string_single: eka-validation → eka-agent
+  - `sustained_telemetry_daemon.py` (1 changes)
+    - db_string_single: eka-validation → eka-agent
+  - `sync_device_now.py` (2 changes)
+    - json_db: eka-validation → eka-agent
+    - json_db: eka-validation → eka-agent
+  - `verify_backup_cleanup.py` (1 changes)
+    - json_db: eka-validation → eka-agent
+  - `verify_sync_complete.py` (1 changes)
+    - json_db: eka-validation → eka-agent
+  - `tests\test_s24_device_id_routes.py` (1 changes)
+    - database_id_default: eka-validation → eka-agent
+  - `deploy_eka_validation.ps1` (1 changes)
+    - db_string_single: eka-validation → eka-agent
+  - `enable_all_mcp_servers.ps1` (2 changes)
+    - db_string_single: eka-validation → eka-agent
+    - db_string_single: eka-validation → eka-agent
+  - `01-agent\firebase.json` (1 changes)
+    - json_db: eka-validation → eka-agent
+  - `02-audit\firebase.json` (1 changes)
+    - json_db: eka-validation → eka-agent
+  - `04-device\firebase.json` (1 changes)
+    - json_db: eka-validation → eka-agent
+  - `06-extract\firebase.json` (1 changes)
+    - json_db: eka-validation → eka-agent
+  - `07-firebase\firebase.json` (1 changes)
+    - json_db: eka-validation → eka-agent
+  - `10-monitor\firebase.json` (1 changes)
+    - json_db: eka-validation → eka-agent
+  - `11-s24\firebase.json` (1 changes)
+    - json_db: eka-validation → eka-agent
+  - `15-utility\firebase.json` (1 changes)
+    - json_db: eka-validation → eka-agent
+  - `functions\firebase.json` (1 changes)
+    - json_db: eka-validation → eka-agent
+  - `web-app\firebase.json` (1 changes)
+    - json_db: eka-validation → eka-agent
+
+### eka-agent-clean
+- Fixed: 36 files
+- Skipped: 18667 files
+- Errors: 0 files
+
+**Changes:**
+  - `01_real_backup_orchestrator.py` (2 changes)
+    - json_db: eka-validation → eka-agent
+    - json_db: eka-validation → eka-agent
+  - `04_setup_ssh_and_firestore.py` (1 changes)
+    - json_db: eka-validation → eka-agent
+  - `06_final_real_backup_collection.py` (1 changes)
+    - yaml_db: ('Database:              ', 'eka-validation') → eka-agent
+  - `07_firestore_direct_download.py` (1 changes)
+    - json_db: eka-validation → eka-agent
+  - `12_final_firestore_export.py` (1 changes)
+    - json_db: eka-validation → eka-agent
+  - `check_wipe_status_once.py` (1 changes)
+    - db_string_single: eka-validation → eka-agent
+  - `clean_jarvis_db.py` (1 changes)
+    - db_string_single: jarvis → eka-agent
+  - `execute_backup_and_save.py` (1 changes)
+    - json_db: eka-validation → eka-agent
+  - `execute_device_exports.py` (1 changes)
+    - json_db: eka-validation → eka-agent
+  - `export_network_details.py` (1 changes)
+    - json_db: eka-validation → eka-agent
+  - `factory_reset_s24_eka_validation_fast.py` (1 changes)
+    - db_string_single: eka-validation → eka-agent
+  - `final_deployment_go.py` (1 changes)
+    - json_db: eka-validation → eka-agent
+  - `migrate_s24.py` (1 changes)
+    - db_string_single: jarvis → eka-agent
+  - `monitor_export_progress.py` (1 changes)
+    - json_db: eka-validation → eka-agent
+  - `notification_sync_eka_validation.py` (1 changes)
+    - json_db: eka-validation → eka-agent
+  - `notification_sync_isolated.py` (1 changes)
+    - json_db: eka-validation → eka-agent
+  - `push_exports_to_firestore.py` (2 changes)
+    - json_db: eka-validation → eka-agent
+    - json_db: eka-validation → eka-agent
+  - `push_s24_setup_via_vivobook.py` (1 changes)
+    - database_id_default: eka-runner → eka-agent
+  - `quick_eka_val_check.py` (1 changes)
+    - db_string_single: eka-validation → eka-agent
+  - `sustained_telemetry_daemon.py` (1 changes)
+    - db_string_single: eka-validation → eka-agent
+  - `sync_device_now.py` (2 changes)
+    - json_db: eka-validation → eka-agent
+    - json_db: eka-validation → eka-agent
+  - `verify_backup_cleanup.py` (1 changes)
+    - json_db: eka-validation → eka-agent
+  - `verify_sync_complete.py` (1 changes)
+    - json_db: eka-validation → eka-agent
+  - `tests\test_s24_device_id_routes.py` (1 changes)
+    - database_id_default: eka-validation → eka-agent
+  - `deploy_eka_validation.ps1` (1 changes)
+    - db_string_single: eka-validation → eka-agent
+  - `enable_all_mcp_servers.ps1` (2 changes)
+    - db_string_single: eka-validation → eka-agent
+    - db_string_single: eka-validation → eka-agent
+  - `01-agent\firebase.json` (1 changes)
+    - json_db: eka-validation → eka-agent
+  - `02-audit\firebase.json` (1 changes)
+    - json_db: eka-validation → eka-agent
+  - `04-device\firebase.json` (1 changes)
+    - json_db: eka-validation → eka-agent
+  - `06-extract\firebase.json` (1 changes)
+    - json_db: eka-validation → eka-agent
+  - `07-firebase\firebase.json` (1 changes)
+    - json_db: eka-validation → eka-agent
+  - `10-monitor\firebase.json` (1 changes)
+    - json_db: eka-validation → eka-agent
+  - `11-s24\firebase.json` (1 changes)
+    - json_db: eka-validation → eka-agent
+  - `15-utility\firebase.json` (1 changes)
+    - json_db: eka-validation → eka-agent
+  - `functions\firebase.json` (1 changes)
+    - json_db: eka-validation → eka-agent
+  - `web-app\firebase.json` (1 changes)
+    - json_db: eka-validation → eka-agent
+
+### eka-agent-main
+- Fixed: 36 files
+- Skipped: 7 files
+- Errors: 0 files
+
+**Changes:**
+  - `01_real_backup_orchestrator.py` (2 changes)
+    - json_db: eka-validation → eka-agent
+    - json_db: eka-validation → eka-agent
+  - `04_setup_ssh_and_firestore.py` (1 changes)
+    - json_db: eka-validation → eka-agent
+  - `06_final_real_backup_collection.py` (1 changes)
+    - yaml_db: ('Database:              ', 'eka-validation') → eka-agent
+  - `07_firestore_direct_download.py` (1 changes)
+    - json_db: eka-validation → eka-agent
+  - `12_final_firestore_export.py` (1 changes)
+    - json_db: eka-validation → eka-agent
+  - `check_wipe_status_once.py` (1 changes)
+    - db_string_single: eka-validation → eka-agent
+  - `clean_jarvis_db.py` (1 changes)
+    - db_string_single: jarvis → eka-agent
+  - `execute_backup_and_save.py` (1 changes)
+    - json_db: eka-validation → eka-agent
+  - `execute_device_exports.py` (1 changes)
+    - json_db: eka-validation → eka-agent
+  - `export_network_details.py` (1 changes)
+    - json_db: eka-validation → eka-agent
+  - `factory_reset_s24_eka_validation_fast.py` (1 changes)
+    - db_string_single: eka-validation → eka-agent
+  - `final_deployment_go.py` (1 changes)
+    - json_db: eka-validation → eka-agent
+  - `migrate_s24.py` (1 changes)
+    - db_string_single: jarvis → eka-agent
+  - `monitor_export_progress.py` (1 changes)
+    - json_db: eka-validation → eka-agent
+  - `notification_sync_eka_validation.py` (1 changes)
+    - json_db: eka-validation → eka-agent
+  - `notification_sync_isolated.py` (1 changes)
+    - json_db: eka-validation → eka-agent
+  - `push_exports_to_firestore.py` (2 changes)
+    - json_db: eka-validation → eka-agent
+    - json_db: eka-validation → eka-agent
+  - `push_s24_setup_via_vivobook.py` (1 changes)
+    - database_id_default: eka-runner → eka-agent
+  - `quick_eka_val_check.py` (1 changes)
+    - db_string_single: eka-validation → eka-agent
+  - `sustained_telemetry_daemon.py` (1 changes)
+    - db_string_single: eka-validation → eka-agent
+  - `sync_device_now.py` (2 changes)
+    - json_db: eka-validation → eka-agent
+    - json_db: eka-validation → eka-agent
+  - `verify_backup_cleanup.py` (1 changes)
+    - json_db: eka-validation → eka-agent
+  - `verify_sync_complete.py` (1 changes)
+    - json_db: eka-validation → eka-agent
+  - `tests\test_s24_device_id_routes.py` (1 changes)
+    - database_id_default: eka-validation → eka-agent
+  - `deploy_eka_validation.ps1` (1 changes)
+    - db_string_single: eka-validation → eka-agent
+  - `enable_all_mcp_servers.ps1` (2 changes)
+    - db_string_single: eka-validation → eka-agent
+    - db_string_single: eka-validation → eka-agent
+  - `01-agent\firebase.json` (1 changes)
+    - json_db: eka-validation → eka-agent
+  - `02-audit\firebase.json` (1 changes)
+    - json_db: eka-validation → eka-agent
+  - `04-device\firebase.json` (1 changes)
+    - json_db: eka-validation → eka-agent
+  - `06-extract\firebase.json` (1 changes)
+    - json_db: eka-validation → eka-agent
+  - `07-firebase\firebase.json` (1 changes)
+    - json_db: eka-validation → eka-agent
+  - `10-monitor\firebase.json` (1 changes)
+    - json_db: eka-validation → eka-agent
+  - `11-s24\firebase.json` (1 changes)
+    - json_db: eka-validation → eka-agent
+  - `15-utility\firebase.json` (1 changes)
+    - json_db: eka-validation → eka-agent
+  - `functions\firebase.json` (1 changes)
+    - json_db: eka-validation → eka-agent
+  - `web-app\firebase.json` (1 changes)
+    - json_db: eka-validation → eka-agent
+
+### Eka Runner
+- Fixed: 31 files
+- Skipped: 5 files
+- Errors: 0 files
+
+**Changes:**
+  - `01_real_backup_orchestrator.py` (2 changes)
+    - json_db: eka-validation → eka-agent
+    - json_db: eka-validation → eka-agent
+  - `04_setup_ssh_and_firestore.py` (1 changes)
+    - json_db: eka-validation → eka-agent
+  - `06_final_real_backup_collection.py` (1 changes)
+    - yaml_db: ('Database:              ', 'eka-validation') → eka-agent
+  - `07_firestore_direct_download.py` (1 changes)
+    - json_db: eka-validation → eka-agent
+  - `12_final_firestore_export.py` (1 changes)
+    - json_db: eka-validation → eka-agent
+  - `check_wipe_status_once.py` (1 changes)
+    - db_string_single: eka-validation → eka-agent
+  - `claude_sdk_unified_config.py` (1 changes)
+    - env_fallback: swarn → eka-agent
+  - `clean_jarvis_db.py` (1 changes)
+    - db_string_single: jarvis → eka-agent
+  - `execute_backup_and_save.py` (1 changes)
+    - json_db: eka-validation → eka-agent
+  - `execute_device_exports.py` (1 changes)
+    - json_db: eka-validation → eka-agent
+  - `export_network_details.py` (1 changes)
+    - json_db: eka-validation → eka-agent
+  - `final_deployment_go.py` (1 changes)
+    - json_db: eka-validation → eka-agent
+  - `monitor_export_progress.py` (1 changes)
+    - json_db: eka-validation → eka-agent
+  - `notification_sync_eka_validation.py` (1 changes)
+    - json_db: eka-validation → eka-agent
+  - `notification_sync_isolated.py` (1 changes)
+    - json_db: eka-validation → eka-agent
+  - `push_exports_to_firestore.py` (2 changes)
+    - json_db: eka-validation → eka-agent
+    - json_db: eka-validation → eka-agent
+  - `push_s24_setup_via_vivobook.py` (1 changes)
+    - database_id_default: eka-runner → eka-agent
+  - `quick_eka_val_check.py` (1 changes)
+    - db_string_single: eka-validation → eka-agent
+  - `sustained_telemetry_daemon.py` (1 changes)
+    - db_string_single: eka-validation → eka-agent
+  - `sync_device_now.py` (2 changes)
+    - json_db: eka-validation → eka-agent
+    - json_db: eka-validation → eka-agent
+  - `verify_backup_cleanup.py` (1 changes)
+    - json_db: eka-validation → eka-agent
+  - `verify_sync_complete.py` (1 changes)
+    - json_db: eka-validation → eka-agent
+  - `eka-llm\claude_sdk_unified_config.py` (2 changes)
+    - database_id_default: swarn → eka-agent
+    - env_fallback: swarn → eka-agent
+  - `01-agent\firebase.json` (1 changes)
+    - json_db: eka-validation → eka-agent
+  - `02-audit\firebase.json` (1 changes)
+    - json_db: eka-validation → eka-agent
+  - `04-device\firebase.json` (1 changes)
+    - json_db: eka-validation → eka-agent
+  - `06-extract\firebase.json` (1 changes)
+    - json_db: eka-validation → eka-agent
+  - `07-firebase\firebase.json` (1 changes)
+    - json_db: eka-validation → eka-agent
+  - `10-monitor\firebase.json` (1 changes)
+    - json_db: eka-validation → eka-agent
+  - `11-s24\firebase.json` (1 changes)
+    - json_db: eka-validation → eka-agent
+  - `15-utility\firebase.json` (1 changes)
+    - json_db: eka-validation → eka-agent
+
+---
+**Total fixed:** 139 files
+**Total skipped:** 22853 files
