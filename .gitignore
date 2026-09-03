@@ -81,3 +81,4 @@ firebase.json
 .kiro/
 data/
 dataconnect/
+.env*

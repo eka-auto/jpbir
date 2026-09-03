@@ -7,7 +7,7 @@ import {
   buildParams,
   buildSubject,
   mapConnectError,
-} from '../api/connect.js';
+} from '../../api/connect.js';
 
 test('buildSubject defaults to app', () => {
   deepStrictEqual(buildSubject({}), { type: 'app' });

@@ -4,21 +4,22 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this repo is
 
-`jpbir` is not one application — it is five loosely-related projects sharing a single git root.
+`jpbir` is not one application — it is several loosely-related projects sharing a single git root.
 Identify which one you are in before changing anything:
 
 | Area | Stack | Purpose |
 |---|---|---|
 | `personal_folder_agent/` + `tools/` + `runs/` | Python 3.8+ | Crawl personal folders → extract → chunk → fine-tune Qwen 2.5-3B → retrieve |
-| `jayti-dashboard/` | Node ESM, Vercel functions | Live telemetry + device dashboard (`jaytipargal.tech`, `agent.jaytipargal.tech`) |
-| `jaytibirthday-site/` | Static + Vercel functions | The `jaytibirthday.in` letter site — **a git submodule**, own remote and CI |
-| `channel-sandbox/` | Python 3.12, Flask, Firestore REST | Emulator-first device-to-dashboard channel verification scaffold |
-| root `server.js` + `routes/` + `utils/` + `public/` | Express + SQLite | Legacy self-hosted mirror of the analytics API; superseded by the Vercel functions |
+| `Dashboard/Current/` | Node ESM, Vercel functions | Live telemetry + device dashboard (`jaytipargal.tech`, `agent.jaytipargal.tech`) — `frontend/` (UI), `backend/` (api, lib), `others/` (tests) |
+| `Dashboard/S24/`, `Dashboard/Vivobook/` | Markdown | Per-device dashboard context (S24, VivoBook) — each has `frontend/`, `backend/`, `others/` subfolders |
+| `Sandbox/Configuration/` | Python 3.12, Flask, Firestore REST | Device-to-dashboard channel verification scaffold + shared broker/signer code |
+| `Sandbox/S24/`, `Sandbox/Vivobook/`, `Sandbox/Lenovo/` | Python + shell | Per-device deploy kits (agent, broker client, installer, signer) |
+| `eka-runner/`, `eka-runner-private/` | Submodules | S24 Termux direct-cloud daemon (public + private) |
+| `ccl_chromium_reader/` | Submodule | Python Chrome data reader library |
+| root `vercel.json` | Vercel Python | (removed — `channel-sandbox` project uses `Sandbox/Configuration/vercel.json` directly) |
 
-Root-level `*.py` (`domain_letter_agent.py`, `enhanced_domain_agent.py`, `permanent_deployment.py`),
-`permanent_agent/`, `email_notifications/`, `integration/`, `jaytibirthday_analytics_deployment/`,
-and the many `*_GUIDE.txt` / `*_INSTRUCTIONS.txt` files are earlier one-shot deployment
-experiments. Treat them as historical unless a task names them.
+Earlier one-shot deployment experiments and their `*_GUIDE.txt` / `*_INSTRUCTIONS.txt` files
+have been removed. The remaining root-level files are active infra.
 
 ## Commands
 
@@ -44,33 +45,23 @@ create test files there expecting them to be the convention; tests live in
 ### Dashboard
 
 ```powershell
-cd jayti-dashboard
-node test/stale.test.mjs      # the only automated test here; plain node:assert, 8 cases
-npx vercel@latest --prod --yes   # manual production deploy
-```
-
-### Legacy Express server
-
-```powershell
-npm start        # port 3001, serves public/ and mirrors /api/track
-npm run dev      # nodemon
-# `npm test` is a stub that exits 1 — the real JS tests are the ad-hoc scripts in test/
+cd Dashboard/Current
+node others/test/stale.test.mjs      # 8 cases — stale detection
+node others/test/broker.test.mjs     # 12 cases — broker v2 contract
+node others/test/connect.test.mjs    # 12 cases — Vercel Connect
+npx vercel@latest --prod --yes       # manual production deploy
 ```
 
 ### Deployment
 
 Two GitHub Actions workflows, both `on: push` to `main`:
 
-- `.github/workflows/vercel-deploy.yml` — deploys `jayti-dashboard/`, then aliases the
-  deployment to `jaytipargal.tech` and `agent.jaytipargal.tech`. The alias step depends on
-  `DEPLOY_URL` scraped out of the CLI output, so changes to the deploy step's output handling
-  break aliasing silently.
-- `jaytibirthday-site/.github/workflows/vercel-deploy.yml` — lives in the submodule and fires
-  on pushes to the **submodule's** repo, not this one.
+- `.github/workflows/ci-deploy.yml` — runs tests (Python + Node) on every push/PR to `main`.
+  Deployment is handled by Vercel's git integration (single pipeline).
 
-All three Vercel projects live under the same org (`team_pbbZItTCyIkGsw6LeGrcWx0c`):
-`jpbir`, `jayti-dashboard`, `jaytibirthday-site`. Verify a publish with `curl` plus a
-cache-busting query string — Vercel's edge serves stale HITs otherwise.
+Vercel projects under org `team_pbbZItTCyIkGsw6LeGrcWx0c`:
+`channel-sandbox` (root: `Sandbox/Configuration/`), `jayti-dashboard` (root: `Dashboard/Current/`).
+Verify a publish with `curl` plus a cache-busting query string — Vercel's edge serves stale HITs otherwise.
 
 ## The Python agent pipeline
 
@@ -96,9 +87,9 @@ GPU session. Two consequences that constrain how you write code here:
 `.kiro/specs/personal-folder-trained-agent/{requirements,design,tasks}.md` is the spec-driven
 roadmap; `tasks.md` carries the live checkbox state for what is built.
 
-### README.md is aspirational — do not trust it
+### `pyproject.toml` is aspirational in places
 
-`README.md` and `pyproject.toml`'s `[project.scripts]` entry point both reference
+`pyproject.toml`'s `[project.scripts]` entry point references
 `personal_folder_agent/cli.py`, plus `inference_engine.py`, `progress_monitor.py`,
 `utils/security.py` and `utils/errors.py`. **None of those files exist.** There is no working
 `personal-folder-agent` console script. The query path that does exist is `tools/ask.py`
@@ -123,7 +114,7 @@ explaining the incident that motivated it. Read the docstring before using one.
 ~7.5 GB). Never read, cat, or grep these whole; sample with `head`-equivalents or use the
 tools above.
 
-## Vercel function conventions (`jayti-dashboard/api/`, `jaytibirthday-site/api/`)
+## Vercel function conventions (`Dashboard/Current/backend/api/`, `jaytibirthday-site/api/`)
 
 These are hand-rolled Node ESM handlers with no framework. Match the existing shape:
 
@@ -134,8 +125,7 @@ These are hand-rolled Node ESM handlers with no framework. Match the existing sh
   against `STATS_KEY`. Cron endpoints additionally accept `Authorization: Bearer <CRON_SECRET>`.
 - **Only `lib/stale.js` is shared logic**, and it is shared precisely because it is pure and
   therefore unit-testable apart from the endpoint. `check-stale.js` inlines its SMTP recipient
-  list rather than importing `email_notifications/email_config.js` — that file is CommonJS and
-  outside the Vercel project root, so a cross-root import would not reliably bundle.
+  list rather than importing from outside the Vercel project root.
 - **Firestore is accessed over the raw REST API**, not the SDK: a self-signed service-account
   JWT exchanged for a token (cached in module scope), plus hand-written `enc()`/`dec()` value
   codecs. `getFirestoreToken`, `enc`, and `dec` are duplicated across handlers by design.
@@ -151,32 +141,11 @@ for device heartbeats and queued commands, and Vercel Blob for the older
 edge-triggered: it emails only on healthy↔alerted transitions, and it **sends the email before
 persisting the new state** so a transient SMTP failure retries next tick instead of going silent.
 
-## The `jaytibirthday-site` submodule
-
-`jaytibirthday-site/` is a git submodule (`https://github.com/jaytipargal/jaytibirthday-site.git`,
-branch `main`) with its own working tree, remote, and CI. Commits must be made and pushed from
-*inside* that directory; the parent repo only tracks the pointer, so `git status` in the root
-shows the submodule as modified rather than showing file-level changes.
-
-That directory is the deployment source of truth — not the stale clone at
-`C:/Users/abcom/jaytibirthday_site_repo`.
-
-### Standing constraint on this site
-
-The site is a personal "healing letter" addressed to a former partner. Benign expressive
-work on it is in scope. Features that target or surveil the named individual are not, and have
-been declined repeatedly: auto-emailing her on page updates, per-visitor identification
-reported back to the user, and name-SEO / JSON-LD / sitemap changes that make her findable.
-Anonymous aggregate analytics is fine; per-visitor detail about a specific person is not.
-The page carries `noindex` — a previous automated run added `sitemap.xml` and flipped
-`robots.txt` to `Allow: /`, which contradicts it. Do not extend that without a fresh explicit ask.
-
 ## Repo-wide notes
 
 - `.gitignore` excludes `runs/`, `*.jsonl`, `*.zip`, `data/*.db`, `.env*`, `.claude/`, and
   `_tmp_*.mjs`. A `.env.example` is the one env file that would be committed.
-- Two `package.json` files with unrelated dependency sets: the root one (Express/SQLite,
-  CommonJS) and `jayti-dashboard/` (AWS SDK + nodemailer + Vercel Blob, `"type": "module"`).
-  Running `npm install` in the wrong directory installs the wrong tree.
+- The only `package.json` is `Dashboard/Current/` (AWS SDK + nodemailer + Vercel Blob,
+  `"type": "module"`).
 - Files named `_tmp_*.mjs`, `_verify_task_*.py`, `check_*.mjs`, `audit_*.mjs`, `dump_*.mjs` are
   disposable investigation scripts, not part of any suite.
