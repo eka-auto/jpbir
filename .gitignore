@@ -74,6 +74,8 @@ WORKSPACE_*.md
 !*.ps1
 !*.sh
 *.html
+!Dashboard/**/*.html
+!Sandbox/**/*.html
 firebase.json
 .firebaserc
 .agents/

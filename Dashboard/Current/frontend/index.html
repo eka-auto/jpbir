@@ -53,7 +53,7 @@
     .sidebar .nav-item { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
         padding: 10px 14px; margin-bottom: 4px; border-radius: 10px; border: none; background: transparent;
         color: rgba(244,233,220,.7); font-family: var(--sans); font-size: 13px; font-weight: 500; cursor: pointer;
-        transition: background .15s, color .15s; }
+        transition: background .15s, color .15s; text-decoration: none; }
     .sidebar .nav-item:hover { background: rgba(200,122,30,.12); color: #F4E9DC; }
     .sidebar .nav-item.active { background: rgba(200,122,30,.2); color: var(--amber-glow); font-weight: 600; }
     .sidebar .nav-item .ico { width: 18px; text-align: center; font-size: 14px; }
@@ -233,12 +233,15 @@
             <div class="section-label">Monitor</div>
             <button class="nav-item active" data-page="overview"><span class="ico">◈</span> Overview</button>
             <button class="nav-item" data-page="live"><span class="ico">●</span> Live feed</button>
+            <div class="section-label">Devices</div>
+            <a class="nav-item" href="/s24"><span class="ico">📱</span> S24 Ultra</a>
+            <a class="nav-item" href="/vivobook"><span class="ico">💻</span> VivoBook</a>
             <div class="section-label">Analyze</div>
             <button class="nav-item" data-page="audience"><span class="ico">◫</span> Audience</button>
             <button class="nav-item" data-page="geo"><span class="ico">◉</span> Geography</button>
             <button class="nav-item" data-page="sessions"><span class="ico">≡</span> Sessions</button>
             <button class="nav-item" data-page="email"><span class="ico">✉</span> Email opens</button>
-            <button class="nav-item" data-page="device"><span class="ico">📱</span> Device history</button>
+            <button class="nav-item" data-page="device"><span class="ico">📋</span> Device history</button>
             <button class="nav-item" data-page="agent"><span class="ico">🤖</span> Ask agent</button>
         </nav>
 
