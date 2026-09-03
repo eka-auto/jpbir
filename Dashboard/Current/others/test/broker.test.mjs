@@ -19,18 +19,18 @@ import {
   verifyEnrolledHardware,
   verifyP256,
   verifySignerAttestation,
-} from '../lib/broker.js';
-import { CANONICAL_PATH as ENROLL_PATH, isP256Pem } from '../api/device-enroll.js';
-import { CANONICAL_PATH as HEARTBEAT_PATH } from '../api/device-heartbeat.js';
-import { CANONICAL_PATH as POLL_PATH } from '../api/device-commands-poll.js';
-import { canonicalClaimPath } from '../api/broker-command-claim.js';
-import { canonicalCompletePath } from '../api/broker-command-complete.js';
+} from '../../lib/broker.js';
+import { CANONICAL_PATH as ENROLL_PATH, isP256Pem } from '../../api/device-enroll.js';
+import { CANONICAL_PATH as HEARTBEAT_PATH } from '../../api/device-heartbeat.js';
+import { CANONICAL_PATH as POLL_PATH } from '../../api/device-commands-poll.js';
+import { canonicalClaimPath } from '../../api/broker-command-claim.js';
+import { canonicalCompletePath } from '../../api/broker-command-complete.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-const fixturePath = join(__dirname, '..', '..', 'channel-sandbox', 'tests', 'fixtures', 'python_to_node.json');
+const fixturePath = join(__dirname, '..', '..', '..', '..', 'Sandbox', 'Configuration', 'tests', 'fixtures', 'python_to_node.json');
 const fixture = JSON.parse(readFileSync(fixturePath, 'utf-8'));
-const vercelConfig = JSON.parse(readFileSync(join(__dirname, '..', 'vercel.json'), 'utf-8'));
+const vercelConfig = JSON.parse(readFileSync(join(__dirname, '..', '..', 'vercel.json'), 'utf-8'));
 
 test('broker v2: Python-generated signature verifies in Node', () => {
   const { publicKeyPem, canonical, signatureBase64, expectedVerify, keyId } = fixture;

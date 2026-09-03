@@ -1,9 +1,0 @@
-# Heavy local-only dirs (no project deploys from repo root anymore)
-runs/
-venv/
-.venv/
-vscode-office/
-data/
-*.jsonl
-*.zip
-*.db

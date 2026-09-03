@@ -7,8 +7,9 @@ import unittest
 from pathlib import Path
 
 
-ROOT = Path(__file__).resolve().parents[1]
-DEPLOY = ROOT / "deploy"
+ROOT = Path(__file__).resolve().parents[1]          # Sandbox/Configuration
+SANDBOX = ROOT.parent                                 # Sandbox/
+DEPLOY = SANDBOX                                      # kits are direct children: Sandbox/S24, Sandbox/Vivobook, etc.
 ARTIFACTS = (
     "device_agent.py",
     "broker_client.py",

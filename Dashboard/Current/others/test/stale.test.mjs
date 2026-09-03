@@ -1,5 +1,5 @@
 // Unit tests for the pure staleness evaluator. Run: node test/stale.test.mjs
-import { evaluate } from '../lib/stale.js';
+import { evaluate } from '../../lib/stale.js';
 import assert from 'assert';
 
 const NOW = Date.parse('2026-09-01T12:00:00.000Z');
