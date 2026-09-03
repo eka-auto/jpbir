@@ -1,0 +1,21 @@
+{
+  "version": 2,
+  "name": "channel-sandbox",
+  "builds": [
+    { "src": "dashboard_api.py", "use": "@vercel/python" }
+  ],
+  "routes": [
+    {
+      "src": "/api/(.*)",
+      "dest": "dashboard_api.py"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "dashboard/index.html"
+    }
+  ],
+  "env": {
+    "SANDBOX_MODE": "real"
+  },
+  "regions": ["us-east1"]
+}
