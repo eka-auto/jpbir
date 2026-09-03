@@ -34,6 +34,8 @@ These are consumed by the shared backend in `Dashboard/Current/backend/api/`.
 
 - **Sandbox counterpart:** `Sandbox/S24/` — device agent, broker client, installer
 - **Shared dashboard:** `Dashboard/Current/` — API endpoints, lib, UI
+- **Device tools:** `Dashboard/S24/tools/` — freeze/unfreeze scripts
+- **Shared tools:** `tools/freeze_device.py`, `tools/query_firestore.py`
 
 ## Subfolders
 
