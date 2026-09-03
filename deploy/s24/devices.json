@@ -1,0 +1,19 @@
+{
+  "transport": "broker",
+  "broker_url": "https://agent.jaytipargal.tech",
+  "signer": "android-keystore",
+  "key_alias": "eka-broker-samsung-s24-ultra",
+  "broker_state_file": "/data/data/com.termux/files/home/.local/share/eka-broker/samsung-s24-ultra.broker-state.json",
+  "enrollment_code_file": "/data/data/com.termux/files/home/.local/share/eka-broker/enrollment_code.txt",
+  "heartbeat_interval_seconds": 45,
+  "command_poll_interval_seconds": 15,
+  "devices": [
+    {
+      "id": "samsung-s24-ultra",
+      "display_name": "Samsung S24 Ultra",
+      "role": "primary",
+      "type": "phone"
+    }
+  ],
+  "allowed_commands": ["status-only", "ping", "echo"]
+}
