@@ -1,7 +1,3 @@
-[submodule "jaytibirthday-site"]
-	path = jaytibirthday-site
-	url = https://github.com/jaytipargal/jaytibirthday-site.git
-	branch = main
 [submodule "eka-runner-private"]
 	path = eka-runner-private
 	url = https://github.com/jaytipargal/eka-runner-private.git

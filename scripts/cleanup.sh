@@ -1,3 +1,0 @@
-#!/usr/bin/env bash
-# Placeholder cleanup - no-op
-exit 0

@@ -1,7 +1,0 @@
-﻿<!-- COPY AND PASTE THIS CODE INTO YOUR jaytibirthday.in HTML -->
-<!-- Add this line BEFORE the closing </head> tag -->
-
-<script async defer src="/assets/js/jaytibirthday-analytics.js"></script>
-
-<!-- That's it! Your website will now track visitors automatically. -->
-<!-- Daily reports sent to: ekaaiurgaa@gmail.com -->
