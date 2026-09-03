@@ -24,6 +24,9 @@ Thumbs.db
 
 .vercel
 
+# Keep vercel.json at repo root for deployment
+!vercel.json
+
 # Secrets & local env
 .env
 .env.*
