@@ -17,5 +17,6 @@
         ".agents": "robot"
     },
     "workbench.startupEditor": "none",
-    "editor.fontSize": 18
+    "editor.fontSize": 25,
+    "editor.formatOnSave": true
 }
