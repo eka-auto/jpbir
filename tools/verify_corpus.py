@@ -163,6 +163,8 @@ def main(argv: Optional[List[str]] = None) -> int:
                         help="Skip the JSON-parse pass (bytes and line counts "
                              "only). The structural checks catch the "
                              "double-write failure on their own.")
+    parser.add_argument("--json", action="store_true",
+                        help="Emit the result as JSON instead of human text.")
     args = parser.parse_args(argv)
 
     if not os.path.isfile(args.corpus):
@@ -170,6 +172,10 @@ def main(argv: Optional[List[str]] = None) -> int:
         return 2
 
     r = verify(args.corpus, args.report, deep=not args.quick)
+
+    if args.json:
+        print(json.dumps(r, ensure_ascii=False))
+        return 0 if r.get("ok") else 1
 
     print("corpus:             %s" % r["corpus"])
     print("bytes:              %s (%.2f GiB)"
