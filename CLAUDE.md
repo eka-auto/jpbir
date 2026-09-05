@@ -1,69 +1,54 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Repository guidance for coding agents. See [PROJECT.md](PROJECT.md) for the current layout.
 
-## What this repo is
+## Project locations
 
-`jpbir` is not one application — it is several loosely-related projects sharing a single git root.
-Identify which one you are in before changing anything:
+| Area | Purpose |
+| --- | --- |
+| `Dashboard/Current/` | Node ESM dashboard, Vercel `api/`, shared `lib/`, frontend, and tests |
+| `Dashboard/S24/`, `Dashboard/Vivobook/` | Per-device dashboard context |
+| `Sandbox/Configuration/` | Shared broker, Flask API, signer, and tests |
+| `Sandbox/S24/`, `Sandbox/Vivobook/`, `Sandbox/Lenovo/` | Device deploy kits |
+| `Sandbox/S24/daemon/` | Former root daemon variants; older versions are in `legacy/` |
+| `tools/mcp/` | MCP servers and connection helpers |
+| `tools/diagnostics/` | Device and queue inspection scripts |
+| `tools/` | Corpus tooling and local test pipeline |
+| `training/` | Colab notebook and training requirements |
+| `eka-runner/`, `eka-runner-private/` | Device-agent submodules |
 
-| Area | Stack | Purpose |
-|---|---|---|
-| `personal_folder_agent/` + `tools/` + `runs/` | Python 3.8+ | Crawl personal folders → extract → chunk → fine-tune Qwen 2.5-3B → retrieve |
-| `Dashboard/Current/` | Node ESM, Vercel functions | Live telemetry + device dashboard (`jaytipargal.tech`, `agent.jaytipargal.tech`) — `frontend/` (UI), `backend/` (api, lib), `others/` (tests) |
-| `Dashboard/S24/`, `Dashboard/Vivobook/` | Markdown | Per-device dashboard context (S24, VivoBook) — each has `frontend/`, `backend/`, `others/` subfolders |
-| `Sandbox/Configuration/` | Python 3.12, Flask, Firestore REST | Device-to-dashboard channel verification scaffold + shared broker/signer code |
-| `Sandbox/S24/`, `Sandbox/Vivobook/`, `Sandbox/Lenovo/` | Python + shell | Per-device deploy kits (agent, broker client, installer, signer) |
-| `eka-runner/`, `eka-runner-private/` | Submodules | S24 Termux direct-cloud daemon (public + private) |
-| `ccl_chromium_reader/` | Submodule | Python Chrome data reader library |
-| root `vercel.json` | Vercel Python | (removed — `channel-sandbox` project uses `Sandbox/Configuration/vercel.json` directly) |
+Keep new scripts inside their owning project. Root files are repository
+configuration, this guidance, and `PROJECT.md`. Preserve distinct daemon variants;
+`Sandbox/S24/install_daemon.sh` still uses its sibling `s24-agent-daemon.mjs`.
 
-Earlier one-shot deployment experiments and their `*_GUIDE.txt` / `*_INSTRUCTIONS.txt` files
-have been removed. The remaining root-level files are active infra.
+## Checks
 
-## Commands
+From the repository root, run `.\tools\pipeline.ps1`. It uses the existing
+`venv/Scripts/python.exe`, with `python` as fallback, and accepts `-PythonPath`.
+Install the sandbox dependencies plus pytest, pytest-cov, pytest-mock,
+hypothesis, and pyyaml, and run `npm ci` inside `Dashboard/Current` first.
 
-### Python agent
+The pipeline runs sandbox tests, all tracked JavaScript syntax checks, and the
+three dashboard test files. Root `pyproject.toml` configures test discovery for
+`Sandbox/Configuration/tests`; it does not enable a coverage threshold.
 
-```powershell
-# The working interpreter is venv/, NOT .venv/ (.venv exists but is not the one in use).
-& .\venv\Scripts\python.exe -m pytest -q --no-cov          # full suite: 149 tests, all pass
-& .\venv\Scripts\python.exe -m pytest -q --no-cov personal_folder_agent/tests/test_text_chunker.py
-& .\venv\Scripts\python.exe -m pytest -q --no-cov -k "chunk_io and truncated"
-& .\venv\Scripts\python.exe -m pytest --cov=personal_folder_agent --cov-report=term-missing
-```
+MCP connection helpers perform live device operations when executed. Use syntax
+and import-path inspection when checking a file move; do not run these helpers
+as tests.
 
-**`pytest` with no flags exits 1 even when every test passes.** `pyproject.toml` sets
-`addopts = "--cov ... "` and `fail_under = 80`; actual coverage is ~69%. Always pass `--no-cov`
-when you care about pass/fail, and never report "tests failing" from a bare `pytest` exit code
-without reading the summary line.
+## Deployment
 
-`testpaths` also lists a root `tests/` directory that does not exist — harmless, but do not
-create test files there expecting them to be the convention; tests live in
-`personal_folder_agent/tests/`.
+`.github/workflows/ci-deploy.yml` validates pushes and pull requests to `main`.
+`.github/workflows/verify-secrets.yml` is a manually dispatched diagnostic.
+Vercel Git integration deploys `channel-sandbox` and `jpbir` from
+`Sandbox/Configuration/`, and `jayti-dashboard` from `Dashboard/Current/`.
 
-### Dashboard
+## Historical training pipeline
 
-```powershell
-cd Dashboard/Current
-node others/test/stale.test.mjs      # 8 cases — stale detection
-node others/test/broker.test.mjs     # 12 cases — broker v2 contract
-node others/test/connect.test.mjs    # 12 cases — Vercel Connect
-npx vercel@latest --prod --yes       # manual production deploy
-```
+The following training notes describe the separately supplied
+`personal_folder_agent` package. That package is no longer tracked in this
+repository; the notebook retained under `training/` still depends on it.
 
-### Deployment
-
-Two GitHub Actions workflows, both `on: push` to `main`:
-
-- `.github/workflows/ci-deploy.yml` — runs tests (Python + Node) on every push/PR to `main`.
-  Deployment is handled by Vercel's git integration (single pipeline).
-
-Vercel projects under org `team_pbbZItTCyIkGsw6LeGrcWx0c`:
-`channel-sandbox` (root: `Sandbox/Configuration/`), `jayti-dashboard` (root: `Dashboard/Current/`).
-Verify a publish with `curl` plus a cache-busting query string — Vercel's edge serves stale HITs otherwise.
-
-## The Python agent pipeline
 
 Stages are deliberately decoupled by an on-disk artifact rather than in-process calls:
 
@@ -87,14 +72,6 @@ GPU session. Two consequences that constrain how you write code here:
 `.kiro/specs/personal-folder-trained-agent/{requirements,design,tasks}.md` is the spec-driven
 roadmap; `tasks.md` carries the live checkbox state for what is built.
 
-### `pyproject.toml` is aspirational in places
-
-`pyproject.toml`'s `[project.scripts]` entry point references
-`personal_folder_agent/cli.py`, plus `inference_engine.py`, `progress_monitor.py`,
-`utils/security.py` and `utils/errors.py`. **None of those files exist.** There is no working
-`personal-folder-agent` console script. The query path that does exist is `tools/ask.py`
-over the `query_router` / `retrieval_strategies` / `dynamic_retriever` trio.
-
 ### `tools/` and `runs/` — the corpus pipeline
 
 `tools/` is a hard-won set of corpus builders and safety checks, each with a docstring
@@ -114,7 +91,7 @@ explaining the incident that motivated it. Read the docstring before using one.
 ~7.5 GB). Never read, cat, or grep these whole; sample with `head`-equivalents or use the
 tools above.
 
-## Vercel function conventions (`Dashboard/Current/backend/api/`, `jaytibirthday-site/api/`)
+## Vercel function conventions (`Dashboard/Current/api/`)
 
 These are hand-rolled Node ESM handlers with no framework. Match the existing shape:
 
@@ -145,7 +122,7 @@ persisting the new state** so a transient SMTP failure retries next tick instead
 
 - `.gitignore` excludes `runs/`, `*.jsonl`, `*.zip`, `data/*.db`, `.env*`, `.claude/`, and
   `_tmp_*.mjs`. A `.env.example` is the one env file that would be committed.
-- The only `package.json` is `Dashboard/Current/` (AWS SDK + nodemailer + Vercel Blob,
-  `"type": "module"`).
+- `Dashboard/Current/package.json` declares dashboard dependencies.
+  `Sandbox/S24/daemon/package.json` sets the daemon module format.
 - Files named `_tmp_*.mjs`, `_verify_task_*.py`, `check_*.mjs`, `audit_*.mjs`, `dump_*.mjs` are
   disposable investigation scripts, not part of any suite.

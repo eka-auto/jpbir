@@ -1,108 +1,82 @@
 # jpbir
 
-Multi-project monorepo for a private AI agent system — personal folder training pipeline,
-live device dashboard, and per-device sandbox deploy kits.
+Repository for the device dashboard, sandbox deploy kits, MCP tools, and training artifacts.
 
 ## Structure
 
-```
-jpbir/
-├── personal_folder_agent/     Python agent: crawl → extract → chunk → fine-tune Qwen 2.5-3B → retrieve
-├── tools/                      Corpus builders, merge/de-dup, secret scanners
-├── runs/                       (gitignored) multi-GB training artifacts
-│
-├── Dashboard/                  Live telemetry + device dashboard
-│   ├── Current/                Node ESM Vercel functions → jaytipargal.tech
-│   │   ├── frontend/           index.html, jp-tracker.js
-│   │   ├── backend/            api/ (18 serverless functions), lib/ (broker, stale)
-│   │   ├── others/             test/ (stale, broker, connect)
-│   │   └── vercel.json, package.json (root-level for Vercel)
-│   ├── S24/                    S24 dashboard context (frontend/, backend/, others/)
-│   └── Vivobook/               VivoBook dashboard context (frontend/, backend/, others/)
-│
-├── Sandbox/                    Device-to-dashboard channel verification + deploy kits
-│   ├── Configuration/          Shared broker client, signer, Flask API, tests
-│   ├── S24/                    S24 deploy kit (agent, installer, SSH setup)
-│   ├── Vivobook/               VivoBook deploy kit (agent, installer, SSH setup)
-│   └── Lenovo/                 Lenovo deploy kit (agent, installer)
-│
-├── eka-runner/                 Submodule: S24 Termux daemon (public)
-├── eka-runner-private/         Submodule: S24 daemon snapshot (private)
-├── ccl_chromium_reader/        Submodule: Python Chrome data reader library
-│
-├── pipeline.ps1                Local CI test runner
-├── train_both_agents_colab.ipynb  Colab training notebook
-├── CLAUDE.md                   Agent guidance
-├── S24_DAEMON_ARCHITECTURE.md  S24 daemon architecture doc
-├── pyproject.toml              Python project metadata
-└── requirements.txt            Python dependencies
-```
+| Location | Contents |
+| --- | --- |
+| `Dashboard/Current/` | Active Vercel dashboard: `api/`, `lib/`, `frontend/`, and tests |
+| `Dashboard/S24/`, `Dashboard/Vivobook/` | Per-device dashboard context |
+| `Sandbox/Configuration/` | Shared broker, Flask dashboard API, signer, and tests |
+| `Sandbox/S24/`, `Sandbox/Vivobook/`, `Sandbox/Lenovo/` | Device installation kits |
+| `Sandbox/S24/daemon/` | Daemon variants previously stored at the repository root |
+| `Sandbox/S24/daemon/legacy/` | Earlier imported daemon variants, retained separately |
+| `Sandbox/S24/DAEMON_ARCHITECTURE.md` | Existing S24 architecture notes |
+| `tools/mcp/` | MCP servers and connection helpers |
+| `tools/diagnostics/` | Device and command-queue inspection scripts |
+| `tools/` | Corpus builders, scanners, validators, and `pipeline.ps1` |
+| `training/` | Colab notebook and training dependencies |
+| `eka-runner/`, `eka-runner-private/` | Existing device-agent submodules |
+| `runs/` | Local training artifacts, excluded from Git |
 
-## Projects
+## Files kept at the root
 
-### 1. Personal Folder Agent (`personal_folder_agent/`)
+`.gitignore` and `.gitmodules` configure Git for the entire repository.
+`pyproject.toml` configures Python test discovery. `CLAUDE.md` provides repository
+agent guidance, and `PROJECT.md` is this overview. The existing `.claudesignore`
+also remains at the root. Application code and project dependencies live with
+their respective projects.
 
-Crawls personal folders, extracts text, chunks it, and fine-tunes Qwen 2.5-3B for
-retrieval-augmented query answering. Training runs on Colab GPU; local machine handles
-crawl/chunk/verify only.
+The former root `package.json` now belongs to `Sandbox/S24/daemon/`, where it
+sets the module format for those scripts. The dashboard keeps its own package.
 
-```
-FolderCrawler → TextProcessor → TextChunker → chunks.jsonl → TrainingPipeline (Colab)
-                                                            ↓
-                              QueryRouter → RetrievalStrategies → DynamicRetriever
-```
+## Running checks
 
-### 2. Dashboard (`Dashboard/`)
-
-Live Vercel-hosted telemetry and device dashboard at `jaytipargal.tech`.
-Node ESM hand-rolled handlers, raw Firestore REST API, DynamoDB for web telemetry.
-
-- `Current/` — active deployment source (frontend/, backend/, others/)
-- `S24/` — S24 device dashboard context (frontend/, backend/, others/)
-- `Vivobook/` — VivoBook device dashboard context (frontend/, backend/, others/)
-
-### 3. Sandbox (`Sandbox/`)
-
-Device-to-dashboard channel verification scaffold. Python 3.12 + Flask + Firestore REST.
-Per-device deploy kits with broker client, ECDSA P-256 signer, and hardware-guarded installers.
-
-- `Configuration/` — shared code (broker_client, signer, dashboard_api, firestore_client, tests)
-- `S24/` — Samsung S24 Ultra deploy kit + SSH mesh setup
-- `Vivobook/` — ASUS VivoBook deploy kit + SSH mesh setup
-- `Lenovo/` — Lenovo laptop deploy kit
-
-### 4. Submodules
-
-- `eka-runner/` — S24 Termux direct-cloud daemon (public)
-- `eka-runner-private/` — S24 daemon snapshot (private, no history)
-- `ccl_chromium_reader/` — Python Chrome data reader library
-
-## Testing
+Install the sandbox test dependencies and dashboard Node dependencies first.
+The local pipeline selects `venv/Scripts/python.exe` when available, otherwise
+`python`. A different interpreter can be supplied with `-PythonPath`.
 
 ```powershell
-# Python agent (149 tests)
-& .\venv\Scripts\python.exe -m pytest -q --no-cov
+.\tools\pipeline.ps1
+```
 
-# Sandbox (39 tests)
-& .\venv\Scripts\python.exe -m pytest Sandbox/Configuration/tests -q -o addopts=""
+The pipeline runs the sandbox tests, syntax-checks every tracked JavaScript
+file, and runs the dashboard tests. It resolves paths from the repository
+location, so it also works when called from another working directory.
 
-# Dashboard (32 tests)
+Individual checks:
+
+```powershell
+python -m pytest Sandbox/Configuration/tests -q -o addopts=""
 cd Dashboard/Current
+npm ci
 node others/test/stale.test.mjs
 node others/test/broker.test.mjs
 node others/test/connect.test.mjs
-
-# All (local CI mirror)
-.\pipeline.ps1
 ```
 
-## CI/CD
+## Deployment
 
-- `.github/workflows/ci-deploy.yml` — runs Python + Node tests on every push to `main`
-- Vercel git integration handles deployment (single pipeline)
-- Vercel projects: `channel-sandbox` (root: `Sandbox/Configuration/`), `jayti-dashboard` (root: `Dashboard/Current/`)
+GitHub Actions validates pushes and pull requests to `main`. Vercel's Git
+integration deploys the three projects:
 
-## Data Stores
+| Vercel project | Source directory |
+| --- | --- |
+| `channel-sandbox` | `Sandbox/Configuration/` |
+| `jpbir` | `Sandbox/Configuration/` |
+| `jayti-dashboard` | `Dashboard/Current/` |
 
-- **DynamoDB** `jaytipargal_telemetry` (us-west-2) — web telemetry
-- **Firestore** `eka-agent` — device heartbeats, queued commands (`devices/` docs)
+This layout change preserves those source directories and the existing device
+installation kit. MCP registration commands now reference `tools/mcp/`.
+
+## Training
+
+See [training/README.md](training/README.md). The retained notebook depends on
+`personal_folder_agent`, which is no longer included in this repository.
+Training runs in Colab; moving the notebook does not restore that dependency.
+
+## Data stores
+
+- DynamoDB: `jaytipargal_telemetry` in `us-west-2` for web telemetry.
+- Firestore: `eka-agent` for device heartbeats and queued commands.

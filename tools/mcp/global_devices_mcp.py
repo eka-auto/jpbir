@@ -12,7 +12,7 @@ Device ID convention (match existing docs exactly):
           jayti-asus-vivobook
 
 Register once:
-    claude mcp add global-devices -- python C:/Samsung-S24/global_devices_mcp.py
+    claude mcp add global-devices -- python C:/Users/abcom/jpbir/tools/mcp/global_devices_mcp.py
 
 Tools:
     list_devices          — all registered devices + online/offline + lastSeen

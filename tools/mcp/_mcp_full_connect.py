@@ -1,5 +1,5 @@
 import sys, os, json, time
-sys.path.insert(0, r'C:\Samsung-S24')
+# MCP server modules are siblings of this script.
 os.environ['EKA_FIRESTORE_DB'] = 'eka-agent'
 
 from firestore_mcp import s24_wakeup, s24_sync_now, s24_status, s24_queue_command, s24_read_calls, s24_read_sms, s24_read_location
