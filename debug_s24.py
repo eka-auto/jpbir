@@ -1,0 +1,40 @@
+from google.oauth2 import service_account
+from google.cloud.firestore_v1 import Client as FsClient
+
+cred = service_account.Credentials.from_service_account_file(r'C:\eka-agent\agent\serviceAccountKey.json')
+db = FsClient(project='intrepid-stage-495117-q1', database='eka-agent', credentials=cred)
+
+d = db.collection('devices').document('samsung-s24-ultra').get().to_dict()
+
+print('=== S24 Device Status ===')
+print(f'online: {d.get("online")}')
+print(f'status: {d.get("status")}')
+print(f'lastPing: {d.get("lastPing")}')
+print(f'connectionMethod: {d.get("connectionMethod")}')
+print(f'bridge_host: {d.get("bridge_host")}')
+print(f'agentVersion: {d.get("agentVersion")}')
+print(f'agentScript: {d.get("agentScript")}')
+print(f'deviceState: {d.get("deviceState")}')
+print(f'needsFcmReRegistration: {d.get("needsFcmReRegistration")}')
+print(f'updatedAt: {d.get("updatedAt")}')
+print(f'lastConnectionTrigger: {d.get("lastConnectionTrigger")}')
+print(f'lastWakeupDemand: {d.get("lastWakeupDemand")}')
+print(f'trigger_by: {d.get("trigger_by")}')
+print()
+print('=== SSH Config ===')
+ssh = d.get('ssh', {})
+print(f'  enabled: {ssh.get("enabled")}')
+print(f'  status: {ssh.get("status")}')
+print(f'  port: {ssh.get("port")}')
+print(f'  directConnection: {ssh.get("directConnection")}')
+print(f'  lastAttempt: {ssh.get("lastAttempt")}')
+print()
+print('=== agentDiag ===')
+print(f'{d.get("agentDiag")}')
+print(f'agentDiagAt: {d.get("agentDiagAt")}')
+print()
+print('=== Command Queue (dead channel) pending ===')
+cq = d.get('commandQueue', {})
+pending = [(k, v) for k, v in cq.items() if isinstance(v, dict) and v.get('status') == 'pending']
+for k, v in pending:
+    print(f'  {k}: action={v.get("action")} type={v.get("type")} requestedAt={v.get("requestedAt")} requestedBy={v.get("requestedBy")}')

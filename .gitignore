@@ -84,3 +84,6 @@ firebase.json
 data/
 dataconnect/
 .env*
+
+node_modules/
+.venv/
