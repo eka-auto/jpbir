@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env node
+#!/usr/bin/env node
 import http from "node:http";
 import { exec } from "node:child_process";
 import { readFile, writeFile, readdir, mkdir } from "node:fs/promises";

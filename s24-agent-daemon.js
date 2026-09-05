@@ -1,4 +1,5 @@
-#!/usr/bin/env node/**
+#!/usr/bin/env node
+/**
  * S24 Android Daemon
  * Runs on-device in Termux. Exposes an agent loop over the Messages API
  * with real shell/file tools and a command queue endpoint.
@@ -219,7 +220,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   const url = new URL(req.url, `http://${req.headers.host}`);
-  
+
   if (req.method === "POST" && url.pathname === "/run") {
     let body = "";
     req.on("data", chunk => { body += chunk; });
@@ -259,14 +260,7 @@ return json(res, 404, { error: "Not Found" });
 }
 });
 server.listen(CFG.port, CFG.bindHost, () => {
-log(S24 agent daemon listening on ${CFG.bindHost}:${CFG.port});
-log(command authentication enabled; remote bind=${CFG.allowRemoteBind});
-log(model=${CFG.model} sandbox=${CFG.sandboxRoot});
+log(`S24 agent daemon listening on ${CFG.bindHost}:${CFG.port}`);
+log(`command authentication enabled; remote bind=${CFG.allowRemoteBind}`);
+log(`model=${CFG.model} sandbox=${CFG.sandboxRoot}`);
 });
-
-
-***
-
-Once saved, restart the daemon in Git Bash using your standard execution flag sequence. Do you need any assistance testing the updated interface endpoints with an external connection call like `curl`?
-
-
