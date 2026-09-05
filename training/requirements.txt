@@ -1,5 +1,5 @@
 # Personal Folder Trained Agent - Dependencies
-# Install with: pip install -r requirements.txt
+# Install from the repository root: pip install -r training/requirements.txt
 
 # Core ML Libraries
 transformers>=4.45.0

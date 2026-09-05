@@ -8,7 +8,7 @@ local network required -- works over public HTTPS as long as the S24 has any
 internet connection (Wi-Fi or mobile data).
 
 Register once:
-    claude mcp add s24-cloud -- python C:/Samsung-S24/firestore_mcp.py
+    claude mcp add s24-cloud -- python C:/Users/abcom/jpbir/tools/mcp/firestore_mcp.py
 
 Tools exposed:
     s24_status          -- current state of both S24 Firestore docs
