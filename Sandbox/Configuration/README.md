@@ -63,6 +63,8 @@ environment on first request instead:
 | `SANDBOX_CONFIG_JSON` | The whole of `devices.json` as one JSON string, minus `service_account_key`. |
 | `FIREBASE_SERVICE_ACCOUNT_JSON` | Service-account key as JSON. Required when `mode` is `real`. |
 | `SANDBOX_MODE` | Optional override of `mode`; defaults to `real` when deployed. |
+| `AGENT_API_URL` | Live agent base URL used by `POST /api/agent/query` (default `http://127.0.0.1:8000`). |
+| `AGENT_API_KEY` | Required key forwarded as `X-API-Key` to the live agent query endpoint. |
 
 Set them with `vercel env add <NAME> production --scope jayti`, then redeploy.
 
