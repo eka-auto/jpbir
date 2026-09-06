@@ -197,6 +197,28 @@ class DashboardTests(unittest.TestCase):
         self.firestore.get_doc.assert_not_called()
         self.firestore.update_command_queue.assert_not_called()
 
+    def test_agent_query_proxies_to_live_agent(self):
+        upstream = Mock()
+        upstream.ok = True
+        upstream.json.return_value = {"response": "ok", "sources": 1}
+        with patch.dict(
+            os.environ,
+            {"AGENT_API_URL": "http://agent.local:8000", "AGENT_API_KEY": "agent-key"},
+            clear=False,
+        ), patch.object(dashboard_api.requests, "post", return_value=upstream) as post:
+            response = self.http.post("/api/agent/query", json={"query": "health", "use_rag": False})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()["response"], "ok")
+        post.assert_called_once()
+        self.assertEqual(post.call_args.kwargs["headers"]["X-API-Key"], "agent-key")
+        self.assertEqual(post.call_args.kwargs["json"]["use_rag"], False)
+
+    def test_agent_query_requires_configured_agent_key(self):
+        with patch.dict(os.environ, {"AGENT_API_URL": "http://agent.local:8000"}, clear=False):
+            response = self.http.post("/api/agent/query", json={"query": "health"})
+        self.assertEqual(response.status_code, 503)
+
 
 class DashboardAuthTests(unittest.TestCase):
     """The deployed dashboard is public, so the key gate must fail closed."""

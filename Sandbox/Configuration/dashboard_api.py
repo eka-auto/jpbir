@@ -26,6 +26,7 @@ import uuid
 from datetime import datetime, timezone
 
 from flask import Flask, jsonify, request
+import requests
 
 from firestore_client import FirestoreClient, decode_fields
 
@@ -40,6 +41,21 @@ PUBLIC_ENDPOINTS = {"api_status"}
 
 class ConfigError(RuntimeError):
     """Raised when the sandbox config cannot be resolved at request time."""
+
+
+def parse_bool(value, default=True):
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value != 0
+    text = str(value).strip().lower()
+    if text in {"1", "true", "yes", "on"}:
+        return True
+    if text in {"0", "false", "no", "off"}:
+        return False
+    return default
 
 
 def make_client(cfg):
@@ -266,6 +282,51 @@ def api_post_command(device_id):
         "queuedAt": now,
     })
     return jsonify({"deviceId": device_id, "commandId": cmd_id, "status": "queued", "queuedAt": now}), 202
+
+
+@app.post("/api/agent/query")
+def api_agent_query():
+    """Proxy an authenticated query to the live external agent API."""
+    body = request.get_json(silent=True) or {}
+    query = str(body.get("query") or body.get("question") or "").strip()
+    if not query:
+        return jsonify({"error": "query required"}), 400
+
+    agent_url = (os.environ.get("AGENT_API_URL") or "http://127.0.0.1:8000").rstrip("/")
+    agent_key = os.environ.get("AGENT_API_KEY") or ""
+    if not agent_key or agent_key == "YOUR_AGENT_API_KEY_HERE":
+        return jsonify({"error": "server missing AGENT_API_KEY"}), 503
+
+    payload = {
+        "query": query,
+        "top_k": int(body.get("top_k", 5)),
+        "max_tokens": int(body.get("max_tokens", 512)),
+        "temperature": float(body.get("temperature", 0.7)),
+        "use_rag": parse_bool(body.get("use_rag"), default=True),
+    }
+    try:
+        response = requests.post(
+            f"{agent_url}/query",
+            headers={"X-API-Key": agent_key, "Content-Type": "application/json"},
+            json=payload,
+            timeout=90,
+        )
+    except requests.RequestException as exc:
+        return jsonify({"error": "agent unreachable", "detail": str(exc)}), 502
+
+    if not response.ok:
+        detail = response.text[:500]
+        try:
+            detail = response.json()
+        except ValueError:
+            pass
+        return jsonify({
+            "error": "agent upstream error",
+            "status": response.status_code,
+            "detail": detail,
+        }), 502
+
+    return jsonify(response.json())
 
 
 def main():
