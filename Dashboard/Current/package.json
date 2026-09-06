@@ -3,6 +3,10 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
+  "scripts": {
+    "build": "node others/build-frontend.mjs",
+    "test:frontend": "node --test others/test/frontend-build.test.mjs"
+  },
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.1115.0",
     "@aws-sdk/lib-dynamodb": "^3.1115.0",

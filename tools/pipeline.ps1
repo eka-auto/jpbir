@@ -33,6 +33,10 @@ try {
 
 Write-Host "==> [3/3] Dashboard tests" -ForegroundColor Cyan
 Push-Location (Join-Path $root "Dashboard/Current")
+& npm.cmd run test:frontend
+if ($LASTEXITCODE -ne 0) { Pop-Location; throw "frontend build tests failed" }
+& npm.cmd run build
+if ($LASTEXITCODE -ne 0) { Pop-Location; throw "frontend build failed" }
 node others/test/stale.test.mjs
 if ($LASTEXITCODE -ne 0) { Pop-Location; throw "stale tests failed" }
 node others/test/broker.test.mjs

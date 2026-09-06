@@ -6,7 +6,7 @@ ASUS VivoBook laptop device-specific dashboard configuration.
 
 ```
 Vivobook/
-├── frontend/     VivoBook-specific UI overrides (placeholder)
+├── frontend/     VivoBook section source, published at /vivobook
 ├── backend/      VivoBook-specific API config (placeholder)
 ├── others/       VivoBook-specific config files (placeholder)
 └── DASHBOARD.md  this file
@@ -24,11 +24,11 @@ Vivobook/
 ## Data flow
 
 ```
-VivoBook → Firestore (eka-agent/devices/jayti-asus-vivobook) → Dashboard/Current/backend/api/ → jaytipargal.tech
+VivoBook → Firestore (eka-agent/devices/jayti-asus-vivobook) → Dashboard/Current/api/ → jaytipargal.tech
 ```
 
 The VivoBook reports `lastSeen`, `staleAlert`, and `commandQueue` to Firestore.
-These are consumed by the shared backend in `Dashboard/Current/backend/api/`.
+These are consumed by the shared backend in `Dashboard/Current/api/`.
 
 ## Related
 
@@ -40,12 +40,18 @@ These are consumed by the shared backend in `Dashboard/Current/backend/api/`.
 ## Subfolders
 
 ### `frontend/`
-VivoBook-specific UI overrides or custom dashboard views. Currently empty — the
-VivoBook uses the shared UI from `Dashboard/Current/frontend/`.
+`index.html` is the source for the `/vivobook` section. Edit this file directly.
+Running `npm run build` in `Dashboard/Current/` copies it to `Current/dist/vivobook.html`
+alongside the existing homepage and S24 section. The historical copy in
+`Current/frontend/vivobook.html` is excluded from the build.
+
+Place section assets under `frontend/vivobook/` and reference them at `/vivobook/...`
+to avoid collisions with the other sections. See
+[`Current/DASHBOARD.md`](../Current/DASHBOARD.md#frontend) for the shared build.
 
 ### `backend/`
 VivoBook-specific API endpoints or config. Currently empty — the VivoBook uses
-the shared endpoints from `Dashboard/Current/backend/api/`.
+the shared endpoints from `Dashboard/Current/api/`.
 
 ### `others/`
 VivoBook-specific config files, env templates, or test fixtures. Currently empty.
