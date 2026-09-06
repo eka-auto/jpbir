@@ -19,7 +19,7 @@ $Artifacts = @(
     [pscustomobject]@{ Name = 'device_agent.py'; Hash = '70A74469A2E004F671897B30F85A8759F684ACA4CE1F5860BF39C7E12396D2F7' },
     [pscustomobject]@{ Name = 'broker_client.py'; Hash = 'E380867C5843E49C21D7E46704DB20607389A9F1FAAD4B3CF61F9B4EAB173BB1' },
     [pscustomobject]@{ Name = 'signer.py'; Hash = '8AABF8E5FFF25A067B02901EF4798D061A9C2B3D5844D72E59DB1419112632F7' },
-    [pscustomobject]@{ Name = 'single_instance.py'; Hash = '1A572F39DC96599E8DF55DEBE9CCD9BD8232CFFECAC08BBC898FF5FFF4F9EF46' },
+    [pscustomobject]@{ Name = 'single_instance.py'; Hash = '334F103E2D7175A340D65E95011D59531E1940E5' },
     [pscustomobject]@{ Name = 'requirements-broker.txt'; Hash = '37B13C7D746D596E7DA6E73098DFBA792EAB1A49C8ACC7E0A5AB287B56B107D5' }
 )
 
@@ -161,7 +161,7 @@ $RunKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
 $Persistence = $null
 try {
     Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
-    Register-ScheduledTask -TaskName $TaskName -Action $Action -Trigger $Trigger -Settings $Settings -Principal $Principal -Description 'ASUS VivoBook signed outbound broker daemon' -Force -ErrorAction Stop | Out-Null
+    Register-ScheduledTask -TaskName $TaskName -Action $Action -Trigger $Trigger -Settings $Settings -Principal $Principal -Description 'ASUS VivoBook signed outbound broker daemon' -Force -Error[...]
     Remove-ItemProperty -LiteralPath $RunKey -Name $TaskName -ErrorAction SilentlyContinue
     $Persistence = 'scheduled task'
 } catch {
