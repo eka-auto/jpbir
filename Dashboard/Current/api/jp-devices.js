@@ -109,7 +109,29 @@ export default async function handler(req, res) {
     });
 
     devices.sort((a, b) => (b.lastSeen || '').localeCompare(a.lastSeen || ''));
-    return res.status(200).json({ success: true, source: 'firestore', database: FIRESTORE_DB, generated_at: new Date().toISOString(), devices });
+
+    // Site video-event relay state: last play event from jaytibirthday.in and
+    // which devices acknowledged it (seenBy map written by the device watchers).
+    let videoEvent = null;
+    try {
+      const vr = await fetch(`${base}/settings/siteVideoEvents`, { headers: { Authorization: `Bearer ${token}` } });
+      if (vr.ok) {
+        const vd = await vr.json();
+        const f = {};
+        for (const [k, v] of Object.entries(vd.fields || {})) f[k] = dec(v);
+        videoEvent = {
+          lastEventId: f.lastEventId || null,
+          lastEventAt: f.lastEventAt || null,
+          lastVideoEvent: f.lastVideoEvent || null,
+          lastEventSource: f.lastEventSource || null,
+          lastVisitorCountry: f.lastVisitorCountry || null,
+          lastVisitorCity: f.lastVisitorCity || null,
+          seenBy: f.seenBy || {},
+        };
+      }
+    } catch { videoEvent = null; }
+
+    return res.status(200).json({ success: true, source: 'firestore', database: FIRESTORE_DB, generated_at: new Date().toISOString(), devices, videoEvent });
   } catch (err) {
     return res.status(500).json({ success: false, error: err.message || 'jp-devices failed' });
   }
