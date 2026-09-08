@@ -86,9 +86,14 @@ vercel --prod                                                        # redeploy
    `bd6c343e65e4fcbe70ea76f49aee43178d82b5a8` if it still exists.
 2. Create a new JSON key for that service account and download it (`key.json`).
 3. Set the new key as **raw JSON** everywhere it is consumed:
-   - **Vercel** (Option 3) — this is the store that fixes the dashboard.
-   - Any local `.env` / `serviceAccountKey.json` used by `freeze_device.ps1`
-     or the sandbox API.
+   - **Vercel** (Option 3) — this is the store that fixes the dashboard. It also
+     feeds the sandbox API, since `jpbir` and `channel-sandbox` deploy from
+     `Sandbox/Configuration/` and read the same `FIREBASE_SERVICE_ACCOUNT_JSON`
+     environment variable.
+   - For `tools/freeze_device.ps1`, one of the two sources it actually reads:
+     the `FIREBASE_SERVICE_ACCOUNT_JSON` variable in the **shell's process
+     environment** (it does not load a `.env` file), or `serviceAccountKey.json`
+     at the repository root.
    - The GitHub Actions secret (Option 1/2) only if an external consumer needs
      it; no workflow in this repository reads it.
 4. Redeploy Vercel, then verify as described below.
@@ -117,8 +122,11 @@ secrets only, and never reports on `FIREBASE_SERVICE_ACCOUNT_JSON`.)
    curl -s "https://<dashboard-host>/api/jp-devices" -H "x-stats-key: $STATS_KEY"
    ```
 
-   A response containing `token exchange failed` / `invalid_grant` means the
-   deployed value is still the old key or is not raw JSON.
+   A response containing `invalid_grant` means Google rejected the deployed
+   service-account credential itself (an old or revoked key). A value that is
+   not raw JSON never reaches Google: `JSON.parse` fails first, and the API
+   returns a 500 whose `error` is a `SyntaxError` (e.g. `Unexpected token …
+   is not valid JSON`) instead.
 
 ## What This Key Does
 
