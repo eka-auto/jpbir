@@ -20,7 +20,10 @@ The Live device status banner rendered:
 
 **Zero watchers picked it up.** The text following that label is the literal
 fallback string `none acked yet` (`Dashboard/Current/frontend/index.html:1180-1181`),
-and it is the only value the banner can ever produce today.
+shown whenever `seenBy` has no keys. The renderer would happily draw pills for a
+`seenBy` map that had them — including one written by hand or by the dashboard's
+own service account, which holds full `datastore` scope. Nothing writes one, so
+the fallback is what the banner shows every time.
 
 The ack list is `Object.keys(ve.seenBy || {})`. For a pill to appear, something
 must write a `seenBy` map onto Firestore `settings/siteVideoEvents`. Nothing
@@ -89,10 +92,14 @@ service-account REST calls bypass rules regardless.
 ## Secondary findings
 
 - **The empty ack list is diagnostically ambiguous.** `jp-devices.js:140`
-  (`seenBy: f.seenBy || {}`) collapses absent, null, `false`, `0`, empty array,
-  and any value `dec()` cannot decode into `{}` *before* serialization, so
-  neither the banner nor the raw API response can distinguish them. In this case
-  the field is genuinely absent, but the endpoint could not tell you that.
+  (`seenBy: f.seenBy || {}`) collapses every *falsy* decode — absent, `null`
+  (including the `nullValue`, `bytesValue`, `referenceValue` and `geoPointValue`
+  types `dec()` cannot handle), `false`, `0`, and `''` — into `{}` before
+  serialization, so neither the banner nor the raw API response can distinguish
+  them. An empty array is the exception: `dec()` returns `[]`, which is truthy,
+  so the API serializes `seenBy: []` and only the banner flattens it to the same
+  "none acked yet" via `Object.keys`. In this case the field is genuinely absent,
+  but the endpoint could not tell you that.
 - **Read failures are invisible.** `jp-devices.js:143` (`catch { videoEvent = null; }`)
   swallows 403, network errors, and token failures alike; a 404 leaves
   `videoEvent` null. The banner then simply does not render. Conversely, the fact
