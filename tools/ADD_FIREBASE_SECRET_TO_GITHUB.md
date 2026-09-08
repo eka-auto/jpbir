@@ -9,6 +9,13 @@ The same key must **also** live in Vercel: the dashboard API endpoints
 `lib/broker.js`) read `FIREBASE_SERVICE_ACCOUNT_JSON` from Vercel env, not from
 GitHub. Rotating it in only one place leaves the other broken.
 
+> ⚠️ **The two stores expect different encodings of the same key.** The Vercel
+> functions call `JSON.parse(FIREBASE_SERVICE_ACCOUNT_JSON)` directly (no base64
+> decode), so Vercel must hold the **raw JSON** of the key file. The GitHub
+> Actions secret holds the **base64-encoded** value (the workflow decodes it).
+> Pasting the base64 blob into Vercel makes `JSON.parse` throw and the dashboard
+> stays down — set the raw JSON there.
+
 ## Symptom of a stale/revoked key
 
 When the deployed key has been revoked or rotated in GCP but the env var still
@@ -49,17 +56,18 @@ gh secret set FIREBASE_SERVICE_ACCOUNT_JSON -b "<BASE64_KEY>" -R jaytipargal/jpb
 
 ### Option 3: Vercel (required for the dashboard)
 
-Set the identical value on each Vercel project that serves the dashboard/relay
+Set the **raw JSON** value (the contents of the downloaded key file, not the
+base64 blob) on each Vercel project that serves the dashboard/relay
 (`jpbir`, `jayti-dashboard`, `channel-sandbox`), then redeploy so the running
 functions pick it up:
 
 ```bash
 # Via the Vercel dashboard: Project → Settings → Environment Variables →
-#   FIREBASE_SERVICE_ACCOUNT_JSON (Production) → paste base64 value → Save → Redeploy.
-# Or via CLI, per project:
+#   FIREBASE_SERVICE_ACCOUNT_JSON (Production) → paste the RAW JSON → Save → Redeploy.
+# Or via CLI, per project (feed the raw JSON file on stdin, not the base64 value):
 vercel env rm FIREBASE_SERVICE_ACCOUNT_JSON production
-vercel env add FIREBASE_SERVICE_ACCOUNT_JSON production   # paste the base64 value
-vercel --prod                                             # redeploy
+vercel env add FIREBASE_SERVICE_ACCOUNT_JSON production < key.json   # raw JSON
+vercel --prod                                                        # redeploy
 ```
 
 ## Rotating a leaked or revoked key
@@ -68,9 +76,11 @@ vercel --prod                                             # redeploy
    account `firebase-adminsdk-fbsvc@intrepid-stage-495117-q1.iam.gserviceaccount.com`
    → **Keys**, and **delete** the exposed key
    `bd6c343e65e4fcbe70ea76f49aee43178d82b5a8` if it still exists.
-2. Create a new JSON key for that service account.
-3. Base64-encode it (`base64 -w0 key.json`) and update the secret in **all three**
-   stores: GitHub Actions (Option 1/2), Vercel (Option 3), and any local `.env`.
+2. Create a new JSON key for that service account and download it (`key.json`).
+3. Update the secret in **all three** stores, minding the encoding each expects:
+   - **GitHub Actions** (Option 1/2): the **base64** value — `base64 -w0 key.json`.
+   - **Vercel** (Option 3): the **raw JSON** — the `key.json` contents verbatim.
+   - Any local `.env`: raw JSON, same as Vercel.
 4. Redeploy Vercel and re-run the verify workflow below.
 
 ## Base64-Encoded Service Account Key
