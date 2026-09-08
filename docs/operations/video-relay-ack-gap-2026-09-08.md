@@ -18,12 +18,25 @@ The Live device status banner rendered:
 
 ## Answer
 
-**Zero watchers picked it up.** The text following that label is the literal
-fallback string `none acked yet` (`Dashboard/Current/frontend/index.html:1180-1181`),
-shown whenever `seenBy` has no keys. The renderer would happily draw pills for a
-`seenBy` map that had them — including one written by hand or by the dashboard's
-own service account, which holds full `datastore` scope. Nothing writes one, so
-the fallback is what the banner shows every time.
+**Zero device watchers picked it up.** That much is established from code, not
+inferred: no watcher exists to have done so, in any of the four repositories
+involved (below). The banner's ack list can therefore not be reporting a device.
+
+What follows the label is then the literal fallback `none acked yet`
+(`Dashboard/Current/frontend/index.html:1180-1181`), shown whenever `seenBy` has
+no keys. Two qualifiers on that second half, since the live document was **not**
+read (see Verification limits):
+
+- The producer's `updateMask` omitting `seenBy` means its PATCH leaves the field
+  *untouched*, not that it clears one. A pre-existing `seenBy` would survive
+  every event write.
+- The renderer would draw pills for any `seenBy` map that had keys — including
+  one written by hand, or by the dashboard's own service account, which holds
+  full `datastore` scope.
+
+So "the banner shows the fallback" is an inference from no writer existing
+anywhere, and it is the field's contents that are unverified — not the answer to
+the question asked, which stands on the absence of watcher code.
 
 The ack list is `Object.keys(ve.seenBy || {})`. For a pill to appear, something
 must write a `seenBy` map onto Firestore `settings/siteVideoEvents`. Nothing
@@ -108,8 +121,13 @@ service-account REST calls bypass rules regardless.
 - **`lastEventSource` is fetched and then discarded.** `jp-devices.js:137`
   projects it; the banner never renders it. The producer sets it to
   `jaytibirthday.in` — the one field that self-identifies the writer.
-- **No auto-refresh.** The banner is a snapshot from page load or the Refresh
-  button; a late ack would never appear on its own.
+- **The banner is not auto-refreshed.** The page does run a 10s poll
+  (`REFRESH_MS = 10000`, `startAutoRefresh` at `:938-943`), but that timer calls
+  `load()` (`:914`), which fetches `/api/jp-stats` and calls `render()` — it
+  never calls `loadLiveDevices()` (`:1118`), the only function that draws the
+  banner, and `/api/jp-stats` does not return `videoEvent` at all. The banner is
+  redrawn on exactly two events: navigating to the device page (`:1113`) and the
+  Refresh button. A late ack would not appear on its own.
 - **Drift.** `Dashboard/S24/frontend/index.html:242` and
   `Dashboard/Vivobook/frontend/index.html:213` call the same endpoint and discard
   `videoEvent` entirely.
@@ -127,8 +145,12 @@ Minimum viable ack path, in dependency order:
 2. Give devices a way to learn of the event — surface `lastEventAt` in the
    commands-poll response, or have the dashboard enqueue a command on change.
 3. Add an ack route, or a `video-event-ack` action in `allowed_commands` plus a
-   handler in `device_agent.py`, so the existing broker-command-complete path
-   records it (that path already writes `lastCommandAckAt`/`AckId`/`AckStatus`).
+   handler in `device_agent.py`. Note that completing a command is *not* itself
+   an ack the banner can see: `broker-command-complete.js:124-138` patches
+   `/devices/<id>` (`commandQueue.<id>.result`, `lastCommandAckAt`/`AckId`/
+   `AckStatus`), while the banner reads only `settings/siteVideoEvents.seenBy`.
+   Something must still patch `seenBy` explicitly — either the device, or the
+   dashboard translating a completion into that write.
 4. Render `lastEventSource`, and distinguish "no acks" from "unknown" in the
    banner.
 
