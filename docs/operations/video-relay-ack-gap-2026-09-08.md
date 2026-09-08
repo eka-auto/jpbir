@@ -18,25 +18,40 @@ The Live device status banner rendered:
 
 ## Answer
 
-**Zero device watchers picked it up.** That much is established from code, not
-inferred: no watcher exists to have done so, in any of the four repositories
-involved (below). The banner's ack list can therefore not be reporting a device.
+**No device watcher exists that could have picked it up.** Stated at the
+strength the evidence actually supports:
 
-What follows the label is then the literal fallback `none acked yet`
-(`Dashboard/Current/frontend/index.html:1180-1181`), shown whenever `seenBy` has
-no keys. Two qualifiers on that second half, since the live document was **not**
-read (see Verification limits):
+**Verified.** `seenBy` has never appeared in any commit of any of the four
+repositories involved — 295 commits in total, searched with `git log --all -S`
+over full (unshallowed) history:
 
-- The producer's `updateMask` omitting `seenBy` means its PATCH leaves the field
-  *untouched*, not that it clears one. A pre-existing `seenBy` would survive
-  every event write.
-- The renderer would draw pills for any `seenBy` map that had keys — including
-  one written by hand, or by the dashboard's own service account, which holds
-  full `datastore` scope.
+| Repository | Commits | `seenBy` |
+| --- | --- | --- |
+| `jpbir` | 171 | only `cb3f1d8`, both occurrences readers |
+| `jaytibirthday-site` | 108 | never added or removed by any commit |
+| `eka-runner` | 10 | never |
+| `eka-runner-private` | 6 | never |
 
-So "the banner shows the fallback" is an inference from no writer existing
-anywhere, and it is the field's contents that are unverified — not the answer to
-the question asked, which stands on the absence of watcher code.
+No watcher implementation has ever been committed anywhere, and the producer
+never writes the field. The three watchers its header names do not exist as code.
+
+**Not verified.** Whether the live document's `seenBy` is in fact empty. The
+document was never read (see Verification limits), and two routes remain open
+that no repository search can close:
+
+- Code that was never committed — an ad-hoc script on a device or laptop.
+- A write from outside these repositories entirely: the Firestore console, an
+  MCP tool, or the dashboard's own service account, which holds full `datastore`
+  scope. Note also that the producer's `updateMask` omitting `seenBy` leaves an
+  existing field *untouched* rather than clearing it, so anything once written
+  there would survive every subsequent event.
+
+So the answer to the question asked — *which device watchers acked this* — is
+none, because none exist to have done so. The stronger claim, that the field is
+empty and the banner therefore shows `none acked yet`, is an inference from no
+committed writer existing. One call settles it, and is worth making before
+anyone builds on this report:
+`GET /api/jp-devices?key=$STATS_KEY` → `.videoEvent.seenBy`.
 
 The ack list is `Object.keys(ve.seenBy || {})`. For a pill to appear, something
 must write a `seenBy` map onto Firestore `settings/siteVideoEvents`. Nothing
@@ -69,9 +84,9 @@ index.html:2372                      settings/siteVideoEvents         jp-devices
 | The producer is real and external | `jaytipargal/jaytibirthday-site`, `api/video-event.js`. Cloned and read in full. |
 | The event id matches exactly | `api/video-event.js:159` — ``const eventId = `site_video_play_${now}`;`` |
 | The banner's time is the same instant as the id | `:142-143` take one `Date.now()` and derive `nowIso` from it; `:170-171` write both as `lastEventId` and `lastEventAt`. 1788814804619 = 2026-09-07T21:00:04.619Z = 02:30:04 IST on 8 Sept. |
-| The producer never writes `seenBy` | Explicit `updateMask` at `api/video-event.js:179-180`: `lastEventId, lastEventAt, lastVideoEvent, lastEventSource, lastVisitorCountry, lastVisitorCity, relayVersion`. `grep -rn seenBy` in that repo → no match. The field is structurally absent, not empty. |
+| The producer never writes `seenBy` | Explicit `updateMask` at `api/video-event.js:179-180`: `lastEventId, lastEventAt, lastVideoEvent, lastEventSource, lastVisitorCountry, lastVisitorCity, relayVersion`. `grep -rn seenBy` in that repo → no match, and `git log --all -S seenBy` over all 108 commits → never added by any commit. Its PATCH therefore leaves the field untouched; it does not clear one. |
 | The three watchers were named but never written | `api/video-event.js:6-7`: `// Device watchers (S24 termux daemon, VivoBook agent daemon, controller video-event-watcher) read settings/siteVideoEvents.lastEventAt and react.` |
-| No watcher in the device-agent repos | `eka-runner` (8 files) and `eka-runner-private` (7 files) cloned and grepped: zero hits for `seenBy`, `siteVideoEvents`, `lastEventAt`, `site_video_play`, or any video vocabulary. |
+| No watcher in the device-agent repos | `eka-runner` (8 files, 10 commits) and `eka-runner-private` (7 files, 6 commits) cloned, unshallowed, and searched over full history: zero hits for `seenBy`, `siteVideoEvents`, `lastEventAt`, `site_video_play`, or any video vocabulary — in the working tree and in every commit. |
 | The S24 daemon that *does* exist handles only push commands | `eka-runner-private/termux/fcm_listener.py:78-104` — reads `command` from an FCM payload, implements `run_sync`, logs everything else as `Unknown command`. No Firestore read. |
 | Nothing in jpbir writes it either | `seenBy`, `siteVideoEvents`, `lastVideoEvent`, `lastEventId` appear only in `Dashboard/Current/api/jp-devices.js` and `Dashboard/Current/frontend/index.html`. `git log --all -S` for each returns exactly one commit, `cb3f1d8`; `site_video_play` returns none. |
 | It never worked before | A regression would require the ack path to have worked once. `cb3f1d8` shipped only the reader and the banner (2 files, +47 lines), direct to `main`, no PR, no test, no doc. |
