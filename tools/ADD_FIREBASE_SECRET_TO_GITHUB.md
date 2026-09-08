@@ -90,10 +90,21 @@ vercel --prod                                                        # redeploy
      feeds the sandbox API, since `jpbir` and `channel-sandbox` deploy from
      `Sandbox/Configuration/` and read the same `FIREBASE_SERVICE_ACCOUNT_JSON`
      environment variable.
-   - For `tools/freeze_device.ps1`, one of the two sources it actually reads:
-     the `FIREBASE_SERVICE_ACCOUNT_JSON` variable in the **shell's process
-     environment** (it does not load a `.env` file), or `serviceAccountKey.json`
-     at the repository root.
+   - For the local device tools, whichever source each one actually reads
+     (none of them loads a `.env` file):
+     - `tools/freeze_device.ps1`: the `FIREBASE_SERVICE_ACCOUNT_JSON` variable
+       in the **shell's process environment**, or `serviceAccountKey.json` at
+       the **repository root**.
+     - `tools/freeze_device.py`, `tools/connect_and_freeze.py`,
+       `tools/queue_command.py`: the same `FIREBASE_SERVICE_ACCOUNT_JSON`
+       variable (raw JSON, parsed with `json.loads`), or a key file at
+       `tools/serviceAccountKey.json`, `~/.config/eka/serviceAccountKey.json`
+       (`freeze_device.py` only), or the machine path
+       `…\Go4Garage\Eka Runner\serviceAccountKey.json`.
+     - The MCP servers and diagnostics (`tools/mcp/`, `tools/diagnostics/`,
+       `tools/query_firestore.py`) load a `serviceAccountKey.json` by absolute
+       path (or a path in `GOOGLE_APPLICATION_CREDENTIALS`) — replace those
+       file copies too.
    - The GitHub Actions secret (Option 1/2) only if an external consumer needs
      it; no workflow in this repository reads it.
 4. Redeploy Vercel, then verify as described below.
