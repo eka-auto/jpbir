@@ -61,8 +61,19 @@ async function getFirestoreToken() {
       assertion: jwt,
     }),
   });
-  const data = await res.json();
-  if (!data.access_token) throw new Error('token exchange failed: ' + JSON.stringify(data).slice(0, 200));
+  const data = await res.json().catch(() => ({}));
+  if (!data.access_token) {
+    const detail = JSON.stringify(data).slice(0, 200);
+    // `invalid_grant` means Google rejected the signed assertion itself — almost
+    // always because the FIREBASE_SERVICE_ACCOUNT_JSON key has been revoked or
+    // rotated, so its public half no longer matches the service account. The
+    // signing above is not at fault; the credential is. Say so, so the fix is a
+    // key rotation and not a hunt through this code.
+    if (data.error === 'invalid_grant') {
+      throw new Error('token exchange failed (' + detail + '): the FIREBASE_SERVICE_ACCOUNT_JSON key is invalid, revoked, or rotated — generate a fresh service-account key and update the secret.');
+    }
+    throw new Error('token exchange failed: ' + detail);
+  }
   _tokenCache = { token: data.access_token, exp: Date.now() + (data.expires_in || 3600) * 1000 };
   return data.access_token;
 }
