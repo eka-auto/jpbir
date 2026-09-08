@@ -309,9 +309,15 @@
                 renderQueue(dev);
             })
             .catch(function (e) {
-                $('liveHint').textContent = 'Error: ' + e.message;
+                var msg = String(e.message || '');
+                $('liveHint').textContent = 'Error: ' + msg;
+                // An API error that already names the broken credential carries its
+                // own fix. The generic stats-key hint would send the reader chasing
+                // the wrong thing, so only add it when the message gives no guidance.
+                var selfExplanatory = /FIREBASE_SERVICE_ACCOUNT_JSON|invalid_grant/.test(msg);
                 setLight(false, 'Failed to load device state',
-                    'Could not query the dashboard API: <code>' + esc(e.message) + '</code>. Check that a valid stats key is set and the API is deployed.');
+                    'Could not query the dashboard API: <code>' + esc(msg.replace(/\.\s*$/, '')) + '</code>.' +
+                    (selfExplanatory ? '' : ' Check that a valid stats key is set and the API is deployed.'));
             });
     }
 
