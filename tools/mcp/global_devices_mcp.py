@@ -66,11 +66,14 @@ KEY_FILE   = Path(
         ),
     )
 )
-PRIMARY_DB = os.environ.get("EKA_FIRESTORE_DB", "(default)")
-# Devices are spread across databases: the S24 daemon writes the live doc to
-# "(default)", the VivoBook daemon writes to "eka-agent".  Reads enumerate all
-# of them; writes target whichever DB already holds the device (primary first).
-ALL_DBS    = list(dict.fromkeys([PRIMARY_DB, "(default)", "eka-agent"]))
+# Every device doc lives in "eka-agent" (checked 2026-09-08: all four docs are
+# there and "(default)" / "eka-validation" hold none), and the dashboard API
+# reads only "eka-agent".  Default the primary there so a write for a device
+# not yet present in any DB lands where the dashboard can see it.  "(default)"
+# stays in ALL_DBS purely so reads still find a legacy doc that predates the
+# move; writes target whichever DB already holds the device (primary first).
+PRIMARY_DB = os.environ.get("EKA_FIRESTORE_DB", "eka-agent")
+ALL_DBS    = list(dict.fromkeys([PRIMARY_DB, "eka-agent", "(default)"]))
 
 # The ONLY channel a running daemon consumes.  eka_agent_vivobook.py polls
 #     [db=eka-agent] devices/{DEVICE_ID}/commands  where status == "pending"
@@ -291,10 +294,12 @@ def _command_db(device_id: str) -> str | None:
     """
     Return the database whose daemon actually polls this device.
 
-    A device doc can exist in several databases at once (jayti-asus-vivobook is
-    in both "(default)" and "eka-agent").  _find_device_db would hand back
-    "(default)" because it checks PRIMARY_DB first -- and nothing polls that.
-    Commands always target LIVE_DB, so verify the doc is really there.
+    Historically a device doc could exist in several databases at once
+    (jayti-asus-vivobook once lived in both "(default)" and "eka-agent"), and
+    with "(default)" as PRIMARY_DB _find_device_db would hand that back -- a
+    DB nothing polls.  As of 2026-09-08 every doc is in "eka-agent" and
+    PRIMARY_DB defaults there, but commands always target LIVE_DB, so still
+    verify the doc is really there rather than trusting the lookup order.
     """
     resp = _fs_request("GET", f"devices/{device_id}", database=LIVE_DB)
     return LIVE_DB if "error" not in resp else None
