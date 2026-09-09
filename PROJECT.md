@@ -80,3 +80,11 @@ Training runs in Colab; moving the notebook does not restore that dependency.
 
 - DynamoDB: `jaytipargal_telemetry` in `us-west-2` for web telemetry.
 - Firestore: `eka-agent` for device heartbeats and queued commands.
+
+## Dependency notes
+
+**Unused packages (2026-09-10 audit):**
+- `geoip-lite@2.0.3` - Installed but not imported anywhere in the codebase. IP geolocation is handled via Vercel edge headers (`x-vercel-ip-*`) in `Dashboard/Current/api/jp-track.js`.
+- `ip-address@10.7.0` - Transitive dependency of `geoip-lite`, also unused.
+
+Both packages are marked as `extraneous` by npm. Safe to remove when cleaning up dependencies. Backup exists at `C:\eka-agent-backups\bisug4g-migration-final\ip-address` (v10.3.1, outdated).
