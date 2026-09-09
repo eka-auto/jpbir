@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -853,11 +853,11 @@
     function loadVisitor(params) {
         openDrawer();
         $('drawerBody').innerHTML = '<div class="state"><div class="spinner"></div>Loading visitor…</div>';
-        var qs = new URLSearchParams({ key: KEY, days: '30' });
+        var qs = new URLSearchParams({ days: '30' });
         if (params.visitor) qs.set('visitor', params.visitor);
         if (params.session) qs.set('session', params.session);
         var endpoint = SITE === 'jp' ? '/api/jp-visitor' : '/api/visitor';
-        fetch(endpoint + '?' + qs.toString())
+        fetch(endpoint + '?' + qs.toString(), { headers: { 'x-stats-key': KEY } })
             .then(function (r) { return r.json().then(function (j) { return { status: r.status, body: j }; }); })
             .then(function (res) {
                 if (res.status === 401) { sessionStorage.removeItem(KEY_STORAGE); KEY = ''; showGate(); return; }
@@ -916,7 +916,7 @@
         var days = $('daysSel').value;
         var endpoint = SITE === 'jp' ? '/api/jp-stats' : '/api/stats';
         setStatus('Loading analytics…');
-        fetch(endpoint + '?' + new URLSearchParams({ key: KEY, days: days }).toString())
+        fetch(endpoint + '?' + new URLSearchParams({ days: days }).toString(), { headers: { 'x-stats-key': KEY } })
             .then(function (r) { return r.json().then(function (j) { return { status: r.status, body: j }; }); })
             .then(function (res) {
                 if (res.status === 401) {
@@ -978,7 +978,7 @@
     function loadDeviceHistory() {
         if (!KEY) return;
         $('deviceHint').textContent = 'Loading device history…';
-        fetch('/api/jp-device?' + new URLSearchParams({ key: KEY, days: 30 }).toString())
+        fetch('/api/jp-device?' + new URLSearchParams({ days: 30 }).toString(), { headers: { 'x-stats-key': KEY } })
             .then(function (r) { return r.json().then(function (j) { return { status: r.status, body: j }; }); })
             .then(function (res) {
                 if (res.status === 401) { showGate(); return; }
@@ -1037,7 +1037,7 @@
         $('deviceDetailTitle').textContent = 'All data — ' + device;
         $('deviceDetailHint').textContent = 'Loading…';
         $('deviceDetailPanel').style.display = 'block';
-        fetch('/api/jp-device?' + new URLSearchParams({ key: KEY, days: 30, device: device }).toString())
+        fetch('/api/jp-device?' + new URLSearchParams({ days: 30, device: device }).toString(), { headers: { 'x-stats-key': KEY } })
             .then(function (r) { return r.json().then(function (j) { return { status: r.status, body: j }; }); })
             .then(function (res) {
                 if (res.status === 401) { showGate(); return; }
@@ -1076,9 +1076,9 @@
             var btn = $('deviceAskBtn');
             btn.disabled = true;
             btn.textContent = 'Asking…';
-            fetch('/api/jp-ask?' + new URLSearchParams({ key: KEY }).toString(), {
+            fetch('/api/jp-ask', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json', 'x-stats-key': KEY },
                 body: JSON.stringify({ device: 'samsung-s24-ultra', action: 'sync-now' })
             })
                 .then(function (r) { return r.json().then(function (j) { return { status: r.status, body: j }; }); })
@@ -1118,7 +1118,7 @@
     function loadLiveDevices() {
         if (!KEY) return;
         $('liveDevicesHint').textContent = 'Loading live device state…';
-        fetch('/api/jp-devices?' + new URLSearchParams({ key: KEY }).toString())
+        fetch('/api/jp-devices', { headers: { 'x-stats-key': KEY } })
             .then(function (r) { return r.json().then(function (j) { return { status: r.status, body: j }; }); })
             .then(function (res) {
                 if (res.status === 401) { showGate(); return; }
@@ -1242,9 +1242,9 @@
         agentAdd('user', q);
         agentAdd('agent', 'Thinking…');
         var thinking = $('agentChat').lastElementChild;
-        fetch('/api/jp-agent?' + new URLSearchParams({ key: KEY }).toString(), {
+        fetch('/api/jp-agent', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', 'x-stats-key': KEY },
             body: JSON.stringify({ question: q })
         })
             .then(function (r) { return r.json().then(function (j) { return { status: r.status, body: j }; }); })
