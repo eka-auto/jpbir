@@ -1,0 +1,4 @@
+# file: C:\Users\abcom\jpbir\personal_folder_agent\components\training_pipeline.py
+# hypothesis_version: 6.165.10
+
+[2e-05, 0.8, 1.0, 1024, 1800, '-m', '.', './checkpoints', 'COLAB_GPU', 'IN_COLAB', 'Qwen2.5-3B-Instruct', 'accelerate', 'accelerate>=0.30.0', 'batch_size', 'bf16', 'checkpoint_dir', 'checkpoint_interval', 'colab', 'cpu', 'cuda', 'datasets', 'datasets>=2.18.0', 'environment', 'epochs', 'fp16', 'gpu_available', 'install', 'learning_rate', 'local', 'max_length', 'memory_optimization', 'model', 'num_train_epochs', 'output_dir', 'pip', 'source_file', 'text', 'transformers', 'transformers>=4.45.0', 'trl', 'trl>=0.10.0', 'unknown']

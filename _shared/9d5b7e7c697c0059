@@ -1,0 +1,4 @@
+# file: C:\Users\abcom\jpbir\personal_folder_agent\components\dynamic_retriever.py
+# hypothesis_version: 6.165.10
+
+[0.75, 100, 1000, '\n[router] %s', '\n… [truncated]', '  [%s ERROR] %s', 'Date context: %s', 'File: %s', 'Location anchor: %s', 'Question: %s', 'Relationship: %s', 'broad_search', 'date_contacts', 'direct', 'location_to_visits', 'relationship_search', 'visit_to_contacts', 'whatsapp_location']
