@@ -1,0 +1,4 @@
+# file: C:\Users\abcom\jpbir\personal_folder_agent\components\text_processor.py
+# hypothesis_version: 6.165.10
+
+[1000, '.csv', '.docx', '.json', '.md', '.pdf', '.pptx', '.txt', '.xlsx', '.xml', '[^\\S\\n]+', 'latin-1', 'openpyxl', 'pandas_csv', 'pdfplumber', 'plaintext', 'plaintext_fallback', 'python-docx', 'python-pptx', 'rb', 'skip', 'utf-8']

@@ -1,0 +1,59 @@
+{
+  "version": 2,
+  "builds": [
+    { "src": "Backend/broker-command-claim.js", "use": "@vercel/node" },
+    { "src": "Backend/broker-command-complete.js", "use": "@vercel/node" },
+    { "src": "Backend/check-stale.js", "use": "@vercel/node" },
+    { "src": "Backend/connect.js", "use": "@vercel/node" },
+    { "src": "Backend/device-commands-poll.js", "use": "@vercel/node" },
+    { "src": "Backend/device-enroll.js", "use": "@vercel/node" },
+    { "src": "Backend/device-heartbeat.js", "use": "@vercel/node" },
+    { "src": "Backend/jp-agent.js", "use": "@vercel/node" },
+    { "src": "Backend/jp-ask.js", "use": "@vercel/node" },
+    { "src": "Backend/jp-debug.js", "use": "@vercel/node" },
+    { "src": "Backend/jp-device.js", "use": "@vercel/node" },
+    { "src": "Backend/jp-devices.js", "use": "@vercel/node" },
+    { "src": "Backend/jp-live-agent.js", "use": "@vercel/node" },
+    { "src": "Backend/jp-stats.js", "use": "@vercel/node" },
+    { "src": "Backend/jp-track.js", "use": "@vercel/node" },
+    { "src": "Backend/jp-visitor.js", "use": "@vercel/node" },
+    { "src": "Backend/stats.js", "use": "@vercel/node" },
+    { "src": "Backend/visitor.js", "use": "@vercel/node" },
+    { "src": "Frontend/**", "use": "@vercel/static" }
+  ],
+  "routes": [
+    {
+      "src": "/api/device-command-claim",
+      "dest": "Backend/broker-command-claim.js"
+    },
+    {
+      "src": "/api/device-command-claim/(?<commandId>[^/]+)",
+      "dest": "Backend/broker-command-claim.js?commandId=$commandId"
+    },
+    {
+      "src": "/api/device-command-complete",
+      "dest": "Backend/broker-command-complete.js"
+    },
+    {
+      "src": "/api/device-command-complete/(?<commandId>[^/]+)",
+      "dest": "Backend/broker-command-complete.js?commandId=$commandId"
+    },
+    {
+      "src": "/api/(.*)(.js)?",
+      "dest": "Backend/$1.js"
+    },
+    {
+      "src": "/s24",
+      "dest": "/Frontend/s24.html"
+    },
+    {
+      "src": "/vivobook",
+      "dest": "/Frontend/vivobook.html"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/Frontend/$1"
+    }
+  ],
+  "outputDirectory": "Frontend"
+}

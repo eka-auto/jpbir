@@ -1,0 +1,562 @@
+extend type Mutation {
+  """
+  ✨ Insert a single `Collaboration` into the table and return its key. Columns not specified in `data` will receive defaults (e.g. `null`).
+  """
+  collaboration_insert(
+    """
+    Data object to insert into the table.
+    """
+    data: Collaboration_Data!
+  ): Collaboration_KeyOutput! @fdc_generated(from: "Collaboration", purpose: INSERT_SINGLE)
+  """
+  ✨ Insert a single `Collection` into the table and return its key. Columns not specified in `data` will receive defaults (e.g. `null`).
+  """
+  collection_insert(
+    """
+    Data object to insert into the table.
+    """
+    data: Collection_Data!
+  ): Collection_KeyOutput! @fdc_generated(from: "Collection", purpose: INSERT_SINGLE)
+  """
+  ✨ Insert a single `Item` into the table and return its key. Columns not specified in `data` will receive defaults (e.g. `null`).
+  """
+  item_insert(
+    """
+    Data object to insert into the table.
+    """
+    data: Item_Data!
+  ): Item_KeyOutput! @fdc_generated(from: "Item", purpose: INSERT_SINGLE)
+  """
+  ✨ Insert a single `Panle` into the table and return its key. Columns not specified in `data` will receive defaults (e.g. `null`).
+  """
+  panle_insert(
+    """
+    Data object to insert into the table.
+    """
+    data: Panle_Data!
+  ): Panle_KeyOutput! @fdc_generated(from: "Panle", purpose: INSERT_SINGLE)
+  """
+  ✨ Insert a single `User` into the table and return its key. Columns not specified in `data` will receive defaults (e.g. `null`).
+  """
+  user_insert(
+    """
+    Data object to insert into the table.
+    """
+    data: User_Data!
+  ): User_KeyOutput! @fdc_generated(from: "User", purpose: INSERT_SINGLE)
+  """
+  ✨ Insert `Collaboration` objects into the table and return their keys. Columns not specified in `data` will receive defaults (e.g. `null`).
+  """
+  collaboration_insertMany(
+    """
+    List of data objects to insert into the table.
+    """
+    data: [Collaboration_Data!]!
+  ): [Collaboration_KeyOutput!]! @fdc_generated(from: "Collaboration", purpose: INSERT_MULTIPLE)
+  """
+  ✨ Insert `Collection` objects into the table and return their keys. Columns not specified in `data` will receive defaults (e.g. `null`).
+  """
+  collection_insertMany(
+    """
+    List of data objects to insert into the table.
+    """
+    data: [Collection_Data!]!
+  ): [Collection_KeyOutput!]! @fdc_generated(from: "Collection", purpose: INSERT_MULTIPLE)
+  """
+  ✨ Insert `Item` objects into the table and return their keys. Columns not specified in `data` will receive defaults (e.g. `null`).
+  """
+  item_insertMany(
+    """
+    List of data objects to insert into the table.
+    """
+    data: [Item_Data!]!
+  ): [Item_KeyOutput!]! @fdc_generated(from: "Item", purpose: INSERT_MULTIPLE)
+  """
+  ✨ Insert `Panle` objects into the table and return their keys. Columns not specified in `data` will receive defaults (e.g. `null`).
+  """
+  panle_insertMany(
+    """
+    List of data objects to insert into the table.
+    """
+    data: [Panle_Data!]!
+  ): [Panle_KeyOutput!]! @fdc_generated(from: "Panle", purpose: INSERT_MULTIPLE)
+  """
+  ✨ Insert `User` objects into the table and return their keys. Columns not specified in `data` will receive defaults (e.g. `null`).
+  """
+  user_insertMany(
+    """
+    List of data objects to insert into the table.
+    """
+    data: [User_Data!]!
+  ): [User_KeyOutput!]! @fdc_generated(from: "User", purpose: INSERT_MULTIPLE)
+  """
+  ✨ Insert or update a single `Collaboration` into the table, based on the primary key. Returns the key of the newly inserted or existing updated `Collaboration`.
+  """
+  collaboration_upsert(
+    """
+    Data object to insert or update if it already exists.
+    """
+    data: Collaboration_Data!
+  ): Collaboration_KeyOutput! @fdc_generated(from: "Collaboration", purpose: UPSERT_SINGLE)
+  """
+  ✨ Insert or update a single `Collection` into the table, based on the primary key. Returns the key of the newly inserted or existing updated `Collection`.
+  """
+  collection_upsert(
+    """
+    Data object to insert or update if it already exists.
+    """
+    data: Collection_Data!
+  ): Collection_KeyOutput! @fdc_generated(from: "Collection", purpose: UPSERT_SINGLE)
+  """
+  ✨ Insert or update a single `Item` into the table, based on the primary key. Returns the key of the newly inserted or existing updated `Item`.
+  """
+  item_upsert(
+    """
+    Data object to insert or update if it already exists.
+    """
+    data: Item_Data!
+  ): Item_KeyOutput! @fdc_generated(from: "Item", purpose: UPSERT_SINGLE)
+  """
+  ✨ Insert or update a single `Panle` into the table, based on the primary key. Returns the key of the newly inserted or existing updated `Panle`.
+  """
+  panle_upsert(
+    """
+    Data object to insert or update if it already exists.
+    """
+    data: Panle_Data!
+  ): Panle_KeyOutput! @fdc_generated(from: "Panle", purpose: UPSERT_SINGLE)
+  """
+  ✨ Insert or update a single `User` into the table, based on the primary key. Returns the key of the newly inserted or existing updated `User`.
+  """
+  user_upsert(
+    """
+    Data object to insert or update if it already exists.
+    """
+    data: User_Data!
+  ): User_KeyOutput! @fdc_generated(from: "User", purpose: UPSERT_SINGLE)
+  """
+  ✨ Insert or update `Collaboration` objects into the table, based on the primary key. Returns the key of the newly inserted or existing updated `Collaboration`.
+  """
+  collaboration_upsertMany(
+    """
+    List of data objects to insert or update if it already exists.
+    """
+    data: [Collaboration_Data!]!
+  ): [Collaboration_KeyOutput!]! @fdc_generated(from: "Collaboration", purpose: UPSERT_MULTIPLE)
+  """
+  ✨ Insert or update `Collection` objects into the table, based on the primary key. Returns the key of the newly inserted or existing updated `Collection`.
+  """
+  collection_upsertMany(
+    """
+    List of data objects to insert or update if it already exists.
+    """
+    data: [Collection_Data!]!
+  ): [Collection_KeyOutput!]! @fdc_generated(from: "Collection", purpose: UPSERT_MULTIPLE)
+  """
+  ✨ Insert or update `Item` objects into the table, based on the primary key. Returns the key of the newly inserted or existing updated `Item`.
+  """
+  item_upsertMany(
+    """
+    List of data objects to insert or update if it already exists.
+    """
+    data: [Item_Data!]!
+  ): [Item_KeyOutput!]! @fdc_generated(from: "Item", purpose: UPSERT_MULTIPLE)
+  """
+  ✨ Insert or update `Panle` objects into the table, based on the primary key. Returns the key of the newly inserted or existing updated `Panle`.
+  """
+  panle_upsertMany(
+    """
+    List of data objects to insert or update if it already exists.
+    """
+    data: [Panle_Data!]!
+  ): [Panle_KeyOutput!]! @fdc_generated(from: "Panle", purpose: UPSERT_MULTIPLE)
+  """
+  ✨ Insert or update `User` objects into the table, based on the primary key. Returns the key of the newly inserted or existing updated `User`.
+  """
+  user_upsertMany(
+    """
+    List of data objects to insert or update if it already exists.
+    """
+    data: [User_Data!]!
+  ): [User_KeyOutput!]! @fdc_generated(from: "User", purpose: UPSERT_MULTIPLE)
+  """
+  ✨ Update a single `Collaboration` based on `id`, `key` or `first`, setting columns specified in `data`. Returns the key of the updated `Collaboration` or `null` if not found.
+  """
+  collaboration_update(
+    """
+    The unique ID of the object.
+    """
+    id: UUID
+
+    """
+    The key used to identify the object.
+    """
+    key: Collaboration_Key
+
+    """
+    Fetch the first row based on the filters and ordering.
+    """
+    first: Collaboration_FirstRow
+
+    """
+    Data object containing fields to be updated.
+    """
+    data: Collaboration_Data!
+  ): Collaboration_KeyOutput @fdc_generated(from: "Collaboration", purpose: UPDATE_SINGLE)
+  """
+  ✨ Update a single `Collection` based on `id`, `key` or `first`, setting columns specified in `data`. Returns the key of the updated `Collection` or `null` if not found.
+  """
+  collection_update(
+    """
+    The unique ID of the object.
+    """
+    id: UUID
+
+    """
+    The key used to identify the object.
+    """
+    key: Collection_Key
+
+    """
+    Fetch the first row based on the filters and ordering.
+    """
+    first: Collection_FirstRow
+
+    """
+    Data object containing fields to be updated.
+    """
+    data: Collection_Data!
+  ): Collection_KeyOutput @fdc_generated(from: "Collection", purpose: UPDATE_SINGLE)
+  """
+  ✨ Update a single `Item` based on `id`, `key` or `first`, setting columns specified in `data`. Returns the key of the updated `Item` or `null` if not found.
+  """
+  item_update(
+    """
+    The unique ID of the object.
+    """
+    id: UUID
+
+    """
+    The key used to identify the object.
+    """
+    key: Item_Key
+
+    """
+    Fetch the first row based on the filters and ordering.
+    """
+    first: Item_FirstRow
+
+    """
+    Data object containing fields to be updated.
+    """
+    data: Item_Data!
+  ): Item_KeyOutput @fdc_generated(from: "Item", purpose: UPDATE_SINGLE)
+  """
+  ✨ Update a single `Panle` based on `id`, `key` or `first`, setting columns specified in `data`. Returns the key of the updated `Panle` or `null` if not found.
+  """
+  panle_update(
+    """
+    The unique ID of the object.
+    """
+    id: UUID
+
+    """
+    The key used to identify the object.
+    """
+    key: Panle_Key
+
+    """
+    Fetch the first row based on the filters and ordering.
+    """
+    first: Panle_FirstRow
+
+    """
+    Data object containing fields to be updated.
+    """
+    data: Panle_Data!
+  ): Panle_KeyOutput @fdc_generated(from: "Panle", purpose: UPDATE_SINGLE)
+  """
+  ✨ Update a single `User` based on `id`, `key` or `first`, setting columns specified in `data`. Returns the key of the updated `User` or `null` if not found.
+  """
+  user_update(
+    """
+    The unique ID of the object.
+    """
+    id: UUID
+
+    """
+    The key used to identify the object.
+    """
+    key: User_Key
+
+    """
+    Fetch the first row based on the filters and ordering.
+    """
+    first: User_FirstRow
+
+    """
+    Data object containing fields to be updated.
+    """
+    data: User_Data!
+  ): User_KeyOutput @fdc_generated(from: "User", purpose: UPDATE_SINGLE)
+  """
+  ✨ Update `Collaboration` objects matching `where` conditions (or `all`, if true) according to `data`. Returns the number of rows updated.
+  """
+  collaboration_updateMany(
+    """
+    Filter condition to specify which rows to update.
+    """
+    where: Collaboration_Filter
+
+    """
+    Set to true to update all rows.
+    """
+    all: Boolean = false
+
+    """
+    Data object containing fields to update.
+    """
+    data: Collaboration_Data!
+  ): Int! @fdc_generated(from: "Collaboration", purpose: UPDATE_MULTIPLE)
+  """
+  ✨ Update `Collection` objects matching `where` conditions (or `all`, if true) according to `data`. Returns the number of rows updated.
+  """
+  collection_updateMany(
+    """
+    Filter condition to specify which rows to update.
+    """
+    where: Collection_Filter
+
+    """
+    Set to true to update all rows.
+    """
+    all: Boolean = false
+
+    """
+    Data object containing fields to update.
+    """
+    data: Collection_Data!
+  ): Int! @fdc_generated(from: "Collection", purpose: UPDATE_MULTIPLE)
+  """
+  ✨ Update `Item` objects matching `where` conditions (or `all`, if true) according to `data`. Returns the number of rows updated.
+  """
+  item_updateMany(
+    """
+    Filter condition to specify which rows to update.
+    """
+    where: Item_Filter
+
+    """
+    Set to true to update all rows.
+    """
+    all: Boolean = false
+
+    """
+    Data object containing fields to update.
+    """
+    data: Item_Data!
+  ): Int! @fdc_generated(from: "Item", purpose: UPDATE_MULTIPLE)
+  """
+  ✨ Update `Panle` objects matching `where` conditions (or `all`, if true) according to `data`. Returns the number of rows updated.
+  """
+  panle_updateMany(
+    """
+    Filter condition to specify which rows to update.
+    """
+    where: Panle_Filter
+
+    """
+    Set to true to update all rows.
+    """
+    all: Boolean = false
+
+    """
+    Data object containing fields to update.
+    """
+    data: Panle_Data!
+  ): Int! @fdc_generated(from: "Panle", purpose: UPDATE_MULTIPLE)
+  """
+  ✨ Update `User` objects matching `where` conditions (or `all`, if true) according to `data`. Returns the number of rows updated.
+  """
+  user_updateMany(
+    """
+    Filter condition to specify which rows to update.
+    """
+    where: User_Filter
+
+    """
+    Set to true to update all rows.
+    """
+    all: Boolean = false
+
+    """
+    Data object containing fields to update.
+    """
+    data: User_Data!
+  ): Int! @fdc_generated(from: "User", purpose: UPDATE_MULTIPLE)
+  """
+  ✨ Delete a single `Collaboration` based on `id`, `key` or `first` and return its key (or `null` if not found).
+  """
+  collaboration_delete(
+    """
+    The unique ID of the object.
+    """
+    id: UUID
+
+    """
+    The key used to identify the object.
+    """
+    key: Collaboration_Key
+
+    """
+    Fetch the first row based on the filters and ordering.
+    """
+    first: Collaboration_FirstRow
+  ): Collaboration_KeyOutput @fdc_generated(from: "Collaboration", purpose: DELETE_SINGLE)
+  """
+  ✨ Delete a single `Collection` based on `id`, `key` or `first` and return its key (or `null` if not found).
+  """
+  collection_delete(
+    """
+    The unique ID of the object.
+    """
+    id: UUID
+
+    """
+    The key used to identify the object.
+    """
+    key: Collection_Key
+
+    """
+    Fetch the first row based on the filters and ordering.
+    """
+    first: Collection_FirstRow
+  ): Collection_KeyOutput @fdc_generated(from: "Collection", purpose: DELETE_SINGLE)
+  """
+  ✨ Delete a single `Item` based on `id`, `key` or `first` and return its key (or `null` if not found).
+  """
+  item_delete(
+    """
+    The unique ID of the object.
+    """
+    id: UUID
+
+    """
+    The key used to identify the object.
+    """
+    key: Item_Key
+
+    """
+    Fetch the first row based on the filters and ordering.
+    """
+    first: Item_FirstRow
+  ): Item_KeyOutput @fdc_generated(from: "Item", purpose: DELETE_SINGLE)
+  """
+  ✨ Delete a single `Panle` based on `id`, `key` or `first` and return its key (or `null` if not found).
+  """
+  panle_delete(
+    """
+    The unique ID of the object.
+    """
+    id: UUID
+
+    """
+    The key used to identify the object.
+    """
+    key: Panle_Key
+
+    """
+    Fetch the first row based on the filters and ordering.
+    """
+    first: Panle_FirstRow
+  ): Panle_KeyOutput @fdc_generated(from: "Panle", purpose: DELETE_SINGLE)
+  """
+  ✨ Delete a single `User` based on `id`, `key` or `first` and return its key (or `null` if not found).
+  """
+  user_delete(
+    """
+    The unique ID of the object.
+    """
+    id: UUID
+
+    """
+    The key used to identify the object.
+    """
+    key: User_Key
+
+    """
+    Fetch the first row based on the filters and ordering.
+    """
+    first: User_FirstRow
+  ): User_KeyOutput @fdc_generated(from: "User", purpose: DELETE_SINGLE)
+  """
+  ✨ Delete `Collaboration` objects matching `where` conditions (or `all`, if true). Returns the number of rows deleted.
+  """
+  collaboration_deleteMany(
+    """
+    Filter condition to specify which rows to delete.
+    """
+    where: Collaboration_Filter
+
+    """
+    Set to true to delete all rows.
+    """
+    all: Boolean = false
+  ): Int! @fdc_generated(from: "Collaboration", purpose: DELETE_MULTIPLE)
+  """
+  ✨ Delete `Collection` objects matching `where` conditions (or `all`, if true). Returns the number of rows deleted.
+  """
+  collection_deleteMany(
+    """
+    Filter condition to specify which rows to delete.
+    """
+    where: Collection_Filter
+
+    """
+    Set to true to delete all rows.
+    """
+    all: Boolean = false
+  ): Int! @fdc_generated(from: "Collection", purpose: DELETE_MULTIPLE)
+  """
+  ✨ Delete `Item` objects matching `where` conditions (or `all`, if true). Returns the number of rows deleted.
+  """
+  item_deleteMany(
+    """
+    Filter condition to specify which rows to delete.
+    """
+    where: Item_Filter
+
+    """
+    Set to true to delete all rows.
+    """
+    all: Boolean = false
+  ): Int! @fdc_generated(from: "Item", purpose: DELETE_MULTIPLE)
+  """
+  ✨ Delete `Panle` objects matching `where` conditions (or `all`, if true). Returns the number of rows deleted.
+  """
+  panle_deleteMany(
+    """
+    Filter condition to specify which rows to delete.
+    """
+    where: Panle_Filter
+
+    """
+    Set to true to delete all rows.
+    """
+    all: Boolean = false
+  ): Int! @fdc_generated(from: "Panle", purpose: DELETE_MULTIPLE)
+  """
+  ✨ Delete `User` objects matching `where` conditions (or `all`, if true). Returns the number of rows deleted.
+  """
+  user_deleteMany(
+    """
+    Filter condition to specify which rows to delete.
+    """
+    where: User_Filter
+
+    """
+    Set to true to delete all rows.
+    """
+    all: Boolean = false
+  ): Int! @fdc_generated(from: "User", purpose: DELETE_MULTIPLE)
+}

@@ -1,0 +1,4 @@
+# file: c:\Users\abcom\jpbir\personal_folder_agent\components\config_manager.py
+# hypothesis_version: 6.165.10
+
+[1e-06, 2e-05, 0.001, 100, 128, 512, 1000, 1024, 2048, 4096, '*.csv', '*.docx', '*.json', '*.md', '*.pdf', '*.pptx', '*.txt', '*.xlsx', '*.xml', './checkpoints', './output', 'Qwen2.5-14B', 'Qwen2.5-14B-Instruct', 'Qwen2.5-3B', 'Qwen2.5-3B-Instruct', 'Qwen2.5-7B', 'Qwen2.5-7B-Instruct', 'batch_size', 'bf16', 'checkpoint_dir', 'chunking', 'enabled', 'epochs', 'exclude_patterns', 'file_filters', 'folder_id', 'folders', 'google_drive', 'learning_rate', 'local_only', 'local_output', 'max_depth', 'max_folders', 'max_length', 'max_path_length', 'max_tokens', 'min_tokens', 'mode', 'model', 'paths', 'processing', 'r', 'security', 'sentence_aware', 'storage', 'strategy', 'system', 'temp_dir_encryption', 'training', 'utf-8', 'verify_permissions', 'w']

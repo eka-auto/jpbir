@@ -1,0 +1,4 @@
+# file: C:\Users\abcom\jpbir\personal_folder_agent\components\retrieval_strategies.py
+# hypothesis_version: 6.165.10
+
+[0.1, 0.2, 0.4, 0.5, 0.7, 0.75, 0.8, 0.85, 0.9, 4.0, 5.0, 8.0, 10.0, 15.0, 100, 200, '  Labels: ', '%.0f%% [%s] %s', '%s:%d', ', ', '.jsonl', '20\\d{2}-\\d{2}-\\d{2}', '\\W+', 'broad_search', 'call_lines', 'chrome', 'corpus_label', 'databases', 'date', 'date_contacts', 'day_card', 'direct', 'directions', 'found_dates', 'kind', 'location_to_visits', 'maps', 'maps.google', 'metadata', 'navigate', 'pool', 'r', 'relationship_search', 'replace', 'route', 'source_file', 'text', 'timeline', 'utf-8', 'visit_to_contacts', 'whatsapp', 'whatsapp_location']

@@ -1,0 +1,89 @@
+# Python
+__pycache__/
+*.py[cod]
+venv/
+.venv/
+.pytest_cache/
+.hypothesis/
+.coverage
+htmlcov/
+*.egg-info/
+build/
+dist/
+
+# Node
+node_modules/
+
+# Logs & local state
+logs/
+*.log
+
+# OS / editor
+.DS_Store
+Thumbs.db
+
+.vercel
+
+# Keep vercel.json at repo root for deployment
+!vercel.json
+
+# Secrets & local env
+.env
+.env.*
+!.env.example
+
+# Derived data / training artifacts
+runs/
+.claude/
+.qwen/
+data/*.db
+*.zip
+*.jsonl
+_tmp_*.mjs
+
+# Local pipeline artifacts
+hash_output.txt
+STATUS_SUMMARY.txt
+deploy_out.txt
+sandbox_deploy_out.txt
+
+# Local tooling (not part of the repo)
+vscode-office/
+yarn.lock
+inventory_stale_dbs*.py
+stale_db_refs.txt
+stale_db_inventory.md
+script.py
+
+# Large audit/inventory files (exceeds GitHub 100MB limit)
+AUDIT_*.md
+COMPLETE_*.md
+COMPREHENSIVE_*.md
+DB_FIX_*.md
+DEEP_*.md
+FINAL_*.md
+REMAINING_*.md
+SAFE_TO_DELETE_*.md
+STALE_DB_*.md
+VERIFICATION_*.md
+WORKSPACE_*.md
+*.json
+!package.json
+!package-lock.json
+*.py
+!*.ps1
+!*.sh
+*.html
+!Dashboard/**/*.html
+!Sandbox/**/*.html
+firebase.json
+.firebaserc
+.agents/
+.firebase/
+.kiro/
+data/
+dataconnect/
+.env*
+
+node_modules/
+.venv/
