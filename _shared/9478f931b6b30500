@@ -1,0 +1,4 @@
+# file: C:\Users\abcom\jpbir\personal_folder_agent\components\model_exporter.py
+# hypothesis_version: 6.165.10
+
+['Model exported to %s', 'file_count', 'final_loss', 'folder_list', 'folder_paths', 'folders', 'hyperparameters', 'model.pkl', 'model_metadata.json', 'paths', 'peak_memory_mb', 'performance_metrics', 'tokens_per_second', 'total_tokens', 'utf-8', 'w', 'wb']

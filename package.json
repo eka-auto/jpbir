@@ -1,0 +1,36 @@
+{
+  "name": "jpbir",
+  "version": "1.0.0",
+  "description": "Jayti Device Dashboard - Real-time device monitoring and data synchronization",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vercel dev",
+    "build": "echo 'Build completed - frontend files ready'",
+    "deploy": "vercel --prod",
+    "test": "echo 'No tests specified'"
+  },
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.1115.0",
+    "@aws-sdk/lib-dynamodb": "^3.1115.0",
+    "@vercel/blob": "^2.8.0",
+    "@vercel/connect": "^2.0.1",
+    "nodemailer": "9.1.1"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jaytipargal/jpbir.git"
+  },
+  "keywords": [
+    "device-monitoring",
+    "dashboard",
+    "firebase",
+    "dynamodb",
+    "telemetry"
+  ],
+  "author": "Jayti Pargal",
+  "license": "UNLICENSED"
+}

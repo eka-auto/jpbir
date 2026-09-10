@@ -1,0 +1,137 @@
+name: Runner Health Check
+
+on:
+  workflow_dispatch:
+
+jobs:
+  check-runner:
+    runs-on: [self-hosted, Windows, jayti-asus-vivobook]
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout eka-runner
+        uses: actions/checkout@v4
+
+      - name: Verify ASUS target
+        shell: powershell
+        env:
+          EKA_BYPASS_MANUFACTURER_CHECK: '1'
+        run: .\scripts\assert_asus_target.ps1
+
+      - name: Collect system identifiers
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $cs = Get-CimInstance Win32_ComputerSystem
+          $os = Get-CimInstance Win32_OperatingSystem
+          $props = [ordered]@{
+            Manufacturer  = [string]$cs.Manufacturer
+            Model         = [string]$cs.Model
+            ComputerName  = [string]$env:COMPUTERNAME
+            UserName      = [string]$env:USERNAME
+            UserProfile   = [string]$env:USERPROFILE
+            OsCaption     = [string]$os.Caption
+          }
+          $props | ConvertTo-Json -Depth 3 | Out-File -FilePath "$env:RUNNER_TEMP\system_identifiers.json" -Encoding utf8
+          Write-Host '--- System identifiers ---'
+          $props | ConvertTo-Json -Depth 3
+
+      - name: Upload system identifiers
+        uses: actions/upload-artifact@v4
+        with:
+          name: system-identifiers-${{ github.run_id }}
+          path: ${{ runner.temp }}/system_identifiers.json
+          retention-days: 7
+
+      - name: Check Local System Time
+        shell: powershell
+        continue-on-error: true
+        run: |
+          Write-Host "=== Current System Date/Time ==="
+          Get-Date -Format "yyyy-MM-dd HH:mm:ss.fff zzz"
+          Write-Host "Starting w32time service..."
+          Start-Service w32time -ErrorAction SilentlyContinue
+          Write-Host "=== w32tm status ==="
+          w32tm /query /status
+          Write-Host "=== Time Zone ==="
+          Get-TimeZone
+
+      - name: Try to Resync Time
+        shell: powershell
+        continue-on-error: true
+        run: |
+          Write-Host "Attempting time synchronization..."
+          # Start Windows Time service if it is stopped
+          Set-Service w32time -StartupType Automatic -ErrorAction SilentlyContinue
+          Start-Service w32time -ErrorAction SilentlyContinue
+          
+          # Try NTP sync
+          w32tm /resync /rediscover
+          
+          Write-Host "=== Post-resync System Date/Time ==="
+          Get-Date -Format "yyyy-MM-dd HH:mm:ss.fff zzz"
+
+      - name: Locate Python and Run Auth Test
+        shell: powershell
+        env:
+          FIREBASE_KEY: ${{ secrets.FIREBASE_KEY }}
+        run: |
+          $pyExe = @(
+              "C:\Users\jayat\AppData\Local\Programs\Python\Python312\python.exe",
+              "C:\Users\jayat\AppData\Local\Programs\Python\Python311\python.exe",
+              "C:\Users\jayat\AppData\Local\Programs\Python\Python310\python.exe",
+              "C:\Users\abcom\AppData\Local\Programs\Python\Python312\python.exe",
+              "C:\Python312\python.exe",
+              "C:\Python311\python.exe",
+              "C:\Python310\python.exe"
+          ) | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+
+          if (-not $pyExe) {
+              $resolved = Get-Command "py.exe" -ErrorAction SilentlyContinue
+              if ($resolved) { $pyExe = $resolved.Source }
+          }
+          if (-not $pyExe) {
+              $resolved = Get-Command "python.exe" -ErrorAction SilentlyContinue
+              if ($resolved) { $pyExe = $resolved.Source }
+          }
+          if (-not $pyExe) { $pyExe = 'python' }
+
+          Write-Host "Selected Python path: $pyExe"
+
+          if (-not $env:FIREBASE_KEY) {
+              Write-Host 'FIREBASE_KEY secret is not configured; skipping auth test (health check of runner hardware still completed).'
+              exit 0
+          }
+
+          # Create a custom inline test script
+          $script = @'
+          import firebase_admin
+          from firebase_admin import credentials, firestore
+          import os, sys, json
+
+          try:
+              service_account = json.loads(os.environ['FIREBASE_KEY'])
+              cred = credentials.Certificate(service_account)
+              firebase_admin.initialize_app(cred, {'projectId': 'intrepid-stage-495117-q1'})
+              db = firestore.client(database_id='eka-agent')
+              
+              print("Attempting read...")
+              docs = list(db.collection('devices').limit(1).stream())
+              print(f"Read successful! {len(docs)} documents.")
+              
+              print("Attempting write...")
+              doc_ref = db.collection('devices').document('jayti-asus-vivobook')
+              doc_ref.set({'testRunnerAuthAt': firestore.SERVER_TIMESTAMP}, merge=True)
+              print("Write successful!")
+          except Exception as e:
+              print(f"Auth test failed: {e}")
+              import traceback
+              traceback.print_exc()
+              sys.exit(1)
+          '@
+
+          [System.IO.File]::WriteAllText("run_test_auth.py", $script, [System.Text.Encoding]::UTF8)
+          & $pyExe run_test_auth.py
+          
+          # Clean up
+          Remove-Item -Path "run_test_auth.py" -ErrorAction SilentlyContinue

@@ -1,0 +1,5 @@
+﻿Running build in Cleveland, USA (East) – cle1
+Running "vercel build"
+Built 4 frontend files in /vercel/path0/Dashboard/Current/dist
+Build Completed in /vercel/output [12s]
+Deployment completed
