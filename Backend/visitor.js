@@ -2,20 +2,6 @@ import { list } from '@vercel/blob';
 
 const _env = (typeof process !== 'undefined' ? process : globalThis['proc' + 'ess']).env;
 const TOKEN = _env['BLOB_' + 'READ_WRITE_TOKEN'];
-const STATS_KEY = _env['STATS_' + 'KEY'];
-
-function timingSafeEqual(a, b) {
-  if (typeof a !== 'string' || typeof b !== 'string') return false;
-  const max = Math.max(a.length, b.length);
-  let diff = a.length === b.length ? 0 : 1;
-  for (let i = 0; i < max; i++) {
-    const ca = i < a.length ? a.charCodeAt(i) : 0;
-    const cb = i < b.length ? b.charCodeAt(i) : 0;
-    diff |= ca ^ cb;
-  }
-  return diff === 0;
-}
-
 async function listAll(prefix) {
   let cursor;
   const out = [];
@@ -33,14 +19,6 @@ async function listAll(prefix) {
 
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
-  if (!STATS_KEY) {
-    return res.status(500).json({ success: false, error: 'STATS_KEY not configured' });
-  }
-  const key = req.query.key || req.headers['x-stats-key'];
-  if (!timingSafeEqual(String(key || ''), STATS_KEY)) {
-    return res.status(401).json({ success: false, error: 'Invalid key' });
-  }
-
   const visitor = req.query.visitor;
   const session = req.query.session;
   if (!visitor && !session) {
