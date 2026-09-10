@@ -1,0 +1,4 @@
+# file: C:\Users\abcom\jpbir\personal_folder_agent\components\text_chunker.py
+# hypothesis_version: 6.165.10
+
+[100, 512, 1024, '(?<=[.!?])\\s+', ', ', '\\n\\s*\\n', 'cl100k_base', 'fixed_size', 'force_split', 'overlap_tokens', 'strategy', 'utf-8']
