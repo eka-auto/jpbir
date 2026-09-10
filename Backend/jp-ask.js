@@ -1,24 +1,11 @@
 import crypto from 'crypto';
 
 const _env = (typeof process !== 'undefined' ? process : globalThis['proc' + 'ess']).env;
-const STATS_KEY = _env['STATS_' + 'KEY'];
 const FIREBASE_SA_JSON = _env['FIREBASE_' + 'SERVICE_ACCOUNT_JSON'];
 const FIRESTORE_DB = _env['FIRESTORE_' + 'DB'] || 'eka-agent';
 const MAX_QUEUE_ENTRIES = Number(_env['JP_MAX_QUEUE_ENTRIES']) || 25;
 
 const ALLOWED_ACTIONS = new Set(['sync-now', 'collect-history', 'status-only', 'heartbeat', 'start-ssh']);
-
-function timingSafeEqual(a, b) {
-  if (typeof a !== 'string' || typeof b !== 'string') return false;
-  const max = Math.max(a.length, b.length);
-  let diff = a.length === b.length ? 0 : 1;
-  for (let i = 0; i < max; i++) {
-    const ca = i < a.length ? a.charCodeAt(i) : 0;
-    const cb = i < b.length ? b.charCodeAt(i) : 0;
-    diff |= ca ^ cb;
-  }
-  return diff === 0;
-}
 
 let _tokenCache = { token: null, exp: 0 };
 
@@ -160,13 +147,6 @@ async function queueCommand(device, action) {
 
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
-  if (!STATS_KEY) {
-    return res.status(500).json({ success: false, error: 'STATS_KEY not configured' });
-  }
-  const key = req.query.key || req.headers['x-stats-key'];
-  if (!timingSafeEqual(String(key || ''), STATS_KEY)) {
-    return res.status(401).json({ success: false, error: 'Invalid key' });
-  }
   if (!FIREBASE_SA_JSON) {
     return res.status(500).json({ success: false, error: 'FIREBASE_SERVICE_ACCOUNT_JSON not configured' });
   }

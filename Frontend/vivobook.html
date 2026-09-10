@@ -163,17 +163,14 @@
 <div class="gate" id="gate" style="display:none">
     <div class="gate-box">
         <h2>Access key</h2>
-        <p style="font-size:13px;color:var(--ink-muted);margin-bottom:8px">Enter your stats key to view this page.</p>
-        <input id="keyInput" type="password" placeholder="Stats key">
-        <button class="primary" id="keySubmit">Unlock</button>
-    </div>
+        
 </div>
 
 <script>
 (function () {
     'use strict';
     var DEVICE_ID = 'jayti-asus-vivobook';
-    var KEY = sessionStorage.getItem('jbt_stats_key') || new URLSearchParams(location.search).get('key') || '';
+    var KEY = ''; // Open dashboard - no key required
 
     function $(id) { return document.getElementById(id); }
     function esc(x) { return String(x == null ? '' : x).replace(/[&<>"']/g, function (c) {

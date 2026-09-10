@@ -1,0 +1,2326 @@
+{
+    "Items": [
+        {
+            "userAgent": {
+                "S": "Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit/537.36"
+            },
+            "pageUrl": {
+                "S": "https://jaytipargal.com/services/"
+            },
+            "deviceType": {
+                "S": "Mobile"
+            },
+            "country": {
+                "S": "India"
+            },
+            "language": {
+                "S": "hi-IN"
+            },
+            "network": {
+                "S": "5g (15.5Mbps)"
+            },
+            "city": {
+                "S": "Gurugram"
+            },
+            "epoch": {
+                "N": "1786816172918"
+            },
+            "referrer": {
+                "S": "https://instagram.com/"
+            },
+            "region": {
+                "S": "Haryana"
+            },
+            "id": {
+                "S": "2026-08-15T17:49:32.918Z_bb81361b2c92"
+            },
+            "postalCode": {
+                "S": "122006"
+            },
+            "latitude": {
+                "S": "28.45970"
+            },
+            "eventData": {
+                "M": {
+                    "element": {
+                        "S": "A"
+                    },
+                    "text": {
+                        "S": "Brand Strategy & Positioning"
+                    },
+                    "href": {
+                        "S": "/services/"
+                    }
+                }
+            },
+            "os": {
+                "S": "Android 15"
+            },
+            "screen": {
+                "S": "412x915 (DPR: 2.625)"
+            },
+            "browser": {
+                "S": "Chrome Mobile"
+            },
+            "timestamp": {
+                "S": "2026-08-15T17:49:32.918Z"
+            },
+            "ip": {
+                "S": "103.84.203.30"
+            },
+            "visitorId": {
+                "S": "live_test_visitor_5g"
+            },
+            "pageTitle": {
+                "S": "Services | Jayti Pargal"
+            },
+            "sessionId": {
+                "S": "live_test_session_5g"
+            },
+            "longitude": {
+                "S": "77.02820"
+            },
+            "timezone": {
+                "S": "Asia/Kolkata"
+            },
+            "eventType": {
+                "S": "click"
+            }
+        },
+        {
+            "rawPayload": {
+                "M": {
+                    "language": {
+                        "S": "en-GB"
+                    },
+                    "timezone": {
+                        "S": "Asia/Calcutta"
+                    },
+                    "eventType": {
+                        "S": "pageview"
+                    },
+                    "browser": {
+                        "S": "Chrome"
+                    },
+                    "os": {
+                        "S": "Windows"
+                    },
+                    "pageUrl": {
+                        "S": "https://dfa5i945koq3k.cloudfront.net/"
+                    },
+                    "visitorId": {
+                        "S": "v_oeq5xhtn1_mt2ijg2g"
+                    },
+                    "fingerprint": {
+                        "S": "fp_czmfe2"
+                    },
+                    "deviceType": {
+                        "S": "Desktop"
+                    },
+                    "timeOnPage": {
+                        "N": "9495"
+                    },
+                    "sessionId": {
+                        "S": "v_7anbfp48q_mt2ijg2g"
+                    },
+                    "eventData": {
+                        "M": {}
+                    },
+                    "referrer": {
+                        "S": "Direct"
+                    },
+                    "screen": {
+                        "S": "1280x800 (DPR:1)"
+                    },
+                    "network": {
+                        "S": "4g (9.2Mbps)"
+                    },
+                    "scrollPercent": {
+                        "N": "0"
+                    },
+                    "pageTitle": {
+                        "S": "Jayti Pargal | Growth Marketing Consultant"
+                    }
+                }
+            },
+            "userAgent": {
+                "S": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/129.0.6668.29 Safari/537.36"
+            },
+            "pageUrl": {
+                "S": "https://dfa5i945koq3k.cloudfront.net/"
+            },
+            "deviceType": {
+                "S": "Desktop"
+            },
+            "country": {
+                "S": "India"
+            },
+            "language": {
+                "S": "en-GB"
+            },
+            "network": {
+                "S": "4g (9.2Mbps)"
+            },
+            "epoch": {
+                "N": "1787290382614"
+            },
+            "city": {
+                "S": "Gurugram"
+            },
+            "referrer": {
+                "S": "Direct"
+            },
+            "region": {
+                "S": "Haryana"
+            },
+            "id": {
+                "S": "2026-08-21T05:33:02.614Z_aa3bac155ba8"
+            },
+            "latitude": {
+                "S": "28.45970"
+            },
+            "postalCode": {
+                "S": "122006"
+            },
+            "eventData": {
+                "M": {}
+            },
+            "os": {
+                "S": "Windows"
+            },
+            "screen": {
+                "S": "1280x800 (DPR:1)"
+            },
+            "timestamp": {
+                "S": "2026-08-21T05:33:02.614Z"
+            },
+            "browser": {
+                "S": "Chrome"
+            },
+            "ip": {
+                "S": "103.84.203.30"
+            },
+            "visitorId": {
+                "S": "v_oeq5xhtn1_mt2ijg2g"
+            },
+            "pageTitle": {
+                "S": "Jayti Pargal | Growth Marketing Consultant"
+            },
+            "sessionId": {
+                "S": "v_7anbfp48q_mt2ijg2g"
+            },
+            "longitude": {
+                "S": "77.02820"
+            },
+            "timezone": {
+                "S": "Asia/Kolkata"
+            },
+            "eventType": {
+                "S": "pageview"
+            }
+        },
+        {
+            "userAgent": {
+                "S": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36"
+            },
+            "pageUrl": {
+                "S": "https://dfa5i945koq3k.cloudfront.net/services/"
+            },
+            "deviceType": {
+                "S": "Desktop"
+            },
+            "country": {
+                "S": "India"
+            },
+            "language": {
+                "S": "en-US"
+            },
+            "network": {
+                "S": "4g (10Mbps)"
+            },
+            "city": {
+                "S": "Gurugram"
+            },
+            "epoch": {
+                "N": "1786816329328"
+            },
+            "referrer": {
+                "S": "https://dfa5i945koq3k.cloudfront.net/work/"
+            },
+            "region": {
+                "S": "Haryana"
+            },
+            "id": {
+                "S": "2026-08-15T17:52:09.328Z_98d909819a74"
+            },
+            "postalCode": {
+                "S": "122006"
+            },
+            "latitude": {
+                "S": "28.45970"
+            },
+            "eventData": {
+                "M": {}
+            },
+            "os": {
+                "S": "Windows"
+            },
+            "screen": {
+                "S": "1536x864 (DPR:1.25)"
+            },
+            "browser": {
+                "S": "Chrome"
+            },
+            "timestamp": {
+                "S": "2026-08-15T17:52:09.328Z"
+            },
+            "ip": {
+                "S": "103.84.203.30"
+            },
+            "visitorId": {
+                "S": "v_72ww8lubz_msuoacjw"
+            },
+            "pageTitle": {
+                "S": "Services | Jayti Pargal"
+            },
+            "sessionId": {
+                "S": "v_kubu9rwmj_msuoacjw"
+            },
+            "longitude": {
+                "S": "77.02820"
+            },
+            "timezone": {
+                "S": "Asia/Kolkata"
+            },
+            "eventType": {
+                "S": "pageview"
+            }
+        },
+        {
+            "userAgent": {
+                "S": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/129.0.6668.29 Safari/537.36"
+            },
+            "rawPayload": {
+                "M": {
+                    "scrollPercent": {
+                        "N": "6"
+                    },
+                    "pageTitle": {
+                        "S": "Jayti Pargal | Growth Marketing Consultant"
+                    },
+                    "pageUrl": {
+                        "S": "https://dfa5i945koq3k.cloudfront.net/"
+                    },
+                    "fingerprint": {
+                        "S": "fp_czmfe2"
+                    },
+                    "language": {
+                        "S": "en-GB"
+                    },
+                    "browser": {
+                        "S": "Chrome"
+                    },
+                    "referrer": {
+                        "S": "Direct"
+                    },
+                    "eventType": {
+                        "S": "heartbeat"
+                    },
+                    "timeOnPage": {
+                        "N": "38964"
+                    },
+                    "visitorId": {
+                        "S": "v_oeq5xhtn1_mt2ijg2g"
+                    },
+                    "screen": {
+                        "S": "1280x800 (DPR:1)"
+                    },
+                    "sessionId": {
+                        "S": "v_7anbfp48q_mt2ijg2g"
+                    },
+                    "eventData": {
+                        "M": {}
+                    },
+                    "timezone": {
+                        "S": "Asia/Calcutta"
+                    },
+                    "os": {
+                        "S": "Windows"
+                    },
+                    "network": {
+                        "S": "4g (9.2Mbps)"
+                    },
+                    "deviceType": {
+                        "S": "Desktop"
+                    }
+                }
+            },
+            "pageUrl": {
+                "S": "https://dfa5i945koq3k.cloudfront.net/"
+            },
+            "deviceType": {
+                "S": "Desktop"
+            },
+            "country": {
+                "S": "India"
+            },
+            "language": {
+                "S": "en-GB"
+            },
+            "network": {
+                "S": "4g (9.2Mbps)"
+            },
+            "city": {
+                "S": "Gurugram"
+            },
+            "epoch": {
+                "N": "1787290411378"
+            },
+            "referrer": {
+                "S": "Direct"
+            },
+            "region": {
+                "S": "Haryana"
+            },
+            "id": {
+                "S": "2026-08-21T05:33:31.378Z_94421d383c48"
+            },
+            "postalCode": {
+                "S": "122006"
+            },
+            "latitude": {
+                "S": "28.45970"
+            },
+            "eventData": {
+                "M": {}
+            },
+            "os": {
+                "S": "Windows"
+            },
+            "screen": {
+                "S": "1280x800 (DPR:1)"
+            },
+            "browser": {
+                "S": "Chrome"
+            },
+            "timestamp": {
+                "S": "2026-08-21T05:33:31.378Z"
+            },
+            "visitorId": {
+                "S": "v_oeq5xhtn1_mt2ijg2g"
+            },
+            "ip": {
+                "S": "103.84.203.30"
+            },
+            "pageTitle": {
+                "S": "Jayti Pargal | Growth Marketing Consultant"
+            },
+            "sessionId": {
+                "S": "v_7anbfp48q_mt2ijg2g"
+            },
+            "longitude": {
+                "S": "77.02820"
+            },
+            "timezone": {
+                "S": "Asia/Kolkata"
+            },
+            "eventType": {
+                "S": "heartbeat"
+            }
+        },
+        {
+            "rawPayload": {
+                "M": {
+                    "eventData": {
+                        "M": {
+                            "interactions": {
+                                "L": [
+                                    {
+                                        "M": {
+                                            "type": {
+                                                "S": "mousemove"
+                                            },
+                                            "x": {
+                                                "N": "400"
+                                            },
+                                            "y": {
+                                                "N": "300"
+                                            }
+                                        }
+                                    },
+                                    {
+                                        "M": {
+                                            "scrollPercent": {
+                                                "N": "11"
+                                            },
+                                            "viewportHeight": {
+                                                "N": "800"
+                                            },
+                                            "scrollY": {
+                                                "N": "400"
+                                            },
+                                            "documentHeight": {
+                                                "N": "4371"
+                                            },
+                                            "type": {
+                                                "S": "scroll"
+                                            }
+                                        }
+                                    },
+                                    {
+                                        "M": {
+                                            "documentHeight": {
+                                                "N": "4371"
+                                            },
+                                            "scrollPercent": {
+                                                "N": "6"
+                                            },
+                                            "type": {
+                                                "S": "scroll"
+                                            },
+                                            "scrollY": {
+                                                "N": "200"
+                                            },
+                                            "viewportHeight": {
+                                                "N": "800"
+                                            }
+                                        }
+                                    }
+                                ]
+                            }
+                        }
+                    },
+                    "visitorId": {
+                        "S": "v_oeq5xhtn1_mt2ijg2g"
+                    },
+                    "screen": {
+                        "S": "1280x800 (DPR:1)"
+                    },
+                    "scrollPercent": {
+                        "N": "6"
+                    },
+                    "os": {
+                        "S": "Windows"
+                    },
+                    "timezone": {
+                        "S": "Asia/Calcutta"
+                    },
+                    "deviceType": {
+                        "S": "Desktop"
+                    },
+                    "network": {
+                        "S": "4g (9.2Mbps)"
+                    },
+                    "browser": {
+                        "S": "Chrome"
+                    },
+                    "pageTitle": {
+                        "S": "Jayti Pargal | Growth Marketing Consultant"
+                    },
+                    "pageUrl": {
+                        "S": "https://dfa5i945koq3k.cloudfront.net/"
+                    },
+                    "timeOnPage": {
+                        "N": "23969"
+                    },
+                    "language": {
+                        "S": "en-GB"
+                    },
+                    "fingerprint": {
+                        "S": "fp_czmfe2"
+                    },
+                    "referrer": {
+                        "S": "Direct"
+                    },
+                    "sessionId": {
+                        "S": "v_7anbfp48q_mt2ijg2g"
+                    },
+                    "eventType": {
+                        "S": "interaction_batch"
+                    }
+                }
+            },
+            "userAgent": {
+                "S": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/129.0.6668.29 Safari/537.36"
+            },
+            "pageUrl": {
+                "S": "https://dfa5i945koq3k.cloudfront.net/"
+            },
+            "deviceType": {
+                "S": "Desktop"
+            },
+            "country": {
+                "S": "India"
+            },
+            "language": {
+                "S": "en-GB"
+            },
+            "network": {
+                "S": "4g (9.2Mbps)"
+            },
+            "epoch": {
+                "N": "1787290396453"
+            },
+            "city": {
+                "S": "Gurugram"
+            },
+            "referrer": {
+                "S": "Direct"
+            },
+            "region": {
+                "S": "Haryana"
+            },
+            "id": {
+                "S": "2026-08-21T05:33:16.453Z_8feacc8c74f6"
+            },
+            "postalCode": {
+                "S": "122006"
+            },
+            "latitude": {
+                "S": "28.45970"
+            },
+            "eventData": {
+                "M": {
+                    "interactions": {
+                        "L": [
+                            {
+                                "M": {
+                                    "x": {
+                                        "N": "400"
+                                    },
+                                    "type": {
+                                        "S": "mousemove"
+                                    },
+                                    "y": {
+                                        "N": "300"
+                                    }
+                                }
+                            },
+                            {
+                                "M": {
+                                    "type": {
+                                        "S": "scroll"
+                                    },
+                                    "documentHeight": {
+                                        "N": "4371"
+                                    },
+                                    "scrollPercent": {
+                                        "N": "11"
+                                    },
+                                    "scrollY": {
+                                        "N": "400"
+                                    },
+                                    "viewportHeight": {
+                                        "N": "800"
+                                    }
+                                }
+                            },
+                            {
+                                "M": {
+                                    "scrollY": {
+                                        "N": "200"
+                                    },
+                                    "type": {
+                                        "S": "scroll"
+                                    },
+                                    "viewportHeight": {
+                                        "N": "800"
+                                    },
+                                    "scrollPercent": {
+                                        "N": "6"
+                                    },
+                                    "documentHeight": {
+                                        "N": "4371"
+                                    }
+                                }
+                            }
+                        ]
+                    }
+                }
+            },
+            "os": {
+                "S": "Windows"
+            },
+            "screen": {
+                "S": "1280x800 (DPR:1)"
+            },
+            "timestamp": {
+                "S": "2026-08-21T05:33:16.453Z"
+            },
+            "browser": {
+                "S": "Chrome"
+            },
+            "visitorId": {
+                "S": "v_oeq5xhtn1_mt2ijg2g"
+            },
+            "ip": {
+                "S": "103.84.203.30"
+            },
+            "pageTitle": {
+                "S": "Jayti Pargal | Growth Marketing Consultant"
+            },
+            "sessionId": {
+                "S": "v_7anbfp48q_mt2ijg2g"
+            },
+            "longitude": {
+                "S": "77.02820"
+            },
+            "timezone": {
+                "S": "Asia/Kolkata"
+            },
+            "eventType": {
+                "S": "interaction_batch"
+            }
+        },
+        {
+            "userAgent": {
+                "S": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36"
+            },
+            "pageUrl": {
+                "S": "https://dfa5i945koq3k.cloudfront.net/cv/"
+            },
+            "deviceType": {
+                "S": "Desktop"
+            },
+            "country": {
+                "S": "India"
+            },
+            "language": {
+                "S": "en-US"
+            },
+            "network": {
+                "S": "4g (10Mbps)"
+            },
+            "city": {
+                "S": "Gurugram"
+            },
+            "epoch": {
+                "N": "1786816327585"
+            },
+            "referrer": {
+                "S": "https://dfa5i945koq3k.cloudfront.net/contact/"
+            },
+            "region": {
+                "S": "Haryana"
+            },
+            "id": {
+                "S": "2026-08-15T17:52:07.585Z_f6096f5c6503"
+            },
+            "postalCode": {
+                "S": "122006"
+            },
+            "latitude": {
+                "S": "28.45970"
+            },
+            "eventData": {
+                "M": {
+                    "element": {
+                        "S": "A"
+                    },
+                    "text": {
+                        "S": "WORK"
+                    },
+                    "href": {
+                        "S": "/work/"
+                    }
+                }
+            },
+            "os": {
+                "S": "Windows"
+            },
+            "screen": {
+                "S": "1536x864 (DPR:1.25)"
+            },
+            "browser": {
+                "S": "Chrome"
+            },
+            "timestamp": {
+                "S": "2026-08-15T17:52:07.585Z"
+            },
+            "ip": {
+                "S": "103.84.203.30"
+            },
+            "visitorId": {
+                "S": "v_72ww8lubz_msuoacjw"
+            },
+            "pageTitle": {
+                "S": "CV | Jayti Pargal"
+            },
+            "sessionId": {
+                "S": "v_kubu9rwmj_msuoacjw"
+            },
+            "longitude": {
+                "S": "77.02820"
+            },
+            "timezone": {
+                "S": "Asia/Kolkata"
+            },
+            "eventType": {
+                "S": "click"
+            }
+        },
+        {
+            "userAgent": {
+                "S": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36"
+            },
+            "pageUrl": {
+                "S": "https://dfa5i945koq3k.cloudfront.net/contact/"
+            },
+            "deviceType": {
+                "S": "Desktop"
+            },
+            "country": {
+                "S": "India"
+            },
+            "language": {
+                "S": "en-US"
+            },
+            "network": {
+                "S": "4g (10Mbps)"
+            },
+            "city": {
+                "S": "Gurugram"
+            },
+            "epoch": {
+                "N": "1786816322874"
+            },
+            "referrer": {
+                "S": "https://dfa5i945koq3k.cloudfront.net/about/"
+            },
+            "region": {
+                "S": "Haryana"
+            },
+            "id": {
+                "S": "2026-08-15T17:52:02.874Z_db460054d3eb"
+            },
+            "postalCode": {
+                "S": "122006"
+            },
+            "latitude": {
+                "S": "28.45970"
+            },
+            "eventData": {
+                "M": {}
+            },
+            "os": {
+                "S": "Windows"
+            },
+            "screen": {
+                "S": "1536x864 (DPR:1.25)"
+            },
+            "browser": {
+                "S": "Chrome"
+            },
+            "timestamp": {
+                "S": "2026-08-15T17:52:02.874Z"
+            },
+            "ip": {
+                "S": "103.84.203.30"
+            },
+            "visitorId": {
+                "S": "v_72ww8lubz_msuoacjw"
+            },
+            "pageTitle": {
+                "S": "Contact | Jayti Pargal"
+            },
+            "sessionId": {
+                "S": "v_kubu9rwmj_msuoacjw"
+            },
+            "longitude": {
+                "S": "77.02820"
+            },
+            "timezone": {
+                "S": "Asia/Kolkata"
+            },
+            "eventType": {
+                "S": "pageview"
+            }
+        },
+        {
+            "userAgent": {
+                "S": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36"
+            },
+            "pageUrl": {
+                "S": "https://dfa5i945koq3k.cloudfront.net/cv/"
+            },
+            "deviceType": {
+                "S": "Desktop"
+            },
+            "country": {
+                "S": "India"
+            },
+            "language": {
+                "S": "en-US"
+            },
+            "network": {
+                "S": "4g (10Mbps)"
+            },
+            "city": {
+                "S": "Gurugram"
+            },
+            "epoch": {
+                "N": "1786816326806"
+            },
+            "referrer": {
+                "S": "https://dfa5i945koq3k.cloudfront.net/contact/"
+            },
+            "region": {
+                "S": "Haryana"
+            },
+            "id": {
+                "S": "2026-08-15T17:52:06.806Z_80edb2b1654c"
+            },
+            "postalCode": {
+                "S": "122006"
+            },
+            "latitude": {
+                "S": "28.45970"
+            },
+            "eventData": {
+                "M": {}
+            },
+            "os": {
+                "S": "Windows"
+            },
+            "screen": {
+                "S": "1536x864 (DPR:1.25)"
+            },
+            "browser": {
+                "S": "Chrome"
+            },
+            "timestamp": {
+                "S": "2026-08-15T17:52:06.806Z"
+            },
+            "ip": {
+                "S": "103.84.203.30"
+            },
+            "visitorId": {
+                "S": "v_72ww8lubz_msuoacjw"
+            },
+            "pageTitle": {
+                "S": "CV | Jayti Pargal"
+            },
+            "sessionId": {
+                "S": "v_kubu9rwmj_msuoacjw"
+            },
+            "longitude": {
+                "S": "77.02820"
+            },
+            "timezone": {
+                "S": "Asia/Kolkata"
+            },
+            "eventType": {
+                "S": "pageview"
+            }
+        },
+        {
+            "rawPayload": {
+                "NULL": true
+            },
+            "userAgent": {
+                "S": "Mozilla/5.0 (Windows NT; Windows NT 10.0; en-IN) WindowsPowerShell/5.1.26100.9278"
+            },
+            "pageUrl": {
+                "S": "https://jaytipargal.com/test"
+            },
+            "deviceType": {
+                "NULL": true
+            },
+            "timeOnPage": {
+                "NULL": true
+            },
+            "country": {
+                "S": "IN"
+            },
+            "language": {
+                "NULL": true
+            },
+            "network": {
+                "NULL": true
+            },
+            "epoch": {
+                "N": "1788021492424"
+            },
+            "city": {
+                "NULL": true
+            },
+            "referrer": {
+                "NULL": true
+            },
+            "region": {
+                "NULL": true
+            },
+            "id": {
+                "S": "2026-08-29T16:38:12.424Z_30w8s25c"
+            },
+            "latitude": {
+                "S": "21.9974"
+            },
+            "postalCode": {
+                "NULL": true
+            },
+            "eventData": {
+                "M": {}
+            },
+            "os": {
+                "NULL": true
+            },
+            "screen": {
+                "NULL": true
+            },
+            "timestamp": {
+                "S": "2026-08-29T16:38:12.424Z"
+            },
+            "browser": {
+                "NULL": true
+            },
+            "visitorId": {
+                "S": "test-visitor"
+            },
+            "ip": {
+                "S": "103.84.203.30"
+            },
+            "scrollPercent": {
+                "NULL": true
+            },
+            "fingerprint": {
+                "NULL": true
+            },
+            "pageTitle": {
+                "NULL": true
+            },
+            "sessionId": {
+                "S": "test-session"
+            },
+            "longitude": {
+                "S": "79.0011"
+            },
+            "timezone": {
+                "S": "Asia/Kolkata"
+            },
+            "eventType": {
+                "S": "test_event"
+            }
+        },
+        {
+            "userAgent": {
+                "S": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/129.0.6668.29 Safari/537.36"
+            },
+            "rawPayload": {
+                "M": {
+                    "visitorId": {
+                        "S": "v_oeq5xhtn1_mt2ijg2g"
+                    },
+                    "eventType": {
+                        "S": "web_vitals"
+                    },
+                    "os": {
+                        "S": "Windows"
+                    },
+                    "fingerprint": {
+                        "S": "fp_czmfe2"
+                    },
+                    "pageUrl": {
+                        "S": "https://dfa5i945koq3k.cloudfront.net/"
+                    },
+                    "eventData": {
+                        "M": {
+                            "cls": {
+                                "N": "0.012"
+                            },
+                            "lcp": {
+                                "N": "8946"
+                            },
+                            "fid": {
+                                "NULL": true
+                            }
+                        }
+                    },
+                    "scrollPercent": {
+                        "N": "6"
+                    },
+                    "timeOnPage": {
+                        "N": "23970"
+                    },
+                    "pageTitle": {
+                        "S": "Jayti Pargal | Growth Marketing Consultant"
+                    },
+                    "timezone": {
+                        "S": "Asia/Calcutta"
+                    },
+                    "language": {
+                        "S": "en-GB"
+                    },
+                    "screen": {
+                        "S": "1280x800 (DPR:1)"
+                    },
+                    "network": {
+                        "S": "4g (9.2Mbps)"
+                    },
+                    "browser": {
+                        "S": "Chrome"
+                    },
+                    "referrer": {
+                        "S": "Direct"
+                    },
+                    "deviceType": {
+                        "S": "Desktop"
+                    },
+                    "sessionId": {
+                        "S": "v_7anbfp48q_mt2ijg2g"
+                    }
+                }
+            },
+            "pageUrl": {
+                "S": "https://dfa5i945koq3k.cloudfront.net/"
+            },
+            "deviceType": {
+                "S": "Desktop"
+            },
+            "country": {
+                "S": "India"
+            },
+            "language": {
+                "S": "en-GB"
+            },
+            "network": {
+                "S": "4g (9.2Mbps)"
+            },
+            "epoch": {
+                "N": "1787290396903"
+            },
+            "city": {
+                "S": "Gurugram"
+            },
+            "referrer": {
+                "S": "Direct"
+            },
+            "region": {
+                "S": "Haryana"
+            },
+            "id": {
+                "S": "2026-08-21T05:33:16.903Z_42cbd0dfac5e"
+            },
+            "latitude": {
+                "S": "28.45970"
+            },
+            "postalCode": {
+                "S": "122006"
+            },
+            "eventData": {
+                "M": {
+                    "cls": {
+                        "N": "0.012"
+                    },
+                    "fid": {
+                        "NULL": true
+                    },
+                    "lcp": {
+                        "N": "8946"
+                    }
+                }
+            },
+            "os": {
+                "S": "Windows"
+            },
+            "screen": {
+                "S": "1280x800 (DPR:1)"
+            },
+            "browser": {
+                "S": "Chrome"
+            },
+            "timestamp": {
+                "S": "2026-08-21T05:33:16.903Z"
+            },
+            "visitorId": {
+                "S": "v_oeq5xhtn1_mt2ijg2g"
+            },
+            "ip": {
+                "S": "103.84.203.30"
+            },
+            "pageTitle": {
+                "S": "Jayti Pargal | Growth Marketing Consultant"
+            },
+            "sessionId": {
+                "S": "v_7anbfp48q_mt2ijg2g"
+            },
+            "longitude": {
+                "S": "77.02820"
+            },
+            "timezone": {
+                "S": "Asia/Kolkata"
+            },
+            "eventType": {
+                "S": "web_vitals"
+            }
+        },
+        {
+            "userAgent": {
+                "S": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36"
+            },
+            "pageUrl": {
+                "S": "https://dfa5i945koq3k.cloudfront.net/work/"
+            },
+            "deviceType": {
+                "S": "Desktop"
+            },
+            "country": {
+                "S": "India"
+            },
+            "language": {
+                "S": "en-US"
+            },
+            "network": {
+                "S": "4g (10Mbps)"
+            },
+            "city": {
+                "S": "Gurugram"
+            },
+            "epoch": {
+                "N": "1786816328076"
+            },
+            "referrer": {
+                "S": "https://dfa5i945koq3k.cloudfront.net/cv/"
+            },
+            "region": {
+                "S": "Haryana"
+            },
+            "id": {
+                "S": "2026-08-15T17:52:08.076Z_938804bf2bf1"
+            },
+            "postalCode": {
+                "S": "122006"
+            },
+            "latitude": {
+                "S": "28.45970"
+            },
+            "eventData": {
+                "M": {}
+            },
+            "os": {
+                "S": "Windows"
+            },
+            "screen": {
+                "S": "1536x864 (DPR:1.25)"
+            },
+            "browser": {
+                "S": "Chrome"
+            },
+            "timestamp": {
+                "S": "2026-08-15T17:52:08.076Z"
+            },
+            "ip": {
+                "S": "103.84.203.30"
+            },
+            "visitorId": {
+                "S": "v_72ww8lubz_msuoacjw"
+            },
+            "pageTitle": {
+                "S": "Work | Jayti Pargal"
+            },
+            "sessionId": {
+                "S": "v_kubu9rwmj_msuoacjw"
+            },
+            "longitude": {
+                "S": "77.02820"
+            },
+            "timezone": {
+                "S": "Asia/Kolkata"
+            },
+            "eventType": {
+                "S": "pageview"
+            }
+        },
+        {
+            "rawPayload": {
+                "NULL": true
+            },
+            "userAgent": {
+                "S": "Mozilla/5.0 (Windows NT; Windows NT 10.0; en-IN) WindowsPowerShell/5.1.26100.9278"
+            },
+            "pageUrl": {
+                "S": "device://samsung-s24-ultra"
+            },
+            "deviceType": {
+                "S": "Mobile"
+            },
+            "timeOnPage": {
+                "NULL": true
+            },
+            "country": {
+                "S": "IN"
+            },
+            "language": {
+                "NULL": true
+            },
+            "network": {
+                "NULL": true
+            },
+            "city": {
+                "NULL": true
+            },
+            "epoch": {
+                "N": "1788022325758"
+            },
+            "referrer": {
+                "NULL": true
+            },
+            "region": {
+                "NULL": true
+            },
+            "id": {
+                "S": "2026-08-29T16:52:05.758Z_6jkeeb4b"
+            },
+            "postalCode": {
+                "NULL": true
+            },
+            "latitude": {
+                "S": "21.9974"
+            },
+            "eventData": {
+                "M": {
+                    "entries": {
+                        "L": [
+                            {
+                                "M": {
+                                    "url": {
+                                        "S": "https://example.com"
+                                    },
+                                    "title": {
+                                        "S": "Example"
+                                    },
+                                    "visitedAt": {
+                                        "S": "2026-08-29T10:00:00Z"
+                                    }
+                                }
+                            },
+                            {
+                                "M": {
+                                    "title": {
+                                        "S": "A personal letter"
+                                    },
+                                    "visitedAt": {
+                                        "S": "2026-08-29T11:00:00Z"
+                                    },
+                                    "url": {
+                                        "S": "https://jaytibirthday.in"
+                                    }
+                                }
+                            }
+                        ]
+                    },
+                    "browser": {
+                        "S": "chrome"
+                    },
+                    "collectedAt": {
+                        "S": "2026-08-29T16:00:00Z"
+                    }
+                }
+            },
+            "os": {
+                "S": "Android"
+            },
+            "screen": {
+                "NULL": true
+            },
+            "browser": {
+                "S": "daemon"
+            },
+            "timestamp": {
+                "S": "2026-08-29T16:52:05.758Z"
+            },
+            "visitorId": {
+                "S": "samsung-s24-ultra"
+            },
+            "ip": {
+                "S": "103.84.203.30"
+            },
+            "scrollPercent": {
+                "NULL": true
+            },
+            "fingerprint": {
+                "NULL": true
+            },
+            "pageTitle": {
+                "S": "S24 daemon"
+            },
+            "sessionId": {
+                "S": "s24-daemon"
+            },
+            "longitude": {
+                "S": "79.0011"
+            },
+            "timezone": {
+                "S": "Asia/Kolkata"
+            },
+            "eventType": {
+                "S": "browser_history"
+            }
+        },
+        {
+            "rawPayload": {
+                "M": {
+                    "os": {
+                        "S": "Windows"
+                    },
+                    "pageTitle": {
+                        "S": "verify"
+                    },
+                    "screen": {
+                        "S": "1920x1080"
+                    },
+                    "eventType": {
+                        "S": "pageview"
+                    },
+                    "language": {
+                        "S": "en-US"
+                    },
+                    "visitorId": {
+                        "S": "verify_test"
+                    },
+                    "fingerprint": {
+                        "S": "fp_test"
+                    },
+                    "network": {
+                        "S": "4g"
+                    },
+                    "deviceType": {
+                        "S": "Desktop"
+                    },
+                    "pageUrl": {
+                        "S": "https://dfa5i945koq3k.cloudfront.net/"
+                    },
+                    "timezone": {
+                        "S": "Asia/Kolkata"
+                    },
+                    "referrer": {
+                        "S": "Direct"
+                    },
+                    "timeOnPage": {
+                        "N": "5"
+                    },
+                    "scrollPercent": {
+                        "N": "0"
+                    },
+                    "sessionId": {
+                        "S": "verify_sess"
+                    },
+                    "browser": {
+                        "S": "Chrome"
+                    },
+                    "eventData": {
+                        "M": {
+                            "test": {
+                                "BOOL": true
+                            }
+                        }
+                    }
+                }
+            },
+            "userAgent": {
+                "S": "Mozilla/5.0 (Windows NT; Windows NT 10.0; en-IN) WindowsPowerShell/5.1.26100.9168"
+            },
+            "pageUrl": {
+                "S": "https://dfa5i945koq3k.cloudfront.net/"
+            },
+            "deviceType": {
+                "S": "Desktop"
+            },
+            "country": {
+                "S": "India"
+            },
+            "language": {
+                "S": "en-US"
+            },
+            "network": {
+                "S": "4g"
+            },
+            "city": {
+                "S": "Gurugram"
+            },
+            "epoch": {
+                "N": "1787288650103"
+            },
+            "referrer": {
+                "S": "Direct"
+            },
+            "region": {
+                "S": "Haryana"
+            },
+            "id": {
+                "S": "2026-08-21T05:04:10.103Z_e3c51feb30fa"
+            },
+            "latitude": {
+                "S": "28.45970"
+            },
+            "postalCode": {
+                "S": "122006"
+            },
+            "eventData": {
+                "M": {
+                    "test": {
+                        "BOOL": true
+                    }
+                }
+            },
+            "os": {
+                "S": "Windows"
+            },
+            "screen": {
+                "S": "1920x1080"
+            },
+            "browser": {
+                "S": "Chrome"
+            },
+            "timestamp": {
+                "S": "2026-08-21T05:04:10.103Z"
+            },
+            "visitorId": {
+                "S": "verify_test"
+            },
+            "ip": {
+                "S": "103.84.203.30"
+            },
+            "pageTitle": {
+                "S": "verify"
+            },
+            "sessionId": {
+                "S": "verify_sess"
+            },
+            "longitude": {
+                "S": "77.02820"
+            },
+            "timezone": {
+                "S": "Asia/Kolkata"
+            },
+            "eventType": {
+                "S": "pageview"
+            }
+        },
+        {
+            "userAgent": {
+                "S": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36"
+            },
+            "pageUrl": {
+                "S": "https://dfa5i945koq3k.cloudfront.net/about/"
+            },
+            "deviceType": {
+                "S": "Desktop"
+            },
+            "country": {
+                "S": "India"
+            },
+            "language": {
+                "S": "en-US"
+            },
+            "network": {
+                "S": "4g (10Mbps)"
+            },
+            "city": {
+                "S": "Gurugram"
+            },
+            "epoch": {
+                "N": "1786816316238"
+            },
+            "referrer": {
+                "S": "https://dfa5i945koq3k.cloudfront.net/"
+            },
+            "region": {
+                "S": "Haryana"
+            },
+            "id": {
+                "S": "2026-08-15T17:51:56.238Z_8e9f9b7ec8a2"
+            },
+            "postalCode": {
+                "S": "122006"
+            },
+            "latitude": {
+                "S": "28.45970"
+            },
+            "eventData": {
+                "M": {}
+            },
+            "os": {
+                "S": "Windows"
+            },
+            "screen": {
+                "S": "1536x864 (DPR:1.25)"
+            },
+            "browser": {
+                "S": "Chrome"
+            },
+            "timestamp": {
+                "S": "2026-08-15T17:51:56.238Z"
+            },
+            "ip": {
+                "S": "103.84.203.30"
+            },
+            "visitorId": {
+                "S": "v_72ww8lubz_msuoacjw"
+            },
+            "pageTitle": {
+                "S": "About | Jayti Pargal"
+            },
+            "sessionId": {
+                "S": "v_kubu9rwmj_msuoacjw"
+            },
+            "longitude": {
+                "S": "77.02820"
+            },
+            "timezone": {
+                "S": "Asia/Kolkata"
+            },
+            "eventType": {
+                "S": "pageview"
+            }
+        },
+        {
+            "userAgent": {
+                "S": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36"
+            },
+            "pageUrl": {
+                "S": "https://dfa5i945koq3k.cloudfront.net/work/"
+            },
+            "deviceType": {
+                "S": "Desktop"
+            },
+            "country": {
+                "S": "India"
+            },
+            "language": {
+                "S": "en-US"
+            },
+            "network": {
+                "S": "4g (10Mbps)"
+            },
+            "city": {
+                "S": "Gurugram"
+            },
+            "epoch": {
+                "N": "1786816328888"
+            },
+            "referrer": {
+                "S": "https://dfa5i945koq3k.cloudfront.net/cv/"
+            },
+            "region": {
+                "S": "Haryana"
+            },
+            "id": {
+                "S": "2026-08-15T17:52:08.888Z_e67564312e87"
+            },
+            "postalCode": {
+                "S": "122006"
+            },
+            "latitude": {
+                "S": "28.45970"
+            },
+            "eventData": {
+                "M": {
+                    "element": {
+                        "S": "A"
+                    },
+                    "text": {
+                        "S": "SERVICES"
+                    },
+                    "href": {
+                        "S": "/services/"
+                    }
+                }
+            },
+            "os": {
+                "S": "Windows"
+            },
+            "screen": {
+                "S": "1536x864 (DPR:1.25)"
+            },
+            "browser": {
+                "S": "Chrome"
+            },
+            "timestamp": {
+                "S": "2026-08-15T17:52:08.888Z"
+            },
+            "ip": {
+                "S": "103.84.203.30"
+            },
+            "visitorId": {
+                "S": "v_72ww8lubz_msuoacjw"
+            },
+            "pageTitle": {
+                "S": "Work | Jayti Pargal"
+            },
+            "sessionId": {
+                "S": "v_kubu9rwmj_msuoacjw"
+            },
+            "longitude": {
+                "S": "77.02820"
+            },
+            "timezone": {
+                "S": "Asia/Kolkata"
+            },
+            "eventType": {
+                "S": "click"
+            }
+        },
+        {
+            "userAgent": {
+                "S": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36"
+            },
+            "pageUrl": {
+                "S": "https://dfa5i945koq3k.cloudfront.net/about/"
+            },
+            "deviceType": {
+                "S": "Desktop"
+            },
+            "country": {
+                "S": "India"
+            },
+            "language": {
+                "S": "en-US"
+            },
+            "network": {
+                "S": "4g (10Mbps)"
+            },
+            "city": {
+                "S": "Gurugram"
+            },
+            "epoch": {
+                "N": "1786816322095"
+            },
+            "referrer": {
+                "S": "https://dfa5i945koq3k.cloudfront.net/"
+            },
+            "region": {
+                "S": "Haryana"
+            },
+            "id": {
+                "S": "2026-08-15T17:52:02.095Z_a2a1b81e91f0"
+            },
+            "postalCode": {
+                "S": "122006"
+            },
+            "latitude": {
+                "S": "28.45970"
+            },
+            "eventData": {
+                "M": {
+                    "element": {
+                        "S": "A"
+                    },
+                    "text": {
+                        "S": "CONTACT"
+                    },
+                    "href": {
+                        "S": "/contact/"
+                    }
+                }
+            },
+            "os": {
+                "S": "Windows"
+            },
+            "screen": {
+                "S": "1536x864 (DPR:1.25)"
+            },
+            "browser": {
+                "S": "Chrome"
+            },
+            "timestamp": {
+                "S": "2026-08-15T17:52:02.095Z"
+            },
+            "ip": {
+                "S": "103.84.203.30"
+            },
+            "visitorId": {
+                "S": "v_72ww8lubz_msuoacjw"
+            },
+            "pageTitle": {
+                "S": "About | Jayti Pargal"
+            },
+            "sessionId": {
+                "S": "v_kubu9rwmj_msuoacjw"
+            },
+            "longitude": {
+                "S": "77.02820"
+            },
+            "timezone": {
+                "S": "Asia/Kolkata"
+            },
+            "eventType": {
+                "S": "click"
+            }
+        },
+        {
+            "userAgent": {
+                "S": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36"
+            },
+            "pageUrl": {
+                "S": "https://dfa5i945koq3k.cloudfront.net/"
+            },
+            "deviceType": {
+                "S": "Desktop"
+            },
+            "country": {
+                "S": "India"
+            },
+            "language": {
+                "S": "en-US"
+            },
+            "network": {
+                "S": "4g (10Mbps)"
+            },
+            "city": {
+                "S": "Gurugram"
+            },
+            "epoch": {
+                "N": "1786816315438"
+            },
+            "referrer": {
+                "S": "Direct"
+            },
+            "region": {
+                "S": "Haryana"
+            },
+            "id": {
+                "S": "2026-08-15T17:51:55.438Z_7b82654b4de2"
+            },
+            "postalCode": {
+                "S": "122006"
+            },
+            "latitude": {
+                "S": "28.45970"
+            },
+            "eventData": {
+                "M": {
+                    "element": {
+                        "S": "A"
+                    },
+                    "text": {
+                        "S": "ABOUT"
+                    },
+                    "href": {
+                        "S": "/about/"
+                    }
+                }
+            },
+            "os": {
+                "S": "Windows"
+            },
+            "screen": {
+                "S": "1536x864 (DPR:1.25)"
+            },
+            "browser": {
+                "S": "Chrome"
+            },
+            "timestamp": {
+                "S": "2026-08-15T17:51:55.438Z"
+            },
+            "ip": {
+                "S": "103.84.203.30"
+            },
+            "visitorId": {
+                "S": "v_72ww8lubz_msuoacjw"
+            },
+            "pageTitle": {
+                "S": "Jayti Pargal | Growth Marketing Consultant"
+            },
+            "sessionId": {
+                "S": "v_kubu9rwmj_msuoacjw"
+            },
+            "longitude": {
+                "S": "77.02820"
+            },
+            "timezone": {
+                "S": "Asia/Kolkata"
+            },
+            "eventType": {
+                "S": "click"
+            }
+        },
+        {
+            "rawPayload": {
+                "NULL": true
+            },
+            "userAgent": {
+                "S": "Mozilla/5.0 (Windows NT; Windows NT 10.0; en-IN) WindowsPowerShell/5.1.26100.9168"
+            },
+            "pageUrl": {
+                "S": "https://jaytipargal.com/"
+            },
+            "deviceType": {
+                "NULL": true
+            },
+            "timeOnPage": {
+                "NULL": true
+            },
+            "country": {
+                "S": "IN"
+            },
+            "language": {
+                "NULL": true
+            },
+            "network": {
+                "NULL": true
+            },
+            "city": {
+                "NULL": true
+            },
+            "epoch": {
+                "N": "1787290118377"
+            },
+            "referrer": {
+                "NULL": true
+            },
+            "region": {
+                "NULL": true
+            },
+            "id": {
+                "S": "2026-08-21T05:28:38.377Z_ks8bv26i"
+            },
+            "postalCode": {
+                "NULL": true
+            },
+            "latitude": {
+                "S": "21.9974"
+            },
+            "eventData": {
+                "M": {}
+            },
+            "os": {
+                "NULL": true
+            },
+            "screen": {
+                "NULL": true
+            },
+            "browser": {
+                "NULL": true
+            },
+            "timestamp": {
+                "S": "2026-08-21T05:28:38.377Z"
+            },
+            "ip": {
+                "S": "103.84.203.30"
+            },
+            "visitorId": {
+                "S": "write_test_visitor"
+            },
+            "scrollPercent": {
+                "NULL": true
+            },
+            "fingerprint": {
+                "NULL": true
+            },
+            "pageTitle": {
+                "S": "Test"
+            },
+            "sessionId": {
+                "S": "write_test_sess"
+            },
+            "longitude": {
+                "S": "79.0011"
+            },
+            "timezone": {
+                "S": "Asia/Kolkata"
+            },
+            "eventType": {
+                "S": "pageview"
+            }
+        },
+        {
+            "userAgent": {
+                "S": "Mozilla/5.0 (Windows NT; Windows NT 10.0; en-IN) WindowsPowerShell/5.1.26100.9168"
+            },
+            "pageUrl": {
+                "S": "https://dfa5i945koq3k.cloudfront.net/"
+            },
+            "deviceType": {
+                "S": "Unknown"
+            },
+            "country": {
+                "S": "India"
+            },
+            "language": {
+                "S": "Unknown"
+            },
+            "network": {
+                "S": "Unknown"
+            },
+            "epoch": {
+                "N": "1787288133166"
+            },
+            "city": {
+                "S": "Gurugram"
+            },
+            "referrer": {
+                "S": "Direct"
+            },
+            "region": {
+                "S": "Haryana"
+            },
+            "id": {
+                "S": "2026-08-21T04:55:33.166Z_b7539802d7e4"
+            },
+            "postalCode": {
+                "S": "122006"
+            },
+            "latitude": {
+                "S": "28.45970"
+            },
+            "eventData": {
+                "M": {}
+            },
+            "os": {
+                "S": "Unknown"
+            },
+            "screen": {
+                "S": "Unknown"
+            },
+            "timestamp": {
+                "S": "2026-08-21T04:55:33.166Z"
+            },
+            "browser": {
+                "S": "Unknown"
+            },
+            "visitorId": {
+                "S": "test"
+            },
+            "ip": {
+                "S": "103.84.203.30"
+            },
+            "pageTitle": {
+                "S": ""
+            },
+            "sessionId": {
+                "S": "anon"
+            },
+            "longitude": {
+                "S": "77.02820"
+            },
+            "timezone": {
+                "S": "Asia/Kolkata"
+            },
+            "eventType": {
+                "S": "pageview"
+            }
+        },
+        {
+            "userAgent": {
+                "S": "Mozilla/5.0"
+            },
+            "pageUrl": {
+                "S": "https://jaytipargal.com/"
+            },
+            "deviceType": {
+                "S": "Desktop"
+            },
+            "country": {
+                "S": "IN"
+            },
+            "language": {
+                "S": "en-US"
+            },
+            "network": {
+                "S": "5g"
+            },
+            "city": {
+                "S": "Mumbai"
+            },
+            "epoch": {
+                "N": "1786816116840"
+            },
+            "referrer": {
+                "S": "Direct"
+            },
+            "region": {
+                "S": "Unknown"
+            },
+            "id": {
+                "S": "2026-08-15T17:48:36.840Z_0108118a0ca2"
+            },
+            "postalCode": {
+                "S": ""
+            },
+            "latitude": {
+                "S": ""
+            },
+            "eventData": {
+                "M": {}
+            },
+            "os": {
+                "S": "Windows 11"
+            },
+            "screen": {
+                "S": "1920x1080"
+            },
+            "browser": {
+                "S": "Chrome 128"
+            },
+            "timestamp": {
+                "S": "2026-08-15T17:48:36.840Z"
+            },
+            "ip": {
+                "S": "127.0.0.1"
+            },
+            "visitorId": {
+                "S": "anon"
+            },
+            "pageTitle": {
+                "S": ""
+            },
+            "sessionId": {
+                "S": "anon"
+            },
+            "longitude": {
+                "S": ""
+            },
+            "timezone": {
+                "S": "Unknown"
+            },
+            "eventType": {
+                "S": "pageview"
+            }
+        },
+        {
+            "userAgent": {
+                "S": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36"
+            },
+            "pageUrl": {
+                "S": "https://dfa5i945koq3k.cloudfront.net/"
+            },
+            "deviceType": {
+                "S": "Desktop"
+            },
+            "country": {
+                "S": "India"
+            },
+            "language": {
+                "S": "en-US"
+            },
+            "network": {
+                "S": "4g (10Mbps)"
+            },
+            "city": {
+                "S": "Gurugram"
+            },
+            "epoch": {
+                "N": "1786816297119"
+            },
+            "referrer": {
+                "S": "Direct"
+            },
+            "region": {
+                "S": "Haryana"
+            },
+            "id": {
+                "S": "2026-08-15T17:51:37.119Z_2ab425d8be3a"
+            },
+            "postalCode": {
+                "S": "122006"
+            },
+            "latitude": {
+                "S": "28.45970"
+            },
+            "eventData": {
+                "M": {}
+            },
+            "os": {
+                "S": "Windows"
+            },
+            "screen": {
+                "S": "1536x864 (DPR:1.25)"
+            },
+            "browser": {
+                "S": "Chrome"
+            },
+            "timestamp": {
+                "S": "2026-08-15T17:51:37.119Z"
+            },
+            "ip": {
+                "S": "103.84.203.30"
+            },
+            "visitorId": {
+                "S": "v_72ww8lubz_msuoacjw"
+            },
+            "pageTitle": {
+                "S": "Jayti Pargal | Growth Marketing Consultant"
+            },
+            "sessionId": {
+                "S": "v_kubu9rwmj_msuoacjw"
+            },
+            "longitude": {
+                "S": "77.02820"
+            },
+            "timezone": {
+                "S": "Asia/Kolkata"
+            },
+            "eventType": {
+                "S": "pageview"
+            }
+        },
+        {
+            "userAgent": {
+                "S": "Python-urllib/3.12"
+            },
+            "pageUrl": {
+                "S": "https://jaytipargal.com/work/"
+            },
+            "deviceType": {
+                "S": "Mobile"
+            },
+            "country": {
+                "S": "Unknown"
+            },
+            "language": {
+                "S": "en-IN"
+            },
+            "network": {
+                "S": "5g"
+            },
+            "city": {
+                "S": "Unknown"
+            },
+            "epoch": {
+                "N": "1786816144416"
+            },
+            "referrer": {
+                "S": "https://linkedin.com"
+            },
+            "region": {
+                "S": "Unknown"
+            },
+            "id": {
+                "S": "2026-08-15T17:49:04.416Z_e29ff673c58e"
+            },
+            "postalCode": {
+                "S": ""
+            },
+            "latitude": {
+                "S": ""
+            },
+            "eventData": {
+                "M": {}
+            },
+            "os": {
+                "S": "iOS 18.0"
+            },
+            "screen": {
+                "S": "393x852"
+            },
+            "browser": {
+                "S": "Mobile Safari"
+            },
+            "timestamp": {
+                "S": "2026-08-15T17:49:04.416Z"
+            },
+            "ip": {
+                "S": "103.84.203.30"
+            },
+            "visitorId": {
+                "S": "vis_ios_99"
+            },
+            "pageTitle": {
+                "S": "Work | Jayti Pargal"
+            },
+            "sessionId": {
+                "S": "sess_ios_99"
+            },
+            "longitude": {
+                "S": ""
+            },
+            "timezone": {
+                "S": "Unknown"
+            },
+            "eventType": {
+                "S": "pageview"
+            }
+        },
+        {
+            "userAgent": {
+                "S": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36"
+            },
+            "pageUrl": {
+                "S": "https://dfa5i945koq3k.cloudfront.net/contact/"
+            },
+            "deviceType": {
+                "S": "Desktop"
+            },
+            "country": {
+                "S": "India"
+            },
+            "language": {
+                "S": "en-US"
+            },
+            "network": {
+                "S": "4g (10Mbps)"
+            },
+            "city": {
+                "S": "Gurugram"
+            },
+            "epoch": {
+                "N": "1786816325980"
+            },
+            "referrer": {
+                "S": "https://dfa5i945koq3k.cloudfront.net/about/"
+            },
+            "region": {
+                "S": "Haryana"
+            },
+            "id": {
+                "S": "2026-08-15T17:52:05.980Z_5fa8f150741d"
+            },
+            "postalCode": {
+                "S": "122006"
+            },
+            "latitude": {
+                "S": "28.45970"
+            },
+            "eventData": {
+                "M": {
+                    "element": {
+                        "S": "A"
+                    },
+                    "text": {
+                        "S": "CV"
+                    },
+                    "href": {
+                        "S": "/cv/"
+                    }
+                }
+            },
+            "os": {
+                "S": "Windows"
+            },
+            "screen": {
+                "S": "1536x864 (DPR:1.25)"
+            },
+            "browser": {
+                "S": "Chrome"
+            },
+            "timestamp": {
+                "S": "2026-08-15T17:52:05.980Z"
+            },
+            "ip": {
+                "S": "103.84.203.30"
+            },
+            "visitorId": {
+                "S": "v_72ww8lubz_msuoacjw"
+            },
+            "pageTitle": {
+                "S": "Contact | Jayti Pargal"
+            },
+            "sessionId": {
+                "S": "v_kubu9rwmj_msuoacjw"
+            },
+            "longitude": {
+                "S": "77.02820"
+            },
+            "timezone": {
+                "S": "Asia/Kolkata"
+            },
+            "eventType": {
+                "S": "click"
+            }
+        }
+    ],
+    "Count": 23,
+    "ScannedCount": 23,
+    "ConsumedCapacity": null
+}

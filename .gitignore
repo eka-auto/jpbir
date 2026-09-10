@@ -6,3 +6,5 @@ node_modules/
 *.db
 ".vercel/project.json"  
 "Backend/.pr-body.md" 
+.vercel
+.env*

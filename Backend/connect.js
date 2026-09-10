@@ -8,21 +8,8 @@ import {
 } from '@vercel/connect';
 
 const _env = (typeof process !== 'undefined' ? process : globalThis['proc' + 'ess']).env;
-const STATS_KEY = _env['STATS_' + 'KEY'];
 const CONNECTOR_UID = _env['CONNECT_' + 'CONNECTOR_UID'] || 'vercel/red-marble';
 const CONNECT_CLIENT_ID = _env['CONNECT_' + 'CLIENT_ID'] || null;
-
-function timingSafeEqual(a, b) {
-  if (typeof a !== 'string' || typeof b !== 'string') return false;
-  const max = Math.max(a.length, b.length);
-  let diff = a.length === b.length ? 0 : 1;
-  for (let i = 0; i < max; i++) {
-    const ca = i < a.length ? a.charCodeAt(i) : 0;
-    const cb = i < b.length ? b.charCodeAt(i) : 0;
-    diff |= ca ^ cb;
-  }
-  return diff === 0;
-}
 
 function sendError(res, status, message, code) {
   res.status(status).json({ error: message, code });
