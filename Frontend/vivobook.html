@@ -205,7 +205,7 @@
     var _deviceData = null;
 
     function loadLive() {
-        if (!KEY) { showGate(); return; }
+        /* open dashboard: no key required */
         $('liveHint').textContent = 'Loading live device state…';
         fetch('/api/jp-devices?' + new URLSearchParams({ key: KEY }).toString())
             .then(function (r) { return r.json().then(function (j) { return { status: r.status, body: j }; }); })
@@ -293,7 +293,7 @@
     }
 
     function loadHistory() {
-        if (!KEY) return;
+        /* open dashboard: no key required */
         $('histHint').textContent = 'Loading events…';
         fetch('/api/jp-device?' + new URLSearchParams({ key: KEY, days: 30, device: DEVICE_ID }).toString())
             .then(function (r) { return r.json().then(function (j) { return { status: r.status, body: j }; }); })
@@ -316,7 +316,7 @@
     }
 
     $('askBtn').addEventListener('click', function () {
-        if (!KEY) { showGate(); return; }
+        /* open dashboard: no key required */
         var btn = $('askBtn');
         btn.disabled = true; btn.textContent = 'Sending…';
         fetch('/api/jp-device', {
@@ -339,7 +339,7 @@
     $('histRefreshBtn').addEventListener('click', loadHistory);
 
     function loadAll() { loadLive(); loadHistory(); }
-    if (KEY) loadAll(); else showGate();
+    loadAll();   /* dashboard is open - no key required */
     setInterval(loadLive, 30000);
 })();
 </script>
