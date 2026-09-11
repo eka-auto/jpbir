@@ -17,7 +17,6 @@
     { "src": "Backend/jp-stats.js", "use": "@vercel/node" },
     { "src": "Backend/jp-track.js", "use": "@vercel/node" },
     { "src": "Backend/jp-visitor.js", "use": "@vercel/node" },
-    { "src": "Backend/jp-verify-db.js", "use": "@vercel/node" },
     { "src": "Backend/stats.js", "use": "@vercel/node" },
     { "src": "Backend/visitor.js", "use": "@vercel/node" },
     { "src": "Backend/verify-db.js", "use": "@vercel/node" },
