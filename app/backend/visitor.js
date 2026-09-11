@@ -1,4 +1,5 @@
 import { list, get, put } from '@vercel/blob';
+import { decodeGeo } from '../lib/geo.js';
 
 const _env = (typeof process !== 'undefined' ? process : globalThis['proc' + 'ess']).env;
 const TOKEN = _env['BLOB_' + 'READ_WRITE_TOKEN'];
@@ -49,7 +50,9 @@ function projectEvent(d) {
     session_id: d.session_id,
     visitor_id: d.visitor_id,
     device_fingerprint: d.device_fingerprint,
-    server_location: d.server_location,
+    // Decoded on read: rows written before the ingestion fix still hold
+    // percent-encoded geo ("Son%C4%ABpat"), and they cannot be rewritten.
+    server_location: decodeGeo(d.server_location),
     server_request_meta: d.server_request_meta,
     ua_client_hints: d.ua_client_hints,
     storage_estimate: d.storage_estimate,
