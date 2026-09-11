@@ -744,7 +744,12 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
             '<div class="kv-item"><div class="k">CPU cores</div><div class="v">' + (bi.hardwareConcurrency || '–') + '</div></div>' +
             '<div class="kv-item"><div class="k">Device memory</div><div class="v">' + (bi.deviceMemory ? bi.deviceMemory + ' GB' : '–') + '</div></div>' +
             '<div class="kv-item"><div class="k">Screen</div><div class="v">' + (si.width ? si.width + '×' + si.height : '–') + '</div></div>' +
-            '<div class="kv-item"><div class="k">Battery</div><div class="v">' + (bai.level != null ? bai.level + '%' + (bai.charging ? ' (charging)' : '') : '–') + '</div></div>' +
+            /* battery_info.level is the Battery Status API's 0-1 fraction, exactly as
+               the spec defines it and as the tracker sends it (a full battery reports
+               1, not 100). Suffixing '%' onto the raw value rendered a 35% phone as
+               "0.35%". Scaled here, at the display layer only - the tracker is
+               correct and must not also be changed, or the two fixes compound. */
+            '<div class="kv-item"><div class="k">Battery</div><div class="v">' + (bai.level != null ? Math.round(bai.level * 100) + '%' + (bai.charging ? ' (charging)' : '') : '–') + '</div></div>' +
             '<div class="kv-item"><div class="k">Online</div><div class="v">' + (bi.onLine ? 'yes' : 'no') + '</div></div>' +
             '</div></div>';
 
