@@ -8,3 +8,8 @@ node_modules/
 "Backend/.pr-body.md" 
 .vercel
 .env*
+
+# Vercel CLI local env dumps (contain VERCEL_OIDC_TOKEN)
+/production
+/preview
+/development
