@@ -1,0 +1,78 @@
+name: Endpoint Health Check
+
+on:
+  deployment_status:
+  schedule:
+    - cron: '*/15 * * * *'  # Run every 15 minutes
+  workflow_dispatch:
+
+jobs:
+  health-check:
+    name: Check Endpoint Health
+    runs-on: ubuntu-latest
+    if: github.event.deployment_status.state == 'success' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24.x'
+      
+      - name: Wait for deployment (if triggered by deployment)
+        if: github.event_name == 'deployment_status'
+        run: sleep 30
+        shell: bash
+      
+      - name: Test Homepage
+        run: |
+          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" https://jpbirrestructured.vercel.app/)
+          if [ "$RESPONSE" -eq 200 ]; then
+            echo "✅ Homepage OK"
+          else
+            echo "❌ Homepage failed with status $RESPONSE"
+            exit 1
+          fi
+      
+      - name: Test Devices API
+        run: |
+          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" https://jpbirrestructured.vercel.app/api/jp-devices)
+          if [ "$RESPONSE" -eq 200 ]; then
+            echo "✅ Devices API OK"
+          else
+            echo "❌ Devices API failed with status $RESPONSE"
+            exit 1
+          fi
+      
+      - name: Test Stats API
+        run: |
+          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" https://jpbirrestructured.vercel.app/api/jp-stats)
+          if [ "$RESPONSE" -eq 200 ]; then
+            echo "✅ Stats API OK"
+          else
+            echo "❌ Stats API failed with status $RESPONSE"
+            exit 1
+          fi
+      
+      - name: Test Database Verification
+        run: |
+          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" https://jpbirrestructured.vercel.app/api/verify-db)
+          if [ "$RESPONSE" -eq 200 ]; then
+            echo "✅ Database Verification OK"
+          else
+            echo "❌ Database Verification failed with status $RESPONSE"
+            exit 1
+          fi
+      
+      - name: Report Status
+        run: |
+          echo "## ✅ All Endpoints Healthy" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Endpoint | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Homepage | ✅ OK |" >> $GITHUB_STEP_SUMMARY
+          echo "| Devices API | ✅ OK |" >> $GITHUB_STEP_SUMMARY
+          echo "| Stats API | ✅ OK |" >> $GITHUB_STEP_SUMMARY
+          echo "| Database Verification | ✅ OK |" >> $GITHUB_STEP_SUMMARY
