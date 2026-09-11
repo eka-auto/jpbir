@@ -247,6 +247,7 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
             <button class="nav-item" data-page="sessions"><span class="ico">≡</span> Sessions</button>
             <button class="nav-item" data-page="email"><span class="ico">✉</span> Email opens</button>
             <button class="nav-item" data-page="device"><span class="ico">📋</span> Device history</button>
+            <button class="nav-item" data-page="vercel"><span class="ico">▲</span> Vercel</button>
             <button class="nav-item" data-page="agent"><span class="ico">🤖</span> Ask agent</button>
         </nav>
 
@@ -292,6 +293,26 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
                 <div class="grid2">
                     <div class="panel"><h2>Countries</h2><div id="countries"></div></div>
                     <div class="panel"><h2>Cities</h2><div id="cities"></div></div>
+                </div>
+            </section>
+
+            <!-- VERCEL — the platform's own view of this traffic, for comparison
+                 against our tracker. Everything else on this dashboard is our
+                 own telemetry; this section is the only thing reading Vercel. -->
+            <section class="page" id="page-vercel">
+                <div class="panel">
+                    <h2>Vercel analytics</h2>
+                    <div class="hint" id="vercelHint">Loading…</div>
+                    <div id="vercelKpis" class="kpis" style="margin-top:12px"></div>
+                </div>
+                <div class="panel" style="margin-top:14px">
+                    <h2>What Vercel does not show</h2>
+                    <div class="hint">Stated explicitly, so an empty field is never mistaken for no traffic.</div>
+                    <div id="vercelMasked" style="margin-top:10px"></div>
+                </div>
+                <div class="grid2" style="margin-top:14px">
+                    <div class="panel"><h2>Recent deployments</h2><div id="vercelDeploys"></div></div>
+                    <div class="panel"><h2>Runtime logs</h2><div class="hint" id="vercelLogsHint"></div><div id="vercelLogs"></div></div>
                 </div>
             </section>
 
@@ -715,6 +736,20 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
             if (probe && vitals && pageView) break;
         }
 
+        /* Accept-Language and the raw Referer are captured per event by /api/track
+           but never carried into index/visitor/<id>.json, so the summary has to
+           aggregate them off the event list. Language is the strongest locale
+           signal the site collects - a non-local locale on a foreign IP says far
+           more about who this is than the geo-IP city does. */
+        var langs = [], refs = [];
+        v.events.forEach(function (e) {
+            var m = e.server_request_meta || {};
+            if (m.acceptLanguage && langs.indexOf(m.acceptLanguage) === -1) langs.push(m.acceptLanguage);
+            if (m.referer && refs.indexOf(m.referer) === -1) refs.push(m.referer);
+        });
+        summaryItems.push(['Languages', langs.join(' · ') || '–', false]);
+        summaryItems.push(['Referrers seen', refs.join(' · ') || '–', true]);
+
         // Device type + network summary from the richest event
         var rich = pageView || probe || (v.events && v.events[0]) || {};
         var bi = rich.browser_info || {};
@@ -809,6 +844,8 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
                 ['Location', [loc.city, loc.country].filter(Boolean).join(', ') || '–', false],
                 ['Referrer', meta.referer || '–', false],
                 ['User agent', meta.userAgent || '–', false],
+                ['Accept-Language', meta.acceptLanguage || '–', false],
+                ['Host', meta.forwardedHost || meta.host || '–', false],
                 ['Fingerprint', e.device_fingerprint || '–', true]
             ];
             if (e.memory_info && e.memory_info.available) {
@@ -1121,8 +1158,98 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
     document.querySelectorAll('.nav-item').forEach(function (btn) {
         btn.addEventListener('click', function () {
             if (btn.getAttribute('data-page') === 'device') { loadDeviceHistory(); loadLiveDevices(); }
+            if (btn.getAttribute('data-page') === 'vercel') { loadVercel(); }
         });
     });
+
+    /* ===== VERCEL (platform-side analytics + logs) ===== */
+    function vkpi(label, value) {
+        return '<div class="kpi"><div class="v">' + esc(String(value)) +
+               '</div><div class="k">' + esc(label) + '</div></div>';
+    }
+
+    function vercelPanelError(p) {
+        return '<div class="state">Unavailable — ' + esc(p.error || 'unknown') +
+               (p.status ? ' (HTTP ' + p.status + ')' : '') + '</div>';
+    }
+
+    function loadVercel() {
+        $('vercelHint').textContent = 'Loading from the Vercel API…';
+        fetch('/api/vercel-analytics?days=14')
+            .then(function (r) { return r.json(); })
+            .then(function (j) {
+                if (!j.configured) {
+                    $('vercelHint').textContent = j.reason || 'Not configured.';
+                    $('vercelKpis').innerHTML =
+                        '<div class="state">' + (j.howTo || []).map(esc).join('<br>') + '</div>';
+                    $('vercelMasked').innerHTML = '';
+                    $('vercelDeploys').innerHTML = '';
+                    $('vercelLogs').innerHTML = '';
+                    return;
+                }
+                var w = j.window || {};
+                $('vercelHint').textContent = 'Project ' + (j.projectId || '?') +
+                    ' · team ' + (j.teamId || '?') + ' · last ' + (w.days || '?') + ' days';
+
+                /* Overview */
+                var a = j.panels && j.panels.analytics;
+                if (a && a.ok) {
+                    var d = (a.data && a.data.data) || a.data || {};
+                    $('vercelKpis').innerHTML =
+                        vkpi('Visitors', d.visitors != null ? d.visitors : '—') +
+                        vkpi('Pageviews', d.pageviews != null ? d.pageviews : '—');
+                } else {
+                    $('vercelKpis').innerHTML = a ? vercelPanelError(a) : '';
+                }
+
+                /* Masked-by-design disclosures */
+                var m = j.masked || {};
+                $('vercelMasked').innerHTML = Object.keys(m).map(function (k) {
+                    return '<div class="kv-item"><div class="k">' + esc(k) + '</div>' +
+                           '<div class="v">' + esc(m[k]) + '</div></div>';
+                }).join('');
+
+                /* Deployments */
+                var dp = j.panels && j.panels.deployments;
+                if (dp && dp.ok) {
+                    var rows = (dp.data || []).map(function (x) {
+                        return '<tr><td>' + esc(x.state || '—') + '</td><td>' + esc(x.target || '—') +
+                               '</td><td>' + esc(x.branch || '—') + '</td><td>' + esc((x.message || '').slice(0, 60)) +
+                               '</td><td>' + (x.created ? fmtAgo(new Date(x.created).toISOString()) : '—') + '</td></tr>';
+                    }).join('');
+                    $('vercelDeploys').innerHTML = rows
+                        ? '<div class="table-wrap"><table><thead><tr><th>State</th><th>Target</th><th>Branch</th><th>Commit</th><th>When</th></tr></thead><tbody>' + rows + '</tbody></table></div>'
+                        : '<div class="state">No deployments.</div>';
+                } else {
+                    $('vercelDeploys').innerHTML = dp ? vercelPanelError(dp) : '';
+                }
+
+                /* Runtime logs */
+                var lg = j.panels && j.panels.logs;
+                if (lg && lg.ok) {
+                    var dep = (lg.data && lg.data.deployment) || {};
+                    $('vercelLogsHint').textContent = 'Production deployment ' + (dep.uid || '?');
+                    var ev = (lg.data && lg.data.events) || [];
+                    $('vercelLogs').innerHTML = ev.length
+                        ? '<div class="table-wrap"><table><thead><tr><th>When</th><th>Lvl</th><th>Status</th><th>Path</th><th>IP</th><th>Message</th></tr></thead><tbody>' +
+                          ev.map(function (e) {
+                              return '<tr><td>' + (e.created ? fmtTime(new Date(e.created).toISOString()) : '—') +
+                                     '</td><td>' + esc(e.level || '—') +
+                                     '</td><td>' + esc(String(e.statusCode || '—')) +
+                                     '</td><td class="mono">' + esc((e.method ? e.method + ' ' : '') + (e.path || '—')) +
+                                     '</td><td class="mono">' + esc(e.clientIp || 'masked') +
+                                     '</td><td class="mono">' + esc((e.text || '').slice(0, 120)) + '</td></tr>';
+                          }).join('') + '</tbody></table></div>'
+                        : '<div class="state">No log events retained.</div>';
+                } else {
+                    $('vercelLogsHint').textContent = '';
+                    $('vercelLogs').innerHTML = lg ? vercelPanelError(lg) : '';
+                }
+            })
+            .catch(function (e) {
+                $('vercelHint').textContent = 'Failed to load: ' + e.message;
+            });
+    }
 
     /* ===== LIVE DEVICE STATUS (Firestore) ===== */
     function loadLiveDevices() {
