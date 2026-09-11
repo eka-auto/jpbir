@@ -13,3 +13,7 @@ node_modules/
 /production
 /preview
 /development
+
+# Python bytecode
+__pycache__/
+*.pyc
