@@ -81,10 +81,34 @@ export default async function handler(req, res) {
       const f = {};
       for (const [k, v] of Object.entries(d.fields || {})) f[k] = dec(v);
       const lastSeen = f.lastSeen || null;
-      const interval = typeof f.heartbeatIntervalSeconds === 'number' ? f.heartbeatIntervalSeconds : 45;
+      // Only an always-on agent can be expected to check in every 45s. Phones
+      // heartbeat opportunistically (samsung-s24-ultra uses a native Android
+      // heartbeat and stores no heartbeatIntervalSeconds at all), so the old
+      // flat 45s default marked it OFFLINE after ~2 minutes idle - which for a
+      // phone is nearly always, even while it reports status "online".
+      const DEFAULT_INTERVAL_SECONDS = { 'android-phone': 900 };
+      const interval = typeof f.heartbeatIntervalSeconds === 'number'
+        ? f.heartbeatIntervalSeconds
+        : (DEFAULT_INTERVAL_SECONDS[f.deviceType] || 45);
       const ageMs = lastSeen ? now - new Date(lastSeen).getTime() : null;
       const live = ageMs !== null && ageMs < 3 * interval * 1000;
       const cq = f.commandQueue || {};
+      // Phones report connectivity under `info`/`networkType`, not the
+      // top-level `network` map the laptop agents write. Normalise it so they
+      // stop rendering as "no network data" despite having a known SSID/IP.
+      let network = f.network || null;
+      if (!network && (f.info || f.networkType)) {
+        const info = f.info || {};
+        network = {
+          ssid: info.wifiSSID || null,
+          networkType: f.networkType || null,
+          localIp: info.wifiIP || null,
+          publicIp: f.publicIp || null,
+          batteryCharging: typeof info.batteryCharging === 'boolean' ? info.batteryCharging : null,
+          updatedAt: f.lastNetworkCheck || null,
+          source: 'device-info',
+        };
+      }
       return {
         deviceId: d.name.split('/').pop(),
         deviceDisplayName: f.deviceDisplayName || d.name.split('/').pop(),
@@ -95,7 +119,14 @@ export default async function handler(req, res) {
         connectionMethod: f.connectionMethod || null,
         heartbeatIntervalSeconds: interval,
         commandQueueDepth: Object.keys(cq).length,
-        network: f.network || null,
+        network,
+        // What the device itself last asserted, reported alongside the computed
+        // `live` so a disagreement between the two is visible rather than
+        // silently resolved in favour of one.
+        deviceType: f.deviceType || null,
+        model: f.model || null,
+        reportedStatus: f.status || null,
+        staleAlertState: (f.staleAlert && f.staleAlert.state) || null,
       };
     });
 
