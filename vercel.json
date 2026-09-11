@@ -80,9 +80,17 @@
     {
       "src": "app/frontend/**",
       "use": "@vercel/static"
+    },
+    {
+      "src": "app/backend/vercel-analytics.js",
+      "use": "@vercel/node"
     }
   ],
   "routes": [
+    {
+      "src": "/api/vercel-analytics",
+      "dest": "app/backend/vercel-analytics.js"
+    },
     {
       "src": "/api/device-command-claim",
       "dest": "app/backend/broker-command-claim.js"
