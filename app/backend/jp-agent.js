@@ -1,6 +1,7 @@
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, ScanCommand } from '@aws-sdk/lib-dynamodb';
 import { list } from '@vercel/blob';
+import { decodeGeo } from '../lib/geo.js';
 
 const _env = (typeof process !== 'undefined' ? process : globalThis['proc' + 'ess']).env;
 const AWS_ACCESS_KEY_ID = _env['JP_AWS_' + 'ACCESS_KEY_ID'];
@@ -90,12 +91,13 @@ async function gatherContext(question) {
           const r = await fetch(b.url, { headers: { authorization: `Bearer ${BLOB_TOKEN}` } });
           if (!r.ok) continue;
           const j = await r.json();
-          const ip = j.server_location && j.server_location.ip;
+          const loc = decodeGeo(j.server_location) || {};
+          const ip = loc.ip;
           if (ip && ip !== 'unknown') {
             const cur = ipSet.get(ip) || { ip, events: 0, country: null, city: null, last: null };
             cur.events++;
-            cur.country = j.server_location.country || cur.country;
-            cur.city = j.server_location.city || cur.city;
+            cur.country = loc.country || cur.country;
+            cur.city = loc.city || cur.city;
             if (j.receivedAt && (!cur.last || j.receivedAt > cur.last)) cur.last = j.receivedAt;
             ipSet.set(ip, cur);
           }

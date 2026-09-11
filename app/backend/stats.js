@@ -1,4 +1,5 @@
 import { list } from '@vercel/blob';
+import { decodeGeo } from '../lib/geo.js';
 
 const _env = (typeof process !== 'undefined' ? process : globalThis['proc' + 'ess']).env;
 const TOKEN = _env['BLOB_' + 'READ_WRITE_TOKEN'];
@@ -119,11 +120,15 @@ export default async function handler(req, res) {
     for (const d of results) {
       if (!d) continue;
       withContent++;
-      const ip = d.server_location && d.server_location.ip;
+      // Decode once per row. Doing it here rather than at each use also keeps
+      // the countries/cities tallies from splitting one place across two keys
+      // ("Sonipat" and "Son%C4%ABpat") depending on when the row was written.
+      const loc = decodeGeo(d.server_location) || {};
+      const ip = loc.ip;
       if (ip && ip !== 'unknown') ips.add(ip);
-      const country = d.server_location && d.server_location.country;
+      const country = loc.country;
       if (country) countries[country] = (countries[country] || 0) + 1;
-      const city = d.server_location && d.server_location.city;
+      const city = loc.city;
       if (city) cities[city] = (cities[city] || 0) + 1;
       const ref = d.server_request_meta && d.server_request_meta.referer;
       if (ref) {
@@ -159,7 +164,7 @@ export default async function handler(req, res) {
           cur.ip = ip || cur.ip;
           cur.country = country || cur.country;
           cur.city = city || cur.city;
-          cur.timezone = (d.server_location && d.server_location.timezone) || cur.timezone;
+          cur.timezone = loc.timezone || cur.timezone;
           cur.userAgent = ua || cur.userAgent;
           cur.page_url = d.page_url || cur.page_url;
           cur.device_fingerprint = d.device_fingerprint || cur.device_fingerprint;
@@ -182,7 +187,7 @@ export default async function handler(req, res) {
           ip: ip,
           country: country,
           city: city,
-          timezone: d.server_location && d.server_location.timezone,
+          timezone: loc.timezone,
           userAgent: ua,
           referer: ref,
           receivedAt: d.receivedAt,
