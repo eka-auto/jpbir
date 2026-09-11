@@ -917,7 +917,7 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
 
     /* ===== LOAD ===== */
     function load() {
-        if (!KEY) { showGate(); return; }
+        /* open dashboard: no key required */
         var days = $('daysSel').value;
         var endpoint = SITE === 'jp' ? '/api/jp-stats' : '/api/stats';
         setStatus('Loading analytics…');
