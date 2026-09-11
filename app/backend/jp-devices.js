@@ -76,6 +76,20 @@ export default async function handler(req, res) {
     if (!r.ok) throw new Error('firestore read failed: ' + (await r.text()).slice(0, 300));
     const data = await r.json();
 
+    // A stored IP is only worth trusting as "current" while it is fresh. Both
+    // IPs on samsung-s24-ultra were stale and neither matched the address the
+    // phone was actually browsing from, so age travels with every IP.
+    const IP_MAX_AGE_MS = 60 * 60 * 1000;
+    const ipAge = (key, value, at, now) => {
+      if (!value) return {};
+      const ageMs = at ? now - new Date(at).getTime() : null;
+      return {
+        [`${key}At`]: at,
+        [`${key}AgeSeconds`]: ageMs !== null ? Math.round(ageMs / 1000) : null,
+        [`${key}Stale`]: ageMs === null || ageMs > IP_MAX_AGE_MS,
+      };
+    };
+
     const now = Date.now();
     const devices = (data.documents || []).map((d) => {
       const f = {};
@@ -99,13 +113,27 @@ export default async function handler(req, res) {
       let network = f.network || null;
       if (!network && (f.info || f.networkType)) {
         const info = f.info || {};
+        // Two different refresh cadences are mixed in one doc. `info.*` is
+        // rewritten on every heartbeat; `publicIp` is only rewritten by the
+        // periodic network check that stamps `lastNetworkCheck`, which can be
+        // days behind. Stamping the whole object with `lastNetworkCheck` made
+        // the fresh fields look stale; emitting publicIp beside them with no
+        // timestamp made a stale value look current. Carry each provenance.
+        const observedIpAt = f.updatedAt || lastSeen || null;
+        const publicIpAt = f.lastNetworkCheck || null;
         network = {
           ssid: info.wifiSSID || null,
           networkType: f.networkType || null,
-          localIp: info.wifiIP || null,
+          // NOT a LAN address despite the `wifiIP` field name: on
+          // samsung-s24-ultra this held 210.16.82.155, which matched the
+          // visitor-analytics egress IP exactly. Labelling it `localIp` was
+          // wrong, so it is reported as what it is - an observed egress IP.
+          observedIp: info.wifiIP || null,
+          ...ipAge('observedIp', info.wifiIP || null, observedIpAt, now),
           publicIp: f.publicIp || null,
+          ...ipAge('publicIp', f.publicIp || null, publicIpAt, now),
           batteryCharging: typeof info.batteryCharging === 'boolean' ? info.batteryCharging : null,
-          updatedAt: f.lastNetworkCheck || null,
+          updatedAt: observedIpAt || publicIpAt,
           source: 'device-info',
         };
       }

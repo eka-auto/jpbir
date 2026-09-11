@@ -314,9 +314,21 @@
         var connItems = (n.connections || []).map(function (c) {
             return '<div class="kv-item"><div class="k">Connection</div><div class="v mono">' + esc(c) + '</div></div>';
         }).join('');
+        // An IP is only shown as current while it is fresh. Both stored IPs on
+        // this device were days old and neither matched the address the phone
+        // was really browsing from, so a stale one is labelled with its age
+        // instead of being presented as the device's address right now.
+        function ipItem(label, ip, stale, at) {
+            if (!ip) return '';
+            var note = stale ? ' <span style="color:var(--ink-muted)">· checked ' + fmtAgo(at) + '</span>' : '';
+            return '<div class="kv-item"><div class="k">' + esc(label) + (stale ? ' (stale)' : '') + '</div>' +
+                   '<div class="v mono">' + esc(ip) + note + '</div></div>';
+        }
         $('netDetail').innerHTML = '<div class="kv-grid">' +
             '<div class="kv-item"><div class="k">SSID</div><div class="v">' + esc(n.ssid || '—') + '</div></div>' +
             '<div class="kv-item"><div class="k">WiFi signal</div><div class="v">' + sig + '</div></div>' +
+            ipItem('Observed IP', n.observedIp, n.observedIpStale, n.observedIpAt) +
+            ipItem('Public IP', n.publicIp, n.publicIpStale, n.publicIpAt) +
             '<div class="kv-item"><div class="k">Sent</div><div class="v">' + (n.sent_mb != null ? n.sent_mb + ' MB' : '—') + '</div></div>' +
             '<div class="kv-item"><div class="k">Received</div><div class="v">' + (n.recv_mb != null ? n.recv_mb + ' MB' : '—') + '</div></div>' +
             '<div class="kv-item"><div class="k">Updated</div><div class="v">' + (n.updatedAt ? fmtTime(n.updatedAt) : '—') + '</div></div>' +
