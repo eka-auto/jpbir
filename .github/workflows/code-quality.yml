@@ -1,0 +1,57 @@
+name: Code Quality Checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  code-quality:
+    name: Code Quality
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24.x'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Run ESLint (if configured)
+        run: npm run lint --if-present
+        continue-on-error: true
+      
+      - name: Check for sensitive files
+        run: |
+          echo "Checking for sensitive files..."
+          if find . -name ".env" -o -name "*.pem" -o -name "*secret*" -o -name "*key*" | grep -v node_modules | grep -v '.github'; then
+            echo "⚠️ Warning: Potential sensitive files found"
+            exit 0
+          else
+            echo "✅ No sensitive files detected"
+          fi
+
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Run npm audit
+        run: npm audit --audit-level=moderate --if-present
+        continue-on-error: true
+      
+      - name: Check for hardcoded secrets
+        uses: trufflesecurity/trufflehog@main
+        with:
+          extra_args: --only-verified
+        continue-on-error: true

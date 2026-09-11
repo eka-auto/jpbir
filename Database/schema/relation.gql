@@ -1,0 +1,560 @@
+extend type Collaboration {
+  """
+  Implicit metadata field that cannot be written. It provides extra information about query results.
+  """
+  _metadata: _Metadata @fdc_generated(from: "Collaboration", purpose: METADATA_FIELD)
+  """
+  ✨ Count the number of rows in the `Collaboration` table.
+  """
+  _count: Int! @fdc_generated(from: "Collaboration.", purpose: QUERY_COUNT)
+  """
+  ✨ Count the number of rows in the `Collaboration` table where the `id` field is non-null. Pass the `distinct` argument to instead count the number of distinct values.
+  """
+  id_count(
+    """
+    Set to true to count the number of distinct values.
+    """
+    distinct: Boolean = false
+  ): Int! @fdc_generated(from: "Collaboration.id", purpose: QUERY_COUNT)
+  """
+  ✨ Count the number of rows in the `Collaboration` table where the `panleId` field is non-null. Pass the `distinct` argument to instead count the number of distinct values.
+  """
+  panleId_count(
+    """
+    Set to true to count the number of distinct values.
+    """
+    distinct: Boolean = false
+  ): Int! @fdc_generated(from: "Collaboration.panleId", purpose: QUERY_COUNT)
+  """
+  ✨ Count the number of rows in the `Collaboration` table where the `role` field is non-null. Pass the `distinct` argument to instead count the number of distinct values.
+  """
+  role_count(
+    """
+    Set to true to count the number of distinct values.
+    """
+    distinct: Boolean = false
+  ): Int! @fdc_generated(from: "Collaboration.role", purpose: QUERY_COUNT)
+  """
+  ✨ Count the number of rows in the `Collaboration` table where the `userId` field is non-null. Pass the `distinct` argument to instead count the number of distinct values.
+  """
+  userId_count(
+    """
+    Set to true to count the number of distinct values.
+    """
+    distinct: Boolean = false
+  ): Int! @fdc_generated(from: "Collaboration.userId", purpose: QUERY_COUNT)
+  """
+  A generated field that is used for caching results in SDKs.
+  """
+  _id: ID! @fdc_generated(from: "Collaboration.id", purpose: ENTITY_ID)
+}
+extend type Collection {
+  """
+  ✨ List `Item` objects in a one-to-many relationship (where `Item`.`collection` is this object).
+  """
+  items_on_collection(
+    """
+    Filter condition to narrow down the query results.
+    """
+    where: Item_Filter
+
+    """
+    Order the query results by specific fields.
+    """
+    orderBy: [Item_Order!]
+
+    """
+    Number of rows to skip before starting to return the results.
+    """
+    offset: Int
+
+    """
+    Maximum number of rows to return (defaults to 100 rows).
+    """
+    limit: Int = 100
+
+    """
+    Set to true to return distinct results.
+    """
+    distinct: Boolean = false
+
+    """
+    Filter condition to apply to the groups of aggregate queries.
+    """
+    having: Item_Having
+  ): [Item!]! @fdc_generated(from: "Item.collection", purpose: QUERY_MULTIPLE_ONE_TO_MANY)
+  """
+  Implicit metadata field that cannot be written. It provides extra information about query results.
+  """
+  _metadata: _Metadata @fdc_generated(from: "Collection", purpose: METADATA_FIELD)
+  """
+  ✨ Count the number of rows in the `Collection` table.
+  """
+  _count: Int! @fdc_generated(from: "Collection.", purpose: QUERY_COUNT)
+  """
+  ✨ Count the number of rows in the `Collection` table where the `colorTag` field is non-null. Pass the `distinct` argument to instead count the number of distinct values.
+  """
+  colorTag_count(
+    """
+    Set to true to count the number of distinct values.
+    """
+    distinct: Boolean = false
+  ): Int! @fdc_generated(from: "Collection.colorTag", purpose: QUERY_COUNT)
+  """
+  ✨ Count the number of rows in the `Collection` table where the `id` field is non-null. Pass the `distinct` argument to instead count the number of distinct values.
+  """
+  id_count(
+    """
+    Set to true to count the number of distinct values.
+    """
+    distinct: Boolean = false
+  ): Int! @fdc_generated(from: "Collection.id", purpose: QUERY_COUNT)
+  """
+  ✨ Count the number of rows in the `Collection` table where the `name` field is non-null. Pass the `distinct` argument to instead count the number of distinct values.
+  """
+  name_count(
+    """
+    Set to true to count the number of distinct values.
+    """
+    distinct: Boolean = false
+  ): Int! @fdc_generated(from: "Collection.name", purpose: QUERY_COUNT)
+  """
+  ✨ Count the number of rows in the `Collection` table where the `panleId` field is non-null. Pass the `distinct` argument to instead count the number of distinct values.
+  """
+  panleId_count(
+    """
+    Set to true to count the number of distinct values.
+    """
+    distinct: Boolean = false
+  ): Int! @fdc_generated(from: "Collection.panleId", purpose: QUERY_COUNT)
+  """
+  A generated field that is used for caching results in SDKs.
+  """
+  _id: ID! @fdc_generated(from: "Collection.id", purpose: ENTITY_ID)
+}
+extend type Item {
+  """
+  Implicit metadata field that cannot be written. It provides extra information about query results.
+  """
+  _metadata: _Metadata @fdc_generated(from: "Item", purpose: METADATA_FIELD)
+  """
+  ✨ Count the number of rows in the `Item` table.
+  """
+  _count: Int! @fdc_generated(from: "Item.", purpose: QUERY_COUNT)
+  """
+  ✨ Count the number of rows in the `Item` table where the `collectionId` field is non-null. Pass the `distinct` argument to instead count the number of distinct values.
+  """
+  collectionId_count(
+    """
+    Set to true to count the number of distinct values.
+    """
+    distinct: Boolean = false
+  ): Int! @fdc_generated(from: "Item.collectionId", purpose: QUERY_COUNT)
+  """
+  ✨ Count the number of rows in the `Item` table where the `contentUrl` field is non-null. Pass the `distinct` argument to instead count the number of distinct values.
+  """
+  contentUrl_count(
+    """
+    Set to true to count the number of distinct values.
+    """
+    distinct: Boolean = false
+  ): Int! @fdc_generated(from: "Item.contentUrl", purpose: QUERY_COUNT)
+  """
+  ✨ Count the number of rows in the `Item` table where the `id` field is non-null. Pass the `distinct` argument to instead count the number of distinct values.
+  """
+  id_count(
+    """
+    Set to true to count the number of distinct values.
+    """
+    distinct: Boolean = false
+  ): Int! @fdc_generated(from: "Item.id", purpose: QUERY_COUNT)
+  """
+  ✨ Count the number of rows in the `Item` table where the `panleId` field is non-null. Pass the `distinct` argument to instead count the number of distinct values.
+  """
+  panleId_count(
+    """
+    Set to true to count the number of distinct values.
+    """
+    distinct: Boolean = false
+  ): Int! @fdc_generated(from: "Item.panleId", purpose: QUERY_COUNT)
+  """
+  ✨ Count the number of rows in the `Item` table where the `positionX` field is non-null. Pass the `distinct` argument to instead count the number of distinct values.
+  """
+  positionX_count(
+    """
+    Set to true to count the number of distinct values.
+    """
+    distinct: Boolean = false
+  ): Int! @fdc_generated(from: "Item.positionX", purpose: QUERY_COUNT)
+  """
+  ✨ Count the number of rows in the `Item` table where the `positionY` field is non-null. Pass the `distinct` argument to instead count the number of distinct values.
+  """
+  positionY_count(
+    """
+    Set to true to count the number of distinct values.
+    """
+    distinct: Boolean = false
+  ): Int! @fdc_generated(from: "Item.positionY", purpose: QUERY_COUNT)
+  """
+  ✨ Count the number of rows in the `Item` table where the `textContent` field is non-null. Pass the `distinct` argument to instead count the number of distinct values.
+  """
+  textContent_count(
+    """
+    Set to true to count the number of distinct values.
+    """
+    distinct: Boolean = false
+  ): Int! @fdc_generated(from: "Item.textContent", purpose: QUERY_COUNT)
+  """
+  ✨ Count the number of rows in the `Item` table where the `type` field is non-null. Pass the `distinct` argument to instead count the number of distinct values.
+  """
+  type_count(
+    """
+    Set to true to count the number of distinct values.
+    """
+    distinct: Boolean = false
+  ): Int! @fdc_generated(from: "Item.type", purpose: QUERY_COUNT)
+  """
+  ✨ Sum the `positionX` field in the `Item` table.
+  """
+  positionX_sum(
+    """
+    Set to true to sum the distinct values.
+    """
+    distinct: Boolean = false
+  ): Float @fdc_generated(from: "Item.positionX", purpose: QUERY_SUM)
+  """
+  ✨ Sum the `positionY` field in the `Item` table.
+  """
+  positionY_sum(
+    """
+    Set to true to sum the distinct values.
+    """
+    distinct: Boolean = false
+  ): Float @fdc_generated(from: "Item.positionY", purpose: QUERY_SUM)
+  """
+  ✨ Average the `positionX` field in the `Item` table.
+  """
+  positionX_avg(
+    """
+    Set to true to average the distinct values.
+    """
+    distinct: Boolean = false
+  ): Float @fdc_generated(from: "Item.positionX", purpose: QUERY_AVG)
+  """
+  ✨ Average the `positionY` field in the `Item` table.
+  """
+  positionY_avg(
+    """
+    Set to true to average the distinct values.
+    """
+    distinct: Boolean = false
+  ): Float @fdc_generated(from: "Item.positionY", purpose: QUERY_AVG)
+  """
+  ✨ Minimum of the `positionX` field in the `Item` table.
+  """
+  positionX_min: Float @fdc_generated(from: "Item.positionX", purpose: QUERY_MIN)
+  """
+  ✨ Minimum of the `positionY` field in the `Item` table.
+  """
+  positionY_min: Float @fdc_generated(from: "Item.positionY", purpose: QUERY_MIN)
+  """
+  ✨ Maximum of the `positionX` field in the `Item` table.
+  """
+  positionX_max: Float @fdc_generated(from: "Item.positionX", purpose: QUERY_MAX)
+  """
+  ✨ Maximum of the `positionY` field in the `Item` table.
+  """
+  positionY_max: Float @fdc_generated(from: "Item.positionY", purpose: QUERY_MAX)
+  """
+  A generated field that is used for caching results in SDKs.
+  """
+  _id: ID! @fdc_generated(from: "Item.id", purpose: ENTITY_ID)
+}
+extend type Panle {
+  """
+  ✨ List `Collaboration` objects in a one-to-many relationship (where `Collaboration`.`panle` is this object).
+  """
+  collaborations_on_panle(
+    """
+    Filter condition to narrow down the query results.
+    """
+    where: Collaboration_Filter
+
+    """
+    Order the query results by specific fields.
+    """
+    orderBy: [Collaboration_Order!]
+
+    """
+    Number of rows to skip before starting to return the results.
+    """
+    offset: Int
+
+    """
+    Maximum number of rows to return (defaults to 100 rows).
+    """
+    limit: Int = 100
+
+    """
+    Set to true to return distinct results.
+    """
+    distinct: Boolean = false
+
+    """
+    Filter condition to apply to the groups of aggregate queries.
+    """
+    having: Collaboration_Having
+  ): [Collaboration!]! @fdc_generated(from: "Collaboration.panle", purpose: QUERY_MULTIPLE_ONE_TO_MANY)
+  """
+  ✨ List `Collection` objects in a one-to-many relationship (where `Collection`.`panle` is this object).
+  """
+  collections_on_panle(
+    """
+    Filter condition to narrow down the query results.
+    """
+    where: Collection_Filter
+
+    """
+    Order the query results by specific fields.
+    """
+    orderBy: [Collection_Order!]
+
+    """
+    Number of rows to skip before starting to return the results.
+    """
+    offset: Int
+
+    """
+    Maximum number of rows to return (defaults to 100 rows).
+    """
+    limit: Int = 100
+
+    """
+    Set to true to return distinct results.
+    """
+    distinct: Boolean = false
+
+    """
+    Filter condition to apply to the groups of aggregate queries.
+    """
+    having: Collection_Having
+  ): [Collection!]! @fdc_generated(from: "Collection.panle", purpose: QUERY_MULTIPLE_ONE_TO_MANY)
+  """
+  ✨ List `Item` objects in a one-to-many relationship (where `Item`.`panle` is this object).
+  """
+  items_on_panle(
+    """
+    Filter condition to narrow down the query results.
+    """
+    where: Item_Filter
+
+    """
+    Order the query results by specific fields.
+    """
+    orderBy: [Item_Order!]
+
+    """
+    Number of rows to skip before starting to return the results.
+    """
+    offset: Int
+
+    """
+    Maximum number of rows to return (defaults to 100 rows).
+    """
+    limit: Int = 100
+
+    """
+    Set to true to return distinct results.
+    """
+    distinct: Boolean = false
+
+    """
+    Filter condition to apply to the groups of aggregate queries.
+    """
+    having: Item_Having
+  ): [Item!]! @fdc_generated(from: "Item.panle", purpose: QUERY_MULTIPLE_ONE_TO_MANY)
+  """
+  Implicit metadata field that cannot be written. It provides extra information about query results.
+  """
+  _metadata: _Metadata @fdc_generated(from: "Panle", purpose: METADATA_FIELD)
+  """
+  ✨ Count the number of rows in the `Panle` table.
+  """
+  _count: Int! @fdc_generated(from: "Panle.", purpose: QUERY_COUNT)
+  """
+  ✨ Count the number of rows in the `Panle` table where the `coverImageUrl` field is non-null. Pass the `distinct` argument to instead count the number of distinct values.
+  """
+  coverImageUrl_count(
+    """
+    Set to true to count the number of distinct values.
+    """
+    distinct: Boolean = false
+  ): Int! @fdc_generated(from: "Panle.coverImageUrl", purpose: QUERY_COUNT)
+  """
+  ✨ Count the number of rows in the `Panle` table where the `description` field is non-null. Pass the `distinct` argument to instead count the number of distinct values.
+  """
+  description_count(
+    """
+    Set to true to count the number of distinct values.
+    """
+    distinct: Boolean = false
+  ): Int! @fdc_generated(from: "Panle.description", purpose: QUERY_COUNT)
+  """
+  ✨ Count the number of rows in the `Panle` table where the `id` field is non-null. Pass the `distinct` argument to instead count the number of distinct values.
+  """
+  id_count(
+    """
+    Set to true to count the number of distinct values.
+    """
+    distinct: Boolean = false
+  ): Int! @fdc_generated(from: "Panle.id", purpose: QUERY_COUNT)
+  """
+  ✨ Count the number of rows in the `Panle` table where the `isPublic` field is non-null. Pass the `distinct` argument to instead count the number of distinct values.
+  """
+  isPublic_count(
+    """
+    Set to true to count the number of distinct values.
+    """
+    distinct: Boolean = false
+  ): Int! @fdc_generated(from: "Panle.isPublic", purpose: QUERY_COUNT)
+  """
+  ✨ Count the number of rows in the `Panle` table where the `ownerId` field is non-null. Pass the `distinct` argument to instead count the number of distinct values.
+  """
+  ownerId_count(
+    """
+    Set to true to count the number of distinct values.
+    """
+    distinct: Boolean = false
+  ): Int! @fdc_generated(from: "Panle.ownerId", purpose: QUERY_COUNT)
+  """
+  ✨ Count the number of rows in the `Panle` table where the `title` field is non-null. Pass the `distinct` argument to instead count the number of distinct values.
+  """
+  title_count(
+    """
+    Set to true to count the number of distinct values.
+    """
+    distinct: Boolean = false
+  ): Int! @fdc_generated(from: "Panle.title", purpose: QUERY_COUNT)
+  """
+  A generated field that is used for caching results in SDKs.
+  """
+  _id: ID! @fdc_generated(from: "Panle.id", purpose: ENTITY_ID)
+}
+extend type User {
+  """
+  ✨ List `Collaboration` objects in a one-to-many relationship (where `Collaboration`.`user` is this object).
+  """
+  collaborations_on_user(
+    """
+    Filter condition to narrow down the query results.
+    """
+    where: Collaboration_Filter
+
+    """
+    Order the query results by specific fields.
+    """
+    orderBy: [Collaboration_Order!]
+
+    """
+    Number of rows to skip before starting to return the results.
+    """
+    offset: Int
+
+    """
+    Maximum number of rows to return (defaults to 100 rows).
+    """
+    limit: Int = 100
+
+    """
+    Set to true to return distinct results.
+    """
+    distinct: Boolean = false
+
+    """
+    Filter condition to apply to the groups of aggregate queries.
+    """
+    having: Collaboration_Having
+  ): [Collaboration!]! @fdc_generated(from: "Collaboration.user", purpose: QUERY_MULTIPLE_ONE_TO_MANY)
+  """
+  ✨ List `Panle` objects in a one-to-many relationship (where `Panle`.`owner` is this object).
+  """
+  panles_on_owner(
+    """
+    Filter condition to narrow down the query results.
+    """
+    where: Panle_Filter
+
+    """
+    Order the query results by specific fields.
+    """
+    orderBy: [Panle_Order!]
+
+    """
+    Number of rows to skip before starting to return the results.
+    """
+    offset: Int
+
+    """
+    Maximum number of rows to return (defaults to 100 rows).
+    """
+    limit: Int = 100
+
+    """
+    Set to true to return distinct results.
+    """
+    distinct: Boolean = false
+
+    """
+    Filter condition to apply to the groups of aggregate queries.
+    """
+    having: Panle_Having
+  ): [Panle!]! @fdc_generated(from: "Panle.owner", purpose: QUERY_MULTIPLE_ONE_TO_MANY)
+  """
+  Implicit metadata field that cannot be written. It provides extra information about query results.
+  """
+  _metadata: _Metadata @fdc_generated(from: "User", purpose: METADATA_FIELD)
+  """
+  ✨ Count the number of rows in the `User` table.
+  """
+  _count: Int! @fdc_generated(from: "User.", purpose: QUERY_COUNT)
+  """
+  ✨ Count the number of rows in the `User` table where the `displayName` field is non-null. Pass the `distinct` argument to instead count the number of distinct values.
+  """
+  displayName_count(
+    """
+    Set to true to count the number of distinct values.
+    """
+    distinct: Boolean = false
+  ): Int! @fdc_generated(from: "User.displayName", purpose: QUERY_COUNT)
+  """
+  ✨ Count the number of rows in the `User` table where the `email` field is non-null. Pass the `distinct` argument to instead count the number of distinct values.
+  """
+  email_count(
+    """
+    Set to true to count the number of distinct values.
+    """
+    distinct: Boolean = false
+  ): Int! @fdc_generated(from: "User.email", purpose: QUERY_COUNT)
+  """
+  ✨ Count the number of rows in the `User` table where the `id` field is non-null. Pass the `distinct` argument to instead count the number of distinct values.
+  """
+  id_count(
+    """
+    Set to true to count the number of distinct values.
+    """
+    distinct: Boolean = false
+  ): Int! @fdc_generated(from: "User.id", purpose: QUERY_COUNT)
+  """
+  ✨ Count the number of rows in the `User` table where the `profileImageUrl` field is non-null. Pass the `distinct` argument to instead count the number of distinct values.
+  """
+  profileImageUrl_count(
+    """
+    Set to true to count the number of distinct values.
+    """
+    distinct: Boolean = false
+  ): Int! @fdc_generated(from: "User.profileImageUrl", purpose: QUERY_COUNT)
+  """
+  A generated field that is used for caching results in SDKs.
+  """
+  _id: ID! @fdc_generated(from: "User.id", purpose: ENTITY_ID)
+}

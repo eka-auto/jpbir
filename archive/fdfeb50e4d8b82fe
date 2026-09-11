@@ -1,0 +1,4 @@
+# file: C:\Users\abcom\jpbir\_tmp_verify_cleaning.py
+# hypothesis_version: 6.165.10
+
+[200, 300, '\n=== SUMMARY ===', '   hello   ', ' -', ' word ', 'A', 'A B', 'ALL CHECKS PASSED', 'B', 'CRLF -> LF', 'Café Münster — naïve', 'Nöñ-ASCII cöntent', 'Para one.\n\nPara two.', 'Résumé — done', 'a\t\t\tb', 'a\n\n\n\nb', 'a\nb', 'a\r\nb', 'a\r\nb\rc\nd', 'a\rb', 'a    b', 'a b', 'ascii', 'c:\\Users\\abcom\\jpbir', 'café', 'cp1252', 'empty string', 'hello', 'héllo wörld ünïcödé', 'latin-1', 'line one\nline two', 'lone CR -> LF', 'lone LF unchanged', 'utf-8', 'utf-8 roundtrip', 'wb']
