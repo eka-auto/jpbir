@@ -4,8 +4,7 @@ node_modules/
 *.jsonl
 *.jsonl.*
 *.db
-".vercel/project.json"  
-"Backend/.pr-body.md" 
+.pr-body.md
 .vercel
 .env*
 
