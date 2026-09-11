@@ -160,11 +160,8 @@
     </div>
 </div>
 
-<div class="gate" id="gate" style="display:none">
-    <div class="gate-box">
-        <h2>Access key</h2>
-        
-</div>
+<!-- key gate removed: dashboard is open. The old markup was left unbalanced by
+     937e480 (input/button deleted, one closing </div> short). -->
 
 <script>
 (function () {
@@ -190,17 +187,12 @@
         return Math.floor(h / 24) + 'd ago';
     }
 
-    function showGate() {
-        $('gate').style.display = 'flex';
-        $('keyInput').focus();
-    }
-    $('keySubmit').addEventListener('click', function () {
-        KEY = $('keyInput').value.trim();
-        sessionStorage.setItem('jbt_stats_key', KEY);
-        $('gate').style.display = 'none';
-        loadAll();
-    });
-    $('keyInput').addEventListener('keydown', function (e) { if (e.key === 'Enter') $('keySubmit').click(); });
+    /* Dashboard is open. 937e480 deleted the key input and submit button from
+       the markup but left the code wiring them, so addEventListener was called
+       on null here and threw a TypeError, killing the script before loadAll()
+       ever ran. showGate() is kept as a no-op because the 401 handlers below
+       still call it; no backend returns 401. */
+    function showGate() { /* no-op: dashboard is open */ }
 
     var _deviceData = null;
 
