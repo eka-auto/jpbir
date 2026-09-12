@@ -128,6 +128,29 @@
     th:hover { color: var(--amber-deep); }
     th .arrow { font-size: 9px; margin-left: 3px; }
     td.mono { font-family: var(--mono); font-size: 11px; color: var(--ink-muted); }
+
+    /* ===== TERMINAL ===== */
+    .term-out { font-family: var(--mono); font-size: 12.5px; line-height: 1.55; white-space: pre-wrap;
+        word-break: break-word; min-height: 300px; max-height: 58vh; overflow-y: auto;
+        background: rgba(0,0,0,.22); border: 1px solid var(--border-light); border-radius: 12px; padding: 14px 16px; }
+    .term-out .t-user { color: var(--amber-glow); font-weight: 600; margin: 14px 0 6px; }
+    .term-out .t-user:first-child { margin-top: 0; }
+    .term-out .t-text { color: var(--ink); }
+    /* Tool calls are context, not content — recessed so the prose stays readable. */
+    .term-out .t-tool { color: var(--ink-muted); font-size: 11.5px; padding: 2px 0 2px 10px;
+        border-left: 2px solid var(--border); margin: 4px 0; }
+    .term-out .t-tool b { color: var(--amber-deep); font-weight: 600; }
+    .term-out .t-err { color: #E8A79E; }
+    .term-out .t-meta { color: var(--ink-muted); font-size: 11px; margin-top: 10px; }
+    .term-input { display: flex; gap: 10px; margin-top: 12px; align-items: flex-end; }
+    .term-input textarea { flex: 1; resize: vertical; font-family: var(--mono); font-size: 12.5px;
+        padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border);
+        background: rgba(0,0,0,.22); color: var(--ink); }
+    .term-input textarea:focus { outline: none; border-color: var(--amber-deep); }
+    .term-input button, .btn-ghost { padding: 9px 16px; border-radius: 10px; border: 1px solid var(--border);
+        background: transparent; color: var(--ink); font: inherit; font-size: 13px; cursor: pointer; }
+    .term-input button:hover, .btn-ghost:hover { border-color: var(--amber-deep); color: var(--amber-glow); }
+    .term-input button[disabled] { opacity: .5; cursor: default; }
     tr:hover td { background: rgba(200,122,30,.05); }
     .pill { display: inline-block; background: #FBF3E4; border: 1px solid var(--border); color: var(--amber-deep);
         border-radius: 20px; padding: 1px 8px; font-size: 10.5px; margin: 1px 3px 1px 0; }
@@ -247,6 +270,7 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
             <button class="nav-item" data-page="sessions"><span class="ico">≡</span> Sessions</button>
             <button class="nav-item" data-page="email"><span class="ico">✉</span> Email opens</button>
             <button class="nav-item" data-page="device"><span class="ico">📋</span> Device history</button>
+            <button class="nav-item" data-page="terminal"><span class="ico">▮</span> Terminal</button>
             <button class="nav-item" data-page="vercel"><span class="ico">▲</span> Vercel</button>
             <button class="nav-item" data-page="agent"><span class="ico">🤖</span> Ask agent</button>
         </nav>
@@ -293,6 +317,27 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
                 <div class="grid2">
                     <div class="panel"><h2>Countries</h2><div id="countries"></div></div>
                     <div class="panel"><h2>Cities</h2><div id="cities"></div></div>
+                </div>
+            </section>
+
+            <!-- TERMINAL — the agent that actually does the work, as opposed to
+                 "Ask agent" below, which only answers questions about analytics.
+                 Talks to /api/agent-run, which proxies to the DigitalOcean box. -->
+            <section class="page" id="page-terminal">
+                <div class="panel">
+                    <div class="panel-head">
+                        <div>
+                            <h2>Terminal</h2>
+                            <div class="hint" id="termHint">Runs on the agent host — shell, files, git, deploys.</div>
+                        </div>
+                        <button id="termNew" class="btn-ghost">New session</button>
+                    </div>
+                    <div id="termOut" class="term-out"><div class="state">Ask it something. Output streams here as it works.</div></div>
+                    <div class="term-input">
+                        <textarea id="termPrompt" rows="2" placeholder="e.g. check disk usage and list the workspace  ·  Enter to send, Shift+Enter for a newline"></textarea>
+                        <button id="termSend">Send</button>
+                    </div>
+                    <div class="hint" id="termFoot" style="margin-top:10px"></div>
                 </div>
             </section>
 
@@ -1189,6 +1234,117 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
             if (btn.getAttribute('data-page') === 'device') { loadDeviceHistory(); loadLiveDevices(); }
             if (btn.getAttribute('data-page') === 'vercel') { loadVercel(); }
         });
+    });
+
+    /* ===== TERMINAL (agent host, via /api/agent-run) =====
+       EventSource cannot POST, so the SSE stream is read off fetch() and framed
+       by hand: events are blank-line separated, with `event:` and `data:` lines. */
+    var TERM_SESSION = null;
+    var termBusy = false;
+
+    function termEl(cls, html) {
+        var d = document.createElement('div');
+        d.className = cls;
+        d.innerHTML = html;
+        $('termOut').appendChild(d);
+        $('termOut').scrollTop = $('termOut').scrollHeight;
+        return d;
+    }
+
+    function termReset(msg) {
+        TERM_SESSION = null;
+        $('termOut').innerHTML = '<div class="state">' + esc(msg || 'New session. Ask it something.') + '</div>';
+        $('termFoot').textContent = '';
+    }
+
+    async function termSend() {
+        if (termBusy) return;
+        var prompt = $('termPrompt').value.trim();
+        if (!prompt) return;
+
+        var first = $('termOut').querySelector('.state');
+        if (first) first.remove();
+        termEl('t-user', '&gt; ' + esc(prompt));
+        $('termPrompt').value = '';
+        termBusy = true;
+        $('termSend').disabled = true;
+        $('termFoot').textContent = 'working…';
+
+        var textNode = null;
+        try {
+            var res = await fetch('/api/agent-run?' + new URLSearchParams({ key: KEY }).toString(), {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ prompt: prompt, session_id: TERM_SESSION })
+            });
+
+            /* 401/503 arrive as JSON, not as a stream. Deliberately NOT calling
+               showGate() — that hides the whole app, and the terminal is one page
+               among many. Same reasoning as the visitor drawer. */
+            if (!res.ok) {
+                var j = {};
+                try { j = await res.json(); } catch (e) {}
+                var note = res.status === 503
+                    ? 'Agent not configured yet' + (j.missing ? ' — missing ' + esc(j.missing.join(', ')) : '')
+                    : (j.error || ('HTTP ' + res.status));
+                termEl('t-err', esc(note));
+                return;
+            }
+
+            var reader = res.body.getReader();
+            var dec = new TextDecoder();
+            var buf = '';
+            for (;;) {
+                var chunk = await reader.read();
+                if (chunk.done) break;
+                buf += dec.decode(chunk.value, { stream: true });
+                var frames = buf.split('\n\n');
+                buf = frames.pop();              // trailing partial frame
+                for (var i = 0; i < frames.length; i++) {
+                    var ev = 'message', data = '';
+                    frames[i].split('\n').forEach(function (line) {
+                        if (line.indexOf('event:') === 0) ev = line.slice(6).trim();
+                        else if (line.indexOf('data:') === 0) data += line.slice(5).trim();
+                    });
+                    if (!data) continue;
+                    var d;
+                    try { d = JSON.parse(data); } catch (e) { continue; }
+
+                    if (ev === 'start') {
+                        TERM_SESSION = d.session_id;
+                        $('termHint').textContent = d.model + ' · ' + d.workspace;
+                    } else if (ev === 'text') {
+                        /* One node per assistant turn, appended to — so streamed
+                           chunks read as continuous prose rather than a list. */
+                        if (!textNode) textNode = termEl('t-text', '');
+                        textNode.textContent += d.text;
+                        $('termOut').scrollTop = $('termOut').scrollHeight;
+                    } else if (ev === 'tool') {
+                        textNode = null;
+                        termEl('t-tool', '<b>' + esc(d.name) + '</b> ' + esc(d.preview || ''));
+                    } else if (ev === 'done') {
+                        $('termFoot').textContent = d.turns + ' turns · ' +
+                            Math.round((d.duration_ms || 0) / 1000) + 's' +
+                            (d.cost_usd != null ? ' · $' + Number(d.cost_usd).toFixed(4) : '') +
+                            (d.is_error ? ' · ended with an error' : '');
+                    } else if (ev === 'error') {
+                        termEl('t-err', esc(d.error || 'agent error'));
+                    }
+                }
+            }
+        } catch (e) {
+            termEl('t-err', 'Request failed: ' + esc(e.message));
+        } finally {
+            termBusy = false;
+            $('termSend').disabled = false;
+            if ($('termFoot').textContent === 'working…') $('termFoot').textContent = '';
+        }
+    }
+
+    $('termSend').addEventListener('click', termSend);
+    $('termNew').addEventListener('click', function () { termReset(); });
+    $('termPrompt').addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); termSend(); }
     });
 
     /* ===== VERCEL (platform-side analytics + logs) ===== */
