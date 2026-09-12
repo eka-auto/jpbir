@@ -64,19 +64,27 @@ box and set the pair against the project that serves the domain, which is
 ssh root@<ip> 'grep JP_AGENT_TOKEN /etc/jp-agent.env'
 
 vercel env add JP_AGENT_TOKEN production --scope jayti --project jayti-dashboard
-vercel env add JP_AGENT_URL   production --scope jayti --project jayti-dashboard   # http://<ip>
+vercel env add JP_AGENT_URL   production --scope jayti --project jayti-dashboard   # https://runner.jaytipargal.tech
 ```
 
-## Before treating it as production
+## TLS — done
 
-nginx currently serves plain HTTP. The bearer token is therefore in cleartext
-between Vercel and the droplet. Put a hostname on it and run certbot:
+Served over HTTPS at **https://runner.jaytipargal.tech**, Let's Encrypt, with
+`certbot.timer` active for renewal. Plain HTTP 301-redirects to it, so the
+bearer token is never in cleartext on the wire.
+
+`runner.` and not `agent.`: `agent.jaytipargal.tech` was already a live Vercel
+CNAME serving another project, and taking it would have broken that.
+
+jaytipargal.tech runs on Vercel nameservers, so the A record is managed with
+`vercel dns`, not doctl:
 
 ```bash
-certbot --nginx -d agent.jaytipargal.tech
+vercel dns add jaytipargal.tech runner A <droplet-ip> --scope jayti
 ```
 
-Then set `JP_AGENT_URL=https://agent.jaytipargal.tech`.
+Note the zone has a wildcard `* ALIAS` pointing at Vercel — an explicit record
+for a name overrides it, which is what makes this work.
 
 ## Security notes
 
@@ -97,6 +105,12 @@ Refuses to start if `JP_AGENT_TOKEN` is unset, rather than serving open.
 ## Checks
 
 ```bash
-curl -s http://<ip>/health
+curl -s https://runner.jaytipargal.tech/health     # 200
+curl -s -o /dev/null -w '%{http_code}'      https://runner.jaytipargal.tech/sessions      # 401 without a bearer token
 ssh root@<ip> 'systemctl status jp-agent --no-pager; journalctl -u jp-agent -n 40 --no-pager'
 ```
+
+Verified: HTTPS 200, unauthenticated `/sessions` 401, HTTP 301 to HTTPS,
+service running as `jpagent`, `ProtectSystem=strict` with only
+`/srv/workspace` and `/home/jpagent` writable, `NoNewPrivileges=yes`, ufw
+limited to 22/80/443, and `unattended-upgrades` active for security patches.
