@@ -28,7 +28,7 @@ import { canonicalCompletePath } from '../../Backend/broker-command-complete.js'
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-const fixturePath = join(__dirname, 'python_to_node.json');
+const fixturePath = join(__dirname, '..', '..', 'Devices', 'sandbox', 'tests', 'fixtures', 'python_to_node.json');
 const fixture = JSON.parse(readFileSync(fixturePath, 'utf-8'));
 const vercelConfig = JSON.parse(readFileSync(join(__dirname, '..', '..', 'vercel.json'), 'utf-8'));
 
