@@ -3,7 +3,7 @@ import { deepStrictEqual, rejects, strictEqual } from 'node:assert';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { buildFrontend } from './build-frontend.mjs';
+import { buildFrontend } from '../../Backend/build-frontend.mjs';
 
 async function fixture(t) {
   const root = await mkdtemp(join(tmpdir(), 'jayti-frontend-test-'));

@@ -23,7 +23,7 @@ async function frontendFiles(directory, prefix = '') {
 export async function buildFrontend(projectDirectory = currentDirectory) {
   const current = await realpath(projectDirectory);
   const sources = [
-    { directory: join(current, 'frontend'), page: 'index.html' },
+    { directory: join(current, 'Frontend'), page: 'index.html' },
     { directory: resolve(current, '../S24/frontend'), page: 's24.html' },
     { directory: resolve(current, '../Vivobook/frontend'), page: 'vivobook.html' },
   ];
