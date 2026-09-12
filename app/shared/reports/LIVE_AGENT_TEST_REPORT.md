@@ -38,7 +38,7 @@ curl -s "https://jpbirrestructured.vercel.app/api/jp-live-agent?key=wrong"
 
 **Test:** GET request with valid key
 ```bash
-curl -s "https://jpbirrestructured.vercel.app/api/jp-live-agent?key=1a3272549f4b0daee7c59d86babf31dd"
+curl -s "https://jpbirrestructured.vercel.app/api/jp-live-agent?key=<redacted - rotated 2026-09-12>"
 ```
 **Response:** `{"success":false,"error":"Method not allowed"}`  
 **Status:** ✅ PASS - Correctly requires POST method
@@ -47,7 +47,7 @@ curl -s "https://jpbirrestructured.vercel.app/api/jp-live-agent?key=1a3272549f4b
 
 **Test:** POST without query field
 ```bash
-curl -s -X POST "https://jpbirrestructured.vercel.app/api/jp-live-agent?key=1a3272549f4b0daee7c59d86babf31dd" \
+curl -s -X POST "https://jpbirrestructured.vercel.app/api/jp-live-agent?key=<redacted - rotated 2026-09-12>" \
   -H "Content-Type: application/json" \
   -d "{}"
 ```
@@ -58,7 +58,7 @@ curl -s -X POST "https://jpbirrestructured.vercel.app/api/jp-live-agent?key=1a32
 
 **Test:** Valid request with query
 ```bash
-curl -s -X POST "https://jpbirrestructured.vercel.app/api/jp-live-agent?key=1a3272549f4b0daee7c59d86babf31dd" \
+curl -s -X POST "https://jpbirrestructured.vercel.app/api/jp-live-agent?key=<redacted - rotated 2026-09-12>" \
   -H "Content-Type: application/json" \
   -d "{\"query\":\"What devices are online?\"}"
 ```
@@ -68,7 +68,7 @@ curl -s -X POST "https://jpbirrestructured.vercel.app/api/jp-live-agent?key=1a32
 
 **Test:** With custom parameters
 ```bash
-curl -s -X POST "https://jpbirrestructured.vercel.app/api/jp-live-agent?key=1a3272549f4b0daee7c59d86babf31dd" \
+curl -s -X POST "https://jpbirrestructured.vercel.app/api/jp-live-agent?key=<redacted - rotated 2026-09-12>" \
   -H "Content-Type: application/json" \
   -d "{\"query\":\"show me devices\",\"top_k\":3,\"max_tokens\":256}"
 ```
@@ -77,7 +77,7 @@ curl -s -X POST "https://jpbirrestructured.vercel.app/api/jp-live-agent?key=1a32
 
 **Test:** With RAG disabled
 ```bash
-curl -s -X POST "https://jpbirrestructured.vercel.app/api/jp-live-agent?key=1a3272549f4b0daee7c59d86babf31dd" \
+curl -s -X POST "https://jpbirrestructured.vercel.app/api/jp-live-agent?key=<redacted - rotated 2026-09-12>" \
   -H "Content-Type: application/json" \
   -d "{\"query\":\"test\",\"use_rag\":false}"
 ```
@@ -90,7 +90,7 @@ curl -s -X POST "https://jpbirrestructured.vercel.app/api/jp-live-agent?key=1a32
 
 | Variable | Value | Purpose |
 |----------|-------|---------|
-| `STATS_KEY` | `1a3272549f4b0daee7c59d86babf31dd` | ✅ Authentication working |
+| `STATS_KEY` | `<redacted - rotated 2026-09-12>` | ✅ Authentication working |
 | `AGENT_API_KEY` | `2199a9d5bd1b0f69edfdd0fad3ec2f07d0c431f0e0177015` | ✅ Set correctly |
 | `AGENT_API_URL` | `http://127.0.0.1:8000` (default) | ⚠️ Unreachable from Vercel |
 
@@ -145,6 +145,6 @@ The `/api/jp-live-agent` endpoint is designed to work with a **locally running a
 ## 🔑 Access Credentials
 
 **Production URL:** https://jpbirrestructured.vercel.app  
-**STATS_KEY:** `1a3272549f4b0daee7c59d86babf31dd`  
+**STATS_KEY:** `<redacted - rotated 2026-09-12>`  
 **AGENT_API_KEY:** `2199a9d5bd1b0f69edfdd0fad3ec2f07d0c431f0e0177015`  
 **Current AGENT_API_URL:** `http://127.0.0.1:8000` (default, unreachable from Vercel)
