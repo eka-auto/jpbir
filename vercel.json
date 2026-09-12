@@ -2,135 +2,135 @@
   "version": 2,
   "builds": [
     {
-      "src": "app/backend/broker-command-claim.js",
+      "src": "Backend/broker-command-claim.js",
       "use": "@vercel/node"
     },
     {
-      "src": "app/backend/broker-command-complete.js",
+      "src": "Backend/broker-command-complete.js",
       "use": "@vercel/node"
     },
     {
-      "src": "app/backend/check-stale.js",
+      "src": "Backend/check-stale.js",
       "use": "@vercel/node"
     },
     {
-      "src": "app/backend/connect.js",
+      "src": "Backend/connect.js",
       "use": "@vercel/node"
     },
     {
-      "src": "app/backend/device-commands-poll.js",
+      "src": "Backend/device-commands-poll.js",
       "use": "@vercel/node"
     },
     {
-      "src": "app/backend/device-enroll.js",
+      "src": "Backend/device-enroll.js",
       "use": "@vercel/node"
     },
     {
-      "src": "app/backend/device-heartbeat.js",
+      "src": "Backend/device-heartbeat.js",
       "use": "@vercel/node"
     },
     {
-      "src": "app/backend/jp-agent.js",
+      "src": "Backend/jp-agent.js",
       "use": "@vercel/node"
     },
     {
-      "src": "app/backend/jp-ask.js",
+      "src": "Backend/jp-ask.js",
       "use": "@vercel/node"
     },
     {
-      "src": "app/backend/jp-debug.js",
+      "src": "Backend/jp-debug.js",
       "use": "@vercel/node"
     },
     {
-      "src": "app/backend/jp-device.js",
+      "src": "Backend/jp-device.js",
       "use": "@vercel/node"
     },
     {
-      "src": "app/backend/jp-devices.js",
+      "src": "Backend/jp-devices.js",
       "use": "@vercel/node"
     },
     {
-      "src": "app/backend/jp-live-agent.js",
+      "src": "Backend/jp-live-agent.js",
       "use": "@vercel/node"
     },
     {
-      "src": "app/backend/jp-stats.js",
+      "src": "Backend/jp-stats.js",
       "use": "@vercel/node"
     },
     {
-      "src": "app/backend/jp-track.js",
+      "src": "Backend/jp-track.js",
       "use": "@vercel/node"
     },
     {
-      "src": "app/backend/jp-visitor.js",
+      "src": "Backend/jp-visitor.js",
       "use": "@vercel/node"
     },
     {
-      "src": "app/backend/stats.js",
+      "src": "Backend/stats.js",
       "use": "@vercel/node"
     },
     {
-      "src": "app/backend/visitor.js",
+      "src": "Backend/visitor.js",
       "use": "@vercel/node"
     },
     {
-      "src": "app/backend/verify-db.js",
+      "src": "Backend/verify-db.js",
       "use": "@vercel/node"
     },
     {
-      "src": "app/frontend/**",
+      "src": "Frontend/**",
       "use": "@vercel/static"
     },
     {
-      "src": "app/backend/vercel-analytics.js",
+      "src": "Backend/vercel-analytics.js",
       "use": "@vercel/node"
     },
     {
-      "src": "app/backend/agent-run.js",
+      "src": "Backend/agent-run.js",
       "use": "@vercel/node"
     }
   ],
   "routes": [
     {
       "src": "/api/agent-run",
-      "dest": "app/backend/agent-run.js"
+      "dest": "Backend/agent-run.js"
     },
     {
       "src": "/api/vercel-analytics",
-      "dest": "app/backend/vercel-analytics.js"
+      "dest": "Backend/vercel-analytics.js"
     },
     {
       "src": "/api/device-command-claim",
-      "dest": "app/backend/broker-command-claim.js"
+      "dest": "Backend/broker-command-claim.js"
     },
     {
       "src": "/api/device-command-claim/(?<commandId>[^/]+)",
-      "dest": "app/backend/broker-command-claim.js?commandId=$commandId"
+      "dest": "Backend/broker-command-claim.js?commandId=$commandId"
     },
     {
       "src": "/api/device-command-complete",
-      "dest": "app/backend/broker-command-complete.js"
+      "dest": "Backend/broker-command-complete.js"
     },
     {
       "src": "/api/device-command-complete/(?<commandId>[^/]+)",
-      "dest": "app/backend/broker-command-complete.js?commandId=$commandId"
+      "dest": "Backend/broker-command-complete.js?commandId=$commandId"
     },
     {
       "src": "/api/(.*)(.js)?",
-      "dest": "app/backend/$1.js"
+      "dest": "Backend/$1.js"
     },
     {
       "src": "/s24",
-      "dest": "/app/frontend/s24.html"
+      "dest": "/Frontend/s24.html"
     },
     {
       "src": "/vivobook",
-      "dest": "/app/frontend/vivobook.html"
+      "dest": "/Frontend/vivobook.html"
     },
     {
       "src": "/(.*)",
-      "dest": "/app/frontend/$1"
+      "dest": "/Frontend/$1"
     }
   ],
-  "outputDirectory": "app/frontend"
+  "outputDirectory": "Frontend"
 }
