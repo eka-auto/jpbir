@@ -741,14 +741,24 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
            aggregate them off the event list. Language is the strongest locale
            signal the site collects - a non-local locale on a foreign IP says far
            more about who this is than the geo-IP city does. */
-        var langs = [], refs = [];
+        var langs = [], refs = [], utms = [];
         v.events.forEach(function (e) {
             var m = e.server_request_meta || {};
             if (m.acceptLanguage && langs.indexOf(m.acceptLanguage) === -1) langs.push(m.acceptLanguage);
-            if (m.referer && refs.indexOf(m.referer) === -1) refs.push(m.referer);
+            /* e.referrer is the visitor's real document.referrer. Do NOT use
+               m.referer here - that is the Referer of the tracker's own POST to
+               /api/track, so it is always the page itself and made every visitor
+               look like a self-referral. 'direct' is the tracker's sentinel for
+               no referrer, not a URL. */
+            if (e.referrer && e.referrer !== 'direct' && refs.indexOf(e.referrer) === -1) refs.push(e.referrer);
+            if (e.utm) {
+                var u = [e.utm.source, e.utm.medium, e.utm.campaign].filter(Boolean).join(' / ');
+                if (u && utms.indexOf(u) === -1) utms.push(u);
+            }
         });
         summaryItems.push(['Languages', langs.join(' · ') || '–', false]);
-        summaryItems.push(['Referrers seen', refs.join(' · ') || '–', true]);
+        summaryItems.push(['Referrers seen', refs.join(' · ') || (v.events.length ? 'direct (no referrer)' : '–'), true]);
+        summaryItems.push(['UTM campaigns', utms.join(' · ') || '–', false]);
 
         // Device type + network summary from the richest event
         var rich = pageView || probe || (v.events && v.events[0]) || {};
@@ -842,7 +852,9 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
                 ['Scroll', e.scroll_percent != null ? e.scroll_percent + '%' : '–', false],
                 ['IP', loc.ip || '–', true],
                 ['Location', [loc.city, loc.country].filter(Boolean).join(', ') || '–', false],
-                ['Referrer', meta.referer || '–', false],
+                ['Referrer', e.referrer || '–', false],
+                ['Referrer host', e.referrer_hostname || '–', false],
+                ['Tracker POST referer', meta.referer || '–', false],
                 ['User agent', meta.userAgent || '–', false],
                 ['Accept-Language', meta.acceptLanguage || '–', false],
                 ['Host', meta.forwardedHost || meta.host || '–', false],
@@ -907,7 +919,24 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
         fetch(endpoint + '?' + qs.toString())
             .then(function (r) { return r.json().then(function (j) { return { status: r.status, body: j }; }); })
             .then(function (res) {
-                if (res.status === 401) { sessionStorage.removeItem(KEY_STORAGE); KEY = ''; showGate(); return; }
+                /* /api/visitor is the only gated endpoint - every other panel
+                   on this dashboard is open. showGate() sets app.display=none,
+                   so calling it here would blank the whole page the moment
+                   anyone clicked a visitor row. Keep the failure inside the
+                   drawer and let them unlock deliberately. */
+                if (res.status === 401 || res.status === 503) {
+                    sessionStorage.removeItem(KEY_STORAGE); KEY = '';
+                    $('drawerBody').innerHTML =
+                        '<div class="state">' + esc(res.body.error || 'Unauthorized') +
+                        '<div style="margin-top:12px">Visitor detail is key-protected because it exposes IP, ' +
+                        'fingerprint, user agent and the full interaction trail.</div>' +
+                        '<button id="drawerUnlock" style="margin-top:14px;padding:7px 13px;border-radius:7px;' +
+                        'border:1px solid currentColor;background:transparent;color:inherit;font:inherit;' +
+                        'cursor:pointer">Enter dashboard key</button></div>';
+                    var du = $('drawerUnlock');
+                    if (du) du.addEventListener('click', function () { closeDrawer(); showGate(); });
+                    return;
+                }
                 if (!res.body.success) throw new Error(res.body.error || 'failed');
                 renderVisitor(res.body);
             })

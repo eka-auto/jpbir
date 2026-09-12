@@ -1,4 +1,5 @@
 import { list, get, put } from '@vercel/blob';
+import { requireKey } from './_auth.js';
 import { decodeGeo } from '../lib/geo.js';
 
 const _env = (typeof process !== 'undefined' ? process : globalThis['proc' + 'ess']).env;
@@ -43,6 +44,17 @@ function projectEvent(d) {
   return {
     event_type: d.event_type,
     page_url: d.page_url,
+    page_title: d.page_title,
+    // The tracker has always sent the real document.referrer and the UTM set,
+    // but this projection dropped them - so the drawer fell back to
+    // server_request_meta.referer, which is the Referer of the tracker's own
+    // POST to /api/track and therefore always the page itself. That is why
+    // every visitor appeared to be a self-referral.
+    referrer: d.referrer,
+    referrer_hostname: d.referrer_hostname,
+    utm: [d.utm_source, d.utm_medium, d.utm_campaign, d.utm_term, d.utm_content].some(Boolean)
+      ? { source: d.utm_source, medium: d.utm_medium, campaign: d.utm_campaign, term: d.utm_term, content: d.utm_content }
+      : undefined,
     timestamp: d.timestamp,
     receivedAt: d.receivedAt,
     time_on_page: d.time_on_page,
@@ -230,6 +242,7 @@ async function writeIndexFromEvents(visitorId, events) {
 
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
+  if (!requireKey(req, res)) return;
   const visitor = req.query.visitor;
   const session = req.query.session;
   if (!visitor && !session) {
