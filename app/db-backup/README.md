@@ -7,7 +7,7 @@
 
 ### Firestore Devices (eka-agent database)
 ```bash
-curl -s "https://jpbirrestructured.vercel.app/api/jp-devices?key=1a3272549f4b0daee7c59d86babf31dd" > firestore-devices-backup.json
+curl -s "https://jpbirrestructured.vercel.app/api/jp-devices?key=<redacted - rotated 2026-09-12>" > firestore-devices-backup.json
 ```
 
 **Devices to backup:**
@@ -29,7 +29,7 @@ aws dynamodb scan --table-name jaytipargal_telemetry --region us-west-2 > dynamo
 ### Step 1: Create Backup
 ```bash
 # Export Firestore devices
-curl -s "https://jpbirrestructured.vercel.app/api/jp-devices?key=1a3272549f4b0daee7c59d86babf31dd" | python -m json.tool > db-backup/firestore-devices-2026-09-10.json
+curl -s "https://jpbirrestructured.vercel.app/api/jp-devices?key=<redacted - rotated 2026-09-12>" | python -m json.tool > db-backup/firestore-devices-2026-09-10.json
 
 # Export DynamoDB items
 aws dynamodb scan --table-name jaytipargal_telemetry --region us-west-2 --output json > db-backup/dynamodb-telemetry-2026-09-10.json

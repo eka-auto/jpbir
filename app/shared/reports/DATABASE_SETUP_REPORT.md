@@ -109,7 +109,7 @@
 ### Test Database Connectivity
 
 ```bash
-curl -s "https://jpbirrestructured.vercel.app/api/verify-db?key=1a3272549f4b0daee7c59d86babf31dd"
+curl -s "https://jpbirrestructured.vercel.app/api/verify-db?key=<redacted - rotated 2026-09-12>"
 ```
 
 ### Expected Response (Success)
@@ -168,7 +168,7 @@ All critical databases are:
 ## 🔑 Production Access
 
 **Dashboard URL:** https://jpbirrestructured.vercel.app  
-**Stats Key:** `1a3272549f4b0daee7c59d86babf31dd`  
+**Stats Key:** `<redacted - rotated 2026-09-12>`  
 **Verification Endpoint:** `/api/verify-db?key=STATS_KEY`
 
 ---

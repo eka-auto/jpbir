@@ -34,7 +34,7 @@
 
 | Variable | Type | Environment | Status |
 |----------|------|-------------|--------|
-| `STATS_KEY` | Secret | Production | ✅ **1a3272549f4b0daee7c59d86babf31dd** |
+| `STATS_KEY` | Secret | Production | ✅ **<redacted - rotated 2026-09-12>** |
 | `JP_AWS_ACCESS_KEY_ID` | Secret | Production | ✅ AKIA5Q7JJR2FOCAHBUDO |
 | `JP_AWS_SECRET_ACCESS_KEY` | Secret | Production | ✅ Set |
 | `JP_AWS_REGION` | Config | Production | ✅ us-west-2 |
@@ -53,7 +53,7 @@
 3. **AWS Credentials** - New IAM user keys configured ✅
 4. **Firebase Access** - Service account key generated via gcloud ✅
 5. **Live Device Data** - `/api/jp-devices` returning Firestore data ✅
-6. **Stats Key** - Working 32-character hex key: `1a3272549f4b0daee7c59d86babf31dd` ✅
+6. **Stats Key** - Working 32-character hex key: `<redacted - rotated 2026-09-12>` ✅
 
 ### ⚠️ Action Required
 
@@ -69,7 +69,7 @@
 ### 🔑 Access Information
 
 **Dashboard URL:** https://jpbirrestructured.vercel.app  
-**Stats Key:** `1a3272549f4b0daee7c59d86babf31dd`
+**Stats Key:** `<redacted - rotated 2026-09-12>`
 
 **To unlock the dashboard:**
 1. Visit https://jpbirrestructured.vercel.app
