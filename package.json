@@ -32,5 +32,8 @@
     "telemetry"
   ],
   "author": "Jayti Pargal",
-  "license": "UNLICENSED"
+  "license": "UNLICENSED",
+  "devDependencies": {
+    "vercel": "^59.16.0"
+  }
 }
