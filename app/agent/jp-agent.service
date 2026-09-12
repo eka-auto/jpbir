@@ -1,0 +1,37 @@
+[Unit]
+Description=jp-agent — jaytipargal.tech agent runtime
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=jpagent
+Group=jpagent
+WorkingDirectory=/opt/jp-agent
+# Secrets live here, root-owned and 0600, never in this unit file and never
+# in the repo. Provisioned once by deploy.sh.
+EnvironmentFile=/etc/jp-agent.env
+ExecStart=/usr/bin/node /opt/jp-agent/server.mjs
+Restart=always
+RestartSec=3
+
+# The agent runs arbitrary commands on purpose, so confine what that can reach.
+# The workspace and its own home stay writable; the rest of the filesystem does
+# not. ProtectSystem=strict makes / read-only apart from the ReadWritePaths.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/srv/workspace /home/jpagent
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=jp-agent
+
+[Install]
+WantedBy=multi-user.target
