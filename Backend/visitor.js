@@ -1,6 +1,6 @@
 import { list, get, put } from '@vercel/blob';
 import { requireKey } from './_auth.js';
-import { decodeGeo } from '../lib/geo.js';
+import { decodeGeo } from './lib/geo.js';
 
 const _env = (typeof process !== 'undefined' ? process : globalThis['proc' + 'ess']).env;
 const TOKEN = _env['BLOB_' + 'READ_WRITE_TOKEN'];
