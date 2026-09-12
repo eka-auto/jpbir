@@ -56,28 +56,30 @@ async function settle(name, fn) {
   }
 }
 
-// Vercel's Web Analytics REST surface is not part of the documented stable
-// API, and the exact path has moved between versions. Rather than hard-code
-// one guess, try the known shapes in order and report which answered - so a
-// future move shows up as a clear message instead of an empty panel.
+// Web Analytics lives under /v1/query/web-analytics/, documented at
+// vercel.com/docs/analytics/web-analytics-api. Three earlier guesses
+// (/v1/web-analytics/overview, /v1/web/insights/overview, /web-analytics/
+// overview) all 404'd — there is no "overview" route; totals come from
+// visits/count and breakdowns from visits/aggregate.
 async function webAnalytics(c, since, until) {
-  const qs = `projectId=${encodeURIComponent(c.projectId)}&since=${since}&until=${until}`;
-  const candidates = [
-    `/v1/web-analytics/overview?${qs}`,
-    `/v1/web/insights/overview?${qs}`,
-    `/web-analytics/overview?${qs}`,
-  ];
-  const tried = [];
-  for (const p of candidates) {
+  const base = `projectId=${encodeURIComponent(c.projectId)}&since=${since}&until=${until}`;
+  const totals = await vfetch(`/v1/query/web-analytics/visits/count?${base}`, c);
+
+  // The breakdowns are what make this more than a two-number panel. Each is
+  // fetched independently: an unsupported dimension returns 400, and one bad
+  // dimension must not take the working ones down with it.
+  const DIMENSIONS = ['requestPath', 'country', 'deviceType', 'referrer', 'browser', 'os'];
+  const breakdowns = {};
+  await Promise.all(DIMENSIONS.map(async (by) => {
     try {
-      const data = await vfetch(p, c);
-      return { endpoint: p, data };
+      const r = await vfetch(`/v1/query/web-analytics/visits/aggregate?${base}&by=${by}&limit=10`, c);
+      breakdowns[by] = r.data || [];
     } catch (e) {
-      tried.push(`${p} -> ${e.status || '?'} ${e.message}`);
+      breakdowns[by] = { error: `${e.status || '?'} ${e.message}` };
     }
-  }
-  const err = new Error(`no Web Analytics endpoint answered. Tried: ${tried.join(' | ')}`);
-  throw err;
+  }));
+
+  return { endpoint: '/v1/query/web-analytics/visits/count', data: totals, breakdowns };
 }
 
 export default async function handler(req, res) {
