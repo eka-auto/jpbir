@@ -16,3 +16,7 @@ node_modules/
 # Python bytecode
 __pycache__/
 *.pyc
+
+# Local security-scanner workspace (~938 MB: node_modules + scan data).
+# Tool-owned, regenerable, and far too large to ever belong in the repo.
+.deepsec/
