@@ -68,7 +68,13 @@ async function webAnalytics(c, since, until) {
   // The breakdowns are what make this more than a two-number panel. Each is
   // fetched independently: an unsupported dimension returns 400, and one bad
   // dimension must not take the working ones down with it.
-  const DIMENSIONS = ['requestPath', 'country', 'deviceType', 'referrer', 'browser', 'os'];
+  // Names come from the API's own 400: "should be equal to one of the allowed
+  // values hour, day, week, month, year, country, deviceType, environment,
+  // requestPath, referrerHostname, osName, browserName, route, utmSource,
+  // utmMedium, utmCampaign, utmContent, utmTerm, flags". `browser`, `os` and
+  // `referrer` were guesses and all three 400'd.
+  const DIMENSIONS = ['requestPath', 'route', 'country', 'deviceType',
+                      'referrerHostname', 'browserName', 'osName', 'utmSource'];
   const breakdowns = {};
   await Promise.all(DIMENSIONS.map(async (by) => {
     try {

@@ -1392,8 +1392,10 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
                        these are lists, not single numbers. */
                     var bd = a.data && a.data.breakdowns;
                     if (bd) {
-                        var LABEL = { requestPath: 'Top pages', country: 'Countries', deviceType: 'Devices',
-                                      referrer: 'Referrers', browser: 'Browsers', os: 'Operating systems' };
+                        var LABEL = { requestPath: 'Top pages', route: 'Routes', country: 'Countries',
+                                      deviceType: 'Devices', referrerHostname: 'Referrers',
+                                      browserName: 'Browsers', osName: 'Operating systems',
+                                      utmSource: 'UTM sources' };
                         var html = Object.keys(bd).map(function (k) {
                             var rows = bd[k];
                             var body;
