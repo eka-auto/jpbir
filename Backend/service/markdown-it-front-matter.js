@@ -1,5 +1,5 @@
 const markdownItFrontMatter = require('markdown-it-front-matter')
-const { parseYamlProperties, renderPropertiesPanel } = require('../yamlProperties')
+const { parseYamlProperties, renderPropertiesPanel } = require('./yamlProperties')
 
 module.exports = function markdownItFrontMatterExport(md) {
   let frontMatterHtml = ''
