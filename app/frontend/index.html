@@ -350,6 +350,7 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
                     <div class="hint" id="vercelHint">Loading…</div>
                     <div id="vercelKpis" class="kpis" style="margin-top:12px"></div>
                 </div>
+                <div class="grid2" id="vercelBreakdowns" style="margin-top:14px"></div>
                 <div class="panel" style="margin-top:14px">
                     <h2>What Vercel does not show</h2>
                     <div class="hint">Stated explicitly, so an empty field is never mistaken for no traffic.</div>
@@ -1379,12 +1380,41 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
                 /* Overview */
                 var a = j.panels && j.panels.analytics;
                 if (a && a.ok) {
-                    var d = (a.data && a.data.data) || a.data || {};
+                    var d = (a.data && a.data.data && a.data.data.data) || (a.data && a.data.data) || {};
                     $('vercelKpis').innerHTML =
                         vkpi('Visitors', d.visitors != null ? d.visitors : '—') +
                         vkpi('Pageviews', d.pageviews != null ? d.pageviews : '—');
+
+                    /* Breakdowns come from visits/aggregate, one call per
+                       dimension, each settled separately — so a dimension the
+                       API rejects shows its own error instead of blanking the
+                       rest. Rendered here rather than in the KPI strip because
+                       these are lists, not single numbers. */
+                    var bd = a.data && a.data.breakdowns;
+                    if (bd) {
+                        var LABEL = { requestPath: 'Top pages', country: 'Countries', deviceType: 'Devices',
+                                      referrer: 'Referrers', browser: 'Browsers', os: 'Operating systems' };
+                        var html = Object.keys(bd).map(function (k) {
+                            var rows = bd[k];
+                            var body;
+                            if (rows && rows.error) {
+                                body = '<div class="state">' + esc(rows.error) + '</div>';
+                            } else if (Array.isArray(rows) && rows.length) {
+                                body = '<div class="table-wrap"><table><tbody>' + rows.map(function (r) {
+                                    var name = r[k] != null ? r[k] : (r.key != null ? r.key : '—');
+                                    var n = r.visitors != null ? r.visitors : (r.count != null ? r.count : '');
+                                    return '<tr><td class="mono">' + esc(String(name)) + '</td><td>' + esc(String(n)) + '</td></tr>';
+                                }).join('') + '</tbody></table></div>';
+                            } else {
+                                body = '<div class="state">No data in this window.</div>';
+                            }
+                            return '<div class="panel"><h2>' + esc(LABEL[k] || k) + '</h2>' + body + '</div>';
+                        }).join('');
+                        $('vercelBreakdowns').innerHTML = html;
+                    }
                 } else {
                     $('vercelKpis').innerHTML = a ? vercelPanelError(a) : '';
+                    $('vercelBreakdowns').innerHTML = '';
                 }
 
                 /* Masked-by-design disclosures */
