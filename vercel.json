@@ -84,9 +84,17 @@
     {
       "src": "app/backend/vercel-analytics.js",
       "use": "@vercel/node"
+    },
+    {
+      "src": "app/backend/agent-run.js",
+      "use": "@vercel/node"
     }
   ],
   "routes": [
+    {
+      "src": "/api/agent-run",
+      "dest": "app/backend/agent-run.js"
+    },
     {
       "src": "/api/vercel-analytics",
       "dest": "app/backend/vercel-analytics.js"
