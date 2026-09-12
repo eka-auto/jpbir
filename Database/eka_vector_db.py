@@ -20,6 +20,10 @@ from datetime import datetime, timezone
 
 import chromadb
 
+# path_config.py lives in Backend/, not beside this file.
+sys.path.insert(0, os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "Backend"))
+
 from path_config import TRAINING_DATA_DIR
 
 # ─── Config ───

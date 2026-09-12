@@ -1,5 +1,14 @@
 import sys, os, json, time
-# MCP server modules are siblings of this script.
+
+# firestore_mcp / global_devices_mcp are NOT siblings of this script: this file
+# is in Backend/ and firestore_mcp.py is in Database/. Put that layer on the
+# path explicitly. Relying on a sibling is what broke when the repo moved to a
+# layered layout, and it fails at run time, not import-check time.
+_LAYERS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+for _layer in ("Database", "Backend"):
+    _p = os.path.join(_LAYERS, _layer)
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
 os.environ['EKA_FIRESTORE_DB'] = 'eka-agent'
 from firestore_mcp import s24_queue_command, s24_status, s24_read_calls, s24_read_sms, s24_read_location
 

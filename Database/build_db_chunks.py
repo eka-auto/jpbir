@@ -37,7 +37,11 @@ import sys
 import tempfile
 from typing import Dict, Iterable, List, Optional, Tuple
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# `tools` is a package under _shared/, so _shared/ is what belongs on the
+# path. This expression used to yield app/ (which held tools/); after the
+# five-layer move it yields the repo root, which does not.
+sys.path.insert(0, os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "_shared"))
 from tools.scrub_secrets import classify as classify_secrets
 
 # Directories that never contain meaningful personal data
