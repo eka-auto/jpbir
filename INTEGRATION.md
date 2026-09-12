@@ -4,7 +4,7 @@
 
 ## Start Here
 
-This project has been reorganized into a standard five-layer architecture (Frontend, Backend, Database, Server, Integrations, _shared, Devices, archive). 2438 files were moved into their correct layer. **Next action:** `phase5_push_and_verify_deploy` — see *Resume Point* below. If you are an agent continuing this work, begin at the entry points listed under *Entry Points*, not by scanning every file.
+This project has been reorganized into a standard five-layer architecture (Frontend, Backend, Database, Server, Integrations, _shared, Devices, archive). 2438 files were moved into their correct layer. The restructure is **merged into `main` and deployed**. **Next action:** repoint the `channel-sandbox` Vercel project's Root Directory — see *Resume Point* below. If you are an agent continuing this work, begin at the entry points listed under *Entry Points*, not by scanning every file.
 
 ## Where things live
 
@@ -43,9 +43,10 @@ Analogy: Frontend is the dining area, Backend is the kitchen, Database is the st
 
 ## Resume Point
 
-- Machine field `resume_point` = `phase5_push_and_verify_deploy`.
-- The restructure and the vercel.json rewrite are complete and committed on branch `restructure/five-layer`. NOT pushed, NOT deployed. Next: push the branch, open a PR, and confirm the Vercel PREVIEW deploy serves `/`, `/s24`, `/vivobook` and `/api/*` before merging. `main` is untouched, so production is unaffected until that merge.
-- How to recover the original structure: git history on branch main (commit 804a54c). Every move is a git R100 rename, so `git reset --hard main` restores the old layout exactly.
+- Machine field `resume_point` = `fix_channel_sandbox_root_directory`.
+- The restructure and the vercel.json rewrite are merged into `main` (PRs #10, #11, #12) and deployed. On `main` @ `ece3ece` the dashboard serves `/`, `/s24`, `/vivobook` and `/api/*` correctly.
+- **Outstanding:** the `channel-sandbox` Vercel project serves `X-Vercel-Error: NOT_FOUND` on every path since Merge #10. Its Root Directory is still `app/sandbox`, the path this restructure renamed to `Devices/sandbox`. The build reports success because it produces no output rather than failing, so GitHub's commit status stays green. Fix is one dashboard setting — Root Directory → `Devices/sandbox` — no code change. See also the known-issue note below on `/api/stats`.
+- How to recover the original structure: git history at commit 804a54c, the last pre-restructure commit. Every move is a git R100 rename, so a reset to 804a54c restores the old layout exactly.
 - Old folders/scripts removed: app/ (38 empty directories, after every file was git mv'd out; no file was deleted).
 
 ## Edits beyond moving files
@@ -83,5 +84,6 @@ These files were placed with low confidence — confirm or move them:
 - `Database/search_db.mjs:4` — Hardcoded absolute path C:\Users\abcom\... — a different Windows account than this machine. Non-functional here; unrelated to the move.
 - `(102 unresolved relative imports in vendored code)` — Frontend/view/* (x-spreadsheet), Frontend/viewer.js (PDF.js), Backend/service/markdown-pdf.js (./ext/*) and ~20 Backend/*.ts files from a VS Code REST-client extension. All were broken before this restructure (112 before, 102 after, 0 newly broken). None are compiled: build is `echo`, there is no tsconfig. Candidates for deletion in a separate pass.
 - `_shared/docs/CLAUDE.md, PROJECT.md, DASHBOARD.md` — Describe a superseded Dashboard/ + Sandbox/ layout. Stale prose — do not treat as ground truth for the current tree.
-- `vercel.json (Vercel project settings)` — No .vercel/project.json in the repo, so the dashboard's Root Directory setting could not be confirmed. If it is set to anything other than repo root, confirm it before deploying.
+- `vercel.json (Vercel project settings)` — RESOLVED, and it bit us. This repo feeds **three** Vercel projects from `main`, which nothing in the repo reveals: `jpbir_restructured` (the dashboard), `jayti-dashboard`, and `channel-sandbox` (the Flask app under `Devices/sandbox/`, which has its own nested `vercel.json`). List them with `gh api repos/jaytipargal/jpbir/commits/<sha>/status`. `channel-sandbox` had its Root Directory set to `app/sandbox` and this restructure moved that folder, taking the project down — see *Resume Point*. Before changing layout or deploy config, check all three, and never let a bulk find-and-replace touch a nested `vercel.json` belonging to another project.
+- `/api/stats` returns 500 on `jpbir_restructured` — `No blob credentials found`; `BLOB_READ_WRITE_TOKEN` is unset on that project. The same code returns 200 on `jayti-dashboard`, so this is an env-var gap, not a code or path problem, and it predates the restructure. It is user-visible: `Frontend/index.html:505` defaults `SITE` to `'jbt'`, which routes to `/api/stats` rather than the DynamoDB-backed `/api/jp-stats`.
 - `archive/` — 46 of 57 files are a regenerable Python Hypothesis test cache; the rest are unrelated Colab notebooks and run logs. Zero inbound references. Kept per instruction; safe to drop later.
