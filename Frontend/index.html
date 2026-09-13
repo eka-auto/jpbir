@@ -418,6 +418,10 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
                             <tbody></tbody>
                         </table>
                     </div>
+                    <div id="livePayloadPanel" style="margin-top:18px;padding-top:16px;border-top:1px solid var(--border-light)">
+                        <div class="panel-head"><div><h2>Full daemon payloads</h2><div class="hint" id="livePayloadHint">Complete Firestore device documents are available per device</div></div></div>
+                        <div id="livePayloadList"></div>
+                    </div>
                 </div>
                 <div class="panel">
                     <div class="panel-head"><div><h2>Device browser history</h2><div class="hint" id="deviceHint">Own-device history synced from the S24 daemon</div></div>
@@ -469,6 +473,10 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
                             </tr></thead>
                             <tbody></tbody>
                         </table>
+                    </div>
+                    <div id="devicePayloadPanel" style="margin-top:18px;padding-top:16px;border-top:1px solid var(--border-light)">
+                        <div class="panel-head"><div><h2>Full event payloads</h2><div class="hint" id="devicePayloadHint">Complete DynamoDB rows are available per event</div></div></div>
+                        <div id="devicePayloadList"></div>
                     </div>
                 </div>
             </section>
@@ -1463,6 +1471,41 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
                         tbody.appendChild(tr);
                     });
                 }
+                var payloadList = $('devicePayloadList');
+                payloadList.innerHTML = '';
+                if (!evs.length) {
+                    $('devicePayloadHint').textContent = 'No complete event payloads in this window.';
+                } else {
+                    evs.forEach(function (e, index) {
+                        var details = document.createElement('details');
+                        details.style.cssText = 'border:1px solid var(--border);border-radius:10px;background:var(--panel2);margin-top:10px;overflow:hidden';
+                        var summary = document.createElement('summary');
+                        summary.style.cssText = 'cursor:pointer;padding:10px 12px;color:var(--ink);font-size:12px;font-weight:600;list-style-position:inside';
+                        summary.textContent = (e.event_type || 'event') + ' · ' + fmtTime(e.timestamp) + ' · payload ' + (index + 1);
+                        var pre = document.createElement('pre');
+                        pre.style.cssText = 'margin:0;padding:12px;background:#221A15;color:#F4E9DC;font:11px/1.55 var(--mono);white-space:pre-wrap;word-break:break-word;overflow:auto;max-height:420px';
+                        var payload = e.full_payload || {
+                            eventType: e.event_type,
+                            timestamp: e.timestamp,
+                            pageUrl: e.page_url,
+                            pageTitle: e.page_title,
+                            ip: e.ip,
+                            country: e.country,
+                            city: e.city,
+                            userAgent: e.userAgent,
+                            timeOnPage: e.time_on_page,
+                            scrollPercent: e.scroll_percent,
+                            fingerprint: e.fingerprint,
+                            eventData: e.event_data,
+                            visitorId: e.visitor_id,
+                        };
+                        pre.textContent = JSON.stringify(payload, null, 2);
+                        details.appendChild(summary);
+                        details.appendChild(pre);
+                        payloadList.appendChild(details);
+                    });
+                    $('devicePayloadHint').textContent = evs.length + ' complete DynamoDB row payloads · expand an event to inspect every field';
+                }
                 $('deviceDetailHint').textContent = evs.length + ' events';
             })
             .catch(function (e) {
@@ -1495,6 +1538,8 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
         $('deviceDetailPanel').style.display = 'none';
         $('deviceNetworkDetail').style.display = 'none';
         $('deviceNetworkDetail').innerHTML = '';
+        $('devicePayloadList').innerHTML = '';
+        $('devicePayloadHint').textContent = 'Complete DynamoDB rows are available per event';
     });
     document.addEventListener('click', function (e) {
         var t = e.target;
@@ -1750,7 +1795,7 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
     function loadLiveDevices() {
         /* open dashboard: no key required */
         $('liveDevicesHint').textContent = 'Loading live device state…';
-        fetch('/api/jp-devices?' + new URLSearchParams({ key: KEY }).toString())
+        fetch('/api/jp-devices?' + new URLSearchParams({ key: KEY, full: '1' }).toString())
             .then(function (r) { return r.json().then(function (j) { return { status: r.status, body: j }; }); })
             .then(function (res) {
                 if (res.status === 401) { showGate(); return; }
@@ -1789,6 +1834,27 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
                         tr.style.cursor = 'pointer';
                         tbody.appendChild(tr);
                     });
+                }
+                var livePayloadList = $('livePayloadList');
+                livePayloadList.innerHTML = '';
+                var payloadDevices = devices.filter(function (d) { return d.full_payload; });
+                if (!payloadDevices.length) {
+                    $('livePayloadHint').textContent = 'No complete daemon payloads were returned.';
+                } else {
+                    payloadDevices.forEach(function (d) {
+                        var details = document.createElement('details');
+                        details.style.cssText = 'border:1px solid var(--border);border-radius:10px;background:var(--panel2);margin-top:10px;overflow:hidden';
+                        var summary = document.createElement('summary');
+                        summary.style.cssText = 'cursor:pointer;padding:10px 12px;color:var(--ink);font-size:12px;font-weight:600;list-style-position:inside';
+                        summary.textContent = (d.deviceDisplayName || d.deviceId) + ' · ' + d.deviceId;
+                        var pre = document.createElement('pre');
+                        pre.style.cssText = 'margin:0;padding:12px;background:#221A15;color:#F4E9DC;font:11px/1.55 var(--mono);white-space:pre-wrap;word-break:break-word;overflow:auto;max-height:520px';
+                        pre.textContent = JSON.stringify(d.full_payload, null, 2);
+                        details.appendChild(summary);
+                        details.appendChild(pre);
+                        livePayloadList.appendChild(details);
+                    });
+                    $('livePayloadHint').textContent = payloadDevices.length + ' complete daemon payloads · expand a device to inspect every field';
                 }
                 $('liveDevicesHint').textContent = devices.length + ' devices · ' + res.body.database + ' · liveness = lastSeen < 3×heartbeat';
                 /* site video-event relay banner: connection built when a visitor plays the closing clip */
