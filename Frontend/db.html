@@ -1,0 +1,796 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Data — jaytipargal</title>
+<style>
+  /* Every panel here is backed by a column that actually has data. Coverage is
+     shown on the Health page rather than guessed at, so an empty panel always
+     means "no data" and never "field never mapped". */
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  :root{
+    --bg:#0B0D10; --panel:#12161B; --panel-2:#171C22; --line:#232B34;
+    --ink:#E6EDF3; --ink-dim:#8B98A5; --ink-faint:#5A6672;
+    --accent:#4C9AFF; --accent-dim:#1F3A5F;
+    --ok:#3FB950; --warn:#D29922; --bad:#F85149; --violet:#A371F7; --teal:#39C5CF;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,sans-serif;
+  }
+  html,body{height:100%}
+  body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:13px;line-height:1.5;-webkit-font-smoothing:antialiased}
+  a{color:var(--accent);text-decoration:none}
+  ::selection{background:rgba(76,154,255,.3)}
+
+  .shell{display:grid;grid-template-columns:208px 1fr;min-height:100vh}
+
+  /* ---------- sidebar ---------- */
+  .side{background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;position:sticky;top:0;height:100vh}
+  .brand{padding:18px 18px 14px;border-bottom:1px solid var(--line)}
+  .brand h1{font-size:13px;font-weight:600;letter-spacing:.2px}
+  .brand span{display:block;font-size:10px;color:var(--ink-faint);font-family:var(--mono);margin-top:3px}
+  .nav{padding:10px 8px;overflow-y:auto;flex:1}
+  .nav button{display:flex;align-items:center;gap:9px;width:100%;padding:7px 10px;margin-bottom:1px;border:0;border-radius:6px;
+    background:transparent;color:var(--ink-dim);font:inherit;font-size:12.5px;cursor:pointer;text-align:left}
+  .nav button:hover{background:var(--panel-2);color:var(--ink)}
+  .nav button.on{background:var(--accent-dim);color:#fff}
+  .nav .dot{width:5px;height:5px;border-radius:50%;background:currentColor;opacity:.55;flex:0 0 auto}
+  .nav .count{margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--ink-faint)}
+  .side-foot{padding:10px 14px;border-top:1px solid var(--line);font-family:var(--mono);font-size:10px;color:var(--ink-faint)}
+
+  /* ---------- main ---------- */
+  .main{min-width:0;display:flex;flex-direction:column}
+  .bar{display:flex;align-items:center;gap:10px;padding:12px 20px;border-bottom:1px solid var(--line);background:var(--panel);position:sticky;top:0;z-index:20;flex-wrap:wrap}
+  .bar h2{font-size:14px;font-weight:600;margin-right:auto}
+  select,input,.btn{background:var(--panel-2);border:1px solid var(--line);color:var(--ink);border-radius:6px;padding:5px 9px;font:inherit;font-size:12px}
+  select,.btn{cursor:pointer}
+  .btn:hover{border-color:var(--accent);color:#fff}
+  .btn.on{background:var(--accent-dim);border-color:var(--accent);color:#fff}
+  .wrap{padding:18px 20px 60px;flex:1}
+  .page{display:none}
+  .page.on{display:block}
+
+  /* ---------- primitives ---------- */
+  .grid{display:grid;gap:12px}
+  .kpis{grid-template-columns:repeat(auto-fit,minmax(140px,1fr))}
+  .cards-2{grid-template-columns:repeat(auto-fit,minmax(320px,1fr))}
+  .cards-3{grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:9px;overflow:hidden}
+  .card > h3{font-size:11px;font-weight:600;letter-spacing:.7px;text-transform:uppercase;color:var(--ink-dim);
+    padding:11px 14px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px}
+  .card > h3 .tag{margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--ink-faint);text-transform:none;letter-spacing:0}
+  .card .body{padding:12px 14px}
+  .card .body.flush{padding:0}
+
+  .kpi{background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:13px 15px}
+  .kpi .k{font-size:10px;letter-spacing:.7px;text-transform:uppercase;color:var(--ink-faint)}
+  .kpi .v{font-family:var(--mono);font-size:25px;font-weight:600;margin-top:5px;letter-spacing:-.5px}
+  .kpi .s{font-size:11px;color:var(--ink-dim);margin-top:2px}
+
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  th{text-align:left;font-weight:600;font-size:10px;letter-spacing:.6px;text-transform:uppercase;color:var(--ink-faint);
+    padding:8px 12px;border-bottom:1px solid var(--line);white-space:nowrap;position:sticky;top:0;background:var(--panel)}
+  td{padding:7px 12px;border-bottom:1px solid rgba(35,43,52,.55);vertical-align:top}
+  tr:last-child td{border-bottom:0}
+  tbody tr:hover{background:var(--panel-2)}
+  tbody tr.clickable{cursor:pointer}
+  td.num,th.num{text-align:right;font-family:var(--mono)}
+  .mono{font-family:var(--mono);font-size:11.5px}
+  .trunc{max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block;vertical-align:bottom}
+  .scroll{max-height:440px;overflow:auto}
+
+  /* horizontal bar inside a list row — no chart library needed */
+  .bars{display:flex;flex-direction:column}
+  .bars .row{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;padding:6px 14px;position:relative}
+  .bars .row + .row{border-top:1px solid rgba(35,43,52,.5)}
+  .bars .fill{position:absolute;left:0;top:0;bottom:0;background:linear-gradient(90deg,rgba(76,154,255,.20),rgba(76,154,255,.05));border-right:1px solid rgba(76,154,255,.35)}
+  .bars .lbl,.bars .val{position:relative;z-index:1}
+  .bars .lbl{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .bars .val{font-family:var(--mono);font-size:11.5px;color:var(--ink-dim)}
+
+  .pill{display:inline-block;padding:1px 7px;border-radius:999px;font-size:10.5px;font-family:var(--mono);border:1px solid}
+  .pill.ok{color:var(--ok);border-color:rgba(63,185,80,.45);background:rgba(63,185,80,.10)}
+  .pill.warn{color:var(--warn);border-color:rgba(210,153,34,.45);background:rgba(210,153,34,.10)}
+  .pill.bad{color:var(--bad);border-color:rgba(248,81,73,.45);background:rgba(248,81,73,.10)}
+  .pill.mute{color:var(--ink-faint);border-color:var(--line);background:var(--panel-2)}
+  .pill.info{color:var(--teal);border-color:rgba(57,197,207,.45);background:rgba(57,197,207,.10)}
+
+  .empty{padding:22px 14px;text-align:center;color:var(--ink-faint);font-size:12px}
+  .err{margin:12px 0;padding:10px 13px;border:1px solid rgba(248,81,73,.4);background:rgba(248,81,73,.08);border-radius:7px;color:#FFB4AE;font-family:var(--mono);font-size:11.5px}
+  .pager{display:flex;align-items:center;gap:9px;padding:9px 14px;border-top:1px solid var(--line);font-size:11.5px;color:var(--ink-dim)}
+  .pager .btn{padding:3px 9px}
+
+  /* coverage meter on the Health page */
+  .cov{display:grid;grid-template-columns:150px 1fr 70px;gap:10px;align-items:center;padding:5px 0}
+  .cov .track{height:6px;border-radius:3px;background:var(--panel-2);overflow:hidden}
+  .cov .fill{height:100%;border-radius:3px}
+  .cov .pct{font-family:var(--mono);font-size:11px;text-align:right;color:var(--ink-dim)}
+
+  /* detail drawer */
+  .backdrop{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:60;display:none}
+  .backdrop.on{display:block}
+  .drawer{position:fixed;top:0;right:0;bottom:0;width:min(760px,94vw);background:var(--panel);border-left:1px solid var(--line);
+    z-index:61;transform:translateX(100%);transition:transform .22s cubic-bezier(.22,.61,.36,1);display:flex;flex-direction:column}
+  .drawer.on{transform:none}
+  .drawer header{display:flex;align-items:center;gap:10px;padding:13px 16px;border-bottom:1px solid var(--line)}
+  .drawer header h3{font-size:13px;font-weight:600;margin-right:auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .drawer .inner{padding:14px 16px 40px;overflow-y:auto;flex:1}
+  .drawer pre{background:var(--bg);border:1px solid var(--line);border-radius:7px;padding:11px;overflow-x:auto;
+    font-family:var(--mono);font-size:11px;color:var(--ink-dim);white-space:pre-wrap;word-break:break-word}
+  .kv{display:grid;grid-template-columns:150px 1fr;gap:3px 12px;font-size:12px;margin-bottom:14px}
+  .kv dt{color:var(--ink-faint)}
+  .kv dd{font-family:var(--mono);font-size:11.5px;word-break:break-all}
+
+  svg .axis{stroke:var(--line);stroke-width:1}
+  svg .gl{stroke:rgba(35,43,52,.65);stroke-width:1}
+  svg text{fill:var(--ink-faint);font-family:var(--mono);font-size:9px}
+
+  @media(max-width:880px){
+    .shell{grid-template-columns:1fr}
+    .side{position:static;height:auto;flex-direction:row;align-items:center;overflow-x:auto}
+    .brand{border-bottom:0;border-right:1px solid var(--line);white-space:nowrap}
+    .nav{display:flex;padding:8px;flex:1}
+    .nav button{width:auto;white-space:nowrap}
+    .nav .count,.side-foot{display:none}
+  }
+</style>
+</head>
+<body>
+<div class="shell">
+  <aside class="side">
+    <div class="brand">
+      <h1>Data</h1>
+      <span id="brandSub">neon · postgres</span>
+    </div>
+    <nav class="nav" id="nav"></nav>
+    <div class="side-foot" id="foot">—</div>
+  </aside>
+
+  <div class="main">
+    <div class="bar">
+      <h2 id="title">Overview</h2>
+      <select id="siteSel" title="Property"></select>
+      <select id="daysSel" title="Window">
+        <option value="1">24 hours</option>
+        <option value="7">7 days</option>
+        <option value="30" selected>30 days</option>
+        <option value="90">90 days</option>
+        <option value="3650">All time</option>
+      </select>
+      <button class="btn" id="noiseBtn" title="Heartbeats and interaction batches outnumber pageviews ~20:1">Noise off</button>
+      <button class="btn" id="refreshBtn">Refresh</button>
+    </div>
+
+    <div class="wrap">
+      <div id="err"></div>
+      <section class="page on" id="page-overview"></section>
+      <section class="page" id="page-audience"></section>
+      <section class="page" id="page-geo"></section>
+      <section class="page" id="page-pages"></section>
+      <section class="page" id="page-sessions"></section>
+      <section class="page" id="page-events"></section>
+      <section class="page" id="page-video"></section>
+      <section class="page" id="page-devices"></section>
+      <section class="page" id="page-letters"></section>
+      <section class="page" id="page-emails"></section>
+      <section class="page" id="page-health"></section>
+    </div>
+  </div>
+</div>
+
+<div class="backdrop" id="backdrop"></div>
+<aside class="drawer" id="drawer">
+  <header>
+    <h3 id="drawerTitle">Detail</h3>
+    <button class="btn" id="drawerClose">Close</button>
+  </header>
+  <div class="inner" id="drawerBody"></div>
+</aside>
+
+<script>
+(function () {
+  'use strict';
+
+  var API = '/api/db-api';
+  var state = { site: 'jaytibirthday.in', days: 30, noise: false, page: 'overview',
+                offsets: { visitors: 0, sessions: 0, events: 0 }, type: '', counts: {} };
+
+  var PAGES = [
+    ['overview',  'Overview',  null],
+    ['audience',  'Audience',  'visitors'],
+    ['geo',       'Geography', null],
+    ['pages',     'Pages',     null],
+    ['sessions',  'Sessions',  'sessions'],
+    ['events',    'Events',    'events'],
+    ['video',     'Video',     'video_events'],
+    ['devices',   'Devices',   'devices'],
+    ['letters',   'Letters',   'letters'],
+    ['emails',    'Email opens', 'email_opens'],
+    ['health',    'Health',    null]
+  ];
+
+  // ---------- helpers ----------
+  var $ = function (id) { return document.getElementById(id); };
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+  function num(n) { return n == null ? '—' : Number(n).toLocaleString('en-IN'); }
+  function when(v) {
+    if (!v) return '—';
+    var d = new Date(v);
+    if (isNaN(d)) return esc(v);
+    return d.toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' });
+  }
+  function ago(v) {
+    if (!v) return '—';
+    var s = (Date.now() - new Date(v).getTime()) / 1000;
+    if (s < 0) return 'in the future';
+    if (s < 60) return Math.round(s) + 's ago';
+    if (s < 3600) return Math.round(s / 60) + 'm ago';
+    if (s < 86400) return Math.round(s / 3600) + 'h ago';
+    return Math.round(s / 86400) + 'd ago';
+  }
+  function secs(n) {
+    if (n == null) return '—';
+    if (n < 60) return Math.round(n) + 's';
+    if (n < 3600) return Math.floor(n / 60) + 'm ' + Math.round(n % 60) + 's';
+    return Math.floor(n / 3600) + 'h ' + Math.round((n % 3600) / 60) + 'm';
+  }
+  function shortUrl(u) {
+    if (!u) return '—';
+    try { var x = new URL(u); return (x.pathname === '/' ? x.host : x.host + x.pathname) + (x.search ? x.search.slice(0, 28) + '…' : ''); }
+    catch (e) { return String(u).slice(0, 60); }
+  }
+
+  function get(view, extra) {
+    var q = new URLSearchParams(Object.assign(
+      { view: view, site: state.site, days: state.days }, state.noise ? { noise: '1' } : {}, extra || {}));
+    return fetch(API + '?' + q.toString(), { cache: 'no-store' })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        if (!j.ok) throw new Error(j.error || ('view ' + view + ' failed'));
+        return j.data;
+      });
+  }
+
+  function fail(e) {
+    $('err').innerHTML = '<div class="err">' + esc(e && e.message ? e.message : String(e)) + '</div>';
+  }
+  function clearErr() { $('err').innerHTML = ''; }
+
+  // ---------- render primitives ----------
+  function kpi(label, value, sub) {
+    return '<div class="kpi"><div class="k">' + esc(label) + '</div><div class="v">' + value +
+           '</div><div class="s">' + (sub == null ? '&nbsp;' : esc(sub)) + '</div></div>';
+  }
+
+  function barList(rows, labelKey, valueKey, opts) {
+    opts = opts || {};
+    if (!rows || !rows.length) return '<div class="empty">No data in this window</div>';
+    var max = rows.reduce(function (m, r) { return Math.max(m, Number(r[valueKey]) || 0); }, 0) || 1;
+    return '<div class="bars">' + rows.map(function (r) {
+      var v = Number(r[valueKey]) || 0;
+      var label = r[labelKey] == null || r[labelKey] === '' ? '(none)' : r[labelKey];
+      if (opts.url) label = shortUrl(label);
+      var extra = opts.sub ? ' <span style="color:var(--ink-faint)">' + esc(r[opts.sub] || '') + '</span>' : '';
+      return '<div class="row" title="' + esc(r[labelKey] || '') + '">' +
+        '<div class="fill" style="width:' + (v / max * 100).toFixed(1) + '%"></div>' +
+        '<div class="lbl">' + esc(label) + extra + '</div>' +
+        '<div class="val">' + num(v) + (r.visitors != null ? ' · ' + num(r.visitors) + 'v' : '') + '</div></div>';
+    }).join('') + '</div>';
+  }
+
+  function table(cols, rows, opts) {
+    opts = opts || {};
+    if (!rows || !rows.length) return '<div class="empty">Nothing here yet</div>';
+    var head = '<tr>' + cols.map(function (c) {
+      return '<th' + (c.num ? ' class="num"' : '') + '>' + esc(c.label) + '</th>';
+    }).join('') + '</tr>';
+    var body = rows.map(function (r, i) {
+      return '<tr class="' + (opts.onRow ? 'clickable' : '') + '" data-i="' + i + '">' + cols.map(function (c) {
+        return '<td' + (c.num ? ' class="num"' : '') + '>' + (c.render ? c.render(r) : esc(r[c.key])) + '</td>';
+      }).join('') + '</tr>';
+    }).join('');
+    return '<div class="scroll"><table><thead>' + head + '</thead><tbody>' + body + '</tbody></table></div>';
+  }
+
+  // Inline SVG — no chart dependency, and it scales with the container.
+  function lineChart(rows, xKey, series, height) {
+    height = height || 150;
+    if (!rows || rows.length < 2) return '<div class="empty">Not enough points to plot</div>';
+    var W = 760, H = height, PL = 38, PR = 10, PT = 10, PB = 20;
+    var max = 1;
+    series.forEach(function (s) { rows.forEach(function (r) { max = Math.max(max, Number(r[s.key]) || 0); }); });
+    var x = function (i) { return PL + i * (W - PL - PR) / (rows.length - 1); };
+    var y = function (v) { return PT + (1 - (Number(v) || 0) / max) * (H - PT - PB); };
+    var grid = '', ticks = 4;
+    for (var g = 0; g <= ticks; g++) {
+      var gy = PT + g * (H - PT - PB) / ticks;
+      grid += '<line class="gl" x1="' + PL + '" y1="' + gy + '" x2="' + (W - PR) + '" y2="' + gy + '"/>' +
+              '<text x="' + (PL - 6) + '" y="' + (gy + 3) + '" text-anchor="end">' +
+              num(Math.round(max * (1 - g / ticks))) + '</text>';
+    }
+    var paths = series.map(function (s) {
+      var d = rows.map(function (r, i) { return (i ? 'L' : 'M') + x(i).toFixed(1) + ' ' + y(r[s.key]).toFixed(1); }).join(' ');
+      var area = d + ' L' + x(rows.length - 1).toFixed(1) + ' ' + (H - PB) + ' L' + x(0).toFixed(1) + ' ' + (H - PB) + ' Z';
+      return '<path d="' + area + '" fill="' + s.color + '" opacity=".10"/>' +
+             '<path d="' + d + '" fill="none" stroke="' + s.color + '" stroke-width="1.8" stroke-linejoin="round"/>';
+    }).join('');
+    var labels = rows.map(function (r, i) {
+      if (rows.length > 10 && i % Math.ceil(rows.length / 8)) return '';
+      var t = String(r[xKey]).slice(5, 10);
+      return '<text x="' + x(i).toFixed(1) + '" y="' + (H - 5) + '" text-anchor="middle">' + esc(t) + '</text>';
+    }).join('');
+    var legend = series.map(function (s) {
+      return '<span style="color:' + s.color + ';font-family:var(--mono);font-size:10.5px;margin-right:12px">■ ' + esc(s.label) + '</span>';
+    }).join('');
+    return '<div style="margin-bottom:6px">' + legend + '</div>' +
+      '<svg viewBox="0 0 ' + W + ' ' + H + '" style="width:100%;height:auto;display:block">' + grid + paths +
+      '<line class="axis" x1="' + PL + '" y1="' + (H - PB) + '" x2="' + (W - PR) + '" y2="' + (H - PB) + '"/>' + labels + '</svg>';
+  }
+
+  function barChart(rows, xKey, yKey, height) {
+    height = height || 130;
+    if (!rows || !rows.length) return '<div class="empty">No data</div>';
+    var W = 760, H = height, PL = 38, PR = 10, PT = 10, PB = 20;
+    var max = rows.reduce(function (m, r) { return Math.max(m, Number(r[yKey]) || 0); }, 0) || 1;
+    var bw = (W - PL - PR) / rows.length;
+    var bars = rows.map(function (r, i) {
+      var v = Number(r[yKey]) || 0;
+      var h = (v / max) * (H - PT - PB);
+      return '<rect x="' + (PL + i * bw + bw * 0.14).toFixed(1) + '" y="' + (H - PB - h).toFixed(1) +
+        '" width="' + (bw * 0.72).toFixed(1) + '" height="' + h.toFixed(1) +
+        '" fill="var(--accent)" opacity=".75"><title>' + esc(r[xKey]) + ': ' + num(v) + '</title></rect>';
+    }).join('');
+    var labels = rows.map(function (r, i) {
+      if (rows.length > 14 && i % 3) return '';
+      return '<text x="' + (PL + i * bw + bw / 2).toFixed(1) + '" y="' + (H - 5) + '" text-anchor="middle">' + esc(r[xKey]) + '</text>';
+    }).join('');
+    return '<svg viewBox="0 0 ' + W + ' ' + H + '" style="width:100%;height:auto;display:block">' + bars +
+      '<line class="axis" x1="' + PL + '" y1="' + (H - PB) + '" x2="' + (W - PR) + '" y2="' + (H - PB) + '"/>' + labels + '</svg>';
+  }
+
+  function card(title, inner, tag, flush) {
+    return '<div class="card"><h3>' + esc(title) + (tag ? '<span class="tag">' + esc(tag) + '</span>' : '') +
+      '</h3><div class="body' + (flush ? ' flush' : '') + '">' + inner + '</div></div>';
+  }
+
+  // ---------- drawer ----------
+  function openDrawer(title, html) {
+    $('drawerTitle').textContent = title;
+    $('drawerBody').innerHTML = html;
+    $('drawer').classList.add('on');
+    $('backdrop').classList.add('on');
+  }
+  function closeDrawer() {
+    $('drawer').classList.remove('on');
+    $('backdrop').classList.remove('on');
+  }
+  $('drawerClose').addEventListener('click', closeDrawer);
+  $('backdrop').addEventListener('click', closeDrawer);
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeDrawer(); });
+
+  function kvList(obj, skip) {
+    return '<dl class="kv">' + Object.keys(obj).filter(function (k) {
+      return !(skip || []).includes(k) && obj[k] !== null && obj[k] !== undefined && obj[k] !== '';
+    }).map(function (k) {
+      var v = obj[k];
+      if (typeof v === 'object') v = JSON.stringify(v);
+      if (/_at$/.test(k)) v = when(obj[k]);
+      return '<dt>' + esc(k) + '</dt><dd>' + esc(v) + '</dd>';
+    }).join('') + '</dl>';
+  }
+
+  // ---------- pages ----------
+  var RENDER = {};
+
+  RENDER.overview = function () {
+    return get('overview').then(function (d) {
+      var t = d.totals || {};
+      var el = $('page-overview');
+      el.innerHTML =
+        '<div class="grid kpis" style="margin-bottom:12px">' +
+          kpi('Events', num(t.events), state.noise ? 'all types' : 'noise filtered') +
+          kpi('Visitors', num(t.visitors), 'unique') +
+          kpi('Sessions', num(t.sessions), 'unique') +
+          kpi('Page views', num(t.page_views), 'page_view events') +
+          kpi('Avg time', secs(t.avg_time_on_page), 'on page') +
+          kpi('Avg scroll', t.avg_scroll == null ? '—' : t.avg_scroll + '%', 'depth') +
+          kpi('Places', num(t.countries) + ' / ' + num(t.cities), 'countries / cities') +
+          kpi('Last event', ago(t.last_event_at), when(t.last_event_at)) +
+        '</div>' +
+        '<div class="grid" style="margin-bottom:12px">' +
+          card('Activity per day', lineChart(d.daily, 'day', [
+            { key: 'events', label: 'events', color: 'var(--accent)' },
+            { key: 'visitors', label: 'visitors', color: 'var(--violet)' },
+            { key: 'sessions', label: 'sessions', color: 'var(--teal)' }
+          ], 170), (d.daily || []).length + ' days') +
+        '</div>' +
+        '<div class="grid cards-2">' +
+          card('By hour of day (UTC)', barChart(d.hourly, 'hour', 'n', 140)) +
+          card('Event types', barList(d.byType, 'label', 'n'), 'unfiltered', true) +
+        '</div>';
+      return d;
+    });
+  };
+
+  RENDER.audience = function () {
+    return Promise.all([get('overview'), get('visitors', { limit: 100, offset: state.offsets.visitors })])
+      .then(function (r) {
+        var d = r[0], v = r[1];
+        var el = $('page-audience');
+        el.innerHTML =
+          '<div class="grid cards-3" style="margin-bottom:12px">' +
+            card('Browsers', barList(d.browsers, 'label', 'n'), null, true) +
+            card('Operating systems', barList(d.oses, 'label', 'n'), null, true) +
+            card('Device types', barList(d.devices, 'label', 'n'), null, true) +
+          '</div>' +
+          '<div class="card">' +
+            '<h3>Visitors<span class="tag">' + num(v.total) + ' total</span></h3>' +
+            '<div class="body flush">' + table([
+              { label: 'Visitor', render: function (r) { return '<span class="mono trunc">' + esc(r.visitor_id) + '</span>'; } },
+              { label: 'Last seen', render: function (r) { return ago(r.last_seen_at); } },
+              { label: 'First seen', render: function (r) { return when(r.first_seen_at); } },
+              { label: 'Events', key: 'event_count', num: true },
+              { label: 'Sessions', key: 'session_count', num: true },
+              { label: 'Place', render: function (r) { return esc([r.city, r.country].filter(Boolean).join(', ') || '—'); } },
+              { label: 'Tech', render: function (r) { return esc([r.browser, r.os, r.device_type].filter(Boolean).join(' · ') || '—'); } },
+              { label: 'UTM', render: function (r) { return r.utm_source ? '<span class="pill info">' + esc(r.utm_source + '/' + (r.utm_medium || '')) + '</span>' : '—'; } }
+            ], v.rows, { onRow: true }) + '</div>' +
+            pager('visitors', v) +
+          '</div>';
+        wireRows(el, v.rows, function (row) {
+          get('visitor', { id: row.visitor_id }).then(function (det) {
+            openDrawer('Visitor ' + row.visitor_id,
+              kvList(det.profile || row, ['site']) +
+              '<h3 style="font-size:11px;letter-spacing:.7px;text-transform:uppercase;color:var(--ink-dim);margin:14px 0 7px">Sessions (' + (det.sessions || []).length + ')</h3>' +
+              table([
+                { label: 'Session', render: function (r) { return '<span class="mono trunc">' + esc(r.session_id) + '</span>'; } },
+                { label: 'Started', render: function (r) { return when(r.started_at); } },
+                { label: 'Events', key: 'event_count', num: true },
+                { label: 'Entry', render: function (r) { return esc(shortUrl(r.entry_page)); } }
+              ], det.sessions) +
+              '<h3 style="font-size:11px;letter-spacing:.7px;text-transform:uppercase;color:var(--ink-dim);margin:14px 0 7px">Recent events (' + (det.events || []).length + ')</h3>' +
+              table([
+                { label: 'When', render: function (r) { return when(r.occurred_at); } },
+                { label: 'Type', render: function (r) { return '<span class="pill mute">' + esc(r.event_type) + '</span>'; } },
+                { label: 'Page', render: function (r) { return esc(shortUrl(r.page_url)); } },
+                { label: 'Time', render: function (r) { return secs(r.time_on_page); } },
+                { label: 'Scroll', render: function (r) { return r.scroll_percent == null ? '—' : r.scroll_percent + '%'; } }
+              ], det.events));
+          }).catch(fail);
+        });
+      });
+  };
+
+  RENDER.geo = function () {
+    return get('overview').then(function (d) {
+      $('page-geo').innerHTML =
+        '<div class="grid cards-2">' +
+          card('Countries', barList(d.countries, 'label', 'n'), (d.countries || []).length + ' seen', true) +
+          card('Cities', barList(d.cities, 'label', 'n', { sub: 'country' }), (d.cities || []).length + ' seen', true) +
+        '</div>';
+    });
+  };
+
+  RENDER.pages = function () {
+    return get('overview').then(function (d) {
+      $('page-pages').innerHTML =
+        '<div class="grid" style="margin-bottom:12px">' +
+          card('Top pages', barList(d.topPages, 'label', 'n', { url: true }), null, true) +
+        '</div>' +
+        '<div class="grid cards-2">' +
+          card('Referrers', barList(d.referrers, 'label', 'n', { url: true }), null, true) +
+          card('Campaigns (UTM)', (d.utm && d.utm.length)
+            ? table([
+                { label: 'Source', key: 'utm_source' },
+                { label: 'Medium', key: 'utm_medium' },
+                { label: 'Campaign', key: 'utm_campaign' },
+                { label: 'Events', key: 'n', num: true }
+              ], d.utm)
+            : '<div class="empty">No tagged campaigns in this window</div>', null, true) +
+        '</div>';
+    });
+  };
+
+  RENDER.sessions = function () {
+    return get('sessions', { limit: 100, offset: state.offsets.sessions }).then(function (s) {
+      var el = $('page-sessions');
+      el.innerHTML = '<div class="card"><h3>Sessions<span class="tag">' + num(s.total) + ' total</span></h3>' +
+        '<div class="body flush">' + table([
+          { label: 'Session', render: function (r) { return '<span class="mono trunc">' + esc(r.session_id) + '</span>'; } },
+          { label: 'Visitor', render: function (r) { return '<span class="mono trunc" style="max-width:180px">' + esc(r.visitor_id || '—') + '</span>'; } },
+          { label: 'Started', render: function (r) { return when(r.started_at); } },
+          { label: 'Duration', render: function (r) { return secs(r.duration_seconds); } },
+          { label: 'Events', key: 'event_count', num: true },
+          { label: 'Entry', render: function (r) { return esc(shortUrl(r.entry_page)); } },
+          { label: 'Exit', render: function (r) { return esc(shortUrl(r.exit_page)); } }
+        ], s.rows, { onRow: true }) + '</div>' + pager('sessions', s) + '</div>';
+      wireRows(el, s.rows, function (row) {
+        get('session', { id: row.session_id }).then(function (det) {
+          openDrawer('Session ' + row.session_id,
+            kvList(det.meta || row, ['site']) +
+            table([
+              { label: 'When', render: function (r) { return when(r.occurred_at); } },
+              { label: 'Type', render: function (r) { return '<span class="pill mute">' + esc(r.event_type) + '</span>'; } },
+              { label: 'Page', render: function (r) { return esc(shortUrl(r.page_url)); } },
+              { label: 'Time', render: function (r) { return secs(r.time_on_page); } },
+              { label: 'Scroll', render: function (r) { return r.scroll_percent == null ? '—' : r.scroll_percent + '%'; } },
+              { label: 'Interactions', key: 'interactions', num: true }
+            ], det.events));
+        }).catch(fail);
+      });
+    });
+  };
+
+  RENDER.events = function () {
+    return Promise.all([
+      get('overview'),
+      get('events', Object.assign({ limit: 100, offset: state.offsets.events }, state.type ? { type: state.type } : {}))
+    ]).then(function (r) {
+      var types = r[0].byType || [], e = r[1];
+      var el = $('page-events');
+      var chips = '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:11px">' +
+        '<button class="btn' + (state.type ? '' : ' on') + '" data-type="">All</button>' +
+        types.map(function (t) {
+          return '<button class="btn' + (state.type === t.label ? ' on' : '') + '" data-type="' + esc(t.label) + '">' +
+            esc(t.label) + ' <span style="color:var(--ink-faint)">' + num(t.n) + '</span></button>';
+        }).join('') + '</div>';
+      el.innerHTML = chips + '<div class="card"><h3>Events<span class="tag">' + num(e.total) + ' matching</span></h3>' +
+        '<div class="body flush">' + table([
+          { label: 'When', render: function (r) { return when(r.occurred_at); } },
+          { label: 'Type', render: function (r) { return '<span class="pill mute">' + esc(r.event_type) + '</span>'; } },
+          { label: 'Visitor', render: function (r) { return '<span class="mono trunc" style="max-width:150px">' + esc(r.visitor_id || '—') + '</span>'; } },
+          { label: 'Page', render: function (r) { return esc(shortUrl(r.page_url)); } },
+          { label: 'Place', render: function (r) { return esc([r.city, r.country].filter(Boolean).join(', ') || '—'); } },
+          { label: 'Tech', render: function (r) { return esc([r.browser, r.os].filter(Boolean).join(' · ') || '—'); } },
+          { label: 'Network', render: function (r) { return '<span class="trunc" style="max-width:170px">' + esc(r.asn_org || '—') + '</span>'; } },
+          { label: 'Time', render: function (r) { return secs(r.time_on_page); } }
+        ], e.rows, { onRow: true }) + '</div>' + pager('events', e) + '</div>';
+      Array.prototype.forEach.call(el.querySelectorAll('[data-type]'), function (b) {
+        b.addEventListener('click', function () {
+          state.type = b.getAttribute('data-type');
+          state.offsets.events = 0;
+          draw();
+        });
+      });
+      wireRows(el, e.rows, function (row) {
+        get('event', { id: row.id }).then(function (full) {
+          openDrawer(row.event_type + ' · ' + when(row.occurred_at),
+            kvList(full || row, ['raw_payload', 'event_data']) +
+            '<h3 style="font-size:11px;letter-spacing:.7px;text-transform:uppercase;color:var(--ink-dim);margin:14px 0 7px">event_data</h3>' +
+            '<pre>' + esc(JSON.stringify((full && full.event_data) || {}, null, 2)) + '</pre>' +
+            '<h3 style="font-size:11px;letter-spacing:.7px;text-transform:uppercase;color:var(--ink-dim);margin:14px 0 7px">raw_payload</h3>' +
+            '<pre>' + esc(JSON.stringify((full && full.raw_payload) || {}, null, 2)) + '</pre>');
+        }).catch(fail);
+      });
+    });
+  };
+
+  RENDER.video = function () {
+    return get('video').then(function (d) {
+      $('page-video').innerHTML =
+        '<div class="grid cards-2" style="margin-bottom:12px">' +
+          card('Plays by clip', barList(d.byClip, 'label', 'n'), null, true) +
+          card('Where from', barList(d.byPlace, 'label', 'n'), null, true) +
+        '</div>' +
+        '<div class="card"><h3>Every play<span class="tag">' + num((d.rows || []).length) + '</span></h3><div class="body flush">' +
+          table([
+            { label: 'When', render: function (r) { return when(r.occurred_at); } },
+            { label: 'Ago', render: function (r) { return ago(r.occurred_at); } },
+            { label: 'Clip', render: function (r) { return '<span class="pill info">' + esc(r.video_event) + '</span>'; } },
+            { label: 'Place', render: function (r) { return esc([r.city, r.country].filter(Boolean).join(', ') || '—'); } },
+            { label: 'Device', render: function (r) { return esc(r.visitor_device || '—'); } },
+            { label: 'Recorded by', render: function (r) { return '<span class="mono">' + esc(r.recorded_by || r.source_system || '—') + '</span>'; } },
+            { label: 'Event id', render: function (r) { return '<span class="mono trunc" style="max-width:220px">' + esc(r.event_id) + '</span>'; } }
+          ], d.rows) + '</div></div>';
+    });
+  };
+
+  RENDER.devices = function () {
+    return get('devices').then(function (rows) {
+      var el = $('page-devices');
+      el.innerHTML = '<div class="card"><h3>Fleet<span class="tag">' + num(rows.length) + ' devices</span></h3><div class="body flush">' +
+        table([
+          { label: 'Device', render: function (r) { return '<span class="mono">' + esc(r.device_id) + '</span>'; } },
+          { label: 'Name', render: function (r) { return esc(r.display_name || '—'); } },
+          { label: 'Freshness', render: function (r) {
+              var cls = r.freshness === 'online' ? 'ok' : r.freshness === 'stale' ? 'warn' : r.freshness === 'offline' ? 'bad' : 'mute';
+              return '<span class="pill ' + cls + '">' + esc(r.freshness) + '</span>';
+            } },
+          { label: 'Flag says', render: function (r) { return r.online === true ? 'online' : r.online === false ? 'offline' : '—'; } },
+          { label: 'Last seen', render: function (r) { return ago(r.last_seen_at); } },
+          { label: 'Agent version', render: function (r) { return '<span class="mono">' + esc(r.daemon_version || '—') + '</span>'; } },
+          { label: 'Platform', render: function (r) { return esc(r.platform || '—'); } },
+          { label: 'Synced', render: function (r) { return ago(r.synced_at); } }
+        ], rows, { onRow: true }) + '</div>' +
+        '<div class="pager">Freshness is computed from last_seen_at. The online flag is what the device claims — when the two disagree, believe the timestamp.</div></div>';
+      wireRows(el, rows, function (row) {
+        openDrawer('Device ' + row.device_id,
+          kvList(row, ['info']) + '<pre>' + esc(JSON.stringify(row.info || {}, null, 2)) + '</pre>');
+      });
+    });
+  };
+
+  RENDER.letters = function () {
+    return get('letters').then(function (rows) {
+      var el = $('page-letters');
+      el.innerHTML = '<div class="card"><h3>Letters<span class="tag">' + num(rows.length) + '</span></h3><div class="body flush">' +
+        table([
+          { label: 'Token', render: function (r) { return '<span class="mono trunc" style="max-width:260px">' + esc(r.token) + '</span>'; } },
+          { label: 'Created', render: function (r) { return when(r.created_at); } },
+          { label: 'Status', render: function (r) {
+              if (r.deleted_at) return '<span class="pill bad">expired</span>';
+              if (r.read_at) return '<span class="pill ok">read</span>';
+              return '<span class="pill warn">unread</span>';
+            } },
+          { label: 'Read at', render: function (r) { return when(r.read_at); } },
+          { label: 'Views', key: 'view_count', num: true },
+          { label: 'Source', render: function (r) { return '<span class="mono">' + esc(r.source_system) + '</span>'; } }
+        ], rows, { onRow: true }) + '</div>' +
+        '<div class="pager">The blob copy is destroyed on read, so these rows are the only record a letter existed.</div></div>';
+      wireRows(el, rows, function (row) { openDrawer('Letter ' + row.token, kvList(row)); });
+    });
+  };
+
+  RENDER.emails = function () {
+    return get('emails').then(function (d) {
+      $('page-emails').innerHTML =
+        '<div class="grid" style="margin-bottom:12px">' +
+          card('Opens by recipient', barList(d.byRecipient, 'label', 'n'), null, true) +
+        '</div>' +
+        '<div class="card"><h3>Every open<span class="tag">' + num((d.rows || []).length) + '</span></h3><div class="body flush">' +
+        table([
+          { label: 'When', render: function (r) { return when(r.opened_at); } },
+          { label: 'Ago', render: function (r) { return ago(r.opened_at); } },
+          { label: 'Recipient', render: function (r) { return '<span class="mono">' + esc(r.email) + '</span>'; } },
+          { label: 'Place', render: function (r) { return esc([r.city, r.country].filter(Boolean).join(', ') || '—'); } },
+          { label: 'IP', render: function (r) { return '<span class="mono">' + esc(r.ip || '—') + '</span>'; } },
+          { label: 'Client', render: function (r) { return '<span class="trunc" style="max-width:280px">' + esc(r.user_agent || '—') + '</span>'; } }
+        ], d.rows) + '</div></div>';
+    });
+  };
+
+  RENDER.health = function () {
+    return Promise.all([get('health'), get('sites')]).then(function (r) {
+      var h = r[0], sites = r[1];
+      var cov = h.coverage || {}, total = cov.total || 1;
+      var fields = Object.keys(cov).filter(function (k) { return k !== 'total'; });
+      var bars = fields.map(function (k) {
+        var pct = (cov[k] / total) * 100;
+        var color = pct > 90 ? 'var(--ok)' : pct > 40 ? 'var(--warn)' : 'var(--bad)';
+        return '<div class="cov"><div style="color:var(--ink-dim)">' + esc(k.replace(/^with_/, '')) + '</div>' +
+          '<div class="track"><div class="fill" style="width:' + pct.toFixed(1) + '%;background:' + color + '"></div></div>' +
+          '<div class="pct">' + pct.toFixed(0) + '%</div></div>';
+      }).join('');
+      $('page-health').innerHTML =
+        '<div class="grid kpis" style="margin-bottom:12px">' +
+          Object.keys(h.counts).map(function (t) { return kpi(t.replace(/_/g, ' '), num(h.counts[t]), 'rows'); }).join('') +
+        '</div>' +
+        '<div class="grid cards-2">' +
+          card('Field coverage on events', bars + '<div style="margin-top:10px;color:var(--ink-faint);font-size:11.5px">' +
+            'Share of the ' + num(cov.total) + ' event rows where the column is populated. A panel that looks empty should be checked here first — ' +
+            'low coverage means the field is not arriving, not that the UI is broken.</div>') +
+          card('Where the rows came from', table([
+            { label: 'Source', render: function (r) { return '<span class="mono">' + esc(r.source_system) + '</span>'; } },
+            { label: 'Rows', key: 'n', num: true },
+            { label: 'Oldest', render: function (r) { return when(r.oldest); } },
+            { label: 'Newest', render: function (r) { return when(r.newest); } }
+          ], h.sources) +
+          '<div style="padding:12px 0 0">' + table([
+            { label: 'Property', render: function (r) { return '<span class="mono">' + esc(r.site) + '</span>'; } },
+            { label: 'Events', key: 'events', num: true },
+            { label: 'Visitors', key: 'visitors', num: true },
+            { label: 'First', render: function (r) { return when(r.first_event_at); } },
+            { label: 'Last', render: function (r) { return when(r.last_event_at); } }
+          ], sites) + '</div>', null, true) +
+        '</div>';
+    });
+  };
+
+  // ---------- shared wiring ----------
+  function pager(key, res) {
+    var from = res.offset + 1, to = Math.min(res.offset + res.limit, res.total);
+    return '<div class="pager">' +
+      '<button class="btn" data-pg="' + key + '" data-dir="-1"' + (res.offset ? '' : ' disabled') + '>Prev</button>' +
+      '<button class="btn" data-pg="' + key + '" data-dir="1"' + (to >= res.total ? ' disabled' : '') + '>Next</button>' +
+      '<span>' + num(res.total ? from : 0) + '–' + num(to) + ' of ' + num(res.total) + '</span></div>';
+  }
+
+  function wireRows(root, rows, onClick) {
+    Array.prototype.forEach.call(root.querySelectorAll('tr.clickable'), function (tr) {
+      tr.addEventListener('click', function () {
+        var row = rows[Number(tr.getAttribute('data-i'))];
+        if (row) onClick(row);
+      });
+    });
+    Array.prototype.forEach.call(root.querySelectorAll('[data-pg]'), function (b) {
+      b.addEventListener('click', function () {
+        if (b.disabled) return;
+        var k = b.getAttribute('data-pg');
+        state.offsets[k] = Math.max(0, state.offsets[k] + Number(b.getAttribute('data-dir')) * 100);
+        draw();
+      });
+    });
+  }
+
+  // ---------- shell ----------
+  function buildNav() {
+    $('nav').innerHTML = PAGES.map(function (p) {
+      return '<button data-page="' + p[0] + '" class="' + (state.page === p[0] ? 'on' : '') + '">' +
+        '<span class="dot"></span>' + esc(p[1]) +
+        (p[2] ? '<span class="count" data-count="' + p[2] + '"></span>' : '') + '</button>';
+    }).join('');
+    Array.prototype.forEach.call($('nav').querySelectorAll('[data-page]'), function (b) {
+      b.addEventListener('click', function () {
+        state.page = b.getAttribute('data-page');
+        buildNav();
+        draw();
+      });
+    });
+    applyCounts();
+  }
+
+  function applyCounts() {
+    Array.prototype.forEach.call(document.querySelectorAll('[data-count]'), function (el) {
+      var v = state.counts[el.getAttribute('data-count')];
+      el.textContent = v == null ? '' : num(v);
+    });
+  }
+
+  function draw() {
+    clearErr();
+    var id = 'page-' + state.page;
+    Array.prototype.forEach.call(document.querySelectorAll('.page'), function (p) {
+      p.classList.toggle('on', p.id === id);
+    });
+    var page = PAGES.filter(function (p) { return p[0] === state.page; })[0];
+    $('title').textContent = page ? page[1] : state.page;
+    var el = $(id);
+    if (!el.innerHTML) el.innerHTML = '<div class="empty">Loading…</div>';
+    (RENDER[state.page] || function () { return Promise.resolve(); })().catch(fail);
+  }
+
+  function boot() {
+    get('sites').then(function (sites) {
+      $('siteSel').innerHTML = sites.map(function (s) {
+        return '<option value="' + esc(s.site) + '">' + esc(s.site) + ' · ' + num(s.events) + '</option>';
+      }).join('');
+      if (sites.length && !sites.some(function (s) { return s.site === state.site; })) state.site = sites[0].site;
+      $('siteSel').value = state.site;
+    }).catch(fail);
+
+    get('health').then(function (h) {
+      state.counts = h.counts || {};
+      applyCounts();
+      $('foot').textContent = num(h.counts.events) + ' events · ' +
+        (h.span && h.span.newest ? ago(h.span.newest) : '—');
+    }).catch(fail);
+
+    buildNav();
+    draw();
+  }
+
+  $('siteSel').addEventListener('change', function () {
+    state.site = this.value;
+    state.offsets = { visitors: 0, sessions: 0, events: 0 };
+    Array.prototype.forEach.call(document.querySelectorAll('.page'), function (p) { p.innerHTML = ''; });
+    draw();
+  });
+  $('daysSel').addEventListener('change', function () { state.days = Number(this.value); draw(); });
+  $('noiseBtn').addEventListener('click', function () {
+    state.noise = !state.noise;
+    this.classList.toggle('on', state.noise);
+    this.textContent = state.noise ? 'Noise on' : 'Noise off';
+    draw();
+  });
+  $('refreshBtn').addEventListener('click', draw);
+
+  boot();
+})();
+</script>
+</body>
+</html>
