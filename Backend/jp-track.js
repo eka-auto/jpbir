@@ -64,9 +64,14 @@ export default async function handler(req, res) {
       ip: getClientIP(req),
       // Vercel percent-encodes these, so decode at ingestion - new rows are
       // stored readable and every reader stops depending on remembering to do
-      // it. The read-side decodes stay: rows written before this change are
-      // still encoded and cannot be rewritten from here, and decodeOne is
-      // idempotent on an already-decoded value.
+      // it. The read-side decodes stay because rows written before this change
+      // are still encoded and cannot be rewritten from here.
+      //
+      // decodeOne is NOT idempotent in general: it re-decodes anything still
+      // containing '%', so a double-encoded header would be decoded here and
+      // again on read. Geo-IP city, region, country and timezone values do not
+      // contain a literal '%', so the two decodes cannot compound on this data
+      // - but do not copy this pattern onto a field that can.
       country: decodeOne(req.headers['x-vercel-ip-country']) || null,
       region: decodeOne(req.headers['x-vercel-ip-country-region']) || null,
       city: decodeOne(req.headers['x-vercel-ip-city']) || null,

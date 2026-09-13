@@ -763,21 +763,51 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
     // IPv4-only prefix left it un-grouped. Returns null for anything it cannot
     // parse so no caller claims a match it cannot prove.
     // { key } compares, { label } displays.
-    function ipPrefix(ip) {
-        var s = String(ip == null ? '' : ip);
-        if (s.indexOf(':') !== -1) {
-            var h = s.split(':');
-            if (h.length < 3) return null;
-            if (!/^[0-9a-fA-F]{1,4}$/.test(h[0]) || !/^[0-9a-fA-F]{1,4}$/.test(h[1])) return null;
-            return { key: 'v6:' + h[0].toLowerCase() + ':' + h[1].toLowerCase(), label: h[0] + ':' + h[1] + '::/32' };
-        }
-        var p = s.split('.');
+    // Backend/visitor.js writeIndexFromEvents does ips.slice(0, 25) when it
+    // writes the index blob, and that truncation is independent of the API's
+    // `partial` flag. Keep the two in step.
+    var IP_LIST_CAP = 25;
+
+    function v4Prefix(p) {
         if (p.length !== 4) return null;
         for (var i = 0; i < 4; i++) {
             if (!/^\d{1,3}$/.test(p[i]) || Number(p[i]) > 255) return null;
         }
         return { key: 'v4:' + p[0] + '.' + p[1], label: p[0] + '.' + p[1] + '.0.0/16' };
     }
+
+    function ipPrefix(ip) {
+        var s = String(ip == null ? '' : ip).trim();
+        if (!s) return null;
+        if (s.indexOf(':') !== -1) {
+            // ::ffff:157.49.1.1 is how Node reports an IPv4 peer on a dual-stack
+            // socket. Treated as v6 it failed to parse and the same host then
+            // counted as a second network alongside its plain IPv4 form.
+            var mapped = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/i.exec(s);
+            if (mapped) return v4Prefix(mapped[1].split('.'));
+            var h = s.split(':');
+            if (h.length < 3) return null;
+            // Validate every segment, not just the two that form the prefix -
+            // otherwise "dead:beef:not-an-address" parsed as a /32 and two
+            // unrelated junk strings could be reported as one network. Empty
+            // segments are the "::" run, legal once.
+            var empties = 0;
+            for (var j = 0; j < h.length; j++) {
+                if (h[j] === '') { empties++; continue; }
+                if (!/^[0-9a-fA-F]{1,4}$/.test(h[j])) return null;
+            }
+            if (empties > 2 || !h[0] || !h[1]) return null;
+            // Strip leading zeros so 2409:42:: and 2409:0042:: are one block.
+            var a = h[0].toLowerCase().replace(/^0+(?=.)/, '');
+            var b = h[1].toLowerCase().replace(/^0+(?=.)/, '');
+            return { key: 'v6:' + a + ':' + b, label: a + ':' + b + '::/32' };
+        }
+        return v4Prefix(s.split('.'));
+    }
+
+    // jp-track stores this literal when no address header resolves. It is not an
+    // address and must never be counted as a network of its own.
+    function isRealIp(ip) { return !!ip && ip !== 'unknown' && ip !== 'unknown-ip'; }
 
     // Do these addresses all sit in one block? Returns the shared prefix (so the
     // caller can name it) or null. One definition: the per-group label and the
@@ -820,7 +850,7 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
             // IP meant the Cities row read "-" while Network & location showed a
             // populated city for the same visitor.
             addCity(loc.city);
-            if (!loc.ip) return;
+            if (!isRealIp(loc.ip)) return;
             if (!byIp[loc.ip]) { byIp[loc.ip] = { ip: loc.ip, asn: null, org: null, cities: [] }; order.push(loc.ip); }
             var r = byIp[loc.ip];
             if (r.asn == null && loc.asn != null && loc.asn !== '') r.asn = loc.asn;
@@ -847,10 +877,13 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
             // bucket on the jp site, where no ASN is captured at all - claiming
             // "1 network" for addresses that may be several.
             var pfx = ipPrefix(ip);
+            // Anything with no ASN, no org and no parseable prefix - including
+            // the 'unknown' sentinel - shares one bucket. Giving each its own
+            // key promoted a placeholder to a counted "network".
             var key = r.asn != null ? 'AS' + r.asn
                 : r.org ? 'org:' + r.org
                     : pfx ? 'pfx:' + pfx.key
-                        : 'ip:' + ip;
+                        : 'unattributable';
             if (!byKey[key]) {
                 byKey[key] = { asn: r.asn, org: r.org, attributed: r.asn != null || !!r.org, ips: [], cities: [] };
                 groups.push(byKey[key]);
@@ -892,31 +925,51 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
            findings about one visitor. */
         var grouped = netGroups.reduce(function (a, g) { return a.concat(g.ips); }, []);
         var ipList = grouped.slice();
-        (s.ips || []).forEach(function (ip) { if (ipList.indexOf(ip) === -1) ipList.push(ip); });
+        (s.ips || []).forEach(function (ip) { if (isRealIp(ip) && ipList.indexOf(ip) === -1) ipList.push(ip); });
         var ungrouped = ipList.filter(function (ip) { return grouped.indexOf(ip) === -1; });
-        if (ungrouped.length) {
-            var loose = null;
+        ungrouped.forEach(function (ip) {
+            // Merge only into a group that actually shares this address's block.
+            // Filing it under the first unattributed group regardless put an
+            // address inside a network it has nothing to do with, and
+            // under-reported how many networks were really seen.
+            var pfx = ipPrefix(ip), host = null;
             for (var gi = 0; gi < netGroups.length; gi++) {
-                if (!netGroups[gi].attributed) { loose = netGroups[gi]; break; }
+                var g = netGroups[gi];
+                if (g.attributed) continue;
+                var gp = g.ips.length ? ipPrefix(g.ips[0]) : null;
+                var match = pfx && gp ? pfx.key === gp.key : (!pfx && !gp);
+                if (match) { host = g; break; }
             }
-            if (loose) loose.ips = loose.ips.concat(ungrouped);
-            else netGroups = netGroups.concat([{ asn: null, org: null, attributed: false, ips: ungrouped, cities: [] }]);
-        }
+            if (host) host.ips.push(ip);
+            else netGroups = netGroups.concat([{ asn: null, org: null, attributed: false, ips: [ip], cities: [] }]);
+        });
         var ipSummary = '–';
         if (netGroups.length) {
-            /* summary.ips is itself capped, so state the count as a floor rather
-               than as fact whenever the API told us the view is partial. */
-            ipSummary = (v.partial ? 'at least ' : '') +
+            /* Two independent truncations: the API reports `partial` when its
+               scan was cut short, and summary.ips is sliced to IP_LIST_CAP when
+               the index blob is written. Either means the count is a floor, so
+               say so rather than stating a truncated number as fact. */
+            var floored = !!v.partial || (s.ips || []).length >= IP_LIST_CAP;
+            /* "Networks" is only honest when something attributed them. With no
+               ASN and no org the grouping is the shared address block and
+               nothing else - the same evidence fmtNetworkGroup refuses to call
+               a carrier pool - so call them blocks and keep the two halves of
+               the sentence consistent. */
+            var anyAttributed = netGroups.some(function (g) { return g.attributed; });
+            var unit = anyAttributed
+                ? (netGroups.length === 1 ? ' network' : ' networks')
+                : (netGroups.length === 1 ? ' address block' : ' address blocks');
+            ipSummary = (floored ? 'at least ' : '') +
                 ipList.length + (ipList.length === 1 ? ' IP' : ' IPs') +
-                ' across ' + netGroups.length + (netGroups.length === 1 ? ' network' : ' networks') +
+                ' across ' + netGroups.length + unit +
                 ' — ' + netGroups.map(fmtNetworkGroup).join(' · ');
         }
+        /* Every group city was already collected before the IP check, so
+           net.cities is a superset of the per-group lists - re-merging them was
+           a guaranteed no-op. */
         var allCities = net.cities.slice();
-        netGroups.forEach(function (g) {
-            g.cities.forEach(function (c) { if (allCities.indexOf(c) === -1) allCities.push(c); });
-        });
         var citySummary = allCities.length
-            ? allCities.join(', ') + (allCities.length > 1 ? ' — registration city of each IP block, not device movement' : '')
+            ? allCities.join(', ') + (allCities.length > 1 ? ' — geo-IP city per event, not device movement' : '')
             : '–';
 
         var summaryItems = [
