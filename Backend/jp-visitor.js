@@ -1,5 +1,6 @@
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, ScanCommand } from '@aws-sdk/lib-dynamodb';
+import { decodeGeo } from './lib/geo.js';
 
 const _env = (typeof process !== 'undefined' ? process : globalThis['proc' + 'ess']).env;
 const AWS_ACCESS_KEY_ID = _env['JP_AWS_' + 'ACCESS_KEY_ID'];
@@ -70,11 +71,15 @@ export default async function handler(req, res) {
       if (d.timestamp) {
         if (!first || d.timestamp < first) first = d.timestamp;
         if (!last || d.timestamp > last) last = d.timestamp;
-        latestNetwork = {
-          ip: d.ip, country: d.country, region: d.region, city: d.city,
+        // Needs the same decode the event projection gets, or the drawer shows
+        // the city decoded in the timeline and encoded in Network & location.
+        // The panel reads `countryRegion` (index.html), not `region`, so name
+        // it that here too - as `region` it rendered blank for every visitor.
+        latestNetwork = decodeGeo({
+          ip: d.ip, country: d.country, countryRegion: d.region, city: d.city,
           latitude: d.latitude, longitude: d.longitude, timezone: d.timezone,
           postalCode: d.postalCode
-        };
+        });
       }
     }
 
@@ -106,10 +111,13 @@ export default async function handler(req, res) {
         session_id: d.sessionId,
         visitor_id: d.visitorId,
         device_fingerprint: d.fingerprint,
-        server_location: {
+        // jp-track stores the `x-vercel-ip-*` headers verbatim, so these are
+        // percent-encoded on the way in and need the same read-side decode the
+        // blob-backed /api/visitor applies.
+        server_location: decodeGeo({
           ip: d.ip, country: d.country, countryRegion: d.region, city: d.city,
           latitude: d.latitude, longitude: d.longitude, timezone: d.timezone
-        },
+        }),
         server_request_meta: { userAgent: d.userAgent, referer: d.referrer },
         event_data: d.eventData,
         raw: d.rawPayload,

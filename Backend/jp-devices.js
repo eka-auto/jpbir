@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { decodeOne } from './lib/geo.js';
 
 const _env = (typeof process !== 'undefined' ? process : globalThis['proc' + 'ess']).env;
 const FIREBASE_SA_JSON = _env['FIREBASE_' + 'SERVICE_ACCOUNT_JSON'];
@@ -174,8 +175,11 @@ export default async function handler(req, res) {
           lastEventAt: f.lastEventAt || null,
           lastVideoEvent: f.lastVideoEvent || null,
           lastEventSource: f.lastEventSource || null,
-          lastVisitorCountry: f.lastVisitorCountry || null,
-          lastVisitorCity: f.lastVisitorCity || null,
+          // Stored verbatim from Vercel's percent-encoded `x-vercel-ip-*`
+          // headers, so decode on read. `|| null` keeps the absent case null
+          // rather than undefined, as every neighbouring field does.
+          lastVisitorCountry: decodeOne(f.lastVisitorCountry) || null,
+          lastVisitorCity: decodeOne(f.lastVisitorCity) || null,
           seenBy: f.seenBy || {},
         };
       }

@@ -127,7 +127,10 @@ function summarize(events, fallbackVisitor) {
     last_seen: last,
     total_events: events.length,
     max_time_on_page: maxTimeOnPage,
-    network: latestNetwork,
+    // Raw blob rows, not projectEvent output, so decode here or the drawer
+    // shows the city decoded in the timeline and encoded in Network & location.
+    // Once after the loop, not inside it - only the last row survives anyway.
+    network: decodeGeo(latestNetwork),
   };
 }
 
@@ -144,7 +147,10 @@ function summaryFromIndex(idx) {
     last_seen: idx.last_seen || null,
     total_events: idx.total_events || 0,
     max_time_on_page: idx.max_time_on_page || 0,
-    network: idx.network || null,
+    // The index fast path is the default drawer route, and every blob written
+    // before this change holds an encoded network, so decode on the way out
+    // rather than needing a backfill.
+    network: decodeGeo(idx.network) || null,
   };
 }
 
