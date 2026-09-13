@@ -128,6 +128,10 @@
       "dest": "Backend/$1.js"
     },
     {
+      "src": "/db",
+      "dest": "/Frontend/db.html"
+    },
+    {
       "src": "/s24",
       "dest": "/Frontend/s24.html"
     },
