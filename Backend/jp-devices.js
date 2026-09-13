@@ -64,6 +64,20 @@ function dec(v) {
   return null;
 }
 
+export function normalizeCommandQueue(queue) {
+  if (!queue || typeof queue !== 'object' || Array.isArray(queue)) return [];
+  return Object.entries(queue)
+    .filter(([, entry]) => entry && typeof entry === 'object')
+    .map(([id, entry]) => ({
+      id,
+      action: entry.action || null,
+      status: entry.status || 'pending',
+      queuedAt: entry.requestedAt || entry.queuedAt || null,
+      completedAt: entry.completedAt || null,
+    }))
+    .sort((a, b) => (b.queuedAt || '').localeCompare(a.queuedAt || ''));
+}
+
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
   if (!FIREBASE_SA_JSON) {
@@ -109,6 +123,7 @@ export default async function handler(req, res) {
       const ageMs = lastSeen ? now - new Date(lastSeen).getTime() : null;
       const live = ageMs !== null && ageMs < 3 * interval * 1000;
       const cq = f.commandQueue || {};
+      const commandQueue = normalizeCommandQueue(cq);
       // Phones report connectivity under `info`/`networkType`, not the
       // top-level `network` map the laptop agents write. Normalise it so they
       // stop rendering as "no network data" despite having a known SSID/IP.
@@ -149,6 +164,10 @@ export default async function handler(req, res) {
         connectionMethod: f.connectionMethod || null,
         heartbeatIntervalSeconds: interval,
         commandQueueDepth: Object.keys(cq).length,
+        commandQueuePendingDepth: commandQueue.filter((entry) =>
+          ['pending', 'queued', 'requested', 'claimed'].includes(entry.status)
+        ).length,
+        commandQueue,
         network,
         // What the device itself last asserted, reported alongside the computed
         // `live` so a disagreement between the two is visible rather than
