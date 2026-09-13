@@ -746,15 +746,108 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
     function openDrawer() { $('drawerBackdrop').classList.add('open'); $('drawer').classList.add('open'); }
     function closeDrawer() { $('drawerBackdrop').classList.remove('open'); $('drawer').classList.remove('open'); }
 
+    /* Mobile carriers - Reliance Jio above all - put every subscriber behind
+       carrier-grade NAT, so one phone's public IP rotates inside the carrier's
+       pool whenever it re-attaches to the network or hands over between towers,
+       and geo-IP then resolves each pool address to whichever town that block is
+       registered in. One visitor legitimately showing three IPs and three
+       "cities" inside half an hour is the normal case, not three people sharing
+       a link. A bare comma-joined IP list made that look like an alert, so the
+       identity panel collapses the IPs by network (ASN) and calls out when the
+       addresses are just a rotation inside one /16. The per-event IPs stay in
+       the timeline below for anyone who needs the exact values. */
+
+    // IPv4 /16 label ("157.49"). Returns null for IPv6 or anything malformed so
+    // callers never claim a same-pool match they cannot actually prove.
+    function v4Prefix16(ip) {
+        var p = String(ip == null ? '' : ip).split('.');
+        if (p.length !== 4) return null;
+        for (var i = 0; i < 4; i++) {
+            if (!/^\d{1,3}$/.test(p[i]) || Number(p[i]) > 255) return null;
+        }
+        return p[0] + '.' + p[1];
+    }
+
+    // Group a visitor's IPs by ASN, carrying the AS org and the geo-IP cities
+    // each address resolved to. Only server_location is trusted here - that is
+    // the edge's own view of the connection, not anything the page reported.
+    function ipNetworks(events) {
+        var byIp = {}, order = [];
+        (events || []).forEach(function (e) {
+            var loc = e.server_location || {};
+            if (!loc.ip) return;
+            if (!byIp[loc.ip]) { byIp[loc.ip] = { ip: loc.ip, asn: null, org: null, cities: [] }; order.push(loc.ip); }
+            var r = byIp[loc.ip];
+            if (r.asn == null && loc.asn != null && loc.asn !== '') r.asn = loc.asn;
+            if (!r.org && loc.asOrganization) r.org = loc.asOrganization;
+            if (loc.city && r.cities.indexOf(loc.city) === -1) r.cities.push(loc.city);
+        });
+        var groups = [], byKey = {};
+        order.forEach(function (ip) {
+            var r = byIp[ip];
+            var key = r.asn != null ? 'AS' + r.asn : (r.org || '?');
+            if (!byKey[key]) { byKey[key] = { asn: r.asn, org: r.org, ips: [], cities: [] }; groups.push(byKey[key]); }
+            var g = byKey[key];
+            g.ips.push(ip);
+            r.cities.forEach(function (c) { if (g.cities.indexOf(c) === -1) g.cities.push(c); });
+        });
+        return groups;
+    }
+
+    // One group renders as "Reliance Jio Infocomm Limited (AS55836): 2 IPs in
+    // 157.49.0.0/16 (rotated)". Groups the edge could not attribute fall back to
+    // listing their addresses, so nothing is ever hidden behind a guess.
+    function fmtNetworkGroup(g) {
+        var label = g.org || (g.asn != null ? 'AS' + g.asn : 'unattributed network');
+        if (g.org && g.asn != null) label += ' (AS' + g.asn + ')';
+        if (g.ips.length === 1) return label + ': ' + g.ips[0];
+        var pfx = v4Prefix16(g.ips[0]);
+        var samePool = !!pfx && g.ips.every(function (ip) { return v4Prefix16(ip) === pfx; });
+        if (samePool) return label + ': ' + g.ips.length + ' IPs in ' + pfx + '.0.0/16 (rotated)';
+        return label + ': ' + g.ips.join(', ');
+    }
+
     function renderVisitor(v) {
         var s = v.summary;
         $('visitorTitle').textContent = deviceLabel(s.visitor_id) || 'Visitor';
+        var netGroups = ipNetworks(v.events);
+        /* /api/visitor caps the event list it returns, so summary.ips can name
+           addresses no returned event carries. Fold those in as unattributed
+           rather than letting the headline count disagree with the groups. */
+        var grouped = netGroups.reduce(function (a, g) { return a.concat(g.ips); }, []);
+        var ipList = grouped.slice();
+        (s.ips || []).forEach(function (ip) { if (ipList.indexOf(ip) === -1) ipList.push(ip); });
+        var ungrouped = ipList.filter(function (ip) { return grouped.indexOf(ip) === -1; });
+        if (ungrouped.length) netGroups = netGroups.concat([{ asn: null, org: null, ips: ungrouped, cities: [] }]);
+        var rotated = netGroups.some(function (g) {
+            if (g.ips.length < 2) return false;
+            var pfx = v4Prefix16(g.ips[0]);
+            return !!pfx && g.ips.every(function (ip) { return v4Prefix16(ip) === pfx; });
+        });
+        var ipSummary = '–';
+        if (netGroups.length) {
+            ipSummary = ipList.length + (ipList.length === 1 ? ' IP' : ' IPs') +
+                ' across ' + netGroups.length + (netGroups.length === 1 ? ' network' : ' networks') +
+                ' — ' + netGroups.map(fmtNetworkGroup).join(' · ') +
+                (rotated ? ' — same-pool rotation, expected on mobile' : '');
+        } else if (ipList.length) {
+            ipSummary = ipList.join(', ');
+        }
+        var allCities = netGroups.reduce(function (a, g) {
+            g.cities.forEach(function (c) { if (a.indexOf(c) === -1) a.push(c); });
+            return a;
+        }, []);
+        var citySummary = allCities.length
+            ? allCities.join(', ') + (allCities.length > 1 ? ' — registration city of each IP block, not device movement' : '')
+            : '–';
+
         var summaryItems = [
             ['Visitor ID', s.visitor_id || '–', true],
             ['Device', deviceLabel(s.visitor_id) || '–', false],
             ['Sessions', (s.sessions || []).join(', ') || '–', true],
             ['Fingerprints', (s.device_fingerprints || []).join(', ') || '–', true],
-            ['IPs used', (s.ips || []).join(', ') || '–', true],
+            ['IPs seen', ipSummary, false],
+            ['Cities (geo-IP)', citySummary, false],
             ['Countries', (s.countries || []).map(function (c) { return c[0] + ' (' + c[1] + ')'; }).join(', ') || '–', false],
             ['Pages visited', (s.pages || []).join(', ') || '–', false],
             ['Max time on page', fmtDur(s.max_time_on_page), false],
@@ -898,6 +991,7 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
                 ['Scroll', e.scroll_percent != null ? e.scroll_percent + '%' : '–', false],
                 ['IP', loc.ip || '–', true],
                 ['Location', [loc.city, loc.country].filter(Boolean).join(', ') || '–', false],
+                ['Network', [loc.asOrganization, loc.asn != null && loc.asn !== '' ? 'AS' + loc.asn : null].filter(Boolean).join(' ') || '–', false],
                 ['Referrer', e.referrer || '–', false],
                 ['Referrer host', e.referrer_hostname || '–', false],
                 ['Tracker POST referer', meta.referer || '–', false],
