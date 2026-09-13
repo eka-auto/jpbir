@@ -76,6 +76,35 @@ function dec(v) {
   return null;
 }
 
+// Vercel percent-encodes its `x-vercel-ip-*` headers and the site relay stores
+// them verbatim, so a non-ASCII city reaches Firestore as `Son%C4%ABpat` and was
+// being surfaced that way. Decode on read. A malformed escape makes
+// decodeURIComponent throw a URIError, and in that case the raw stored string is
+// still the most informative thing to show, so fall back to it rather than
+// dropping the field or failing the request.
+function decHeaderValue(v) {
+  if (typeof v !== 'string' || !v) return v || null;
+  try {
+    return decodeURIComponent(v);
+  } catch {
+    return v;
+  }
+}
+
+export function normalizeCommandQueue(queue) {
+  if (!queue || typeof queue !== 'object' || Array.isArray(queue)) return [];
+  return Object.entries(queue)
+    .filter(([, entry]) => entry && typeof entry === 'object')
+    .map(([id, entry]) => ({
+      id,
+      action: entry.action || null,
+      status: entry.status || 'pending',
+      queuedAt: entry.requestedAt || entry.queuedAt || null,
+      completedAt: entry.completedAt || null,
+    }))
+    .sort((a, b) => (b.queuedAt || '').localeCompare(a.queuedAt || ''));
+}
+
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
   if (!STATS_KEY) {
@@ -105,6 +134,7 @@ export default async function handler(req, res) {
       const ageMs = lastSeen ? now - new Date(lastSeen).getTime() : null;
       const live = ageMs !== null && ageMs < 3 * interval * 1000;
       const cq = f.commandQueue || {};
+      const commandQueue = normalizeCommandQueue(cq);
       return {
         deviceId: d.name.split('/').pop(),
         deviceDisplayName: f.deviceDisplayName || d.name.split('/').pop(),
@@ -115,6 +145,10 @@ export default async function handler(req, res) {
         connectionMethod: f.connectionMethod || null,
         heartbeatIntervalSeconds: interval,
         commandQueueDepth: Object.keys(cq).length,
+        commandQueuePendingDepth: commandQueue.filter((entry) =>
+          ['pending', 'queued', 'requested', 'claimed'].includes(entry.status)
+        ).length,
+        commandQueue,
         network: f.network || null,
       };
     });
@@ -135,8 +169,8 @@ export default async function handler(req, res) {
           lastEventAt: f.lastEventAt || null,
           lastVideoEvent: f.lastVideoEvent || null,
           lastEventSource: f.lastEventSource || null,
-          lastVisitorCountry: f.lastVisitorCountry || null,
-          lastVisitorCity: f.lastVisitorCity || null,
+          lastVisitorCountry: decHeaderValue(f.lastVisitorCountry),
+          lastVisitorCity: decHeaderValue(f.lastVisitorCity),
           seenBy: f.seenBy || {},
         };
       }

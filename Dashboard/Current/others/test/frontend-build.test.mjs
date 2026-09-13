@@ -4,6 +4,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { buildFrontend } from '../build-frontend.mjs';
+import { normalizeCommandQueue } from '../../api/jp-devices.js';
 
 async function fixture(t) {
   const root = await mkdtemp(join(tmpdir(), 'jayti-frontend-test-'));
@@ -81,4 +82,22 @@ test('conflicting device assets cannot overwrite the existing dashboard assets',
 
   await rejects(buildFrontend(f.current), /Frontend output collision at jp-tracker.js/);
   deepStrictEqual(await f.read('Current/dist/jp-tracker.js'), await f.read('Current/frontend/jp-tracker.js'));
+});
+
+test('normalizes command queue entries for the S24 frontend', () => {
+  deepStrictEqual(normalizeCommandQueue({
+    older: { action: 'heartbeat', status: 'completed', requestedAt: '2026-09-13T10:00:00Z', completedAt: '2026-09-13T10:00:05Z' },
+    newer: { action: 'sync-now', status: 'pending', queuedAt: '2026-09-13T11:00:00Z' },
+  }), [
+    { id: 'newer', action: 'sync-now', status: 'pending', queuedAt: '2026-09-13T11:00:00Z', completedAt: null },
+    { id: 'older', action: 'heartbeat', status: 'completed', queuedAt: '2026-09-13T10:00:00Z', completedAt: '2026-09-13T10:00:05Z' },
+  ]);
+  deepStrictEqual(normalizeCommandQueue(null), []);
+});
+
+test('S24 sync button targets the command endpoint', async () => {
+  const source = await readFile(new URL('../../../S24/frontend/index.html', import.meta.url), 'utf8');
+  strictEqual(source.includes("fetch('/api/jp-ask', {"), true);
+  strictEqual(source.includes("fetch('/api/jp-device', {\n            method: 'POST'"), false);
+  strictEqual(source.includes("e.event_type === 'pageview'"), true);
 });

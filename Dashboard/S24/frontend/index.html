@@ -153,16 +153,16 @@
 
     <div class="panel">
         <div class="panel-head">
-            <div><h2>Browser history</h2><div class="hint" id="histHint">Own-device history synced from the S24 daemon</div></div>
+            <div><h2>Tracked site activity</h2><div class="hint" id="histHint">Sites visited on tracked domains</div></div>
             <div class="tools">
-                <button id="askBtn" title="Ask the S24 daemon to collect and push its browser history now">Ask device for data</button>
+                <button id="askBtn" title="Ask the S24 daemon to refresh its device telemetry now">Sync device now</button>
                 <button id="histRefreshBtn">Refresh</button>
             </div>
         </div>
         <div class="table-wrap">
             <table id="histTable">
                 <thead><tr><th>Visited</th><th>Title</th><th>URL</th><th>Browser</th></tr></thead>
-                <tbody><tr><td colspan="4" class="state">No history synced yet.</td></tr></tbody>
+                <tbody><tr><td colspan="4" class="state">No tracked site activity yet.</td></tr></tbody>
             </table>
         </div>
     </div>
@@ -283,8 +283,9 @@
                 $('kpiLastSeen').textContent = dev.lastSeen ? fmtAgo(dev.lastSeen) : '—';
                 $('kpiLastSeenSub').textContent = dev.lastSeen ? fmtTime(dev.lastSeen) : '';
 
-                $('kpiQueue').textContent = dev.commandQueueDepth || 0;
-                $('kpiQueueSub').textContent = (dev.commandQueueDepth || 0) > 0 ? 'pending' : 'empty';
+                var pendingCommands = dev.commandQueuePendingDepth != null ? dev.commandQueuePendingDepth : (dev.commandQueueDepth || 0);
+                $('kpiQueue').textContent = pendingCommands;
+                $('kpiQueueSub').textContent = pendingCommands > 0 ? 'pending' : 'empty';
 
                 var sig = dev.network && dev.network.wifiSignal && dev.network.wifiSignal.signal_percent != null ? dev.network.wifiSignal.signal_percent + '%' : '—';
                 $('kpiWifi').textContent = sig;
@@ -344,8 +345,12 @@
 
     function renderQueue(dev) {
         var q = dev.commandQueue;
-        if (!q || !q.length) { $('queueHint').textContent = 'No commands queued.'; return; }
         var tbody = $('queueTable').querySelector('tbody');
+        if (!q || !q.length) {
+            tbody.innerHTML = '<tr><td colspan="4" class="state">No commands queued.</td></tr>';
+            $('queueHint').textContent = 'No commands queued.';
+            return;
+        }
         tbody.innerHTML = q.map(function (c) {
             var status = c.status || 'pending';
             var statusBadge = status === 'completed' ? '<span class="pill" style="background:rgba(46,160,67,.15);color:#2ea043">DONE</span>'
@@ -358,23 +363,23 @@
 
     function loadHistory() {
         if (!KEY) return;
-        $('histHint').textContent = 'Loading browser history…';
+        $('histHint').textContent = 'Loading tracked site activity…';
         fetch('/api/jp-device?' + new URLSearchParams({ key: KEY, days: 30, device: DEVICE_ID }).toString())
             .then(function (r) { return r.json().then(function (j) { return { status: r.status, body: j }; }); })
             .then(function (res) {
                 if (res.status === 401) { showGate(); return; }
                 if (!res.body.success) throw new Error(res.body.error || 'failed');
-                var evs = res.body.device_events || [];
+                var evs = (res.body.device_events || []).filter(function (e) { return e.event_type === 'pageview'; });
                 var tbody = $('histTable').querySelector('tbody');
                 if (!evs.length) {
-                    tbody.innerHTML = '<tr><td colspan="4" class="state">No browser history synced yet. Click "Ask device for data".</td></tr>';
-                    $('histHint').textContent = 'No history yet.';
+                    tbody.innerHTML = '<tr><td colspan="4" class="state">No tracked site activity found for this device.</td></tr>';
+                    $('histHint').textContent = 'No tracked activity yet.';
                     return;
                 }
                 tbody.innerHTML = evs.slice(0, 50).map(function (e) {
                     return '<tr><td>' + fmtTime(e.timestamp || e.ts) + '</td><td>' + esc(e.title || '—') + '</td><td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(e.url || e.page_url || '—') + '</td><td>' + esc(e.browser || '—') + '</td></tr>';
                 }).join('');
-                $('histHint').textContent = evs.length + ' entries synced';
+                $('histHint').textContent = evs.length + ' tracked events';
             })
             .catch(function (e) { $('histHint').textContent = 'Error: ' + e.message; });
     }
@@ -383,7 +388,7 @@
         if (!KEY) { showGate(); return; }
         var btn = $('askBtn');
         btn.disabled = true; btn.textContent = 'Sending…';
-        fetch('/api/jp-device', {
+        fetch('/api/jp-ask', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ key: KEY, device: DEVICE_ID, action: 'sync-now' })
@@ -396,7 +401,7 @@
                 } else { $('histHint').textContent = 'Failed: ' + (res.error || 'unknown'); }
             })
             .catch(function (e) { $('histHint').textContent = 'Ask failed: ' + e.message; })
-            .finally(function () { btn.disabled = false; btn.textContent = 'Ask device for data'; });
+            .finally(function () { btn.disabled = false; btn.textContent = 'Sync device now'; });
     });
 
     $('refreshBtn').addEventListener('click', loadLive);
