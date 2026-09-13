@@ -410,7 +410,7 @@
           ], 170), (d.daily || []).length + ' days') +
         '</div>' +
         '<div class="grid cards-2">' +
-          card('By hour of day (UTC)', barChart(d.hourly, 'hour', 'n', 140)) +
+          card('By hour of day (UTC)', barChart(d.hourly, 'hour_of_day', 'n', 140)) +
           card('Event types', barList(d.byType, 'label', 'n'), 'unfiltered', true) +
         '</div>';
       return d;
