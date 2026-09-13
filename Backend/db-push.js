@@ -13,11 +13,23 @@
 // no-op rather than a duplicate.
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, ScanCommand } from '@aws-sdk/lib-dynamodb';
+import { STSClient, GetCallerIdentityCommand } from '@aws-sdk/client-sts';
 import { query, isConfigured } from '../Integrations/postgres.js';
 
 const _env = (typeof process !== 'undefined' ? process : globalThis['proc' + 'ess']).env;
 const AWS_ACCESS_KEY_ID = _env['JP_AWS_' + 'ACCESS_KEY_ID'];
 const AWS_SECRET_ACCESS_KEY = _env['JP_AWS_' + 'SECRET_ACCESS_KEY'];
+// jp-track.js writes with JP_WRITE_AWS_*, every reader uses JP_AWS_*. If those
+// are different accounts the table name resolves to two different tables, and
+// the dashboard reads an empty one while the writes land elsewhere.
+const WRITE_ACCESS_KEY_ID = _env['JP_WRITE_AWS_' + 'ACCESS_KEY_ID'];
+const WRITE_SECRET_ACCESS_KEY = _env['JP_WRITE_AWS_' + 'SECRET_ACCESS_KEY'];
+
+function credsFor(which) {
+  return which === 'write'
+    ? { accessKeyId: WRITE_ACCESS_KEY_ID, secretAccessKey: WRITE_SECRET_ACCESS_KEY }
+    : { accessKeyId: AWS_ACCESS_KEY_ID, secretAccessKey: AWS_SECRET_ACCESS_KEY };
+}
 const AWS_REGION = _env['JP_AWS_' + 'REGION'] || 'us-west-2';
 const TABLE = _env['JP_TELEMETRY_' + 'TABLE'] || 'jaytipargal_telemetry';
 
@@ -140,10 +152,36 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true, rebuilt: true });
     }
 
+    if (action === 'identity') {
+      // Which account does each credential pair actually resolve to?
+      const out = {};
+      for (const which of ['read', 'write']) {
+        const c = credsFor(which);
+        if (!c.accessKeyId) { out[which] = { configured: false }; continue; }
+        try {
+          const sts = new STSClient({ region: AWS_REGION, credentials: c });
+          const id = await sts.send(new GetCallerIdentityCommand({}));
+          const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({ region: AWS_REGION, credentials: c }));
+          let items = 0;
+          let key;
+          do {
+            const r = await ddb.send(new ScanCommand({ TableName: TABLE, Select: 'COUNT', ...(key ? { ExclusiveStartKey: key } : {}) }));
+            items += r.Count || 0;
+            key = r.LastEvaluatedKey;
+          } while (key);
+          out[which] = { configured: true, account: id.Account, arn: id.Arn, itemsInTable: items };
+        } catch (e) {
+          out[which] = { configured: true, error: e.message };
+        }
+      }
+      return res.status(200).json({ ok: true, table: TABLE, region: AWS_REGION, credentials: out });
+    }
+
     if (action === 'push') {
+      const which = String(req.query.creds || 'read');
       const client = DynamoDBDocumentClient.from(new DynamoDBClient({
         region: AWS_REGION,
-        credentials: { accessKeyId: AWS_ACCESS_KEY_ID, secretAccessKey: AWS_SECRET_ACCESS_KEY },
+        credentials: credsFor(which),
       }));
 
       // The caller hands back the previous response's `nextKey` to continue.
