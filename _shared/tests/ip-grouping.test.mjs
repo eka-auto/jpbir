@@ -15,21 +15,57 @@ import assert from 'node:assert';
 const here = dirname(fileURLToPath(import.meta.url));
 const html = readFileSync(join(here, '..', '..', 'Frontend', 'index.html'), 'utf8');
 
-// Pull `function <name>(...) { ... }` out of the page by brace matching, so the
-// test does not depend on a particular indentation or trailing-blank-line shape.
+// Brace-match to find where a helper ends, but match against a *masked* copy of
+// the page in which every character inside a string, comment or regex literal
+// has been blanked. Matching raw text meant a single unbalanced brace in a
+// regex quantifier (`{1,}`) or a comment would close the function early, and
+// `new Function` would then throw a SyntaxError that looks nothing like the
+// "someone reshaped this helper" signal the extraction exists to give.
+function maskLiterals(text) {
+  const out = text.split('');
+  let i = 0, prev = '';
+  const blank = (from, to) => { for (let k = from; k < to && k < out.length; k++) if (out[k] !== '\n') out[k] = ' '; };
+  while (i < text.length) {
+    const c = text[i], next = text[i + 1];
+    if (c === '/' && next === '/') { const e = text.indexOf('\n', i); const end = e === -1 ? text.length : e; blank(i, end); i = end; continue; }
+    if (c === '/' && next === '*') { const e = text.indexOf('*/', i + 2); const end = e === -1 ? text.length : e + 2; blank(i, end); i = end; continue; }
+    if (c === '"' || c === "'" || c === '`') {
+      let j = i + 1;
+      while (j < text.length && text[j] !== c) j += text[j] === '\\' ? 2 : 1;
+      blank(i, j + 1); i = j + 1; prev = c; continue;
+    }
+    // A '/' starts a regex only where a value is expected, not after an operand.
+    if (c === '/' && !/[\w)\]]/.test(prev)) {
+      let j = i + 1, inClass = false, closed = false;
+      while (j < text.length && text[j] !== '\n') {
+        if (text[j] === '\\') { j += 2; continue; }
+        if (text[j] === '[') inClass = true;
+        else if (text[j] === ']') inClass = false;
+        else if (text[j] === '/' && !inClass) { closed = true; break; }
+        j++;
+      }
+      if (closed) { blank(i, j + 1); i = j + 1; prev = '/'; continue; }
+    }
+    if (!/\s/.test(c)) prev = c;
+    i++;
+  }
+  return out.join('');
+}
+
+const masked = maskLiterals(html);
+
 function extract(name) {
   const start = html.indexOf('function ' + name + '(');
   assert.ok(start !== -1, `helper ${name}() not found in Frontend/index.html`);
-  let i = html.indexOf('{', start), depth = 0;
-  for (; i < html.length; i++) {
-    if (html[i] === '{') depth++;
-    else if (html[i] === '}' && --depth === 0) return html.slice(start, i + 1);
+  let i = masked.indexOf('{', start), depth = 0;
+  for (; i < masked.length; i++) {
+    if (masked[i] === '{') depth++;
+    else if (masked[i] === '}' && --depth === 0) return html.slice(start, i + 1);
   }
   throw new Error(`unbalanced braces while extracting ${name}()`);
 }
 
-const IP_LIST_CAP = 25;
-const src = ['v4Prefix', 'ipPrefix', 'isRealIp', 'samePool', 'netLabel', 'ipNetworks', 'fmtNetworkGroup']
+const src = ['v4Prefix', 'hextets', 'ipv6Groups', 'ipPrefix', 'isRealIp', 'samePool', 'netLabel', 'ipNetworks', 'fmtNetworkGroup']
   .map(extract).join('\n');
 const { ipPrefix, isRealIp, samePool, ipNetworks, fmtNetworkGroup } =
   new Function(src + '\nreturn { ipPrefix, isRealIp, samePool, ipNetworks, fmtNetworkGroup };')();
@@ -48,10 +84,30 @@ t('IPv4 gives a /16', () => assert.equal(ipPrefix('157.49.159.18').label, '157.4
 t('IPv6 gives a /32', () => assert.equal(ipPrefix('2405:201:1:2::9').label, '2405:201::/32'));
 t('IPv6 hextets normalise leading zeros', () =>
   assert.equal(ipPrefix('2409:0042::').key, ipPrefix('2409:42::').key));
-t('IPv4-mapped IPv6 folds onto its IPv4 block', () =>
-  assert.equal(ipPrefix('::ffff:157.49.1.1').key, ipPrefix('157.49.1.1').key));
+// The "::" run starting at hextet two is the ordinary short form for an Indian
+// mobile handset; an earlier guard (`!h[1]`) rejected every one of them.
+t('short form with :: at the second hextet parses', () => {
+  assert.equal(ipPrefix('2409::1').key, 'v6:2409:0');
+  assert.equal(ipPrefix('2405::1234').key, 'v6:2405:0');
+  assert.equal(ipPrefix('2409::').key, 'v6:2409:0');
+});
+t('IPv4-mapped IPv6 folds onto its IPv4 block, compressed and expanded', () => {
+  assert.equal(ipPrefix('::ffff:157.49.1.1').key, ipPrefix('157.49.1.1').key);
+  assert.equal(ipPrefix('0:0:0:0:0:ffff:157.49.1.1').key, ipPrefix('157.49.1.1').key);
+  assert.equal(ipPrefix('::157.49.1.1').key, ipPrefix('157.49.1.1').key);
+});
+t('a real IPv6 that embeds a quad stays IPv6', () =>
+  assert.equal(ipPrefix('2001:db8::192.168.1.1').key, 'v6:2001:db8'));
 t('every hextet is validated, not just the first two', () =>
   assert.equal(ipPrefix('dead:beef:this-is-not-an-address'), null));
+t('malformed IPv6 is rejected', () => {
+  assert.equal(ipPrefix('1:2::3::4'), null, 'two :: runs');
+  assert.equal(ipPrefix('1:2:::3'), null, 'triple colon');
+  assert.equal(ipPrefix('1:2:3:4:5:6:7:8:9:a:b:c'), null, 'too many hextets');
+  assert.equal(ipPrefix('1:2:3'), null, 'too few, uncompressed');
+  assert.equal(ipPrefix('gggg::1'), null, 'non-hex');
+});
+t('zone id is ignored', () => assert.equal(ipPrefix('fe80::1%eth0').key, 'v6:fe80:0'));
 t('octets over 255 rejected', () => assert.equal(ipPrefix('999.1.1.1'), null));
 t('junk and empties rejected', () => {
   assert.equal(ipPrefix('unknown'), null);
@@ -106,5 +162,14 @@ t('cities survive an event carrying no IP', () =>
   assert.deepEqual(ipNetworks([{ server_location: { city: 'Sonipat' } }]).cities, ['Sonipat']));
 t('samePool refuses unparseable addresses', () =>
   assert.equal(samePool(['nope', 'also-nope']), null));
+// A shared "unparseable" bucket merged genuinely unrelated addresses and
+// asserted one network from no evidence at all.
+t('unparseable addresses do not pool together', () => {
+  const g = ipNetworks([ev('2409::1'), ev('2405::9'), ev('dead:beef:garbage')]).groups;
+  assert.equal(g.length, 3, 'expected three separate groups, got: ' +
+    JSON.stringify(g.map((x) => x.ips)));
+});
+t('unrelated IPv6 /32s stay separate', () =>
+  assert.equal(ipNetworks([ev('2409:1::1'), ev('2405:2::1')]).groups.length, 2));
 
 console.log(`\n  ${pass} passed${process.exitCode ? ', FAILURES above' : ''}`);
