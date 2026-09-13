@@ -111,7 +111,10 @@ function summarize(events, fallbackVisitor) {
     if (d.receivedAt) {
       if (!first || d.receivedAt < first) first = d.receivedAt;
       if (!last || d.receivedAt > last) last = d.receivedAt;
-      latestNetwork = d.server_location || latestNetwork;
+      // Raw blob rows here, not projectEvent output, so this needs the same
+      // decode the events get - otherwise the drawer shows one city decoded in
+      // Identity and still encoded in Network & location.
+      latestNetwork = d.server_location ? decodeGeo(d.server_location) : latestNetwork;
     }
   }
 

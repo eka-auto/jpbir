@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { decodeOne } from '../lib/geo.js';
 
 const _env = (typeof process !== 'undefined' ? process : globalThis['proc' + 'ess']).env;
 const FIREBASE_SA_JSON = _env['FIREBASE_' + 'SERVICE_ACCOUNT_JSON'];
@@ -61,21 +62,6 @@ function dec(v) {
   }
   if ('arrayValue' in v) return (v.arrayValue.values || []).map(dec);
   return null;
-}
-
-// Vercel percent-encodes its `x-vercel-ip-*` headers and the site relay stores
-// them verbatim, so a non-ASCII city reaches Firestore as `Son%C4%ABpat` and was
-// being surfaced that way. Decode on read. A malformed escape makes
-// decodeURIComponent throw a URIError, and in that case the raw stored string is
-// still the most informative thing to show, so fall back to it rather than
-// dropping the field or failing the request.
-function decHeaderValue(v) {
-  if (typeof v !== 'string' || !v) return v || null;
-  try {
-    return decodeURIComponent(v);
-  } catch {
-    return v;
-  }
 }
 
 export default async function handler(req, res) {
@@ -189,8 +175,11 @@ export default async function handler(req, res) {
           lastEventAt: f.lastEventAt || null,
           lastVideoEvent: f.lastVideoEvent || null,
           lastEventSource: f.lastEventSource || null,
-          lastVisitorCountry: decHeaderValue(f.lastVisitorCountry),
-          lastVisitorCity: decHeaderValue(f.lastVisitorCity),
+          // Stored verbatim from Vercel's percent-encoded `x-vercel-ip-*`
+          // headers, so decode on read. `|| null` keeps the absent case null
+          // rather than undefined, as every neighbouring field does.
+          lastVisitorCountry: decodeOne(f.lastVisitorCountry) || null,
+          lastVisitorCity: decodeOne(f.lastVisitorCity) || null,
           seenBy: f.seenBy || {},
         };
       }
