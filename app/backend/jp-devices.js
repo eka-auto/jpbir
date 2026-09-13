@@ -63,6 +63,21 @@ function dec(v) {
   return null;
 }
 
+// Vercel percent-encodes its `x-vercel-ip-*` headers and the site relay stores
+// them verbatim, so a non-ASCII city reaches Firestore as `Son%C4%ABpat` and was
+// being surfaced that way. Decode on read. A malformed escape makes
+// decodeURIComponent throw a URIError, and in that case the raw stored string is
+// still the most informative thing to show, so fall back to it rather than
+// dropping the field or failing the request.
+function decHeaderValue(v) {
+  if (typeof v !== 'string' || !v) return v || null;
+  try {
+    return decodeURIComponent(v);
+  } catch {
+    return v;
+  }
+}
+
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
   if (!FIREBASE_SA_JSON) {
@@ -174,8 +189,8 @@ export default async function handler(req, res) {
           lastEventAt: f.lastEventAt || null,
           lastVideoEvent: f.lastVideoEvent || null,
           lastEventSource: f.lastEventSource || null,
-          lastVisitorCountry: f.lastVisitorCountry || null,
-          lastVisitorCity: f.lastVisitorCity || null,
+          lastVisitorCountry: decHeaderValue(f.lastVisitorCountry),
+          lastVisitorCity: decHeaderValue(f.lastVisitorCity),
           seenBy: f.seenBy || {},
         };
       }
