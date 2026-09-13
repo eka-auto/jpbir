@@ -769,10 +769,15 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
     }
 
     // Group a visitor's IPs by ASN, carrying the AS org and the geo-IP cities
-    // each address resolved to. Only server_location is trusted here - that is
-    // the edge's own view of the connection, not anything the page reported.
+    // each address resolved to. Only server_location is read here, but that is
+    // not the same as trusting it: the trackers resolve the address from the
+    // `x-vercel-ip` request header first, which Vercel never sets, so a client
+    // can put any string there. Both lookup tables therefore use null-prototype
+    // objects - with a plain `{}`, an IP of `__proto__` is already truthy, the
+    // init branch is skipped, and `r.cities.indexOf` throws on undefined,
+    // permanently breaking that visitor's drawer.
     function ipNetworks(events) {
-        var byIp = {}, order = [];
+        var byIp = Object.create(null), order = [];
         (events || []).forEach(function (e) {
             var loc = e.server_location || {};
             if (!loc.ip) return;
@@ -782,7 +787,7 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
             if (!r.org && loc.asOrganization) r.org = loc.asOrganization;
             if (loc.city && r.cities.indexOf(loc.city) === -1) r.cities.push(loc.city);
         });
-        var groups = [], byKey = {};
+        var groups = [], byKey = Object.create(null);
         order.forEach(function (ip) {
             var r = byIp[ip];
             var key = r.asn != null ? 'AS' + r.asn : (r.org || '?');
