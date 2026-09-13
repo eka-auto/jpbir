@@ -1,5 +1,5 @@
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocumentClient, PutCommand } from '@aws-sdk/lib-dynamodb';
+import { DynamoDBDocumentClient, BatchWriteCommand, PutCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
 import { decodeOne } from './lib/geo.js';
 
 const _env = (typeof process !== 'undefined' ? process : globalThis['proc' + 'ess']).env;
@@ -22,6 +22,59 @@ function getClientIP(req) {
     req.socket?.remoteAddress ||
     'unknown'
   );
+}
+
+const SNAPSHOT_EVENT_TYPES = new Set(['browser_history', 'device_history']);
+
+/*
+ * History uploads are complete snapshots, not an append-only event stream.
+ * Keep the newest snapshot for a device and remove its previous snapshots so
+ * repeated syncs do not grow the telemetry table forever. Analytics events
+ * (pageview, heartbeat, clicks, etc.) are intentionally left untouched.
+ */
+async function prunePreviousHistory(client, currentId, visitorId) {
+  if (!visitorId || visitorId === 'anon') return 0;
+
+  const stale = [];
+  let startKey;
+  do {
+    const result = await client.send(new ScanCommand({
+      TableName: TABLE,
+      ProjectionExpression: '#id, #eventType, #visitorId',
+      FilterExpression: '(#eventType = :browserHistory OR #eventType = :deviceHistory) AND #visitorId = :visitorId AND #id <> :currentId',
+      ExpressionAttributeNames: {
+        '#id': 'id',
+        '#eventType': 'eventType',
+        '#visitorId': 'visitorId',
+      },
+      ExpressionAttributeValues: {
+        ':browserHistory': 'browser_history',
+        ':deviceHistory': 'device_history',
+        ':visitorId': visitorId,
+        ':currentId': currentId,
+      },
+      ...(startKey ? { ExclusiveStartKey: startKey } : {}),
+    }));
+    stale.push(...(result.Items || []));
+    startKey = result.LastEvaluatedKey;
+  } while (startKey);
+
+  let removed = 0;
+  for (let offset = 0; offset < stale.length; offset += 25) {
+    let pending = stale.slice(offset, offset + 25).map((item) => ({
+      DeleteRequest: { Key: { id: item.id } },
+    }));
+    for (let attempt = 0; pending.length && attempt < 4; attempt += 1) {
+      const result = await client.send(new BatchWriteCommand({
+        RequestItems: { [TABLE]: pending },
+      }));
+      const remaining = result.UnprocessedItems?.[TABLE] || [];
+      removed += pending.length - remaining.length;
+      pending = remaining;
+    }
+    if (pending.length) throw new Error(`DynamoDB retained ${pending.length} previous history rows after retries`);
+  }
+  return removed;
 }
 
 export default async function handler(req, res) {
@@ -50,14 +103,16 @@ export default async function handler(req, res) {
 
     const now = new Date();
     const id = `${now.toISOString()}_${Math.random().toString(36).slice(2, 10)}`;
+    const eventType = event.event_type || event.eventType || 'event';
+    const visitorId = event.visitor_id || event.visitorId || event.device_id || event.deviceId || 'anon';
 
     const item = {
       id,
-      eventType: event.event_type || event.eventType || 'event',
+      eventType,
       epoch: now.getTime(),
       timestamp: now.toISOString(),
       sessionId: event.session_id || event.sessionId || 'anon',
-      visitorId: event.visitor_id || event.visitorId || 'anon',
+      visitorId,
       pageUrl: event.page_url || event.pageUrl || null,
       pageTitle: event.page_title || event.pageTitle || null,
       referrer: event.referrer || null,
@@ -99,7 +154,27 @@ export default async function handler(req, res) {
     }));
     await client.send(new PutCommand({ TableName: TABLE, Item: item }));
 
-    return res.status(200).json({ success: true, id, persisted: true });
+    let prunedHistory = 0;
+    let retentionWarning = null;
+    if (SNAPSHOT_EVENT_TYPES.has(item.eventType)) {
+      try {
+        prunedHistory = await prunePreviousHistory(client, item.id, item.visitorId);
+      } catch (retentionError) {
+        retentionWarning = retentionError.message || 'history retention cleanup failed';
+        console.error('[jp-track] history retention cleanup failed:', retentionError);
+      }
+    }
+
+    return res.status(200).json({
+      success: true,
+      id,
+      persisted: true,
+      retention: {
+        mode: SNAPSHOT_EVENT_TYPES.has(item.eventType) ? 'latest-history-snapshot-per-device' : 'analytics-events-unchanged',
+        prunedHistory,
+        warning: retentionWarning,
+      },
+    });
   } catch (err) {
     console.error('[jp-track] error:', err);
     return res.status(500).json({ success: false, error: err.message || 'failed to persist' });

