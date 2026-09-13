@@ -1,5 +1,6 @@
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, ScanCommand } from '@aws-sdk/lib-dynamodb';
+import { decodeOne } from '../lib/geo.js';
 
 const _env = (typeof process !== 'undefined' ? process : globalThis['proc' + 'ess']).env;
 const AWS_ACCESS_KEY_ID = _env['JP_AWS_' + 'ACCESS_KEY_ID'];
@@ -94,8 +95,14 @@ export default async function handler(req, res) {
 
       const ip = d.ip;
       if (ip && ip !== 'unknown') ips.add(ip);
-      if (d.country && d.country !== 'Unknown') countries[d.country] = (countries[d.country] || 0) + 1;
-      if (d.city && d.city !== 'Unknown') cities[d.city] = (cities[d.city] || 0) + 1;
+      // jp-track stores the `x-vercel-ip-*` headers percent-encoded. Decode once
+      // per row and use these below: tallying the raw value would count
+      // `Son%C4%ABpat` and `Sonīpat` as two separate cities.
+      const geoCountry = decodeOne(d.country);
+      const geoCity = decodeOne(d.city);
+      const geoTimezone = decodeOne(d.timezone);
+      if (geoCountry && geoCountry !== 'Unknown') countries[geoCountry] = (countries[geoCountry] || 0) + 1;
+      if (geoCity && geoCity !== 'Unknown') cities[geoCity] = (cities[geoCity] || 0) + 1;
       const ref = d.referrer;
       if (ref && ref !== 'Direct') {
         try { const h = new URL(ref).hostname; referrers[h] = (referrers[h] || 0) + 1; } catch {}
@@ -127,9 +134,9 @@ export default async function handler(req, res) {
           cur.events++;
           cur.visitor_id = d.visitorId || cur.visitor_id;
           cur.ip = ip || cur.ip;
-          cur.country = d.country || cur.country;
-          cur.city = d.city || cur.city;
-          cur.timezone = d.timezone || cur.timezone;
+          cur.country = geoCountry || cur.country;
+          cur.city = geoCity || cur.city;
+          cur.timezone = geoTimezone || cur.timezone;
           cur.userAgent = d.userAgent || cur.userAgent;
           cur.page_url = d.pageUrl || cur.page_url;
           cur.device_fingerprint = d.fingerprint || cur.device_fingerprint;
@@ -151,9 +158,9 @@ export default async function handler(req, res) {
         time_on_page: d.timeOnPage,
         scroll_percent: d.scrollPercent,
         ip: ip,
-        country: d.country,
-        city: d.city,
-        timezone: d.timezone,
+        country: geoCountry,
+        city: geoCity,
+        timezone: geoTimezone,
         userAgent: d.userAgent,
         referer: ref,
         receivedAt: d.timestamp,

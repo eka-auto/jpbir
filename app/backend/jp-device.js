@@ -1,5 +1,6 @@
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, ScanCommand } from '@aws-sdk/lib-dynamodb';
+import { decodeOne } from '../lib/geo.js';
 
 const _env = (typeof process !== 'undefined' ? process : globalThis['proc' + 'ess']).env;
 const AWS_ACCESS_KEY_ID = _env['JP_AWS_' + 'ACCESS_KEY_ID'];
@@ -130,8 +131,10 @@ export default async function handler(req, res) {
           page_url: d.pageUrl,
           page_title: d.pageTitle,
           ip: idn.ip || d.ip,
-          country: d.country,
-          city: d.city,
+          // Same percent-encoded DynamoDB rows the visitor drawer reads - decode
+          // here too, or the device table and the drawer disagree on one value.
+          country: decodeOne(d.country),
+          city: decodeOne(d.city),
           userAgent: d.userAgent,
           time_on_page: d.timeOnPage,
           scroll_percent: d.scrollPercent,

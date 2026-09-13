@@ -71,11 +71,15 @@ export default async function handler(req, res) {
       if (d.timestamp) {
         if (!first || d.timestamp < first) first = d.timestamp;
         if (!last || d.timestamp > last) last = d.timestamp;
-        latestNetwork = {
-          ip: d.ip, country: d.country, region: d.region, city: d.city,
+        // Needs the same decode the event projection gets, or the drawer shows
+        // the city decoded in the timeline and encoded in Network & location.
+        // The panel reads `countryRegion` (index.html), not `region`, so name
+        // it that here too - as `region` it rendered blank for every visitor.
+        latestNetwork = decodeGeo({
+          ip: d.ip, country: d.country, countryRegion: d.region, city: d.city,
           latitude: d.latitude, longitude: d.longitude, timezone: d.timezone,
           postalCode: d.postalCode
-        };
+        });
       }
     }
 
