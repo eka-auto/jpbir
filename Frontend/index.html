@@ -983,12 +983,13 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
         });
         var ipSummary = '–';
         if (netGroups.length) {
-            /* The API reports `partial` when its scan or event list was cut
-               short; that is the only truncation signal either endpoint gives.
-               Inferring a second one from `s.ips.length >= 25` was wrong for
+            /* Two truncations, both now reported by the API rather than guessed
+               here: `partial` when the scan or event list was cut short, and
+               `summary.ips_truncated` when the index blob's address cap bit.
+               Inferring the second from `s.ips.length >= 25` was wrong for
                /api/jp-visitor, which never slices its ip list - a jp visitor
                with exactly 25 addresses got "at least 25" for an exact figure. */
-            var floored = !!v.partial;
+            var floored = !!v.partial || !!s.ips_truncated;
             /* Count the two kinds separately. A group with an ASN or org is a
                network; a group that is only a shared address block is not, and
                a single global adjective made one attributed group rename every

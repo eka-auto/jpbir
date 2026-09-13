@@ -143,6 +143,8 @@ export default async function handler(req, res) {
         device_fingerprints: [...fingerprints],
         sessions: [...sessions],
         ips: [...ips],
+        ips_truncated: false,   // this endpoint never slices the address list
+
         countries: Object.entries(countries).sort((a, b) => b[1] - a[1]),
         user_agents: [...uas],
         pages: [...pages],
