@@ -188,6 +188,57 @@
     .event-row .ev-time { font-size: 11px; color: var(--ink-muted); }
     .event-row .ev-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 3px 14px; margin-top: 7px; }
 
+    /* ===== READABLE DEVICE PAYLOADS ===== */
+    .payload-list { display: grid; gap: 12px; }
+    .payload-card { border: 1px solid var(--border); border-radius: 13px; background: var(--panel2);
+        overflow: hidden; box-shadow: 0 5px 18px -12px rgba(0,0,0,.35); }
+    .payload-card > summary { cursor: pointer; list-style: none; padding: 13px 15px; }
+    .payload-card > summary::-webkit-details-marker { display: none; }
+    .payload-card > summary::before { content: '+'; display: inline-grid; place-items: center; width: 19px; height: 19px;
+        margin-right: 9px; border: 1px solid var(--border); border-radius: 50%; color: var(--amber-deep);
+        font-weight: 700; line-height: 1; vertical-align: -4px; }
+    .payload-card[open] > summary { background: linear-gradient(100deg, rgba(200,122,30,.08), transparent); }
+    .payload-card[open] > summary::before { content: '−'; background: rgba(200,122,30,.12); }
+    .payload-summary { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 7px 12px; vertical-align: middle; max-width: calc(100% - 32px); }
+    .payload-title { font-family: var(--serif); font-weight: 700; font-size: 14px; color: var(--ink); }
+    .payload-meta { font-size: 11px; color: var(--ink-muted); }
+    .payload-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 7px; }
+    .payload-chip { display: inline-flex; align-items: center; max-width: 100%; padding: 3px 8px; border-radius: 999px;
+        background: rgba(200,122,30,.1); color: var(--amber-deep); font-size: 10.5px; line-height: 1.35; }
+    .payload-chip.good { background: rgba(62,142,78,.13); color: var(--good); }
+    .payload-chip.bad { background: rgba(192,57,43,.11); color: var(--bad); }
+    .payload-card-body { padding: 0 15px 16px; border-top: 1px solid var(--border-light); }
+    .payload-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(125px, 1fr)); gap: 8px; margin-top: 14px; }
+    .payload-stat { min-width: 0; padding: 10px 11px; border: 1px solid var(--border-light); border-radius: 10px; background: var(--paper); }
+    .payload-stat .k, .payload-label { display: block; color: var(--ink-muted); font-size: 9px; font-weight: 700;
+        letter-spacing: 1px; text-transform: uppercase; }
+    .payload-stat .v { display: block; margin-top: 2px; color: var(--ink); font-size: 12px; font-weight: 600; overflow-wrap: anywhere; }
+    .payload-stat .v.mono, .payload-value.mono { font-family: var(--mono); font-size: 11px; }
+    .payload-section { margin-top: 16px; padding-top: 13px; border-top: 1px solid var(--border-light); }
+    .payload-section-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 10px; margin-bottom: 9px; }
+    .payload-section h3 { font-family: var(--serif); font-size: 14px; font-weight: 700; color: var(--ink); }
+    .payload-section-hint { color: var(--ink-muted); font-size: 10.5px; }
+    .payload-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(175px, 1fr)); gap: 9px 18px; }
+    .payload-field { min-width: 0; }
+    .payload-value { color: var(--ink); font-size: 12px; line-height: 1.45; overflow-wrap: anywhere; }
+    .payload-empty { padding: 10px 12px; border: 1px dashed var(--border); border-radius: 9px; color: var(--ink-muted); font-size: 11.5px; }
+    .payload-tree { display: grid; gap: 5px; }
+    .payload-tree-row { display: grid; grid-template-columns: minmax(115px, 26%) minmax(0, 1fr); gap: 10px; padding: 5px 0;
+        border-bottom: 1px solid var(--border-light); }
+    .payload-tree-row:last-child { border-bottom: none; }
+    .payload-tree-key { color: var(--ink-muted); font-size: 10.5px; font-weight: 600; overflow-wrap: anywhere; }
+    .payload-tree-value { min-width: 0; color: var(--ink); font-size: 11.5px; overflow-wrap: anywhere; }
+    .payload-tree-value > .payload-tree { margin-top: 4px; padding-left: 10px; border-left: 2px solid var(--border-light); }
+    .payload-table-wrap { overflow-x: auto; border: 1px solid var(--border-light); border-radius: 9px; }
+    .payload-table { min-width: 560px; font-size: 11.5px; }
+    .payload-table th { position: static; background: var(--paper); font-size: 9px; }
+    .payload-table th, .payload-table td { padding: 7px 9px; white-space: normal; }
+    .payload-table td { overflow-wrap: anywhere; }
+    @media (max-width: 560px) {
+        .payload-tree-row { grid-template-columns: 1fr; gap: 1px; }
+        .payload-tree-value > .payload-tree { padding-left: 7px; }
+    }
+
     /* ===== STATES ===== */
     .state { text-align: center; padding: 40px 20px; color: var(--ink-muted); font-size: 13px; }
     .state.err { color: var(--bad); }
@@ -419,8 +470,8 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
                         </table>
                     </div>
                     <div id="livePayloadPanel" style="margin-top:18px;padding-top:16px;border-top:1px solid var(--border-light)">
-                        <div class="panel-head"><div><h2>Full daemon payloads</h2><div class="hint" id="livePayloadHint">Complete Firestore device documents are available per device</div></div></div>
-                        <div id="livePayloadList"></div>
+                        <div class="panel-head"><div><h2>Full daemon payloads</h2><div class="hint" id="livePayloadHint">Complete Firestore documents, organized into readable device sections</div></div></div>
+                        <div id="livePayloadList" class="payload-list"></div>
                     </div>
                 </div>
                 <div class="panel">
@@ -475,8 +526,8 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
                         </table>
                     </div>
                     <div id="devicePayloadPanel" style="margin-top:18px;padding-top:16px;border-top:1px solid var(--border-light)">
-                        <div class="panel-head"><div><h2>Full event payloads</h2><div class="hint" id="devicePayloadHint">Complete DynamoDB rows are available per event</div></div></div>
-                        <div id="devicePayloadList"></div>
+                        <div class="panel-head"><div><h2>Full event payloads</h2><div class="hint" id="devicePayloadHint">Complete DynamoDB rows, organized into readable event sections</div></div></div>
+                        <div id="devicePayloadList" class="payload-list"></div>
                     </div>
                 </div>
             </section>
@@ -1381,6 +1432,474 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
     $('refreshBtn').addEventListener('click', load);
     $('daysSel').addEventListener('change', load);
 
+    /* ===== READABLE PAYLOAD VIEWS ===== */
+    function payloadFirst(obj, keys, fallback) {
+        if (!obj) return fallback;
+        for (var i = 0; i < keys.length; i++) {
+            var value = obj[keys[i]];
+            if (value !== undefined && value !== null && value !== '') return value;
+        }
+        return fallback;
+    }
+
+    function payloadStructured(value) {
+        if (typeof value !== 'string') return value;
+        var trimmed = value.trim();
+        if (!trimmed || (trimmed.charAt(0) !== '{' && trimmed.charAt(0) !== '[')) return value;
+        try { return JSON.parse(trimmed); } catch (e) { return value; }
+    }
+
+    function payloadLabel(key) {
+        return String(key == null ? '' : key)
+            .replace(/([a-z\d])([A-Z])/g, '$1 $2')
+            .replace(/[_-]+/g, ' ')
+            .replace(/\b\w/g, function (c) { return c.toUpperCase(); });
+    }
+
+    function payloadText(value, fallback) {
+        if (value === undefined || value === null || value === '') return fallback || '—';
+        if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+        if (Array.isArray(value)) return value.length ? value.map(function (v) { return payloadText(v, ''); }).join(', ') : (fallback || '—');
+        if (typeof value === 'object') return Object.keys(value).length ? Object.keys(value).length + ' fields' : (fallback || '—');
+        return String(value);
+    }
+
+    function payloadTime(value) {
+        if (value === undefined || value === null || value === '') return '—';
+        var date = new Date(value);
+        return isNaN(date.getTime()) ? payloadText(value) : fmtTime(date.toISOString());
+    }
+
+    function payloadField(label, value, options) {
+        var field = document.createElement('div');
+        field.className = 'payload-field';
+        var key = document.createElement('span');
+        key.className = 'payload-label';
+        key.textContent = label;
+        var val = document.createElement('span');
+        val.className = 'payload-value' + (options && options.mono ? ' mono' : '');
+        val.textContent = options && options.time ? payloadTime(value) : payloadText(value);
+        field.appendChild(key);
+        field.appendChild(val);
+        return field;
+    }
+
+    function payloadGrid(parent, pairs) {
+        var grid = document.createElement('div');
+        grid.className = 'payload-grid';
+        (pairs || []).forEach(function (pair) {
+            grid.appendChild(payloadField(pair[0], pair[1], pair[2]));
+        });
+        parent.appendChild(grid);
+        return grid;
+    }
+
+    function payloadSection(parent, title, hint) {
+        var section = document.createElement('section');
+        section.className = 'payload-section';
+        var head = document.createElement('div');
+        head.className = 'payload-section-head';
+        var heading = document.createElement('h3');
+        heading.textContent = title;
+        head.appendChild(heading);
+        if (hint) {
+            var help = document.createElement('span');
+            help.className = 'payload-section-hint';
+            help.textContent = hint;
+            head.appendChild(help);
+        }
+        section.appendChild(head);
+        parent.appendChild(section);
+        return section;
+    }
+
+    function payloadEmpty(parent, text) {
+        var empty = document.createElement('div');
+        empty.className = 'payload-empty';
+        empty.textContent = text || 'No data reported.';
+        parent.appendChild(empty);
+    }
+
+    function appendPayloadTree(parent, value) {
+        value = payloadStructured(value);
+        if (value === undefined || value === null || value === '') {
+            payloadEmpty(parent, 'No additional fields reported.');
+            return;
+        }
+        if (typeof value !== 'object') {
+            var simple = document.createElement('div');
+            simple.className = 'payload-value';
+            simple.textContent = payloadText(value);
+            parent.appendChild(simple);
+            return;
+        }
+        var entries = Array.isArray(value)
+            ? value.map(function (item, index) { return ['Item ' + (index + 1), item]; })
+            : Object.keys(value).map(function (key) { return [payloadLabel(key), value[key]]; });
+        if (!entries.length) { payloadEmpty(parent, 'No fields reported.'); return; }
+        var tree = document.createElement('div');
+        tree.className = 'payload-tree';
+        entries.forEach(function (entry) {
+            var row = document.createElement('div');
+            row.className = 'payload-tree-row';
+            var key = document.createElement('div');
+            key.className = 'payload-tree-key';
+            key.textContent = entry[0];
+            var cell = document.createElement('div');
+            cell.className = 'payload-tree-value';
+            var child = payloadStructured(entry[1]);
+            if (child !== null && typeof child === 'object') {
+                appendPayloadTree(cell, child);
+            } else {
+                cell.textContent = payloadText(child);
+            }
+            row.appendChild(key);
+            row.appendChild(cell);
+            tree.appendChild(row);
+        });
+        parent.appendChild(tree);
+    }
+
+    function appendPayloadExtras(parent, payload, known) {
+        var extras = {};
+        Object.keys(payload || {}).forEach(function (key) {
+            if (!known[key]) extras[key] = payload[key];
+        });
+        if (!Object.keys(extras).length) return;
+        var section = payloadSection(parent, 'Additional fields', 'All remaining fields from the original payload');
+        appendPayloadTree(section, extras);
+    }
+
+    function payloadStat(parent, label, value, options) {
+        var stat = document.createElement('div');
+        stat.className = 'payload-stat';
+        var key = document.createElement('span');
+        key.className = 'k';
+        key.textContent = label;
+        var val = document.createElement('span');
+        val.className = 'v' + (options && options.mono ? ' mono' : '');
+        val.textContent = options && options.time ? payloadTime(value) : payloadText(value);
+        stat.appendChild(key);
+        stat.appendChild(val);
+        parent.appendChild(stat);
+    }
+
+    function payloadChip(text, kind) {
+        var chip = document.createElement('span');
+        chip.className = 'payload-chip' + (kind ? ' ' + kind : '');
+        chip.textContent = text;
+        return chip;
+    }
+
+    function payloadCardSummary(title, meta, chips) {
+        var summary = document.createElement('summary');
+        var wrap = document.createElement('span');
+        wrap.className = 'payload-summary';
+        var heading = document.createElement('span');
+        heading.className = 'payload-title';
+        heading.textContent = title;
+        wrap.appendChild(heading);
+        if (meta) {
+            var detail = document.createElement('span');
+            detail.className = 'payload-meta';
+            detail.textContent = meta;
+            wrap.appendChild(detail);
+        }
+        if (chips && chips.length) {
+            var chipRow = document.createElement('span');
+            chipRow.className = 'payload-chips';
+            chips.forEach(function (chip) { chipRow.appendChild(payloadChip(chip[0], chip[1])); });
+            wrap.appendChild(chipRow);
+        }
+        summary.appendChild(wrap);
+        return summary;
+    }
+
+    function payloadCount(obj, keys) {
+        var value = payloadFirst(obj, keys);
+        if (Array.isArray(value)) return value.length;
+        return value;
+    }
+
+    function payloadHistoryValue(value) {
+        value = payloadStructured(value);
+        if (Array.isArray(value)) return { entries: value };
+        if (!value || typeof value !== 'object') return null;
+        if (Array.isArray(value.entries)) return value;
+        if (Array.isArray(value.history)) return { entries: value.history, browser: value.browser, collectedAt: value.collectedAt };
+        return null;
+    }
+
+    function appendBrowserHistory(parent, value, title) {
+        var history = payloadHistoryValue(value);
+        if (!history) return false;
+        var section = payloadSection(parent, title || 'Browser history', history.entries.length + ' recorded visits');
+        payloadGrid(section, [
+            ['Browser', history.browser],
+            ['Collected', history.collectedAt, { time: true }],
+            ['Entries', history.entries.length]
+        ]);
+        var tableWrap = document.createElement('div');
+        tableWrap.className = 'payload-table-wrap';
+        var table = document.createElement('table');
+        table.className = 'payload-table';
+        table.innerHTML = '<thead><tr><th>Visited</th><th>Title</th><th>URL</th></tr></thead>';
+        var body = document.createElement('tbody');
+        history.entries.forEach(function (entry) {
+            entry = entry || {};
+            var row = document.createElement('tr');
+            [
+                payloadTime(payloadFirst(entry, ['visitedAt', 'visited_at', 'timestamp', 'visited'])),
+                payloadText(payloadFirst(entry, ['title', 'pageTitle'])),
+                payloadText(payloadFirst(entry, ['url', 'pageUrl']))
+            ].forEach(function (text) { var cell = document.createElement('td'); cell.textContent = text; row.appendChild(cell); });
+            body.appendChild(row);
+        });
+        table.appendChild(body);
+        tableWrap.appendChild(table);
+        section.appendChild(tableWrap);
+        return true;
+    }
+
+    function appendCommandQueue(parent, queue) {
+        queue = payloadStructured(queue);
+        if (queue === undefined || queue === null || queue === '') return false;
+        var rows = [];
+        if (Array.isArray(queue)) {
+            rows = queue.map(function (item, index) { return { id: index + 1, value: item || {} }; });
+        } else if (queue && typeof queue === 'object') {
+            Object.keys(queue).forEach(function (key) { rows.push({ id: key, value: queue[key] || {} }); });
+        }
+        var section = payloadSection(parent, 'Command queue', rows.length + ' queued command entr' + (rows.length === 1 ? 'y' : 'ies'));
+        if (!rows.length) { appendPayloadTree(section, queue); return true; }
+        var tableWrap = document.createElement('div');
+        tableWrap.className = 'payload-table-wrap';
+        var table = document.createElement('table');
+        table.className = 'payload-table';
+        table.innerHTML = '<thead><tr><th>Command ID</th><th>Action</th><th>Status</th><th>Requested</th><th>Completed</th></tr></thead>';
+        var body = document.createElement('tbody');
+        rows.forEach(function (row) {
+            var item = payloadStructured(row.value);
+            if (!item || typeof item !== 'object') item = { value: item };
+            var tr = document.createElement('tr');
+            [
+                payloadFirst(item, ['commandId', 'id'], row.id),
+                payloadFirst(item, ['action', 'agentCommand', 'command', 'type']),
+                payloadFirst(item, ['status', 'state']),
+                payloadFirst(item, ['requestedAt', 'createdAt', 'queuedAt']),
+                payloadFirst(item, ['completedAt', 'finishedAt', 'acknowledgedAt'])
+            ].forEach(function (value, index) {
+                var td = document.createElement('td');
+                td.textContent = index >= 3 ? payloadTime(value) : payloadText(value);
+                tr.appendChild(td);
+            });
+            body.appendChild(tr);
+        });
+        table.appendChild(body);
+        tableWrap.appendChild(table);
+        section.appendChild(tableWrap);
+        var detail = document.createElement('div');
+        detail.className = 'payload-label';
+        detail.style.marginTop = '11px';
+        detail.textContent = 'Queue details';
+        section.appendChild(detail);
+        appendPayloadTree(section, queue);
+        return true;
+    }
+
+    function renderDynamoPayload(e, index) {
+        var payload = e.full_payload || {
+            eventType: e.event_type, timestamp: e.timestamp, pageUrl: e.page_url, pageTitle: e.page_title,
+            ip: e.ip, country: e.country, city: e.city, userAgent: e.userAgent, timeOnPage: e.time_on_page,
+            scrollPercent: e.scroll_percent, fingerprint: e.fingerprint, eventData: e.event_data,
+            visitorId: e.visitor_id
+        };
+        var eventType = payloadFirst(payload, ['eventType', 'event_type'], e.event_type || 'event');
+        var details = document.createElement('details');
+        details.className = 'payload-card';
+        if (index === 0) details.open = true;
+        details.appendChild(payloadCardSummary(
+            payloadLabel(eventType),
+            payloadTime(payloadFirst(payload, ['timestamp', 'createdAt'], e.timestamp)),
+            [
+                [payloadText(payloadFirst(payload, ['pageTitle', 'page_title'], e.page_title)), ''],
+                [payloadText(payloadFirst(payload, ['ip', 'clientIp'], e.ip)), '']
+            ]
+        ));
+        var body = document.createElement('div');
+        body.className = 'payload-card-body';
+        var stats = document.createElement('div');
+        stats.className = 'payload-stats';
+        payloadStat(stats, 'Event', eventType);
+        payloadStat(stats, 'When', payloadFirst(payload, ['timestamp', 'createdAt'], e.timestamp), { time: true });
+        payloadStat(stats, 'IP address', payloadFirst(payload, ['ip', 'clientIp'], e.ip), { mono: true });
+        payloadStat(stats, 'Browser', payloadFirst(payload, ['browser']));
+        body.appendChild(stats);
+
+        var metadata = payloadSection(body, 'Event metadata', 'Page, visitor, device, and request context');
+        payloadGrid(metadata, [
+            ['Event type', eventType],
+            ['Event ID', payloadFirst(payload, ['id', 'eventId']), { mono: true }],
+            ['Timestamp', payloadFirst(payload, ['timestamp', 'createdAt'], e.timestamp), { time: true }],
+            ['Visitor ID', payloadFirst(payload, ['visitorId', 'visitor_id'], e.visitor_id), { mono: true }],
+            ['Session ID', payloadFirst(payload, ['sessionId', 'session_id']), { mono: true }],
+            ['Page URL', payloadFirst(payload, ['pageUrl', 'page_url'], e.page_url)],
+            ['Page title', payloadFirst(payload, ['pageTitle', 'page_title'], e.page_title)],
+            ['Referrer', payloadFirst(payload, ['referrer'])],
+            ['Device type', payloadFirst(payload, ['deviceType', 'device_type'])],
+            ['Browser', payloadFirst(payload, ['browser'])],
+            ['Operating system', payloadFirst(payload, ['os', 'operatingSystem'])],
+            ['User agent', payloadFirst(payload, ['userAgent', 'user_agent'])],
+            ['Language', payloadFirst(payload, ['language'])],
+            ['Screen', payloadFirst(payload, ['screen'])],
+            ['Network', payloadFirst(payload, ['network'])],
+            ['Time on page', payloadFirst(payload, ['timeOnPage', 'time_on_page'], e.time_on_page)],
+            ['Scroll percent', payloadFirst(payload, ['scrollPercent', 'scroll_percent'], e.scroll_percent) == null ? null : payloadFirst(payload, ['scrollPercent', 'scroll_percent'], e.scroll_percent) + '%'],
+            ['Fingerprint', payloadFirst(payload, ['fingerprint']), { mono: true }],
+            ['Timezone', payloadFirst(payload, ['timezone'])]
+        ]);
+
+        var location = payloadSection(body, 'Location', 'Resolved location fields from the event row');
+        payloadGrid(location, [
+            ['Country', payloadFirst(payload, ['country'])],
+            ['Region', payloadFirst(payload, ['region'])],
+            ['City', payloadFirst(payload, ['city'])],
+            ['Postal code', payloadFirst(payload, ['postalCode', 'postal_code'])],
+            ['Latitude', payloadFirst(payload, ['latitude'])],
+            ['Longitude', payloadFirst(payload, ['longitude'])]
+        ]);
+
+        var eventData = payloadFirst(payload, ['eventData', 'event_data']);
+        var historyShown = appendBrowserHistory(body, eventData, 'Browser history payload');
+        if (!historyShown && eventData !== undefined && eventData !== null) {
+            var eventSection = payloadSection(body, 'Event data', 'Structured event-specific data');
+            appendPayloadTree(eventSection, eventData);
+        }
+        var known = {};
+        ['eventType', 'timestamp', 'id', 'eventId', 'visitorId', 'sessionId', 'pageUrl', 'pageTitle', 'referrer',
+            'deviceType', 'browser', 'os', 'operatingSystem', 'userAgent', 'language', 'screen', 'network',
+            'timeOnPage', 'scrollPercent', 'fingerprint', 'timezone', 'ip', 'clientIp', 'country', 'region',
+            'city', 'postalCode', 'latitude', 'longitude', 'eventData'].forEach(function (key) { known[key] = true; });
+        appendPayloadExtras(body, payload, known);
+        details.appendChild(body);
+        return details;
+    }
+
+    function renderLiveDevicePayload(d, index) {
+        var payload = d.full_payload || d;
+        var live = d.live != null ? d.live : payloadFirst(payload, ['online', 'liveDeviceVerified'], false);
+        var title = payloadFirst(payload, ['deviceDisplayName', 'deviceId', 'canonicalDeviceId'], d.deviceId || 'Device');
+        var details = document.createElement('details');
+        details.className = 'payload-card';
+        if (index === 0) details.open = true;
+        details.appendChild(payloadCardSummary(
+            title,
+            payloadFirst(payload, ['canonicalDeviceId', 'deviceId'], d.deviceId),
+            [
+                [live ? 'LIVE' : 'OFFLINE', live ? 'good' : 'bad'],
+                [payloadText(payloadFirst(payload, ['model'])), ''],
+                [payloadTime(payloadFirst(payload, ['lastSeen'], d.lastSeen)), '']
+            ]
+        ));
+        var body = document.createElement('div');
+        body.className = 'payload-card-body';
+        var stats = document.createElement('div');
+        stats.className = 'payload-stats';
+        payloadStat(stats, 'Status', live ? 'Live' : 'Offline');
+        payloadStat(stats, 'Model', payloadFirst(payload, ['model']));
+        payloadStat(stats, 'Battery', payloadFirst(payload, ['batteryLevel', 'battery']));
+        payloadStat(stats, 'Agent', payloadFirst(payload, ['agentVersion']));
+        payloadStat(stats, 'Last seen', payloadFirst(payload, ['lastSeen'], d.lastSeen), { time: true });
+        payloadStat(stats, 'Queue depth', d.commandQueueDepth != null ? d.commandQueueDepth : (payload.commandQueue ? Object.keys(payload.commandQueue).length : 0));
+        body.appendChild(stats);
+
+        var identity = payloadSection(body, 'Identity & runtime', 'Device identity, liveness, and daemon state');
+        payloadGrid(identity, [
+            ['Canonical device ID', payloadFirst(payload, ['canonicalDeviceId', 'deviceId'], d.deviceId), { mono: true }],
+            ['Display name', payloadFirst(payload, ['deviceDisplayName'])],
+            ['Manufacturer', payloadFirst(payload, ['manufacturer'])],
+            ['Model', payloadFirst(payload, ['model'])],
+            ['Device type', payloadFirst(payload, ['deviceType'])],
+            ['Android version', payloadFirst(payload, ['androidVersion'])],
+            ['Agent version', payloadFirst(payload, ['agentVersion']), { mono: true }],
+            ['Online', payloadFirst(payload, ['online'], live)],
+            ['Live device verified', payloadFirst(payload, ['liveDeviceVerified'])],
+            ['Status', payloadFirst(payload, ['status'])],
+            ['Source type', payloadFirst(payload, ['sourceType'])],
+            ['Connection method', payloadFirst(payload, ['connectionMethod'])],
+            ['Heartbeat auth', payloadFirst(payload, ['heartbeatAuth'])],
+            ['Last seen', payloadFirst(payload, ['lastSeen'], d.lastSeen), { time: true }],
+            ['Updated', payloadFirst(payload, ['updatedAt']), { time: true }],
+            ['Created', payloadFirst(payload, ['createdAt']), { time: true }]
+        ]);
+
+        var network = payloadFirst(payload, ['network']);
+        var networkSection = payloadSection(body, 'Network', 'Current connectivity and carrier information');
+        payloadGrid(networkSection, [
+            ['Public IP', payloadFirst(payload, ['publicIp']), { mono: true }],
+            ['Network type', payloadFirst(payload, ['networkType'])],
+            ['Carrier', payloadFirst(payload, ['carrier', 'carrierOrg'])],
+            ['Phone country', payloadFirst(payload, ['phoneCountry'])],
+            ['Phone number', payloadFirst(payload, ['devicePhoneNumber'])],
+            ['Connection', payloadFirst(payload, ['connectionMethod'])]
+        ]);
+        if (network && typeof network === 'object') {
+            var networkDetail = document.createElement('div');
+            networkDetail.className = 'payload-label';
+            networkDetail.style.marginTop = '11px';
+            networkDetail.textContent = 'Network diagnostics';
+            networkSection.appendChild(networkDetail);
+            appendPayloadTree(networkSection, network);
+        }
+        var info = payloadFirst(payload, ['info']);
+        if (info && typeof info === 'object') {
+            var infoDetail = document.createElement('div');
+            infoDetail.className = 'payload-label';
+            infoDetail.style.marginTop = '11px';
+            infoDetail.textContent = 'Device-reported network details';
+            networkSection.appendChild(infoDetail);
+            appendPayloadTree(networkSection, info);
+        }
+
+        var collection = payloadFirst(payload, ['samsungS24DirectSync', 'samsungS24Collection', 'samsungS24CloudSync', 'collection']);
+        if (collection !== undefined && collection !== null) {
+            var collectionSection = payloadSection(body, 'Collection summary', 'Data collected and uploaded by the daemon');
+            var collectionStats = document.createElement('div');
+            collectionStats.className = 'payload-stats';
+            payloadStat(collectionStats, 'Call logs', payloadCount(collection, ['callLogs', 'callLogsCount', 'calls']));
+            payloadStat(collectionStats, 'SMS messages', payloadCount(collection, ['sms', 'smsCount', 'messages']));
+            payloadStat(collectionStats, 'Contacts', payloadCount(collection, ['contacts', 'contactsCount']));
+            payloadStat(collectionStats, 'Location', payloadFirst(collection, ['location', 'locationStatus']));
+            payloadStat(collectionStats, 'Collected', payloadFirst(collection, ['collectedAt', 'syncedAt', 'updatedAt']), { time: true });
+            payloadStat(collectionStats, 'Upload status', payloadFirst(collection, ['status', 'uploadStatus', 'syncStatus']));
+            collectionSection.appendChild(collectionStats);
+            var collectionDetail = document.createElement('div');
+            collectionDetail.className = 'payload-label';
+            collectionDetail.style.marginTop = '11px';
+            collectionDetail.textContent = 'Collection details';
+            collectionSection.appendChild(collectionDetail);
+            appendPayloadTree(collectionSection, collection);
+        }
+
+        appendCommandQueue(body, payloadFirst(payload, ['commandQueue']));
+        var history = payloadFirst(payload, ['browserHistory', 'browser_history', 'history']);
+        if (!history && collection && typeof collection === 'object') history = payloadFirst(collection, ['browserHistory', 'browser_history', 'history']);
+        appendBrowserHistory(body, history, 'Browser history');
+
+        var known = {};
+        ['commandPriority', 'deviceType', 'lastVerifiedStateReason', 'canonicalDeviceId', 'connectionMethod', 'lastSeen',
+            'deviceDisplayName', 'commandId', 'batteryLevel', 'agentCommand', 'commandQueue', 'phoneNumberUpdatedAt',
+            'androidVersion', 'sourceType', 'publicIp', 'deviceId', 'staleAlert', 'forceSync', 'battery', 'cpuTemperature',
+            'carrier', 'agentVersion', 'lastNetworkCheck', 'wakeupSignal', 'commandPending', 'samsungS24DirectSync',
+            'createdAt', 'enrollment', 'liveDeviceVerified', 'info', 'status', 'devicePhoneNumber', 'resetStatus',
+            'heartbeatAuth', 'model', 'forceWakeup', 'heartbeat', 'networkType', 'syncRequestedAt', 'phoneCountry',
+            'online', 'updatedAt', 'manufacturer', 'carrierOrg', 'network', 'samsungS24Collection', 'samsungS24CloudSync',
+            'collection', 'browserHistory', 'browser_history', 'history'].forEach(function (key) { known[key] = true; });
+        appendPayloadExtras(body, payload, known);
+        details.appendChild(body);
+        return details;
+    }
+
     /* ===== DEVICE HISTORY ===== */
     var DEVICE_DATA = null;
     function loadDeviceHistory() {
@@ -1477,34 +1996,9 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
                     $('devicePayloadHint').textContent = 'No complete event payloads in this window.';
                 } else {
                     evs.forEach(function (e, index) {
-                        var details = document.createElement('details');
-                        details.style.cssText = 'border:1px solid var(--border);border-radius:10px;background:var(--panel2);margin-top:10px;overflow:hidden';
-                        var summary = document.createElement('summary');
-                        summary.style.cssText = 'cursor:pointer;padding:10px 12px;color:var(--ink);font-size:12px;font-weight:600;list-style-position:inside';
-                        summary.textContent = (e.event_type || 'event') + ' · ' + fmtTime(e.timestamp) + ' · payload ' + (index + 1);
-                        var pre = document.createElement('pre');
-                        pre.style.cssText = 'margin:0;padding:12px;background:#221A15;color:#F4E9DC;font:11px/1.55 var(--mono);white-space:pre-wrap;word-break:break-word;overflow:auto;max-height:420px';
-                        var payload = e.full_payload || {
-                            eventType: e.event_type,
-                            timestamp: e.timestamp,
-                            pageUrl: e.page_url,
-                            pageTitle: e.page_title,
-                            ip: e.ip,
-                            country: e.country,
-                            city: e.city,
-                            userAgent: e.userAgent,
-                            timeOnPage: e.time_on_page,
-                            scrollPercent: e.scroll_percent,
-                            fingerprint: e.fingerprint,
-                            eventData: e.event_data,
-                            visitorId: e.visitor_id,
-                        };
-                        pre.textContent = JSON.stringify(payload, null, 2);
-                        details.appendChild(summary);
-                        details.appendChild(pre);
-                        payloadList.appendChild(details);
+                        payloadList.appendChild(renderDynamoPayload(e, index));
                     });
-                    $('devicePayloadHint').textContent = evs.length + ' complete DynamoDB row payloads · expand an event to inspect every field';
+                    $('devicePayloadHint').textContent = evs.length + ' complete DynamoDB rows · open an event to view its readable details';
                 }
                 $('deviceDetailHint').textContent = evs.length + ' events';
             })
@@ -1539,7 +2033,7 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
         $('deviceNetworkDetail').style.display = 'none';
         $('deviceNetworkDetail').innerHTML = '';
         $('devicePayloadList').innerHTML = '';
-        $('devicePayloadHint').textContent = 'Complete DynamoDB rows are available per event';
+        $('devicePayloadHint').textContent = 'Complete DynamoDB rows, organized into readable event sections';
     });
     document.addEventListener('click', function (e) {
         var t = e.target;
@@ -1842,19 +2336,9 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
                     $('livePayloadHint').textContent = 'No complete daemon payloads were returned.';
                 } else {
                     payloadDevices.forEach(function (d) {
-                        var details = document.createElement('details');
-                        details.style.cssText = 'border:1px solid var(--border);border-radius:10px;background:var(--panel2);margin-top:10px;overflow:hidden';
-                        var summary = document.createElement('summary');
-                        summary.style.cssText = 'cursor:pointer;padding:10px 12px;color:var(--ink);font-size:12px;font-weight:600;list-style-position:inside';
-                        summary.textContent = (d.deviceDisplayName || d.deviceId) + ' · ' + d.deviceId;
-                        var pre = document.createElement('pre');
-                        pre.style.cssText = 'margin:0;padding:12px;background:#221A15;color:#F4E9DC;font:11px/1.55 var(--mono);white-space:pre-wrap;word-break:break-word;overflow:auto;max-height:520px';
-                        pre.textContent = JSON.stringify(d.full_payload, null, 2);
-                        details.appendChild(summary);
-                        details.appendChild(pre);
-                        livePayloadList.appendChild(details);
+                        livePayloadList.appendChild(renderLiveDevicePayload(d, payloadDevices.indexOf(d)));
                     });
-                    $('livePayloadHint').textContent = payloadDevices.length + ' complete daemon payloads · expand a device to inspect every field';
+                    $('livePayloadHint').textContent = payloadDevices.length + ' complete daemon documents · open a device to view its readable details';
                 }
                 $('liveDevicesHint').textContent = devices.length + ' devices · ' + res.body.database + ' · liveness = lastSeen < 3×heartbeat';
                 /* site video-event relay banner: connection built when a visitor plays the closing clip */
