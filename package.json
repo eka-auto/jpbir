@@ -8,7 +8,7 @@
     "dev": "vercel dev",
     "build": "echo 'Build completed - frontend files ready'",
     "deploy": "vercel --prod",
-    "test": "echo 'No tests specified'"
+    "test": "node _shared/tests/run-all.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.1115.0",

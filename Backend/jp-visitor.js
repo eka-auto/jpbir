@@ -34,8 +34,13 @@ async function scanAll(client, extra) {
     const res = await client.send(cmd);
     out.push(...(res.Items || []));
     key = res.LastEvaluatedKey;
+    // Check before issuing the next page, not after it returns. Testing only
+    // afterwards bounded the clock to the budget PLUS one more unbounded 1 MB
+    // Scan, which on a cold or throttled table is exactly the overrun that
+    // pushes the handler past its default timeout and returns a 504.
+    if (!key) break;
     if (++pages >= MAX_SCAN_PAGES || Date.now() - start > SCAN_BUDGET_MS) {
-      truncated = !!key;
+      truncated = true;
       break;
     }
   } while (key);
@@ -68,22 +73,26 @@ export default async function handler(req, res) {
       credentials: { accessKeyId: AWS_ACCESS_KEY_ID, secretAccessKey: AWS_SECRET_ACCESS_KEY }
     }));
 
-    // Filter on the ids server-side, but keep the epoch window in JS. DynamoDB
-    // compares across types as never-equal, so `#epoch >= :cutoff` would
-    // silently drop any row that stored epoch as a String - rows the old JS
-    // comparison coerced and matched. The id predicate is what removes the bulk
-    // of the table anyway.
-    const names = {};
-    const values = {};
+    // Keep the epoch window server-side alongside the id match. DynamoDB
+    // compares across types as never-equal, so a bare `#epoch >= :cutoff` would
+    // silently drop a row that stored epoch as a String; the attribute_type arm
+    // lets those through to the JS filter below instead of losing them. Pushing
+    // the window down matters: jp-track writes Number epochs, so for a visitor
+    // with years of history this is the difference between returning the 30-day
+    // window and returning everything and discarding it in the function - which
+    // burns the scan budget and makes a `partial` truncation far likelier.
+    const names = { '#epoch': 'epoch' };
+    const values = { ':cutoff': cutoff, ':stringType': 'S' };
     const idMatch = [];
     if (visitor) { names['#visitorId'] = 'visitorId'; values[':visitor'] = visitor; idMatch.push('#visitorId = :visitor'); }
     if (session) { names['#sessionId'] = 'sessionId'; values[':session'] = session; idMatch.push('#sessionId = :session'); }
     const scan = await scanAll(client, {
-      FilterExpression: idMatch.join(' OR '),
+      FilterExpression: `(#epoch >= :cutoff OR attribute_type(#epoch, :stringType)) AND (${idMatch.join(' OR ')})`,
       ExpressionAttributeNames: names,
       ExpressionAttributeValues: values
     });
-    const events = scan.items.filter(i => i.epoch && i.epoch >= cutoff);
+    // Second pass in JS: coerces the String-typed stragglers the filter let by.
+    const events = scan.items.filter(i => i.epoch && Number(i.epoch) >= cutoff);
 
     events.sort((a, b) => (a.timestamp || '').localeCompare(b.timestamp || ''));
 

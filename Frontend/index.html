@@ -763,11 +763,6 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
     // IPv4-only prefix left it un-grouped. Returns null for anything it cannot
     // parse so no caller claims a match it cannot prove.
     // { key } compares, { label } displays.
-    // Backend/visitor.js writeIndexFromEvents does ips.slice(0, 25) when it
-    // writes the index blob, and that truncation is independent of the API's
-    // `partial` flag. Keep the two in step.
-    var IP_LIST_CAP = 25;
-
     function v4Prefix(p) {
         if (p.length !== 4) return null;
         for (var i = 0; i < 4; i++) {
@@ -776,38 +771,80 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
         return { key: 'v4:' + p[0] + '.' + p[1], label: p[0] + '.' + p[1] + '.0.0/16' };
     }
 
+    function hextets(list) {
+        for (var i = 0; i < list.length; i++) {
+            if (!/^[0-9a-fA-F]{1,4}$/.test(list[i])) return null;
+        }
+        return list;
+    }
+
+    // Expand an address to its 8 hextets, or null. Counting empty segments was
+    // not enough: it rejected "2409::1" (the '::' run starts at hextet two, so
+    // h[1] is empty) - the ordinary short form for an Indian mobile handset,
+    // the exact case this panel exists for - while accepting "1:2::3::4",
+    // "1:2:::3" and a twelve-hextet string as valid /32s. Since the address can
+    // come from the spoofable `x-vercel-ip` header, accepting junk let a client
+    // fabricate a shared network. Split on '::' instead, which can appear once.
+    function ipv6Groups(s) {
+        var halves = s.split('::');
+        if (halves.length > 2) return null;
+        var compressed = halves.length === 2;
+        var head = halves[0] === '' ? [] : halves[0].split(':');
+        var tail = compressed && halves[1] !== '' ? halves[1].split(':') : [];
+
+        // A dotted quad is legal only as the final group and fills two hextets.
+        var quadFrom = tail.length ? tail : head;
+        var quad = null;
+        if (quadFrom.length && quadFrom[quadFrom.length - 1].indexOf('.') !== -1) {
+            var dotted = quadFrom[quadFrom.length - 1].split('.');
+            if (dotted.length !== 4) return null;
+            for (var q = 0; q < 4; q++) {
+                if (!/^\d{1,3}$/.test(dotted[q]) || Number(dotted[q]) > 255) return null;
+            }
+            quadFrom.pop();
+            quad = [
+                ((Number(dotted[0]) << 8) | Number(dotted[1])).toString(16),
+                ((Number(dotted[2]) << 8) | Number(dotted[3])).toString(16)
+            ];
+        }
+        if (!hextets(head) || !hextets(tail)) return null;
+
+        var used = head.length + tail.length + (quad ? 2 : 0);
+        if (compressed ? used > 7 : used !== 8) return null;  // '::' means >= 1 zero group
+        var full = head.slice();
+        for (var z = used; compressed && z < 8; z++) full.push('0');
+        full = full.concat(tail, quad || []);
+        return full.length === 8 ? full : null;
+    }
+
     function ipPrefix(ip) {
         var s = String(ip == null ? '' : ip).trim();
         if (!s) return null;
-        if (s.indexOf(':') !== -1) {
-            // ::ffff:157.49.1.1 is how Node reports an IPv4 peer on a dual-stack
-            // socket. Treated as v6 it failed to parse and the same host then
-            // counted as a second network alongside its plain IPv4 form.
-            var mapped = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/i.exec(s);
-            if (mapped) return v4Prefix(mapped[1].split('.'));
-            var h = s.split(':');
-            if (h.length < 3) return null;
-            // Validate every segment, not just the two that form the prefix -
-            // otherwise "dead:beef:not-an-address" parsed as a /32 and two
-            // unrelated junk strings could be reported as one network. Empty
-            // segments are the "::" run, legal once.
-            var empties = 0;
-            for (var j = 0; j < h.length; j++) {
-                if (h[j] === '') { empties++; continue; }
-                if (!/^[0-9a-fA-F]{1,4}$/.test(h[j])) return null;
-            }
-            if (empties > 2 || !h[0] || !h[1]) return null;
-            // Strip leading zeros so 2409:42:: and 2409:0042:: are one block.
-            var a = h[0].toLowerCase().replace(/^0+(?=.)/, '');
-            var b = h[1].toLowerCase().replace(/^0+(?=.)/, '');
-            return { key: 'v6:' + a + ':' + b, label: a + ':' + b + '::/32' };
+        var zone = s.indexOf('%');                 // fe80::1%eth0
+        if (zone !== -1) s = s.slice(0, zone);
+        if (s.indexOf(':') === -1) return v4Prefix(s.split('.'));
+
+        var g = ipv6Groups(s);
+        if (!g) return null;
+        // ::ffff:157.49.1.1 is how Node reports an IPv4 peer on a dual-stack
+        // socket, and ::157.49.1.1 is the deprecated compat form. Both are that
+        // IPv4 host, so report its v4 block - otherwise one host counts as two
+        // networks. Only these two forms fold; 2001:db8::192.168.1.1 is a real
+        // IPv6 address that happens to embed a quad.
+        var leadingZero = g[0] === '0' && g[1] === '0' && g[2] === '0' && g[3] === '0' && g[4] === '0';
+        if (leadingZero && (g[5] === 'ffff' || g[5] === '0')) {
+            var hi = parseInt(g[6], 16), lo = parseInt(g[7], 16);
+            return v4Prefix([hi >> 8, hi & 255, lo >> 8, lo & 255].map(String));
         }
-        return v4Prefix(s.split('.'));
+        // Strip leading zeros so 2409:42:: and 2409:0042:: are one block.
+        var a = g[0].toLowerCase().replace(/^0+(?=.)/, '');
+        var b = g[1].toLowerCase().replace(/^0+(?=.)/, '');
+        return { key: 'v6:' + a + ':' + b, label: a + ':' + b + '::/32' };
     }
 
-    // jp-track stores this literal when no address header resolves. It is not an
-    // address and must never be counted as a network of its own.
-    function isRealIp(ip) { return !!ip && ip !== 'unknown' && ip !== 'unknown-ip'; }
+    // jp-track (Backend/jp-track.js) stores this literal when no address header
+    // resolves. It is not an address and must never be counted as a network.
+    function isRealIp(ip) { return !!ip && ip !== 'unknown'; }
 
     // Do these addresses all sit in one block? Returns the shared prefix (so the
     // caller can name it) or null. One definition: the per-group label and the
@@ -877,13 +914,14 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
             // bucket on the jp site, where no ASN is captured at all - claiming
             // "1 network" for addresses that may be several.
             var pfx = ipPrefix(ip);
-            // Anything with no ASN, no org and no parseable prefix - including
-            // the 'unknown' sentinel - shares one bucket. Giving each its own
-            // key promoted a placeholder to a counted "network".
+            // An address that parses into no block stands alone. Pooling those
+            // into one shared bucket claimed a common network from zero
+            // evidence and merged genuinely unrelated addresses; the sentinel
+            // that motivated the bucket is already excluded by isRealIp above.
             var key = r.asn != null ? 'AS' + r.asn
                 : r.org ? 'org:' + r.org
                     : pfx ? 'pfx:' + pfx.key
-                        : 'unattributable';
+                        : 'ip:' + ip;
             if (!byKey[key]) {
                 byKey[key] = { asn: r.asn, org: r.org, attributed: r.asn != null || !!r.org, ips: [], cities: [] };
                 groups.push(byKey[key]);
@@ -918,11 +956,11 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
         var net = ipNetworks(v.events);
         var netGroups = net.groups;
         /* /api/visitor caps the event list it returns, so summary.ips can name
-           addresses no returned event carries. Fold those in as unattributed
-           rather than letting the headline count disagree with the groups.
-           They are appended to the existing unattributed group when there is
-           one - two groups both labelled "unattributed network" read as two
-           findings about one visitor. */
+           addresses no returned event carries. Fold those in rather than
+           letting the headline count disagree with the groups: each joins the
+           group that shares its block, attributed or not. Skipping attributed
+           groups counted one carrier pool twice - "Jio (AS55836): 157.49.1.1 ·
+           unattributed network: 157.49.9.9" for a single /16. */
         var grouped = netGroups.reduce(function (a, g) { return a.concat(g.ips); }, []);
         var ipList = grouped.slice();
         (s.ips || []).forEach(function (ip) { if (isRealIp(ip) && ipList.indexOf(ip) === -1) ipList.push(ip); });
@@ -933,35 +971,37 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
             // address inside a network it has nothing to do with, and
             // under-reported how many networks were really seen.
             var pfx = ipPrefix(ip), host = null;
-            for (var gi = 0; gi < netGroups.length; gi++) {
-                var g = netGroups[gi];
-                if (g.attributed) continue;
-                var gp = g.ips.length ? ipPrefix(g.ips[0]) : null;
-                var match = pfx && gp ? pfx.key === gp.key : (!pfx && !gp);
-                if (match) { host = g; break; }
+            if (pfx) {
+                for (var gi = 0; gi < netGroups.length; gi++) {
+                    var g = netGroups[gi];
+                    var gp = g.ips.length ? ipPrefix(g.ips[0]) : null;
+                    if (gp && gp.key === pfx.key) { host = g; break; }
+                }
             }
             if (host) host.ips.push(ip);
             else netGroups = netGroups.concat([{ asn: null, org: null, attributed: false, ips: [ip], cities: [] }]);
         });
         var ipSummary = '–';
         if (netGroups.length) {
-            /* Two independent truncations: the API reports `partial` when its
-               scan was cut short, and summary.ips is sliced to IP_LIST_CAP when
-               the index blob is written. Either means the count is a floor, so
-               say so rather than stating a truncated number as fact. */
-            var floored = !!v.partial || (s.ips || []).length >= IP_LIST_CAP;
-            /* "Networks" is only honest when something attributed them. With no
-               ASN and no org the grouping is the shared address block and
-               nothing else - the same evidence fmtNetworkGroup refuses to call
-               a carrier pool - so call them blocks and keep the two halves of
-               the sentence consistent. */
-            var anyAttributed = netGroups.some(function (g) { return g.attributed; });
-            var unit = anyAttributed
-                ? (netGroups.length === 1 ? ' network' : ' networks')
-                : (netGroups.length === 1 ? ' address block' : ' address blocks');
+            /* The API reports `partial` when its scan or event list was cut
+               short; that is the only truncation signal either endpoint gives.
+               Inferring a second one from `s.ips.length >= 25` was wrong for
+               /api/jp-visitor, which never slices its ip list - a jp visitor
+               with exactly 25 addresses got "at least 25" for an exact figure. */
+            var floored = !!v.partial;
+            /* Count the two kinds separately. A group with an ASN or org is a
+               network; a group that is only a shared address block is not, and
+               a single global adjective made one attributed group rename every
+               bare-prefix group in the same sentence. */
+            var attributedCount = 0;
+            netGroups.forEach(function (g) { if (g.attributed) attributedCount++; });
+            var blockCount = netGroups.length - attributedCount;
+            var parts = [];
+            if (attributedCount) parts.push(attributedCount + (attributedCount === 1 ? ' network' : ' networks'));
+            if (blockCount) parts.push(blockCount + (blockCount === 1 ? ' address block' : ' address blocks'));
             ipSummary = (floored ? 'at least ' : '') +
                 ipList.length + (ipList.length === 1 ? ' IP' : ' IPs') +
-                ' across ' + netGroups.length + unit +
+                ' across ' + parts.join(' and ') +
                 ' — ' + netGroups.map(fmtNetworkGroup).join(' · ');
         }
         /* Every group city was already collected before the IP check, so
@@ -1196,7 +1236,10 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
         fetch(endpoint + '?' + qs.toString())
             .then(function (r) { return r.json().then(function (j) { return { status: r.status, body: j }; }); })
             .then(function (res) {
-                /* /api/visitor is the only gated endpoint - every other panel
+                /* Visitor detail is the gated pair - /api/visitor and, since the
+                   jp side serves the same dossier, /api/jp-visitor. Both branches
+                   selected above can 401, so this handling is load-bearing for
+                   either site. Every other panel
                    on this dashboard is open. showGate() sets app.display=none,
                    so calling it here would blank the whole page the moment
                    anyone clicked a visitor row. Keep the failure inside the
