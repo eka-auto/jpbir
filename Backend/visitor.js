@@ -5,6 +5,10 @@ import { decodeGeo } from './lib/geo.js';
 const _env = (typeof process !== 'undefined' ? process : globalThis['proc' + 'ess']).env;
 const TOKEN = _env['BLOB_' + 'READ_WRITE_TOKEN'];
 const RECENT_EVENTS_CAP = 200;
+// How many addresses (and user agents) the index blob keeps. Named because the
+// drawer needs to know when this cut something, and a bare literal gave it
+// nothing to key off but the list's own length.
+const IP_LIST_CAP = 25;
 const SCAN_BUDGET_MS = 15000;
 const INDEX_BUDGET_MS = 12000;
 
@@ -120,6 +124,7 @@ function summarize(events, fallbackVisitor) {
     device_fingerprints: [...fingerprints],
     sessions: [...sessions],
     ips: [...ips],
+    ips_truncated: false,   // the scan path returns every address it saw
     countries: Object.entries(countries).sort((a, b) => b[1] - a[1]),
     user_agents: [...uas],
     pages: [...pages],
@@ -140,6 +145,11 @@ function summaryFromIndex(idx) {
     device_fingerprints: idx.fingerprints || [],
     sessions: idx.sessions || [],
     ips: idx.ips || [],
+    // Blobs written before this field existed have no flag; fall back to the
+    // length test rather than silently claiming the list is complete.
+    ips_truncated: idx.ips_truncated === undefined
+      ? (idx.ips || []).length >= IP_LIST_CAP
+      : !!idx.ips_truncated,
     countries: Object.entries(idx.countries || {}).sort((a, b) => b[1] - a[1]),
     user_agents: idx.user_agents || [],
     pages: Object.keys(idx.pages || {}),
@@ -209,11 +219,16 @@ async function writeIndexFromEvents(visitorId, events) {
     first_seen: s.first_seen,
     last_seen: s.last_seen,
     total_events: s.total_events,
-    ips: s.ips.slice(0, 25),
+    ips: s.ips.slice(0, IP_LIST_CAP),
+    // Record that the list was cut, so a reader never has to infer truncation
+    // from its length. The drawer states an IP and network count; inferring it
+    // client-side from `length >= 25` was wrong for /api/jp-visitor, which
+    // does not slice at all, and silently wrong here the day this cap changes.
+    ips_truncated: s.ips.length > IP_LIST_CAP,
     countries: Object.fromEntries(s.countries),
     sessions: s.sessions.slice(0, 50),
     fingerprints: s.device_fingerprints.slice(0, 10),
-    user_agents: s.user_agents.slice(0, 25),
+    user_agents: s.user_agents.slice(0, IP_LIST_CAP),
     pages: Object.fromEntries(s.pages.slice(0, 100).map(p => [p, 1])),
     max_time_on_page: s.max_time_on_page,
     network: s.network,
