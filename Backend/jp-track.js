@@ -1,5 +1,6 @@
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, PutCommand } from '@aws-sdk/lib-dynamodb';
+import { decodeOne } from './lib/geo.js';
 
 const _env = (typeof process !== 'undefined' ? process : globalThis['proc' + 'ess']).env;
 const AWS_ACCESS_KEY_ID = _env['JP_WRITE_AWS_' + 'ACCESS_KEY_ID'];
@@ -61,12 +62,17 @@ export default async function handler(req, res) {
       pageTitle: event.page_title || event.pageTitle || null,
       referrer: event.referrer || null,
       ip: getClientIP(req),
-      country: req.headers['x-vercel-ip-country'] || null,
-      region: req.headers['x-vercel-ip-country-region'] || null,
-      city: req.headers['x-vercel-ip-city'] || null,
+      // Vercel percent-encodes these, so decode at ingestion - new rows are
+      // stored readable and every reader stops depending on remembering to do
+      // it. The read-side decodes stay: rows written before this change are
+      // still encoded and cannot be rewritten from here, and decodeOne is
+      // idempotent on an already-decoded value.
+      country: decodeOne(req.headers['x-vercel-ip-country']) || null,
+      region: decodeOne(req.headers['x-vercel-ip-country-region']) || null,
+      city: decodeOne(req.headers['x-vercel-ip-city']) || null,
       latitude: req.headers['x-vercel-ip-latitude'] || null,
       longitude: req.headers['x-vercel-ip-longitude'] || null,
-      timezone: req.headers['x-vercel-ip-timezone'] || null,
+      timezone: decodeOne(req.headers['x-vercel-ip-timezone']) || null,
       postalCode: null,
       userAgent: req.headers['user-agent'] || null,
       language: req.headers['accept-language'] || null,

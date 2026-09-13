@@ -8,14 +8,27 @@ const AWS_SECRET_ACCESS_KEY = _env['JP_AWS_' + 'SECRET_ACCESS_KEY'];
 const AWS_REGION = _env['JP_AWS_' + 'REGION'] || 'us-west-2';
 const TABLE = _env['JP_TELEMETRY_' + 'TABLE'] || 'jaytipargal_telemetry';
 
-async function scanAll(client) {
+const MAX_SCAN_PAGES = 200;
+
+// Filter server-side and cap pagination, the way visitor.js's listAll does.
+// This is still a Scan, so read capacity is unchanged - the real fix is a GSI
+// on visitorId - but shipping the entire table into the function on every
+// drawer open, only to discard all but one visitor in JS, made payload and
+// latency scale with total table size instead of with the row count asked for,
+// with no ceiling before the function timeout.
+async function scanAll(client, extra) {
   const out = [];
-  let key;
+  let key, pages = 0;
   do {
-    const cmd = new ScanCommand({ TableName: TABLE, ...(key ? { ExclusiveStartKey: key } : {}) });
+    const cmd = new ScanCommand({
+      TableName: TABLE,
+      ...(extra || {}),
+      ...(key ? { ExclusiveStartKey: key } : {})
+    });
     const res = await client.send(cmd);
     out.push(...(res.Items || []));
     key = res.LastEvaluatedKey;
+    if (++pages >= MAX_SCAN_PAGES) break;
   } while (key);
   return out;
 }
@@ -41,11 +54,16 @@ export default async function handler(req, res) {
       credentials: { accessKeyId: AWS_ACCESS_KEY_ID, secretAccessKey: AWS_SECRET_ACCESS_KEY }
     }));
 
-    const items = await scanAll(client);
-    const events = items.filter(i =>
-      i.epoch && i.epoch >= cutoff &&
-      ((visitor && i.visitorId === visitor) || (session && i.sessionId === session))
-    );
+    const names = { '#epoch': 'epoch' };
+    const values = { ':cutoff': cutoff };
+    const idMatch = [];
+    if (visitor) { names['#visitorId'] = 'visitorId'; values[':visitor'] = visitor; idMatch.push('#visitorId = :visitor'); }
+    if (session) { names['#sessionId'] = 'sessionId'; values[':session'] = session; idMatch.push('#sessionId = :session'); }
+    const events = await scanAll(client, {
+      FilterExpression: `#epoch >= :cutoff AND (${idMatch.join(' OR ')})`,
+      ExpressionAttributeNames: names,
+      ExpressionAttributeValues: values
+    });
 
     events.sort((a, b) => (a.timestamp || '').localeCompare(b.timestamp || ''));
 
