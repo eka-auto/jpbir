@@ -152,6 +152,7 @@ export default async function handler(req, res) {
     return res.status(200).json({
       success: true,
       source: 'dynamodb',
+      generated_at: new Date().toISOString(),
       window_days: days,
       total_events: historyEvents.length,
       total_entries: entries.length,
