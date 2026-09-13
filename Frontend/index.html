@@ -269,7 +269,7 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
             <button class="nav-item" data-page="geo"><span class="ico">◉</span> Geography</button>
             <button class="nav-item" data-page="sessions"><span class="ico">≡</span> Sessions</button>
             <button class="nav-item" data-page="email"><span class="ico">✉</span> Email opens</button>
-            <button class="nav-item" data-page="device"><span class="ico">📋</span> Device history</button>
+            <button class="nav-item" data-page="device"><span class="ico">📋</span> Device Dashboard</button>
             <button class="nav-item" data-page="terminal"><span class="ico">▮</span> Terminal</button>
             <button class="nav-item" data-page="vercel"><span class="ico">▲</span> Vercel</button>
             <button class="nav-item" data-page="agent"><span class="ico">🤖</span> Ask agent</button>
@@ -397,8 +397,11 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
                 <div class="panel"><h2>Email opens by recipient</h2><div class="hint" id="emailHint"></div><div id="emails"></div></div>
             </section>
 
-            <!-- DEVICE HISTORY -->
+            <!-- DEVICE DASHBOARD -->
             <section class="page" id="page-device">
+                <div class="panel">
+                    <div class="panel-head"><div><h2>Device Dashboard</h2><div class="hint">Live device status, browser history, network details, and complete device data</div></div></div>
+                </div>
                 <div class="panel">
                     <div class="panel-head"><div><h2>Live device status</h2><div class="hint" id="liveDevicesHint">Firestore device state — liveness derived from lastSeen age</div></div>
                         <div class="tools"><button id="liveDevicesRefreshBtn">Refresh</button></div></div>
