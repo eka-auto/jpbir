@@ -71,6 +71,7 @@ export default async function handler(req, res) {
   }
 
   try {
+    const includeFullPayload = String(req.query.full || '') === '1';
     const token = await getFirestoreToken();
     const base = `https://firestore.googleapis.com/v1/projects/${JSON.parse(FIREBASE_SA_JSON).project_id}/databases/${FIRESTORE_DB}/documents`;
     const r = await fetch(`${base}/devices`, { headers: { Authorization: `Bearer ${token}` } });
@@ -156,6 +157,7 @@ export default async function handler(req, res) {
         model: f.model || null,
         reportedStatus: f.status || null,
         staleAlertState: (f.staleAlert && f.staleAlert.state) || null,
+        ...(includeFullPayload ? { full_payload: f } : {}),
       };
     });
 

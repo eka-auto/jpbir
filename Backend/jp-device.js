@@ -140,6 +140,9 @@ export default async function handler(req, res) {
           scroll_percent: d.scrollPercent,
           fingerprint: d.fingerprint,
           event_data: d.eventData,
+          // Preserve the complete DynamoDB item for the dashboard's raw
+          // payload viewer. The normalized fields above remain unchanged.
+          full_payload: d,
           visitor_id: d.visitorId,
           device_label: idn.label,
         };
