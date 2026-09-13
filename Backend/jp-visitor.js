@@ -1,6 +1,7 @@
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, ScanCommand } from '@aws-sdk/lib-dynamodb';
 import { decodeGeo } from './lib/geo.js';
+import { requireKey } from './_auth.js';
 
 const _env = (typeof process !== 'undefined' ? process : globalThis['proc' + 'ess']).env;
 const AWS_ACCESS_KEY_ID = _env['JP_AWS_' + 'ACCESS_KEY_ID'];
@@ -9,6 +10,10 @@ const AWS_REGION = _env['JP_AWS_' + 'REGION'] || 'us-west-2';
 const TABLE = _env['JP_TELEMETRY_' + 'TABLE'] || 'jaytipargal_telemetry';
 
 const MAX_SCAN_PAGES = 200;
+// A page ceiling alone does not stop a timeout - 200 sequential 1 MB Scans is
+// far longer than the function's limit - so bound wall-clock too, the way
+// visitor.js does, and tell the caller when either limit cut the result short.
+const SCAN_BUDGET_MS = 8000;
 
 // Filter server-side and cap pagination, the way visitor.js's listAll does.
 // This is still a Scan, so read capacity is unchanged - the real fix is a GSI
@@ -18,7 +23,8 @@ const MAX_SCAN_PAGES = 200;
 // with no ceiling before the function timeout.
 async function scanAll(client, extra) {
   const out = [];
-  let key, pages = 0;
+  const start = Date.now();
+  let key, pages = 0, truncated = false;
   do {
     const cmd = new ScanCommand({
       TableName: TABLE,
@@ -28,13 +34,21 @@ async function scanAll(client, extra) {
     const res = await client.send(cmd);
     out.push(...(res.Items || []));
     key = res.LastEvaluatedKey;
-    if (++pages >= MAX_SCAN_PAGES) break;
+    if (++pages >= MAX_SCAN_PAGES || Date.now() - start > SCAN_BUDGET_MS) {
+      truncated = !!key;
+      break;
+    }
   } while (key);
-  return out;
+  return { items: out, truncated };
 }
 
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
+  // Same dossier as /api/visitor - IP, fingerprint, user agent, geolocation and
+  // the full interaction trail - so it needs the same gate. The dashboard has
+  // always sent ?key= for both endpoints and already renders the 401 inside the
+  // drawer, so this is a server-side gap only.
+  if (!requireKey(req, res)) return;
   if (!AWS_ACCESS_KEY_ID || !AWS_SECRET_ACCESS_KEY) {
     return res.status(500).json({ success: false, error: 'AWS credentials not configured' });
   }
@@ -54,16 +68,22 @@ export default async function handler(req, res) {
       credentials: { accessKeyId: AWS_ACCESS_KEY_ID, secretAccessKey: AWS_SECRET_ACCESS_KEY }
     }));
 
-    const names = { '#epoch': 'epoch' };
-    const values = { ':cutoff': cutoff };
+    // Filter on the ids server-side, but keep the epoch window in JS. DynamoDB
+    // compares across types as never-equal, so `#epoch >= :cutoff` would
+    // silently drop any row that stored epoch as a String - rows the old JS
+    // comparison coerced and matched. The id predicate is what removes the bulk
+    // of the table anyway.
+    const names = {};
+    const values = {};
     const idMatch = [];
     if (visitor) { names['#visitorId'] = 'visitorId'; values[':visitor'] = visitor; idMatch.push('#visitorId = :visitor'); }
     if (session) { names['#sessionId'] = 'sessionId'; values[':session'] = session; idMatch.push('#sessionId = :session'); }
-    const events = await scanAll(client, {
-      FilterExpression: `#epoch >= :cutoff AND (${idMatch.join(' OR ')})`,
+    const scan = await scanAll(client, {
+      FilterExpression: idMatch.join(' OR '),
       ExpressionAttributeNames: names,
       ExpressionAttributeValues: values
     });
+    const events = scan.items.filter(i => i.epoch && i.epoch >= cutoff);
 
     events.sort((a, b) => (a.timestamp || '').localeCompare(b.timestamp || ''));
 
@@ -104,6 +124,10 @@ export default async function handler(req, res) {
     return res.status(200).json({
       success: true,
       source: 'dynamodb',
+      // The scan can stop on either limit, and the drawer states an IP and
+      // network count. Without this flag it would state a truncated count as
+      // fact - visitor.js returns the same signal for the same reason.
+      partial: scan.truncated,
       query: { visitor, session },
       summary: {
         visitor_id: visitor || (events[0] && events[0].visitorId) || null,
