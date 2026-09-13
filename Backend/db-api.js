@@ -88,7 +88,7 @@ const VIEWS = {
 
     // Hour-of-day profile, so the UI can show when this site is actually read.
     const hourly = (await query(
-      `SELECT EXTRACT(hour FROM occurred_at)::int hour, COUNT(*)::int n
+      `SELECT EXTRACT(hour FROM occurred_at)::int AS hour_of_day, COUNT(*)::int n
          FROM events WHERE site = $1 AND occurred_at > now() - ($2 || ' days')::interval ${noiseClause}
         GROUP BY 1 ORDER BY 1`, params)).rows;
 
