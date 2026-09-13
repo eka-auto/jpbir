@@ -12,6 +12,11 @@ const TABLE = _env['JP_TELEMETRY_' + 'TABLE'] || 'jaytipargal_telemetry';
 // their real hardware. The S24 Ultra browser visitor is the same device
 // as the daemon, so both roll up under one canonical id.
 const IDENTITY_MAP = {
+  'jbtv_1789288497389_4vez00y62': {
+    canonical: 'samsung-s24-ultra',
+    label: 'S24 Ultra (SM-S928B)',
+    ip: null,
+  },
   'jbtv_1788609338910_nwc1wtunc': {
     canonical: 'samsung-s24-ultra',
     label: 'S24 Ultra (SM-S928B)',
@@ -128,6 +133,9 @@ export default async function handler(req, res) {
         return {
           event_type: d.eventType,
           timestamp: d.timestamp,
+          url: d.pageUrl || d.eventData?.url || null,
+          title: d.pageTitle || d.eventData?.title || null,
+          browser: d.browser || d.eventData?.browser || null,
           page_url: d.pageUrl,
           page_title: d.pageTitle,
           ip: idn.ip || d.ip,
