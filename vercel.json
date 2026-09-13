@@ -92,6 +92,10 @@
     {
       "src": "Backend/db-push.js",
       "use": "@vercel/node"
+    },
+    {
+      "src": "Backend/db-api.js",
+      "use": "@vercel/node"
     }
   ],
   "routes": [
