@@ -33,8 +33,12 @@ const VIEWS = {
               COUNT(*) FILTER (WHERE event_type = 'page_view')::int page_views,
               COUNT(DISTINCT country)::int countries,
               COUNT(DISTINCT city)::int cities,
-              ROUND(AVG(time_on_page)::numeric, 1)::float avg_time_on_page,
-              ROUND(AVG(scroll_percent)::numeric, 1)::float avg_scroll,
+              -- time_on_page arrives in MILLISECONDS, and the tail is abandoned
+              -- tabs (max observed: 14 hours), so the mean is meaningless. Median
+              -- of the events that recorded any time at all, reported in seconds.
+              ROUND((percentile_cont(0.5) WITHIN GROUP (
+                ORDER BY time_on_page) FILTER (WHERE time_on_page > 0) / 1000)::numeric, 1)::float median_seconds_on_page,
+              ROUND((MAX(time_on_page) / 1000)::numeric, 0)::float longest_seconds_on_page,
               MAX(occurred_at) last_event_at
          FROM events
         WHERE site = $1 AND occurred_at > now() - ($2 || ' days')::interval ${noiseClause}`,
@@ -86,6 +90,20 @@ const VIEWS = {
               GROUP BY 1,2,3 ORDER BY n DESC LIMIT 10`, [site, days]),
     ]);
 
+    // Real scroll depth is how far a session got, not the mean across every
+    // event — most events fire at 0% before the reader has scrolled at all,
+    // which drags a flat average to nearly zero and reads as "nobody scrolls".
+    const scroll = (await query(
+      `SELECT ROUND(AVG(deepest)::numeric, 1)::float avg_session_scroll,
+              MAX(deepest)::float max_session_scroll,
+              COUNT(*) FILTER (WHERE deepest > 0)::int sessions_that_scrolled,
+              COUNT(*)::int sessions_measured
+         FROM (SELECT session_id, MAX(scroll_percent) deepest
+                 FROM events
+                WHERE site = $1 AND scroll_percent IS NOT NULL
+                  AND occurred_at > now() - ($2 || ' days')::interval
+                GROUP BY session_id) s`, [site, days])).rows[0];
+
     // Hour-of-day profile, so the UI can show when this site is actually read.
     const hourly = (await query(
       `SELECT EXTRACT(hour FROM occurred_at)::int AS hour_of_day, COUNT(*)::int n
@@ -93,7 +111,7 @@ const VIEWS = {
         GROUP BY 1 ORDER BY 1`, params)).rows;
 
     return {
-      totals,
+      totals: Object.assign({}, totals, scroll),
       daily: daily.rows,
       hourly,
       byType: byType.rows,

@@ -397,8 +397,9 @@
           kpi('Visitors', num(t.visitors), 'unique') +
           kpi('Sessions', num(t.sessions), 'unique') +
           kpi('Page views', num(t.page_views), 'page_view events') +
-          kpi('Avg time', secs(t.avg_time_on_page), 'on page') +
-          kpi('Avg scroll', t.avg_scroll == null ? '—' : t.avg_scroll + '%', 'depth') +
+          kpi('Median time', secs(t.median_seconds_on_page), 'on page · longest ' + secs(t.longest_seconds_on_page)) +
+          kpi('Scroll depth', t.avg_session_scroll == null ? '—' : t.avg_session_scroll + '%',
+              (t.sessions_that_scrolled || 0) + ' of ' + (t.sessions_measured || 0) + ' sessions scrolled') +
           kpi('Places', num(t.countries) + ' / ' + num(t.cities), 'countries / cities') +
           kpi('Last event', ago(t.last_event_at), when(t.last_event_at)) +
         '</div>' +
