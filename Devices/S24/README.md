@@ -25,3 +25,26 @@ Termux boot/watchdog startup.
 The command surface is intentionally limited to `status-only`, `ping`, and
 `echo`. A dashboard LIVE badge alone is not an operational proof; verify a
 fresh signed heartbeat and a command that reaches completed status.
+
+## Local-first data sync
+
+The phone-data archive is a separate, outbound-only path:
+
+```text
+S24 --ADB--> private laptop JSON --P-256 signed HTTPS--> Vercel --SQL--> Neon
+```
+
+1. Attach and authorise the S24 over USB or wireless ADB.
+2. Run `python pull_local.py`. The command refuses non-Samsung `SM-S928*`
+   hardware and writes `manifest.json` plus `records.jsonl.gz` beneath
+   `%LOCALAPPDATA%\Jayti\S24 Sync\runs`. Every attempted dataset gets an
+   explicit `ok`, `empty`, `denied`, `unavailable`, or `error` ledger row.
+3. Create/read the laptop's non-exportable public key with
+   `python push_to_vercel.py --print-public-key`. Configure that public PEM in
+   Vercel as `S24_SYNC_PUBLIC_KEYS`; never copy a private key to Vercel.
+4. Run `python push_to_vercel.py`. Uploads are byte-signed with the Windows
+   Platform Crypto Provider key and safely retried using request replay IDs.
+5. Open `/db`, select **S24 archive**, and unlock it with the dashboard key.
+
+The local export directory and all key files are gitignored. Treat exports as
+private device data: do not move them into this repository or a synced folder.

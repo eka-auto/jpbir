@@ -27,3 +27,10 @@ __pycache__/
 # Local security-scanner workspace (~938 MB: node_modules + scan data).
 # Tool-owned, regenerable, and far too large to ever belong in the repo.
 .deepsec/
+
+# Local-first phone exports contain private device data and never belong in Git.
+Devices/S24/local-data/
+Devices/S24/keys/
+*.s24-sync.json
+*.s24-sync.jsonl
+*.s24-sync.jsonl.gz

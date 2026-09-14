@@ -112,6 +112,10 @@
     {
       "src": "Backend/wa-ingest.js",
       "use": "@vercel/node"
+    },
+    {
+      "src": "Backend/s24-ingest.js",
+      "use": "@vercel/node"
     }
   ],
   "routes": [
