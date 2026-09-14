@@ -2,7 +2,11 @@
   "schema_version": "1.0",
   "tool": "project-restructurer",
   "created": "2026-09-12T18:34:45",
-  "root": "C:\\Users\\hp\\jpbir",
+  "refreshed": "2026-09-14T17:31:11",
+  "refreshed_against": "main@b48e3a5",
+  "refreshed_with": "project-restructurer v2 — verify + refresh pass (no re-layering; the tree was already restructured at PRs #9/#10 and deploys from these paths)",
+  "root": ".",
+  "repo": "https://github.com/jaytipargal/jpbir",
   "layers": [
     "Frontend",
     "Backend",
@@ -22,6 +26,55 @@
     "package.json",
     "vercel.json"
   ],
+  "current_inventory": {
+    "head": "b48e3a55ccdaaa02879da8e2baeda6777a06c5ae",
+    "tracked_files_total": 2478,
+    "by_layer": {
+      "Frontend": 1974,
+      "Backend": 161,
+      "_shared": 129,
+      "Devices": 63,
+      "archive": 57,
+      "Server": 54,
+      "Database": 23,
+      "Integrations": 7,
+      "(root file)": 7,
+      ".github": 3
+    },
+    "note": "Actual tracked-file counts on current main. These differ from the historical per-layer counts derived from `moves` because ~40 files were added directly into the layers by PRs merged after the restructure (WhatsApp panels, S24 dashboards, jp-agent changes)."
+  },
+  "verification": {
+    "tracked_files_before": 2438,
+    "tracked_files_after": 2438,
+    "staged_renames_R100": 2431,
+    "pinned_unmoved": 7,
+    "unresolved_js_imports_before": 112,
+    "unresolved_js_imports_after": 102,
+    "newly_broken_by_move": 0,
+    "pre_existing_breaks_fixed": 10
+  },
+  "verification_current": {
+    "checked": "2026-09-14",
+    "method": "each moved `to` path checked against `git ls-files` on current main",
+    "moves_recorded": 2438,
+    "moves_still_present_on_main": 2436,
+    "moves_absent_now": 2,
+    "moves_absent_list": [
+      {
+        "file": "Backend/jp-ask.js",
+        "fate": "deleted by later PRs (f181153 'consolidate authenticated S24 remote commands', cd807d9)"
+      },
+      {
+        "file": "Backend/remove-auth.js",
+        "fate": "deleted by later PRs (f181153, cd807d9)"
+      }
+    ],
+    "data_loss": "none — the 2 absent files were intentionally deleted by later work, not lost by the restructure",
+    "duplicate_groups": 34,
+    "redundant_files": 49,
+    "reclaimable": "492.7 KiB",
+    "duplicates_note": "Unchanged from the original audit. The bulk are intentional per-device installer bundles (Devices/Lenovo|S24|Vivobook|sandbox) that installers SHA-256-pin, so the bytes must match — do NOT collapse them. See open_questions[0]."
+  },
   "moves": [
     {
       "from": ".github/workflows/ci-cd.yml",
@@ -21970,16 +22023,6 @@
     "app/ (38 empty directories, after every file was git mv'd out; no file was deleted)"
   ],
   "backup": "git history on branch main (commit 804a54c). Every move is a git R100 rename, so `git reset --hard main` restores the old layout exactly.",
-  "verification": {
-    "tracked_files_before": 2438,
-    "tracked_files_after": 2438,
-    "staged_renames_R100": 2431,
-    "pinned_unmoved": 7,
-    "unresolved_js_imports_before": 112,
-    "unresolved_js_imports_after": 102,
-    "newly_broken_by_move": 0,
-    "pre_existing_breaks_fixed": 10
-  },
   "edits_beyond_moves": [
     "vercel.json: 33 path strings rewritten (28x app/backend/ -> Backend/, 3x /app/frontend/ -> /Frontend/, 1x app/frontend/** -> Frontend/**, outputDirectory -> Frontend). builds=22 routes=10 order and the (?<commandId>...) regex preserved and re-validated.",
     "Backend/{check-stale,jp-agent,stats,visitor}.js: '../lib/X' -> './lib/X' (broken BY this move: app/lib -> Backend/lib).",
@@ -21988,7 +22031,7 @@
     "_shared/tests/*.mjs: '../Backend/' -> '../../Backend/', vercel.json path and build-frontend.mjs import repointed (pre-existing breaks)."
   ],
   "resume_point": "fix_channel_sandbox_root_directory",
-  "resume_detail": "The restructure and the vercel.json rewrite are merged into `main` (PRs #10, #11, #12) and deployed; on `main` @ `ece3ece` the dashboard serves `/`, `/s24`, `/vivobook` and `/api/*` correctly. Outstanding: this repo feeds three Vercel projects from `main` (`jpbir_restructured`, `jayti-dashboard`, `channel-sandbox`), and `channel-sandbox` has served `X-Vercel-Error: NOT_FOUND` on every path since Merge #10 because its Root Directory is still `app/sandbox`, the path this restructure renamed to `Devices/sandbox`. The build reports success because it produces no output rather than failing, so GitHub's commit status stays green. Fix is one Vercel dashboard setting — Root Directory -> `Devices/sandbox` — no code change.",
+  "resume_detail": "As of the 2026-09-14 refresh, `main` is at `b48e3a5` — 40+ PRs merged since the restructure landed (PRs #9-#12). The five-layer restructure remains fully intact: 2436 of the 2438 originally-moved files are still at their recorded paths; the 2 absent (`Backend/jp-ask.js`, `Backend/remove-auth.js`) were deliberately deleted by later PRs (f181153, cd807d9), not lost. OUTSTANDING (unchanged, and not verifiable from the repo alone): the `channel-sandbox` Vercel project's Root Directory is still `app/sandbox`, the path this restructure renamed to `Devices/sandbox/` (which still exists here, with its own nested `vercel.json`). No commit since the restructure has addressed it. Fix is one Vercel dashboard setting — Root Directory -> `Devices/sandbox` — no code change. Confirm against the live Vercel projects before assuming it is still broken.",
   "open_questions": [
     {
       "file": "(34 duplicate groups / 49 redundant files)",
@@ -22012,7 +22055,7 @@
     },
     {
       "file": "Database/search_db.mjs:4",
-      "reason": "Hardcoded absolute path C:\\Users\\abcom\\... \u2014 a different Windows account than this machine. Non-functional here; unrelated to the move."
+      "reason": "Hardcoded absolute path C:\\Users\\abcom\\... — a different Windows account than this machine. Non-functional here; unrelated to the move."
     },
     {
       "file": "(102 unresolved relative imports in vendored code)",
@@ -22020,7 +22063,7 @@
     },
     {
       "file": "_shared/docs/CLAUDE.md, PROJECT.md, DASHBOARD.md",
-      "reason": "Describe a superseded Dashboard/ + Sandbox/ layout. Stale prose \u2014 do not treat as ground truth for the current tree."
+      "reason": "Describe a superseded Dashboard/ + Sandbox/ layout. Stale prose — do not treat as ground truth for the current tree."
     },
     {
       "file": "vercel.json (Vercel project settings)",
@@ -22029,6 +22072,11 @@
     {
       "file": "archive/",
       "reason": "46 of 57 files are a regenerable Python Hypothesis test cache; the rest are unrelated Colab notebooks and run logs. Zero inbound references. Kept per instruction; safe to drop later."
+    },
+    {
+      "file": "(~40 files added after the restructure)",
+      "reason": "Files merged into the layers by post-restructure PRs (WhatsApp/S24/jp-agent work) were placed by their authoring PRs, not audited by the restructurer. They look correctly layered on inspection; a future `analyze.py --deep` pass could confirm their layer fit. Not blocking.",
+      "confidence": null
     }
   ]
 }
