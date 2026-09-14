@@ -84,9 +84,45 @@ def open_ro(path):
 def load_state(path):
     try:
         with open(path, "r", encoding="utf-8") as f:
-            return json.load(f) or {}
+            raw = json.load(f) or {}
     except (OSError, json.JSONDecodeError):
         return {}
+    # Entries used to be a bare blob_url string. Keep those readable, with no
+    # identity recorded, so an upgrade does not re-upload the whole library.
+    out = {}
+    for path_key, value in raw.items():
+        if isinstance(value, str):
+            out[path_key] = {"url": value, "size": None, "mtime": None}
+        elif isinstance(value, dict):
+            out[path_key] = value
+    return out
+
+
+def file_identity(path):
+    """Size and mtime, so a file replaced or completed in place is noticed."""
+    try:
+        st = os.stat(path)
+    except OSError:
+        return None
+    return {"size": st.st_size, "mtime": int(st.st_mtime)}
+
+
+def already_uploaded(state, path):
+    """True only when this exact content was uploaded before.
+
+    Keying on the pathname alone meant a file that was replaced or finished
+    downloading after its first sighting kept pointing at stale or partial
+    Blob content, forever.
+    """
+    entry = state.get(path)
+    if not entry or not entry.get("url"):
+        return False
+    ident = file_identity(path)
+    if ident is None:
+        return True                      # unreadable now; nothing to re-upload
+    if entry.get("size") is None:
+        return True                      # pre-upgrade entry, no identity recorded
+    return entry.get("size") == ident["size"] and entry.get("mtime") == ident["mtime"]
 
 
 def save_state(path, state):
@@ -230,6 +266,11 @@ def main():
     ap.add_argument("--once", action="store_true")
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--limit", type=int, default=500)
+    # Each upload can block for the urlopen timeout, so an unresponsive endpoint
+    # could keep one run alive for hours and let the next cron tick start a
+    # second uploader beside it. The run stops at this deadline instead and
+    # picks up where it left off next time.
+    ap.add_argument("--max-seconds", type=int, default=600)
     ap.add_argument("--kinds", default=",".join(sorted(set(FOLDER_KINDS.values()))))
     ap.add_argument("--media-root", default=os.environ.get("WA_MEDIA_ROOT"))
     ap.add_argument("--msgstore", default=os.environ.get("WA_MSGSTORE_DB", DEFAULT_MSGSTORE))
@@ -264,17 +305,22 @@ def main():
         print(f"[warn] msgstore not at {args.msgstore} — will upload without chat linkage", file=sys.stderr)
 
     to_upload = []
+    unlinked = 0
     for path, folder_kind in walk_media(root):
         if folder_kind not in kinds_wanted:
             continue
-        if path in state:  # already uploaded
+        if already_uploaded(state, path):
             continue
         meta = index.get(path) or {}
         kind = meta.get("kind") or folder_kind
         chat_id = meta.get("chat_id")
         if not chat_id:
-            # a file we can't link to any chat still shouldn't be dropped silently;
-            # a "wa_orphans" bucket would need a separate table, so log for now
+            # wa_attachments.chat_id is NOT NULL REFERENCES wa_chats, so a file
+            # we cannot link to a chat has nowhere to go — the row would be
+            # rejected. Count them and say so at the end rather than dropping
+            # them silently, which made a missing msgstore look like a clean
+            # run that simply had nothing to do.
+            unlinked += 1
             continue
         try:
             size = os.path.getsize(path)
@@ -287,13 +333,79 @@ def main():
         if len(to_upload) >= args.limit:
             break
 
+    if unlinked:
+        print(f"[warn] {unlinked} file(s) have no chat in msgstore and cannot be stored "
+              f"(wa_attachments.chat_id is NOT NULL) — "
+              f"{'msgstore is missing' if not index else 'no msgstore row matched'}",
+              file=sys.stderr)
     print(f"[wa_media_push] {len(to_upload)} files to upload (limit {args.limit})")
     if args.dry_run or not to_upload:
         return 0
 
     run_id = f"media_{int(time.time())}"
+    deadline = time.time() + max(30, args.max_seconds)
     attachments = []
+    pending = []          # (path, identity) for the rows in `attachments`
+    stored = 0
+    stopped_early = False
+
+    def flush(done=False):
+        """Push a batch, and only then record its files as uploaded.
+
+        Two separate bugs lived here. State was written the moment a Blob
+        upload returned, so a file whose chat was not yet in wa_chats — the
+        ingest drops those rows — was marked done forever and never retried.
+        And a failed post threw the just-uploaded URL away, so the next run
+        re-uploaded the same bytes under a fresh random Blob path, orphaning
+        the old one. Now the URL is saved either way, and `synced` only turns
+        true once the server confirms how many rows it actually stored.
+        """
+        nonlocal attachments, pending, stored
+        if not attachments and not done:
+            return True
+        try:
+            resp = post_attachments(args.ingest_url, key, args.device, run_id, attachments, done=done) or {}
+        except Exception as err:
+            print(f"[warn] ingest failed for {len(attachments)} attachment(s): {err}", file=sys.stderr)
+            # Keep the Blob URLs so a retry reuses them instead of re-uploading,
+            # but leave them unsynced so they are retried.
+            for path_key, ident in pending:
+                entry = state.get(path_key) or {}
+                entry["synced"] = False
+                state[path_key] = entry
+            save_state(args.state, state)
+            attachments, pending = [], []
+            return False
+
+        written = resp.get("attachments") or {}
+        upserted = written.get("upserted")
+        if upserted is None:
+            upserted = len(attachments)
+        # Fewer rows back than sent means the ingest filtered some — almost
+        # always a chat that has not synced yet. Those stay unsynced so a later
+        # run retries them once their chat exists.
+        confirmed = upserted >= len(attachments)
+        for path_key, ident in pending:
+            entry = state.get(path_key) or {}
+            entry["synced"] = bool(confirmed)
+            if confirmed and ident:
+                entry["size"], entry["mtime"] = ident["size"], ident["mtime"]
+            state[path_key] = entry
+        stored += int(upserted or 0)
+        if not confirmed:
+            print(f"[warn] ingest stored {upserted} of {len(attachments)} attachment(s); "
+                  f"the rest will be retried once their chats sync", file=sys.stderr)
+        save_state(args.state, state)
+        attachments, pending = [], []
+        return True
+
     for path, kind, chat_id, meta in to_upload:
+        if time.time() >= deadline:
+            stopped_early = True
+            print(f"[wa_media_push] stopping at the {args.max_seconds}s budget; "
+                  f"the rest run next tick", file=sys.stderr)
+            break
+        ident = file_identity(path)
         try:
             up = upload_one(args.blob_url, key, kind, path)
         except Exception as err:
@@ -315,22 +427,20 @@ def main():
             "sent_at": meta.get("sent_at"),
         }
         attachments.append(att)
-        state[path] = up["blob_url"]
+        pending.append((path, ident))
+        # The URL is recorded before the push so a crash cannot lose it; the
+        # file is not considered done until flush() sees it confirmed.
+        state[path] = {"url": up["blob_url"], "size": None, "mtime": None, "synced": False}
 
-        # flush in batches to keep memory low and to avoid re-uploading if we crash
         if len(attachments) >= 50:
-            post_attachments(args.ingest_url, key, args.device, run_id, attachments)
-            print(f"[wa_media_push] pushed {len(attachments)} attachments (run {run_id})")
-            attachments = []
-            save_state(args.state, state)
+            flush()
 
-    if attachments:
-        post_attachments(args.ingest_url, key, args.device, run_id, attachments, done=True)
-        print(f"[wa_media_push] pushed {len(attachments)} attachments (run {run_id}) [final]")
-    else:
-        # send a final done:true so wa_sync_runs closes the run cleanly
-        post_attachments(args.ingest_url, key, args.device, run_id, [], done=True)
+    # A run cut short by the deadline is not finished, so it must not close the
+    # sync run — the next tick continues it.
+    flush(done=not stopped_early)
     save_state(args.state, state)
+    print(f"[wa_media_push] {stored} attachment(s) stored (run {run_id})"
+          + (" [partial]" if stopped_early else ""))
     return 0
 
 
