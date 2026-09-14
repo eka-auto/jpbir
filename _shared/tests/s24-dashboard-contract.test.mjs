@@ -9,6 +9,7 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const html = readFileSync(join(root, 'Frontend', 'db.html'), 'utf8');
 const api = readFileSync(join(root, 'Backend', 'db-api.js'), 'utf8');
 const migration = readFileSync(join(root, 'Database', 'schema', '006_s24_normalized.sql'), 'utf8');
+const vercel = JSON.parse(readFileSync(join(root, 'vercel.json'), 'utf8'));
 
 test('database dashboard inline JavaScript parses', () => {
   const script = html.match(/<script>([\s\S]*?)<\/script>/);
@@ -31,4 +32,8 @@ test('typed S24 tables are covered by migration, API, and health inventory', () 
     assert.match(migration, new RegExp(`CREATE TABLE IF NOT EXISTS ${table}`));
     assert.match(api, new RegExp(table));
   }
+});
+
+test('the signed S24 ingest handler is included in explicit Vercel builds', () => {
+  assert.ok(vercel.builds.some((build) => build.src === 'Backend/s24-ingest.js'));
 });
