@@ -7,6 +7,9 @@ import { readdir, readFile } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { directPool } from '../../Integrations/postgres.js';
+import { loadEnv } from './_env.mjs';
+
+loadEnv();
 
 const SCHEMA_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'schema');
 
