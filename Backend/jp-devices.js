@@ -82,6 +82,20 @@ const S24_DEVICE_ID = 'samsung-s24-ultra';
 const S24_ACK_MAX_AGE_SECONDS = 300;
 const S24_SOURCE_TYPES = new Set(['live_termux', 'live_daemon']);
 
+// Every other field this check reads is written by whatever process owns the
+// document, so a bridge running off-device could assert all of them about
+// itself — and one did: a Windows process writing heartbeatAuth='termux-phone',
+// sourceType='live_termux' and liveDeviceVerified=true for the S24. The agent
+// version prefix was the only thing standing in its way, and a version string
+// is one edit away from matching.
+//
+// runtimeIsAndroid is set by the collector from the platform it is actually
+// executing on, and the collector now reports false off Termux rather than
+// omitting the field. Requiring it strictly true means an absent field — an
+// older build that predates this, or anything that simply does not set it —
+// fails closed, which is the behaviour we want while the fleet catches up.
+const S24_RUNTIME_EVIDENCE = 'runtimeIsAndroid';
+
 function nonFutureAgeSeconds(value, now) {
   if (!value) return null;
   const timestamp = Date.parse(value);
@@ -105,6 +119,7 @@ export function strictS24Liveness(fields, heartbeatAgeSeconds, ackAgeSeconds) {
     heartbeatAuth: fields.heartbeatAuth === 'termux-phone',
     liveDeviceVerified: fields.liveDeviceVerified === true,
     liveSource: S24_SOURCE_TYPES.has(fields.sourceType),
+    androidRuntime: fields[S24_RUNTIME_EVIDENCE] === true,
     commandAckFresh: ackAgeSeconds !== null && ackAgeSeconds <= S24_ACK_MAX_AGE_SECONDS,
   };
   const failed = Object.entries(checks).find(([, passed]) => !passed);
