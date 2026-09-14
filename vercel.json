@@ -54,6 +54,10 @@
       "use": "@vercel/node"
     },
     {
+      "src": "Backend/jp-live-content.js",
+      "use": "@vercel/node"
+    },
+    {
       "src": "Backend/jp-stats.js",
       "use": "@vercel/node"
     },
