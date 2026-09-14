@@ -482,7 +482,7 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
                 </div>
                 <div class="panel">
                     <div class="panel-head"><div><h2>Device browser history</h2><div class="hint" id="deviceHint">Own-device history synced from the S24 daemon</div></div>
-                        <div class="tools"><button id="deviceAskBtn" title="Ask the S24 daemon to collect and push its browser history now">Ask device for data</button><button id="deviceRefreshBtn">Refresh</button></div></div>
+                        <div class="tools"><button id="deviceAskBtn" title="Queue an authenticated S24 sync through the live command channel">Sync S24 now</button><button id="deviceRefreshBtn">Refresh</button></div></div>
                     <div class="table-wrap">
                         <table id="deviceTable">
                             <thead><tr>
@@ -2223,20 +2223,20 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
             var btn = $('deviceAskBtn');
             btn.disabled = true;
             btn.textContent = 'Asking…';
-            fetch('/api/jp-ask?' + new URLSearchParams({ key: KEY }).toString(), {
+            fetch('/api/s24-command', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + KEY },
                 body: JSON.stringify({ device: 'samsung-s24-ultra', action: 'sync-now' })
             })
                 .then(function (r) { return r.json().then(function (j) { return { status: r.status, body: j }; }); })
                 .then(function (res) {
                     if (res.status === 401) { showGate(); return; }
                     if (!res.body.success) throw new Error(res.body.error || 'failed');
-                    $('deviceHint').textContent = 'Command queued: ' + res.body.action + ' (id ' + res.body.reqId + ') — waiting for the S24 daemon to pick it up.';
+                    $('deviceHint').textContent = 'Command queued: ' + res.body.action + ' (id ' + res.body.commandId + ') — waiting for the S24 daemon to pick it up.';
                     setTimeout(loadDeviceHistory, 15000);
                 })
                 .catch(function (e) { $('deviceHint').textContent = 'Ask failed: ' + e.message; })
-                .finally(function () { btn.disabled = false; btn.textContent = 'Ask device for data'; });
+                .finally(function () { btn.disabled = false; btn.textContent = 'Sync S24 now'; });
         });
     $('deviceDetailClose').addEventListener('click', function () {
         $('deviceDetailPanel').style.display = 'none';
