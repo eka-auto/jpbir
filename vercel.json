@@ -118,15 +118,15 @@
       "use": "@vercel/node"
     },
     {
-      "src": "Backend/s24-ingest.js",
-      "use": "@vercel/node"
-    },
-    {
       "src": "Backend/wa-blob-upload.js",
       "use": "@vercel/node"
     },
     {
       "src": "Backend/jp-wa-attachments.js",
+      "use": "@vercel/node"
+    },
+    {
+      "src": "Backend/jp-wa-messages.js",
       "use": "@vercel/node"
     }
   ],
