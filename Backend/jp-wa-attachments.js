@@ -45,7 +45,31 @@ export default async function handler(req, res) {
     const conds = ['chat_id = $1'];
     const params = [chatId];
     if (kind) { params.push(kind); conds.push(`kind = $${params.length}`); }
-    if (before) { params.push(before); conds.push(`(sent_at IS NULL OR sent_at < $${params.length}::timestamptz)`); }
+    // Keyset pagination over the WHOLE ordering key. A cursor of sent_at alone
+    // was wrong three ways: rows sharing the boundary timestamp were skipped by
+    // the strict `<`, every undated row was re-included on each page by the
+    // `sent_at IS NULL OR` disjunct, and a page ending on a NULL sent_at
+    // produced a null cursor so paging stopped with rows still unread.
+    // The cursor is "<sent_at iso|''>|<ingested_at iso>", opaque to the client.
+    if (before) {
+      const sep = before.indexOf('|');
+      const curSent = sep === -1 ? before : before.slice(0, sep);
+      const curTie = sep === -1 ? '' : before.slice(sep + 1);
+      if (!curTie) {
+        // A cursor issued before this change: a bare timestamp. Honour it.
+        params.push(curSent);
+        conds.push(`(sent_at IS NULL OR sent_at < $${params.length}::timestamptz)`);
+      } else if (curSent) {
+        params.push(curSent); const s = params.length;
+        params.push(curTie); const t = params.length;
+        // Still inside the dated rows; undated ones all sort after them.
+        conds.push(`((sent_at IS NOT NULL AND (sent_at, ingested_at) < ($${s}::timestamptz, $${t}::timestamptz)) OR sent_at IS NULL)`);
+      } else {
+        params.push(curTie);
+        // Past the dated rows: only older undated ones remain.
+        conds.push(`(sent_at IS NULL AND ingested_at < $${params.length}::timestamptz)`);
+      }
+    }
     params.push(limit);
 
     const r = await query(

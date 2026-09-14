@@ -84,8 +84,13 @@ def open_ro(path):
 def load_state(path):
     try:
         with open(path, "r", encoding="utf-8") as f:
-            raw = json.load(f) or {}
+            raw = json.load(f)
     except (OSError, json.JSONDecodeError):
+        return {}
+    # A state file holding a list, a string or null is not a state file, and
+    # taking it at face value would fail on .items() below — after uploads had
+    # already happened and their URLs had nowhere to be recorded.
+    if not isinstance(raw, dict):
         return {}
     # Entries used to be a bare blob_url string. Keep those readable, with no
     # identity recorded, so an upgrade does not re-upload the whole library.
