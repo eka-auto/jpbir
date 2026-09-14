@@ -20,6 +20,7 @@
 // its own key, numbered in file order), so re-running after a partial load
 // resumes instead of duplicating.
 import { readFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import { ingestBatch, normalizeChat, assignChatIds } from '../../Integrations/wa-store.js';
 import { loadEnv } from './_env.mjs';
 
@@ -48,7 +49,14 @@ async function loadList(path, listKey) {
 // Ids are assigned over the whole file, before any slicing into API batches,
 // so two same-name chats that land in different batches still get two rows.
 const chats = assignChatIds(await loadList(file, 'chats'));
-const messages = opt('--messages') ? await loadList(opt('--messages'), 'messages') : [];
+// wa:build writes the message rows next to the inventory, so the default path
+// picks them up without a flag. Importing chats but not messages would leave
+// /api/wa-chat with an empty breakdown for every chat — the drill-down would
+// look broken rather than unpopulated.
+const DEFAULT_MESSAGES = 'Database/wa-messages.json';
+const messagesPath = opt('--messages') || (existsSync(DEFAULT_MESSAGES) ? DEFAULT_MESSAGES : null);
+const messages = messagesPath ? await loadList(messagesPath, 'messages') : [];
+if (messagesPath && !opt('--messages')) console.log(`(using ${DEFAULT_MESSAGES} for messages; pass --messages to override)`);
 const usable = chats.filter((c) => normalizeChat(c)).length;
 console.log(`${file}: ${chats.length} chats (${usable} usable)` + (messages.length ? `, ${messages.length} messages` : ''));
 if (!usable) { console.error('nothing to import'); process.exit(1); }
