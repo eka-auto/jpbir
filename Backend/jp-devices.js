@@ -79,6 +79,19 @@ export function normalizeCommandQueue(queue) {
 }
 
 const S24_DEVICE_ID = 'samsung-s24-ultra';
+
+// The same phone is written to more than one document: devices/Samsung-S24 is
+// a legacy alias carrying canonicalDeviceId='samsung-s24-ultra', and the
+// collector updates both every cycle. Keying strict mode on the literal
+// document id left the alias on plain timestamp-freshness, so the phone showed
+// live:true there while the strict document beside it said live:false — the
+// attestation bypassed by picking the other row.
+function isS24Document(deviceId, fields) {
+  return deviceId === S24_DEVICE_ID ||
+    fields.canonicalDeviceId === S24_DEVICE_ID ||
+    (Array.isArray(fields.legacyDeviceIds) && fields.legacyDeviceIds.includes(deviceId) &&
+      fields.canonicalDeviceId === S24_DEVICE_ID);
+}
 const S24_ACK_MAX_AGE_SECONDS = 300;
 const S24_SOURCE_TYPES = new Set(['live_termux', 'live_daemon']);
 
@@ -175,13 +188,14 @@ export default async function handler(req, res) {
         ? f.heartbeatIntervalSeconds
         : (DEFAULT_INTERVAL_SECONDS[f.deviceType] || 45);
       const heartbeatAgeSeconds = nonFutureAgeSeconds(lastSeen, now);
-      const heartbeatMaxAgeSeconds = deviceId === S24_DEVICE_ID
+      const isS24 = isS24Document(deviceId, f);
+      const heartbeatMaxAgeSeconds = isS24
         ? S24_ACK_MAX_AGE_SECONDS
         : 3 * interval;
       const heartbeatFresh = heartbeatAgeSeconds !== null && heartbeatAgeSeconds <= heartbeatMaxAgeSeconds;
       const lastCommandAckAt = commandAckTimestamp(f);
       const lastCommandAckAgeSeconds = nonFutureAgeSeconds(lastCommandAckAt, now);
-      const strict = deviceId === S24_DEVICE_ID
+      const strict = isS24
         ? strictS24Liveness(f, heartbeatAgeSeconds, lastCommandAckAgeSeconds)
         : {
           mode: 'timestamp-freshness',
