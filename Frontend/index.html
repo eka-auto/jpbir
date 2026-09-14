@@ -563,6 +563,7 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
                             </select>
                         </div></div>
                     <div id="waKpis" class="kpis" style="margin-top:12px"></div>
+                    <div class="hint" style="margin-top:10px">Click a chat for its message breakdown. The recovery dump holds metadata only — message text was never in it.</div>
                     <div class="table-wrap">
                         <table id="waTable">
                             <thead><tr>
@@ -578,6 +579,16 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
                             </tr></thead>
                             <tbody></tbody>
                         </table>
+                    </div>
+                </div>
+
+                <div class="panel" id="waDetail" style="margin-top:14px; display:none">
+                    <div class="panel-head"><div><h2 id="waDetailName">Chat</h2><div class="hint" id="waDetailHint"></div></div>
+                        <div class="tools"><button id="waDetailClose">Close</button></div></div>
+                    <div id="waDetailKpis" class="kpis" style="margin-top:12px"></div>
+                    <div class="grid2" style="margin-top:14px">
+                        <div class="panel"><h2>By type</h2><div id="waDetailKinds"></div></div>
+                        <div class="panel"><h2>Activity by month</h2><div id="waDetailMonths"></div></div>
                     </div>
                 </div>
             </section>
@@ -2273,7 +2284,7 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
             return;
         }
         tb.innerHTML = rows.map(function (c) {
-            return '<tr>'
+            return '<tr class="clickable" data-wa="' + esc(c.h) + '">'
                 + '<td>' + esc(c.n) + (c.u ? ' <span class="pill">no saved contact</span>' : '') + '</td>'
                 + '<td>' + esc(c.k) + '</td>'
                 + '<td>' + waFmt(c.m) + '</td>'
@@ -2322,6 +2333,75 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
             })
             .catch(function (e) { $('waHint').textContent = 'Failed to load: ' + e.message; });
     }
+
+    /* Chat drill-down. The row carries an opaque handle, never a jid, so the
+       browser can ask for one chat's detail without ever holding its number. */
+    function waBar(label, n, max) {
+        var pct = max ? Math.round((n / max) * 100) : 0;
+        return '<div style="display:flex;align-items:center;gap:10px;margin:6px 0;font-size:12.5px">'
+            + '<div style="width:96px;color:var(--ink-muted)">' + esc(label) + '</div>'
+            + '<div style="flex:1;background:var(--panel2);border-radius:6px;overflow:hidden;height:10px">'
+            + '<div style="width:' + pct + '%;height:100%;background:linear-gradient(90deg,var(--amber),var(--amber-glow))"></div></div>'
+            + '<div style="width:64px;text-align:right">' + waFmt(n) + '</div></div>';
+    }
+
+    /* One panel, many clicks: chat A's slower answer must not land after B's
+       and leave A's totals sitting under B's heading. Only the newest request
+       is allowed to paint. */
+    var waDetailReq = 0;
+
+    function loadWhatsAppChat(h) {
+        var token = ++waDetailReq;
+        var d = $('waDetail');
+        d.style.display = '';
+        $('waDetailName').textContent = 'Loading…';
+        $('waDetailHint').textContent = '';
+        $('waDetailKpis').innerHTML = '';
+        $('waDetailKinds').innerHTML = '';
+        $('waDetailMonths').innerHTML = '';
+        fetch('/api/wa-chat?' + new URLSearchParams({ key: KEY, h: h }).toString())
+            .then(function (r) { return r.json(); })
+            .then(function (j) {
+                if (token !== waDetailReq) return;
+                if (!j.ok) { $('waDetailName').textContent = 'Chat'; $('waDetailHint').textContent = j.error || 'Could not load that chat.'; return; }
+                if (j.empty) {
+                    /* store present but not migrated: keep the instruction the
+                       endpoint sent instead of dereferencing an absent chat */
+                    $('waDetailName').textContent = 'Chat';
+                    $('waDetailHint').textContent = (j.reason || 'Nothing stored yet.')
+                        + ((j.howTo || []).length ? ' — ' + j.howTo.join(' · ') : '');
+                    return;
+                }
+                var c = j.chat, x = j.detail;
+                $('waDetailName').textContent = c.n;
+                $('waDetailHint').textContent = c.k + (c.k === 'group' && c.sz ? ' · ' + waFmt(c.sz) + ' members' : '')
+                    + ' · ' + esc(c.f || '?') + ' → ' + esc(c.l || '?')
+                    + (j.bodies && !j.bodies.available ? ' · ' + j.bodies.reason : '');
+                $('waDetailKpis').innerHTML =
+                    vkpi('Messages', waFmt(x.rows_held)) + vkpi('Sent', waFmt(x.sent)) + vkpi('Received', waFmt(x.received))
+                    + vkpi('Media', waFmt(c.md)) + vkpi('Calls', waFmt(c.cl))
+                    + (c.k === 'group' ? vkpi('Senders', waFmt(x.distinct_senders)) : '');
+                var km = Math.max.apply(null, (x.kinds || []).map(function (r) { return r.n; }).concat([0]));
+                $('waDetailKinds').innerHTML = (x.kinds || []).map(function (r) { return waBar(r.kind, r.n, km); }).join('')
+                    || '<div class="state">No messages held for this chat.</div>';
+                var mm = Math.max.apply(null, (x.months || []).map(function (r) { return r.n; }).concat([0]));
+                $('waDetailMonths').innerHTML = (x.months || []).map(function (r) { return waBar(r.month, r.n, mm); }).join('')
+                    || '<div class="state">No dated messages.</div>';
+            })
+            .catch(function (e) {
+                if (token !== waDetailReq) return;
+                $('waDetailHint').textContent = 'Failed to load: ' + e.message;
+            });
+    }
+
+    document.querySelector('#waTable tbody').addEventListener('click', function (ev) {
+        var t = ev.target;
+        while (t && t !== this) {
+            if (t.tagName === 'TR' && t.getAttribute('data-wa')) { loadWhatsAppChat(t.getAttribute('data-wa')); return; }
+            t = t.parentNode;
+        }
+    });
+    $('waDetailClose').addEventListener('click', function () { $('waDetail').style.display = 'none'; });
 
     $('waSearch').addEventListener('input', renderWhatsApp);
     $('waKind').addEventListener('change', renderWhatsApp);

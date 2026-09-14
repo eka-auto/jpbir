@@ -26,6 +26,10 @@ const args = process.argv.slice(2);
 const opt = (name, dflt = null) => { const i = args.indexOf(name); return i !== -1 ? args[i + 1] : dflt; };
 const dir = args.find((a, i) => !a.startsWith('-') && (i === 0 || !args[i - 1].startsWith('-')));
 const out = opt('-o', opt('--out', 'Database/wa-inventory.json'));
+// Per-message rows for the chat drill-down. Metadata only: a recovered dump
+// carries no message bodies (every one of the 110,439 is sealed), so this is
+// when, which kind, and which direction — never text.
+const msgsOut = opt('--messages', 'Database/wa-messages.json');
 
 if (!dir) {
   console.error('usage: node Database/scripts/wa-build-inventory.mjs <recovery-dir> [-o out.json]');
@@ -38,6 +42,16 @@ if (!dir) {
 // how the existing inventory totals were derived.
 const MEDIA = new Set(['image', 'video', 'document', 'album', 'sticker', 'vcard', 'multi_vcard', 'ptv', 'product', 'location']);
 const AUDIO = new Set(['ptt', 'audio']);
+// WhatsApp's own type vocabulary is much wider than wa_messages.kind, which is
+// text | media | audio | call | system | other. Anything unmapped falls to
+// 'other' rather than being dropped, so a chat's rows still add up.
+const SYSTEM = new Set(['gp2', 'notification_template', 'e2e_notification', 'protocol', 'revoked',
+  'status_notification', 'newsletter_notification', 'biz_content_placeholder']);
+const kindOf = (t) => (t === 'call_log' ? 'call'
+  : MEDIA.has(t) ? 'media'
+  : AUDIO.has(t) ? 'audio'
+  : SYSTEM.has(t) ? 'system'
+  : t === 'chat' ? 'text' : 'other');
 
 const readJsonl = (file, onRecord) => new Promise((resolve, reject) => {
   const path = join(dir, file);
@@ -76,6 +90,7 @@ await readJsonl('328_4_contact.jsonl', (o) => {
 });
 
 const tally = new Map();
+const messages = [];
 let keyed = 0, unkeyable = 0, fellBack = 0;
 await readJsonl('328_8_message.jsonl', (o) => {
   const v = o.value || {};
@@ -109,6 +124,18 @@ await readJsonl('328_8_message.jsonl', (o) => {
     if (!c.first || t < c.first) c.first = t;
     if (!c.last || t > c.last) c.last = t;
   }
+
+  // The id already proved unique across the dump, so it keys the row; the
+  // store prefixes it with the chat to build msg_id.
+  messages.push({
+    chat_id: jid,
+    id,
+    ts: t,
+    from_me: id.startsWith('true_'),
+    sender: String(v.author || v.from || '') || null,
+    kind: kindOf(type),
+    encrypted: true,
+  });
 });
 
 const day = (epoch) => (epoch ? new Date(epoch * 1000).toISOString().slice(0, 10) : '');
@@ -144,6 +171,8 @@ for (const c of chats) {
 }
 
 fs.writeFileSync(out, JSON.stringify({ totals, chats }));
+fs.writeFileSync(msgsOut, JSON.stringify({ messages }));
 console.log(`\nkeyed ${keyed} messages, ${unkeyable} unkeyable, ${fellBack} keyed from the envelope (torn id)`);
 console.log(JSON.stringify(totals, null, 2));
 console.log(`\nwrote ${out} (${chats.length} chats) — real names, keep it out of git`);
+console.log(`wrote ${msgsOut} (${messages.length} messages, metadata only — no bodies exist in the dump)`);
