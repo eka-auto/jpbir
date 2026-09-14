@@ -5,6 +5,13 @@
 // list + per-object fetch (stats/visitor), and Firestore reads (jp-devices).
 // Every view below is one indexed query against one database.
 //
+// Two rules hold across every view, because breaking either produces numbers
+// that quietly disagree with each other on the same screen:
+//   1. If a table has a `site` column, the view filters on it. Otherwise the
+//      property selector silently does nothing on that page.
+//   2. If a view is windowed, EVERY query inside it is windowed. One unwindowed
+//      query puts two cards in the same grid on different denominators.
+//
 // Read-only: nothing here writes. The ingest paths still write to Blob and
 // Firestore as before, and mirror into Postgres.
 import { query, isConfigured } from '../Integrations/postgres.js';
@@ -34,8 +41,8 @@ const VIEWS = {
               COUNT(DISTINCT country)::int countries,
               COUNT(DISTINCT city)::int cities,
               -- time_on_page arrives in MILLISECONDS, and the tail is abandoned
-              -- tabs (max observed: 14 hours), so the mean is meaningless. Median
-              -- of the events that recorded any time at all, reported in seconds.
+              -- tabs, so the mean is meaningless. Median over the events that
+              -- recorded any time at all, reported in seconds.
               ROUND((percentile_cont(0.5) WITHIN GROUP (
                 ORDER BY time_on_page) FILTER (WHERE time_on_page > 0) / 1000)::numeric, 1)::float median_seconds_on_page,
               ROUND((MAX(time_on_page) / 1000)::numeric, 0)::float longest_seconds_on_page,
@@ -45,7 +52,18 @@ const VIEWS = {
       params
     )).rows[0];
 
-    const [daily, byType, topPages, countries, cities, browsers, oses, devices, referrers, utm] = await Promise.all([
+    // One helper, so every breakdown is windowed, site-scoped and noise-filtered
+    // identically. Hand-writing each of these is what put Top pages and
+    // Referrers — side by side in one grid — on different denominators.
+    const breakdown = (col, extraWhere) => query(
+      `SELECT ${col} AS label, COUNT(*)::int n, COUNT(DISTINCT visitor_id)::int visitors
+         FROM events
+        WHERE site = $1 AND ${col} IS NOT NULL ${extraWhere || ''}
+          AND occurred_at > now() - ($2 || ' days')::interval ${noiseClause}
+        GROUP BY 1 ORDER BY n DESC LIMIT 15`, params);
+
+    const [daily, byType, topPages, countries, cities, browsers, oses, devices,
+           referrers, utm, languages, isps, timezones, domains, screens] = await Promise.all([
       query(`SELECT date_trunc('day', occurred_at)::date AS day,
                     COUNT(*)::int events,
                     COUNT(DISTINCT visitor_id)::int visitors,
@@ -53,46 +71,40 @@ const VIEWS = {
                FROM events
               WHERE site = $1 AND occurred_at > now() - ($2 || ' days')::interval ${noiseClause}
               GROUP BY 1 ORDER BY 1`, params),
+      // Deliberately unfiltered: this card is how the user sees what the noise
+      // toggle is hiding, so it has to show every type.
       query(`SELECT event_type AS label, COUNT(*)::int n FROM events
               WHERE site = $1 AND occurred_at > now() - ($2 || ' days')::interval
               GROUP BY 1 ORDER BY n DESC`, [site, days]),
-      query(`SELECT page_url AS label, COUNT(*)::int n, COUNT(DISTINCT visitor_id)::int visitors
-               FROM events WHERE site = $1 AND page_url IS NOT NULL
-                AND occurred_at > now() - ($2 || ' days')::interval ${noiseClause}
-              GROUP BY 1 ORDER BY n DESC LIMIT 15`, params),
-      query(`SELECT country AS label, COUNT(*)::int n, COUNT(DISTINCT visitor_id)::int visitors
-               FROM events WHERE site = $1 AND country IS NOT NULL
-                AND occurred_at > now() - ($2 || ' days')::interval ${noiseClause}
-              GROUP BY 1 ORDER BY n DESC LIMIT 15`, params),
+      breakdown('page_url'),
+      breakdown('country'),
       query(`SELECT city AS label, country, COUNT(*)::int n, COUNT(DISTINCT visitor_id)::int visitors
                FROM events WHERE site = $1 AND city IS NOT NULL
                 AND occurred_at > now() - ($2 || ' days')::interval ${noiseClause}
               GROUP BY 1,2 ORDER BY n DESC LIMIT 15`, params),
-      query(`SELECT browser AS label, COUNT(*)::int n FROM events
-              WHERE site = $1 AND browser IS NOT NULL
-                AND occurred_at > now() - ($2 || ' days')::interval ${noiseClause}
-              GROUP BY 1 ORDER BY n DESC LIMIT 10`, params),
-      query(`SELECT os AS label, COUNT(*)::int n FROM events
-              WHERE site = $1 AND os IS NOT NULL
-                AND occurred_at > now() - ($2 || ' days')::interval ${noiseClause}
-              GROUP BY 1 ORDER BY n DESC LIMIT 10`, params),
-      query(`SELECT device_type AS label, COUNT(*)::int n FROM events
-              WHERE site = $1 AND device_type IS NOT NULL
-                AND occurred_at > now() - ($2 || ' days')::interval ${noiseClause}
-              GROUP BY 1 ORDER BY n DESC LIMIT 10`, params),
-      query(`SELECT referrer AS label, COUNT(*)::int n FROM events
-              WHERE site = $1 AND referrer IS NOT NULL AND referrer <> ''
-                AND occurred_at > now() - ($2 || ' days')::interval
-              GROUP BY 1 ORDER BY n DESC LIMIT 10`, [site, days]),
+      breakdown('browser'),
+      breakdown('os'),
+      breakdown('device_type'),
+      breakdown('referrer', "AND referrer <> ''"),
       query(`SELECT utm_source, utm_medium, utm_campaign, COUNT(*)::int n FROM events
               WHERE site = $1 AND utm_source IS NOT NULL
-                AND occurred_at > now() - ($2 || ' days')::interval
-              GROUP BY 1,2,3 ORDER BY n DESC LIMIT 10`, [site, days]),
+                AND occurred_at > now() - ($2 || ' days')::interval ${noiseClause}
+              GROUP BY 1,2,3 ORDER BY n DESC LIMIT 10`, params),
+      breakdown('language'),
+      breakdown('asn_org'),
+      breakdown('timezone'),
+      breakdown('page_domain'),
+      // `screen` holds the raw screen_info JSON; the label a human wants is WxH.
+      query(`SELECT (screen::jsonb ->> 'width') || ' x ' || (screen::jsonb ->> 'height') AS label,
+                    COUNT(*)::int n, COUNT(DISTINCT visitor_id)::int visitors
+               FROM events
+              WHERE site = $1 AND screen IS NOT NULL AND screen <> ''
+                AND occurred_at > now() - ($2 || ' days')::interval ${noiseClause}
+              GROUP BY 1 ORDER BY n DESC LIMIT 12`, params),
     ]);
 
     // Real scroll depth is how far a session got, not the mean across every
-    // event — most events fire at 0% before the reader has scrolled at all,
-    // which drags a flat average to nearly zero and reads as "nobody scrolls".
+    // event — most events fire at 0% before the reader has scrolled at all.
     const scroll = (await query(
       `SELECT ROUND(AVG(deepest)::numeric, 1)::float avg_session_scroll,
               MAX(deepest)::float max_session_scroll,
@@ -104,11 +116,18 @@ const VIEWS = {
                   AND occurred_at > now() - ($2 || ' days')::interval
                 GROUP BY session_id) s`, [site, days])).rows[0];
 
-    // Hour-of-day profile, so the UI can show when this site is actually read.
+    // All 24 buckets, zero-filled. Dropping empty hours spread the bars evenly
+    // across the width and left the labels sitting on the wrong hour.
     const hourly = (await query(
-      `SELECT EXTRACT(hour FROM occurred_at)::int AS hour_of_day, COUNT(*)::int n
-         FROM events WHERE site = $1 AND occurred_at > now() - ($2 || ' days')::interval ${noiseClause}
-        GROUP BY 1 ORDER BY 1`, params)).rows;
+      `SELECT h AS hour_of_day, COALESCE(e.n, 0)::int n
+         FROM generate_series(0, 23) h
+         LEFT JOIN (
+           SELECT EXTRACT(hour FROM occurred_at)::int hr, COUNT(*)::int n
+             FROM events
+            WHERE site = $1 AND occurred_at > now() - ($2 || ' days')::interval ${noiseClause}
+            GROUP BY 1
+         ) e ON e.hr = h
+        ORDER BY h`, params)).rows;
 
     return {
       totals: Object.assign({}, totals, scroll),
@@ -123,6 +142,11 @@ const VIEWS = {
       devices: devices.rows,
       referrers: referrers.rows,
       utm: utm.rows,
+      languages: languages.rows,
+      isps: isps.rows,
+      timezones: timezones.rows,
+      domains: domains.rows,
+      screens: screens.rows,
     };
   },
 
@@ -133,14 +157,15 @@ const VIEWS = {
          FROM events GROUP BY site ORDER BY events DESC`)).rows;
   },
 
-  async visitors({ site, limit, offset }) {
+  async visitors({ site, days, limit, offset }) {
+    const where = "WHERE site = $1 AND last_seen_at > now() - ($2 || ' days')::interval";
     const rows = (await query(
-      `SELECT v.visitor_id, v.first_seen_at, v.last_seen_at, v.event_count, v.session_count,
-              v.country, v.region, v.city, v.timezone, v.browser, v.os, v.device_type,
-              v.utm_source, v.utm_medium, v.fingerprint, v.user_agent
-         FROM visitors v WHERE v.site = $1
-        ORDER BY v.last_seen_at DESC LIMIT $2 OFFSET $3`, [site, limit, offset])).rows;
-    const total = (await query('SELECT COUNT(*)::int n FROM visitors WHERE site = $1', [site])).rows[0].n;
+      `SELECT visitor_id, first_seen_at, last_seen_at, event_count, session_count,
+              country, region, city, timezone, browser, os, device_type,
+              utm_source, utm_medium, fingerprint, user_agent
+         FROM visitors ${where}
+        ORDER BY last_seen_at DESC LIMIT $3 OFFSET $4`, [site, days, limit, offset])).rows;
+    const total = (await query(`SELECT COUNT(*)::int n FROM visitors ${where}`, [site, days])).rows[0].n;
     return { total, limit, offset, rows };
   },
 
@@ -150,21 +175,24 @@ const VIEWS = {
     const sessions = (await query(
       `SELECT session_id, started_at, last_event_at, event_count, entry_page, exit_page
          FROM sessions WHERE site = $1 AND visitor_id = $2 ORDER BY started_at DESC`, [site, id])).rows;
+    const eventTotal = (await query(
+      'SELECT COUNT(*)::int n FROM events WHERE site = $1 AND visitor_id = $2', [site, id])).rows[0].n;
     const events = (await query(
       `SELECT id, event_type, occurred_at, page_url, page_title, referrer, time_on_page,
               scroll_percent, interactions, city, country, browser, os, device_type
          FROM events WHERE site = $1 AND visitor_id = $2
         ORDER BY occurred_at DESC LIMIT 500`, [site, id])).rows;
-    return { profile, sessions, events };
+    return { profile, sessions, events, eventTotal, eventLimit: 500 };
   },
 
-  async sessions({ site, limit, offset }) {
+  async sessions({ site, days, limit, offset }) {
+    const where = "WHERE site = $1 AND started_at > now() - ($2 || ' days')::interval";
     const rows = (await query(
       `SELECT session_id, visitor_id, started_at, last_event_at, event_count, entry_page, exit_page,
               EXTRACT(epoch FROM (last_event_at - started_at))::int duration_seconds
-         FROM sessions WHERE site = $1 ORDER BY started_at DESC LIMIT $2 OFFSET $3`,
-      [site, limit, offset])).rows;
-    const total = (await query('SELECT COUNT(*)::int n FROM sessions WHERE site = $1', [site])).rows[0].n;
+         FROM sessions ${where} ORDER BY started_at DESC LIMIT $3 OFFSET $4`,
+      [site, days, limit, offset])).rows;
+    const total = (await query(`SELECT COUNT(*)::int n FROM sessions ${where}`, [site, days])).rows[0].n;
     return { total, limit, offset, rows };
   },
 
@@ -178,20 +206,21 @@ const VIEWS = {
     return { meta, events };
   },
 
-  async events({ site, limit, offset, type, includeNoise }) {
-    const where = ['site = $1'];
-    const params = [site];
+  async events({ site, days, limit, offset, type, includeNoise }) {
+    const where = ['site = $1', "occurred_at > now() - ($2 || ' days')::interval"];
+    const params = [site, days];
     if (type) { params.push(type); where.push(`event_type = $${params.length}`); }
     else if (!includeNoise) { params.push(NOISE_TYPES); where.push(`event_type <> ALL($${params.length})`); }
-    params.push(limit, offset);
+    const clause = where.join(' AND ');
     const rows = (await query(
       `SELECT id, event_type, occurred_at, visitor_id, session_id, page_url, page_title,
-              referrer, country, city, browser, os, device_type, time_on_page, scroll_percent,
-              interactions, utm_source, utm_medium, asn_org, ip
-         FROM events WHERE ${where.join(' AND ')}
-        ORDER BY occurred_at DESC LIMIT $${params.length - 1} OFFSET $${params.length}`, params)).rows;
-    const total = (await query(
-      `SELECT COUNT(*)::int n FROM events WHERE ${where.join(' AND ')}`, params.slice(0, -2))).rows[0].n;
+              referrer, country, region, city, timezone, browser, os, device_type,
+              time_on_page, scroll_percent, interactions, utm_source, utm_medium,
+              asn, asn_org, language, page_domain, fingerprint, ip
+         FROM events WHERE ${clause}
+        ORDER BY occurred_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+      params.concat([limit, offset]))).rows;
+    const total = (await query(`SELECT COUNT(*)::int n FROM events WHERE ${clause}`, params)).rows[0].n;
     return { total, limit, offset, rows };
   },
 
@@ -200,23 +229,26 @@ const VIEWS = {
     return (await query('SELECT * FROM events WHERE id = $1', [id])).rows[0] || null;
   },
 
-  async video() {
+  async video({ site, limit, offset }) {
     const rows = (await query(
-      `SELECT event_id, video_event, occurred_at, country, city, visitor_device, recorded_by, source_system
-         FROM video_events ORDER BY occurred_at DESC LIMIT 300`)).rows;
+      `SELECT event_id, video_event, occurred_at, site, country, city, visitor_device,
+              recorded_by, source_system, ingested_at
+         FROM video_events WHERE site = $1
+        ORDER BY occurred_at DESC LIMIT $2 OFFSET $3`, [site, limit, offset])).rows;
+    const total = (await query('SELECT COUNT(*)::int n FROM video_events WHERE site = $1', [site])).rows[0].n;
     const byClip = (await query(
       `SELECT video_event AS label, COUNT(*)::int n, MAX(occurred_at) last_at
-         FROM video_events GROUP BY 1 ORDER BY n DESC`)).rows;
+         FROM video_events WHERE site = $1 GROUP BY 1 ORDER BY n DESC`, [site])).rows;
     const byPlace = (await query(
       `SELECT COALESCE(city, country, 'unknown') AS label, COUNT(*)::int n
-         FROM video_events GROUP BY 1 ORDER BY n DESC LIMIT 15`)).rows;
-    return { rows, byClip, byPlace };
+         FROM video_events WHERE site = $1 GROUP BY 1 ORDER BY n DESC LIMIT 15`, [site])).rows;
+    return { total, limit, offset, rows, byClip, byPlace };
   },
 
   async devices() {
     return (await query(
       `SELECT device_id, display_name, online, last_seen_at, daemon_version, platform,
-              info, synced_at,
+              info, source_system, synced_at,
               CASE
                 WHEN last_seen_at IS NULL THEN 'unknown'
                 WHEN last_seen_at > now() - interval '2 minutes' THEN 'online'
@@ -226,46 +258,64 @@ const VIEWS = {
          FROM devices ORDER BY last_seen_at DESC NULLS LAST`)).rows;
   },
 
-  async letters() {
+  async letters({ site }) {
+    // jsonb_array_length throws on a non-array, and one malformed row would 500
+    // the whole view — the worst failure mode for the only surviving record of
+    // a letter, since the blob copy is destroyed on read.
     return (await query(
-      `SELECT token, created_at, read_at, deleted_at, source_system,
-              body -> 'email'      AS email,
-              body -> 'expiresAt'  AS expires_at,
-              body -> 'viewed'     AS viewed,
-              jsonb_array_length(COALESCE(body -> 'views', '[]'::jsonb)) AS view_count
-         FROM letters ORDER BY created_at DESC`)).rows;
+      `SELECT token, site, created_at, read_at, deleted_at, source_system, ingested_at, body,
+              body ->> 'email'     AS email,
+              body ->> 'expiresAt' AS expires_at,
+              body ->> 'viewed'    AS viewed,
+              CASE WHEN jsonb_typeof(body -> 'views') = 'array'
+                   THEN jsonb_array_length(body -> 'views') ELSE 0 END AS view_count
+         FROM letters WHERE site = $1 ORDER BY created_at DESC`, [site])).rows;
   },
 
-  async emails() {
+  async emails({ limit, offset }) {
     const rows = (await query(
-      `SELECT id, email, opened_at, ip, country, city, user_agent
-         FROM email_opens ORDER BY opened_at DESC LIMIT 300`)).rows;
+      `SELECT id, email, opened_at, ip, country, city, user_agent, payload, source_system, ingested_at
+         FROM email_opens ORDER BY opened_at DESC LIMIT $1 OFFSET $2`, [limit, offset])).rows;
+    const total = (await query('SELECT COUNT(*)::int n FROM email_opens')).rows[0].n;
     const byRecipient = (await query(
       `SELECT email AS label, COUNT(*)::int n, MAX(opened_at) last_at
          FROM email_opens GROUP BY 1 ORDER BY n DESC`)).rows;
-    return { rows, byRecipient };
+    return { total, limit, offset, rows, byRecipient };
   },
 
-  // Every table, every row count — the "is anything missing" panel.
-  async health() {
+  // Every table, every column — the "is anything missing" panel.
+  async health({ site }) {
     const tables = ['events', 'visitors', 'sessions', 'letters', 'email_opens', 'video_events', 'devices'];
     const counts = {};
-    for (const t of tables) counts[t] = (await query(`SELECT COUNT(*)::int n FROM ${t}`)).rows[0].n;
+    const countsForSite = {};
+    for (const t of tables) {
+      counts[t] = (await query(`SELECT COUNT(*)::int n FROM ${t}`)).rows[0].n;
+      // Only some tables carry `site`. The nav badges have to match the
+      // site-filtered pages they label, or they read as a bug.
+      const hasSite = (await query(
+        "SELECT 1 FROM information_schema.columns WHERE table_name = $1 AND column_name = 'site'", [t])).rowCount;
+      countsForSite[t] = hasSite
+        ? (await query(`SELECT COUNT(*)::int n FROM ${t} WHERE site = $1`, [site])).rows[0].n
+        : counts[t];
+    }
+
+    // Coverage is generated from information_schema rather than a hand-kept
+    // list, so a column added by a future migration appears here by itself
+    // instead of silently having neither a panel nor a coverage row.
+    const cols = (await query(
+      `SELECT column_name FROM information_schema.columns
+        WHERE table_name = 'events' AND table_schema = 'public'
+          AND column_name NOT IN ('id','site','ingested_at','raw_payload','event_data')
+        ORDER BY ordinal_position`)).rows.map((r) => r.column_name);
+    const expr = cols.map((c) => `COUNT("${c}")::int AS "${c}"`).join(', ');
     const coverage = (await query(
-      `SELECT COUNT(*)::int total,
-              COUNT(visitor_id)::int with_visitor, COUNT(session_id)::int with_session,
-              COUNT(page_url)::int with_page, COUNT(country)::int with_country,
-              COUNT(city)::int with_city, COUNT(browser)::int with_browser,
-              COUNT(os)::int with_os, COUNT(device_type)::int with_device,
-              COUNT(user_agent)::int with_ua, COUNT(asn)::int with_asn,
-              COUNT(referrer)::int with_referrer, COUNT(utm_source)::int with_utm,
-              COUNT(time_on_page)::int with_time, COUNT(scroll_percent)::int with_scroll
-         FROM events`)).rows[0];
+      `SELECT COUNT(*)::int AS total, ${expr} FROM events WHERE site = $1`, [site])).rows[0];
+
     const sources = (await query(
       `SELECT source_system, COUNT(*)::int n, MIN(occurred_at) oldest, MAX(occurred_at) newest
          FROM events GROUP BY 1 ORDER BY n DESC`)).rows;
     const span = (await query('SELECT MIN(occurred_at) oldest, MAX(occurred_at) newest FROM events')).rows[0];
-    return { counts, coverage, sources, span };
+    return { counts, countsForSite, coverage, sources, span };
   },
 };
 
