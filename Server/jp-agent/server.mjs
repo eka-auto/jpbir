@@ -75,7 +75,11 @@ function send(res, status, body) {
   res.end(payload);
 }
 
-async function readBody(req, limit = 256 * 1024) {
+// 4MB, not 256KB: pasting a stack trace, a diff or a whole file into the
+// terminal is the normal way to ask this thing to find a bug. Kept below
+// nginx's client_max_body_size so an oversized prompt fails as our JSON error
+// rather than nginx's HTML 413.
+async function readBody(req, limit = 4 * 1024 * 1024) {
   const chunks = [];
   let size = 0;
   for await (const c of req) {
