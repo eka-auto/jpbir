@@ -122,11 +122,24 @@ def already_uploaded(state, path):
     entry = state.get(path)
     if not entry or not entry.get("url"):
         return False
+    # Uploaded to Blob but never confirmed stored by the ingest — usually a
+    # chat that had not synced yet, so the row was filtered. These have to be
+    # retried. Checking identity first would have sent them down the
+    # "size is None" path below and skipped them for good, which is the very
+    # bug the two-stage state was added to fix.
+    if entry.get("synced") is False:
+        return False
     ident = file_identity(path)
     if ident is None:
         return True                      # unreadable now; nothing to re-upload
     if entry.get("size") is None:
-        return True                      # pre-upgrade entry, no identity recorded
+        # A legacy entry: a URL from before identities were recorded. Stamp the
+        # current identity so any later replacement is noticed, instead of this
+        # path being skipped forever. A file replaced BEFORE the upgrade cannot
+        # be detected — there is nothing to compare it against.
+        entry["size"], entry["mtime"] = ident["size"], ident["mtime"]
+        state[path] = entry
+        return True
     return entry.get("size") == ident["size"] and entry.get("mtime") == ident["mtime"]
 
 
