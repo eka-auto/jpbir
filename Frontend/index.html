@@ -2341,7 +2341,9 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
     function loadWhatsApp(force) {
         if (waLoaded && !force) return;
         var runTag = $('waRunTag'); if (runTag) runTag.textContent = 'loading…';
-        return fetch('/api/jp-whatsapp?' + new URLSearchParams({ key: KEY }).toString(), { cache: 'no-cache' })
+        /* Key in the header, not the query string: a URL carrying the
+           credential ends up in access logs and monitoring traces. */
+        return fetch('/api/jp-whatsapp', { cache: 'no-cache', headers: { 'x-stats-key': KEY } })
             .then(function (r) { return r.json().then(function (b) { return { status: r.status, body: b }; }); })
             .then(function (res) {
                 /* The inventory is real contact names, so the route is gated
@@ -2503,7 +2505,7 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
 
     function loadVercel() {
         $('vercelHint').textContent = 'Loading from the Vercel API…';
-        fetch('/api/vercel-analytics?' + new URLSearchParams({ key: KEY, days: '14' }).toString())
+        fetch('/api/vercel-analytics?days=14', { headers: { 'x-stats-key': KEY } })
             .then(function (r) { return r.json().then(function (b) { return { status: r.status, body: b }; }); })
             .then(function (res) {
                 if (res.status === 401) {
