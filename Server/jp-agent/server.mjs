@@ -100,6 +100,17 @@ async function handleAsk(req, res, body) {
   const sessionId = body.session_id || randomUUID();
   const session = touchSession(sessionId);
 
+  // One live stream per session id. Two concurrent /ask on the same id both read
+  // session.sdkSessionId before either writes it, so the second init silently
+  // orphans the first conversation. Verified against the live agent: parallel
+  // turns planting ALPHA and BRAVO both returned OK, and the next turn could
+  // recall only BRAVO. Refusing is honest; queueing would make a second tab
+  // look hung for however long the first task runs.
+  if (session.busy) {
+    return send(res, 409, { ok: false, error: 'session busy — a request is already running on this session_id' });
+  }
+  session.busy = true;
+
   res.writeHead(200, {
     'content-type': 'text/event-stream',
     'cache-control': 'no-store',
@@ -178,6 +189,8 @@ async function handleAsk(req, res, body) {
   } catch (err) {
     log('ask failed:', err.message);
     emit('error', { error: err.message });
+  } finally {
+    session.busy = false;
   }
   // end() on an already-ended or destroyed response throws ERR_STREAM_*, which
   // here would be the same unhandled rejection the .catch in the route now
