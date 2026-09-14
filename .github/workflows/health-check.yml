@@ -36,7 +36,7 @@ jobs:
             exit 1
           fi
       
-      # These two are key-gated, and this probe is unauthenticated on purpose —
+      # These API probes are key-gated, and this probe is unauthenticated on purpose —
       # putting the dashboard key in CI just to ping a route is a worse trade
       # than reading 401 for what it is. A 401 means the function ran, reached
       # the guard and refused, which is exactly healthy. A 503 means STATS_KEY
@@ -65,8 +65,8 @@ jobs:
       - name: Test Database Verification
         run: |
           RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" https://jpbirrestructured.vercel.app/api/verify-db)
-          if [ "$RESPONSE" -eq 200 ]; then
-            echo "✅ Database Verification OK"
+          if [ "$RESPONSE" -eq 200 ] || [ "$RESPONSE" -eq 401 ]; then
+            echo "✅ Database Verification OK (HTTP $RESPONSE)"
           else
             echo "❌ Database Verification failed with status $RESPONSE"
             exit 1

@@ -199,10 +199,25 @@
   'use strict';
 
   var API = '/api/db-api';
+  function normalizeDashboardKey(value) {
+    // Copying a key through chat or rich text can insert invisible format
+    // characters. Remove only those known characters, then validate below.
+    return String(value || '').replace(/[\u200B-\u200D\u2060\uFEFF]/g, '').trim();
+  }
+  function isHeaderSafeDashboardKey(value) {
+    // Fetch request headers must be byte-safe. Production keys are generated
+    // as printable ASCII and are never shorter than 32 characters.
+    return /^[\x21-\x7E]{32,256}$/.test(value);
+  }
+  var storedDashboardKey = normalizeDashboardKey(sessionStorage.getItem('s24DashboardKey'));
+  if (storedDashboardKey && !isHeaderSafeDashboardKey(storedDashboardKey)) {
+    storedDashboardKey = '';
+    sessionStorage.removeItem('s24DashboardKey');
+  }
   var state = { site: 'jaytibirthday.in', days: 30, noise: false, page: 'overview',
                 offsets: { visitors: 0, sessions: 0, events: 0, video: 0, emails: 0, s24: 0 },
                 type: '', s24Dataset: '', s24Section: 'overview',
-                s24Key: sessionStorage.getItem('s24DashboardKey') || '', counts: {} };
+                s24Key: storedDashboardKey, counts: {} };
 
   var PAGES = [
     ['overview',  'Overview',  null],
@@ -259,6 +274,14 @@
   var drawToken = 0;
 
   function get(view, extra) {
+    if (state.s24Key && !isHeaderSafeDashboardKey(state.s24Key)) {
+      state.s24Key = '';
+      sessionStorage.removeItem('s24DashboardKey');
+      renderKeyGate('The dashboard key contains unsupported or invisible characters. Paste the plain-text key again.');
+      var invalid = new Error('invalid dashboard key');
+      invalid.handled = true;
+      return Promise.reject(invalid);
+    }
     var q = new URLSearchParams(Object.assign(
       { view: view, site: state.site, days: state.days }, state.noise ? { noise: '1' } : {}, extra || {}));
     // Every view is key-gated now, not just s24, so the key rides on every
@@ -311,8 +334,12 @@
       '<button class="btn" type="submit">Unlock</button></form></div>';
     $('dbUnlock').addEventListener('submit', function (event) {
       event.preventDefault();
-      var value = $('dbKeyInput').value.trim();
+      var value = normalizeDashboardKey($('dbKeyInput').value);
       if (!value) return;
+      if (!isHeaderSafeDashboardKey(value)) {
+        renderKeyGate('The dashboard key must contain 32–256 printable ASCII characters. Rich-text or invisible Unicode characters are not accepted.');
+        return;
+      }
       state.s24Key = value;
       sessionStorage.setItem('s24DashboardKey', value);
       el.innerHTML = '<div class="empty">Checking key…</div>';
@@ -697,8 +724,12 @@
       '<button class="btn" type="submit">Unlock archive</button></form></div>';
     $('s24Unlock').addEventListener('submit', function (event) {
       event.preventDefault();
-      var value = $('s24KeyInput').value.trim();
+      var value = normalizeDashboardKey($('s24KeyInput').value);
       if (!value) return;
+      if (!isHeaderSafeDashboardKey(value)) {
+        renderS24Gate('The dashboard key must contain 32–256 printable ASCII characters. Paste the plain-text key again.');
+        return;
+      }
       state.s24Key = value;
       sessionStorage.setItem('s24DashboardKey', value);
       el.innerHTML = '<div class="empty">Checking key…</div>';
