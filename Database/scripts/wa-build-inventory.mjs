@@ -53,9 +53,36 @@ const kindOf = (t) => (t === 'call_log' ? 'call'
   : SYSTEM.has(t) ? 'system'
   : t === 'chat' ? 'text' : 'other');
 
-const readJsonl = (file, onRecord) => new Promise((resolve, reject) => {
+if (!fs.existsSync(dir)) {
+  console.error(`no such directory: ${dir}`);
+  process.exit(1);
+}
+
+// The recovery tool numbers its files per run — 328_7_chat.jsonl in one dump,
+// a different number in the next — so match the artifact suffix rather than an
+// exact name. A required artifact that is missing is fatal: carrying on would
+// write a confident-looking inventory built from nothing, which is worse than
+// stopping. The underscore matters: `_contact.jsonl` must not match
+// `_out-contact.jsonl`, and `_message.jsonl` must not match `_message-info`.
+const entries = fs.readdirSync(dir);
+function resolveArtifact(suffix, { required = true } = {}) {
+  const hits = entries.filter((f) => f.endsWith(`_${suffix}.jsonl`) || f === `${suffix}.jsonl`);
+  if (hits.length > 1) {
+    console.error(`${dir}: ${hits.length} files look like the "${suffix}" artifact (${hits.join(', ')}) — cannot choose between them`);
+    process.exit(1);
+  }
+  if (!hits.length) {
+    if (!required) return null;
+    console.error(`${dir}: no "${suffix}" artifact found (expected something like 328_7_${suffix}.jsonl)`);
+    process.exit(1);
+  }
+  return hits[0];
+}
+
+const readJsonl = (suffix, onRecord, opts) => new Promise((resolve, reject) => {
+  const file = resolveArtifact(suffix, opts);
+  if (!file) { console.warn(`  (no ${suffix} artifact — skipped)`); return resolve(); }
   const path = join(dir, file);
-  if (!fs.existsSync(path)) { console.warn(`  (missing ${file} — skipped)`); return resolve(); }
   let n = 0;
   const stream = rl.createInterface({ input: fs.createReadStream(path) });
   stream.on('line', (line) => {
@@ -72,15 +99,15 @@ const groups = new Map();     // jid -> { subject, size }
 const contacts = new Map();   // jid or phone -> saved name
 
 console.log(`reading ${dir}`);
-await readJsonl('328_7_chat.jsonl', (o) => {
+await readJsonl('chat', (o) => {
   const v = o.value || {};
   if (v.id) chatMeta.set(v.id, v.name || null);
 });
-await readJsonl('328_21_group-metadata.jsonl', (o) => {
+await readJsonl('group-metadata', (o) => {
   const v = o.value || {};
   if (v.id) groups.set(v.id, { subject: v.subject || null, size: v.size ?? null });
 });
-await readJsonl('328_4_contact.jsonl', (o) => {
+await readJsonl('contact', (o) => {
   const v = o.value || {};
   const name = v.name || v.pushname || v.shortName || null;
   if (!name) return;
@@ -92,7 +119,7 @@ await readJsonl('328_4_contact.jsonl', (o) => {
 const tally = new Map();
 const messages = [];
 let keyed = 0, unkeyable = 0, fellBack = 0;
-await readJsonl('328_8_message.jsonl', (o) => {
+await readJsonl('message', (o) => {
   const v = o.value || {};
   const id = String(v.id || '');
   let jid = id.split('_')[1] || '';
