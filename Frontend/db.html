@@ -952,6 +952,10 @@
     var render = RENDER[state.page] || function () { return Promise.resolve(); };
     render().catch(function (e) {
       if (token !== drawToken) return;
+      // A handled lock has already drawn the unlock form into this very
+      // element. Overwriting it with an error view would leave the operator
+      // locked out with no way back in.
+      if (e && e.handled) return;
       // Write the failure into the page itself. Sending it only to the shared
       // banner left the page stuck on "Loading…", and the next draw wiped the
       // banner — so the error vanished with nothing to show for it.
