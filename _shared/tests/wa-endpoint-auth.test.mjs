@@ -46,6 +46,7 @@ const ROUTES = [
   { file: 'wa-ingest.js', method: 'POST', refuses: 404, body: {} },
   { file: 'jp-wa-chat.js', method: 'GET', refuses: 401, query: { chat_id: '1@c.us' } },
   { file: 'jp-wa-attachments.js', method: 'GET', refuses: 401, query: { chat_id: '1@c.us' } },
+  { file: 'jp-wa-messages.js', method: 'GET', refuses: 401, query: { chat_id: '1@c.us' } },
   // Write side: its own key, and 404 so a scanner cannot confirm it exists.
   { file: 'wa-blob-upload.js', method: 'POST', refuses: 404, body: {} },
   // The analytics reads. These were open too — the same defect, a wider blast

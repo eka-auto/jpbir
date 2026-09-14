@@ -596,6 +596,7 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
                         </div>
                         <div id="waAttGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;margin-top:12px"></div>
                         <div id="waAttEmpty" class="hint" style="margin-top:10px;display:none"></div>
+                        <div style="margin-top:10px"><button id="waAttMore" style="display:none">Load more</button></div>
                     </div>
                     <div class="panel" style="margin-top:14px">
                         <div class="panel-head">
@@ -2402,7 +2403,15 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
             + '<div style="width:' + pct + '%;height:100%;background:linear-gradient(90deg,var(--amber-glow),var(--amber))"></div></div>'
             + '<div style="width:64px;text-align:right;font-variant-numeric:tabular-nums">' + fmt(n) + '</div></div>';
     }
-    var waAttState = { chatId: null, kind: '' };
+    var waAttState = { chatId: null, kind: '', before: null, shown: 0, total: 0, loading: false };
+    (function wireAttMore() {
+        var more = $('waAttMore');
+        if (!more) return;
+        more.addEventListener('click', function () {
+            if (waAttState.loading || !waAttState.before || !waAttState.chatId) return;
+            loadAttachments(waAttState.chatId, waAttState.kind, true);
+        });
+    })();
     function waAttTile(a) {
         var url = a.blob_url;
         var meta = (a.file_name ? esc(a.file_name) + ' · ' : '') + (a.size_bytes ? Math.round(a.size_bytes / 1024) + ' KB' : '');
@@ -2441,24 +2450,60 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
         var total = Object.values(byKind).reduce(function (a, b) { return a + (b | 0); }, 0);
         host.innerHTML = pill('', total, !current) + kinds.map(function (k) { return pill(k, byKind[k], current === k); }).join('');
     }
-    function loadAttachments(chatId, kind) {
-        waAttState.chatId = chatId; waAttState.kind = kind || '';
-        var grid = $('waAttGrid'); var empty = $('waAttEmpty');
-        grid.innerHTML = ''; empty.style.display = 'none';
+    function loadAttachments(chatId, kind, append) {
+        kind = kind || '';
+        if (!append) {
+            waAttState.chatId = chatId; waAttState.kind = kind;
+            waAttState.before = null; waAttState.shown = 0; waAttState.total = 0;
+        }
+        var grid = $('waAttGrid'); var empty = $('waAttEmpty'); var more = $('waAttMore');
+        if (!append) { grid.innerHTML = ''; empty.style.display = 'none'; }
+        if (more) more.style.display = 'none';
+        waAttState.loading = true;
         var params = { chat_id: chatId, limit: 60 };
         if (kind) params.kind = kind;
-        fetch('/api/jp-wa-attachments?' + new URLSearchParams(params).toString(), { cache: 'no-store' })
-            .then(function (r) { return r.json(); })
-            .then(function (j) {
-                if (waAttState.chatId !== chatId) return;
+        if (append && waAttState.before) params.before = waAttState.before;
+        /* Blob URLs for private media: key in the header, never the query. */
+        fetch('/api/jp-wa-attachments?' + new URLSearchParams(params).toString(),
+            { cache: 'no-store', headers: { 'x-stats-key': KEY } })
+            .then(function (r) { return r.json().then(function (b) { return { status: r.status, body: b }; }); })
+            .then(function (res) {
+                waAttState.loading = false;
+                /* Chat AND kind must both still be selected: checking the chat
+                   alone let a slower answer repaint under the wrong pill. */
+                if (waAttState.chatId !== chatId || waAttState.kind !== kind) return;
+                if (res.status === 401) {
+                    sessionStorage.removeItem(KEY_STORAGE); KEY = '';
+                    $('waAttHint').textContent = '';
+                    $('gateMsg').textContent = 'Invalid key.';
+                    showGate();
+                    return;
+                }
+                var j = res.body;
                 if (!j.ok) { $('waAttHint').textContent = 'Load failed: ' + (j.error || 'unknown'); return; }
                 if (j.migrated === false) { $('waAttHint').textContent = j.note || 'attachments table not migrated'; empty.textContent = 'Run npm run db:migrate on Neon.'; empty.style.display = 'block'; return; }
+                var batch = j.attachments || [];
                 renderAttKinds(j.by_kind || {}, kind);
-                $('waAttHint').textContent = 'Showing ' + fmt((j.attachments || []).length) + ' of ' + fmt(j.total | 0) + ' attachments' + (kind ? ' · ' + kind : '') + '. Files stored in Vercel Blob.';
-                if (!(j.attachments || []).length) { empty.textContent = kind ? 'No ' + kind + ' attachments uploaded for this chat.' : 'No attachments uploaded for this chat yet. Run wa_media_push.py on the S24.'; empty.style.display = 'block'; return; }
-                grid.innerHTML = j.attachments.map(waAttTile).join('');
+                waAttState.shown += batch.length;
+                waAttState.total = j.total | 0;
+                waAttState.before = j.next_before || null;
+                if (!waAttState.shown) {
+                    $('waAttHint').textContent = 'No attachments' + (kind ? ' · ' + kind : '') + '.';
+                    empty.textContent = kind ? 'No ' + kind + ' attachments uploaded for this chat.' : 'No attachments uploaded for this chat yet. Run wa_media_push.py on the S24.';
+                    empty.style.display = 'block';
+                    return;
+                }
+                grid.insertAdjacentHTML('beforeend', batch.map(waAttTile).join(''));
+                $('waAttHint').textContent = 'Showing ' + fmt(waAttState.shown) + ' of ' + fmt(waAttState.total) + ' attachments' + (kind ? ' · ' + kind : '') + '. Files stored in Vercel Blob.';
+                /* Older attachments were unreachable: the cursor came back on
+                   every full page and nothing ever consumed it. */
+                if (more) more.style.display = waAttState.before ? '' : 'none';
             })
-            .catch(function (e) { if (waAttState.chatId !== chatId) return; $('waAttHint').textContent = 'Load failed: ' + e.message; });
+            .catch(function (e) {
+                waAttState.loading = false;
+                if (waAttState.chatId !== chatId || waAttState.kind !== kind) return;
+                $('waAttHint').textContent = 'Load failed: ' + e.message;
+            });
     }
     var waMsgState = { chatId: null, q: '', reqId: 0 };
     function waMsgRow(m) {
@@ -2484,10 +2529,21 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
         list.innerHTML = '<div class="hint">Loading…</div>'; empty.style.display = 'none';
         var params = { chat_id: chatId, limit: 200 };
         if (q) params.q = q;
-        fetch('/api/jp-wa-messages?' + new URLSearchParams(params).toString(), { cache: 'no-store' })
-            .then(function (r) { return r.json(); })
-            .then(function (j) {
+        /* Message bodies are the most sensitive thing on this page: key in the
+           header, never the query string. */
+        fetch('/api/jp-wa-messages?' + new URLSearchParams(params).toString(),
+            { cache: 'no-store', headers: { 'x-stats-key': KEY } })
+            .then(function (r) { return r.json().then(function (b) { return { status: r.status, body: b }; }); })
+            .then(function (res) {
                 if (waMsgState.reqId !== token || waMsgState.chatId !== chatId) return;
+                if (res.status === 401) {
+                    sessionStorage.removeItem(KEY_STORAGE); KEY = '';
+                    list.innerHTML = ''; $('waMsgHint').textContent = '';
+                    $('gateMsg').textContent = 'Invalid key.';
+                    showGate();
+                    return;
+                }
+                var j = res.body;
                 list.innerHTML = '';
                 if (!j.ok) { $('waMsgHint').textContent = 'Load failed: ' + (j.error || 'unknown'); return; }
                 if (j.migrated === false) { $('waMsgHint').textContent = 'wa_messages table not migrated yet.'; empty.textContent = 'Run npm run db:migrate.'; empty.style.display = 'block'; return; }
@@ -2515,10 +2571,21 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
         try { d.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (e) { /* no-op */ }
         loadAttachments(chatId, '');
         loadMessages(chatId, '');
-        fetch('/api/jp-wa-chat?' + new URLSearchParams({ chat_id: chatId }).toString(), { cache: 'no-store' })
-            .then(function (r) { return r.json(); })
-            .then(function (j) {
+        /* Key in the header, never the query string. */
+        fetch('/api/jp-wa-chat?' + new URLSearchParams({ chat_id: chatId }).toString(),
+            { cache: 'no-store', headers: { 'x-stats-key': KEY } })
+            .then(function (r) { return r.json().then(function (b) { return { status: r.status, body: b }; }); })
+            .then(function (res) {
                 if (token !== waDetailReq) return;
+                if (res.status === 401) {
+                    sessionStorage.removeItem(KEY_STORAGE); KEY = '';
+                    $('waDetailName').textContent = 'Chat';
+                    $('waDetailHint').textContent = '';
+                    $('gateMsg').textContent = 'Invalid key.';
+                    showGate();
+                    return;
+                }
+                var j = res.body;
                 if (!j.ok) { $('waDetailName').textContent = 'Chat'; $('waDetailHint').textContent = j.error || 'Could not load that chat.'; return; }
                 if (j.empty) { $('waDetailName').textContent = 'Chat'; $('waDetailHint').textContent = j.reason || 'Nothing stored yet.'; return; }
                 var c = j.chat, x = j.detail, b = j.bodies || {};
@@ -2580,7 +2647,11 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
             if (!waMsgState.chatId) return;
             if (msgDebounce) clearTimeout(msgDebounce);
             var val = msgSearch.value;
-            msgDebounce = setTimeout(function () { loadMessages(waMsgState.chatId, val); }, 220);
+            /* Capture the chat at schedule time. Reading waMsgState.chatId when
+               the timer fires applied the previous chat's query to whichever
+               chat was selected 220ms later. */
+            var forChat = waMsgState.chatId;
+            msgDebounce = setTimeout(function () { loadMessages(forChat, val); }, 220);
         });
     })();
     function loadWhatsApp(force) {
