@@ -29,7 +29,7 @@ const WORKSPACE = process.env.JP_AGENT_WORKSPACE || '/srv/workspace';
 const MODEL = process.env.JP_AGENT_MODEL || 'claude-sonnet-5';
 // 40 turns cut off real work — a bug hunt across a few files spends turns fast.
 // Note the practical ceiling for the dashboard path is wall-clock, not this:
-// Backend/agent-run.js aborts at 280s. This cap is for long CLI-side runs.
+// Backend/agent-run.js aborts at 780s. This cap is for long CLI-side runs.
 const MAX_TURNS = Number(process.env.JP_AGENT_MAX_TURNS || 150);
 
 if (!TOKEN) {
@@ -131,7 +131,6 @@ async function handleAsk(req, res, body) {
   emit('start', { session_id: sessionId, model: MODEL, workspace: WORKSPACE });
   log(`ask session=${sessionId} chars=${prompt.length}`);
 
-  let text = '';
   try {
     for await (const msg of query({
       prompt,
@@ -155,7 +154,6 @@ async function handleAsk(req, res, body) {
       } else if (msg.type === 'assistant') {
         for (const block of msg.message?.content || []) {
           if (block.type === 'text') {
-            text += block.text;
             emit('text', { text: block.text });
           } else if (block.type === 'tool_use') {
             // Name and a short argument preview only — full arguments can carry
@@ -164,7 +162,10 @@ async function handleAsk(req, res, body) {
           }
         }
       } else if (msg.type === 'result') {
-        session.turns.push({ prompt, at: Date.now() });
+        // Keep the size, not the prompt: turns.length is the only thing ever read
+        // (/sessions), and retaining prompts grew RSS ~1:1 with everything pasted
+        // into a session — which is never evicted while it stays in use.
+        session.turns.push({ chars: prompt.length, at: Date.now() });
         emit('done', {
           session_id: sessionId,
           is_error: !!msg.is_error,
