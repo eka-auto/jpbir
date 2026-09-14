@@ -100,6 +100,10 @@ test('broker v2: every handler uses the flat canonical path contract', () => {
 test('broker v2: Vercel maps command aliases away from filesystem collisions', () => {
   const destFor = (src) => vercelConfig.routes.find((r) => r.src === src)?.dest;
   strictEqual(
+    destFor('/api/s24-command'),
+    'Backend/s24-command.js',
+  );
+  strictEqual(
     destFor('/api/device-command-claim'),
     'Backend/broker-command-claim.js',
   );
