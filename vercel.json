@@ -98,6 +98,7 @@
       "use": "@vercel/node"
     },
     {
+      "src": "Backend/jp-whatsapp.js",
       "src": "Backend/wa-galaxy.js",
       "use": "@vercel/node"
     },
