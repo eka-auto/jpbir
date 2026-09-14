@@ -1,6 +1,7 @@
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, ScanCommand } from '@aws-sdk/lib-dynamodb';
 import { decodeOne } from './lib/geo.js';
+import { requireKey } from './_auth.js';
 
 const _env = (typeof process !== 'undefined' ? process : globalThis['proc' + 'ess']).env;
 const AWS_ACCESS_KEY_ID = _env['JP_AWS_' + 'ACCESS_KEY_ID'];
@@ -45,6 +46,9 @@ async function scanAll(client) {
 
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
+  // Before the credential check and before the cache: an unauthenticated
+  // caller learns nothing, not even whether this deployment is configured.
+  if (!requireKey(req, res)) return;
   if (!AWS_ACCESS_KEY_ID || !AWS_SECRET_ACCESS_KEY) {
     return res.status(500).json({ success: false, error: 'AWS credentials not configured' });
   }

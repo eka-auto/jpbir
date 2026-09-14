@@ -100,6 +100,11 @@
   .err{margin:12px 0;padding:10px 13px;border:1px solid rgba(248,81,73,.4);background:rgba(248,81,73,.08);border-radius:7px;color:#FFB4AE;font-family:var(--mono);font-size:11.5px}
   .pager{display:flex;align-items:center;gap:9px;padding:9px 14px;border-top:1px solid var(--line);font-size:11.5px;color:var(--ink-dim)}
   .pager .btn{padding:3px 9px}
+  .private-gate{max-width:560px;margin:8vh auto 0;padding:26px;background:var(--panel);border:1px solid var(--line);border-radius:10px}
+  .private-gate h3{font-size:16px;margin-bottom:7px}
+  .private-gate p{color:var(--ink-dim);margin-bottom:14px}
+  .private-gate form{display:flex;gap:8px}
+  .private-gate input{min-width:0;flex:1}
 
   /* coverage meter on the Health page */
   .cov{display:grid;grid-template-columns:150px 1fr 70px;gap:10px;align-items:center;padding:5px 0}
@@ -172,6 +177,7 @@
       <section class="page" id="page-events"></section>
       <section class="page" id="page-video"></section>
       <section class="page" id="page-devices"></section>
+      <section class="page" id="page-s24"></section>
       <section class="page" id="page-letters"></section>
       <section class="page" id="page-emails"></section>
       <section class="page" id="page-health"></section>
@@ -194,7 +200,8 @@
 
   var API = '/api/db-api';
   var state = { site: 'jaytibirthday.in', days: 30, noise: false, page: 'overview',
-                offsets: { visitors: 0, sessions: 0, events: 0, video: 0, emails: 0 }, type: '', counts: {} };
+                offsets: { visitors: 0, sessions: 0, events: 0, video: 0, emails: 0, s24: 0 },
+                type: '', s24Dataset: '', s24Key: sessionStorage.getItem('s24DashboardKey') || '', counts: {} };
 
   var PAGES = [
     ['overview',  'Overview',  null],
@@ -205,6 +212,7 @@
     ['events',    'Events',    'events'],
     ['video',     'Video',     'video_events'],
     ['devices',   'Devices',   'devices'],
+    ['s24',       'S24 archive', 's24_records'],
     ['letters',   'Letters',   'letters'],
     ['emails',    'Email opens', 'email_opens'],
     ['health',    'Health',    null]
@@ -252,18 +260,65 @@
   function get(view, extra) {
     var q = new URLSearchParams(Object.assign(
       { view: view, site: state.site, days: state.days }, state.noise ? { noise: '1' } : {}, extra || {}));
-    return fetch(API + '?' + q.toString(), { cache: 'no-store' })
-      .then(function (r) { return r.json(); })
+    // Every view is key-gated now, not just s24, so the key rides on every
+    // request rather than only the archive's.
+    var headers = state.s24Key ? { 'x-stats-key': state.s24Key } : {};
+    return fetch(API + '?' + q.toString(), { cache: 'no-store', headers: headers })
+      .then(function (r) { return r.json().then(function (j) { return { status: r.status, json: j }; }); })
+      .then(function (result) {
+        if (result.status === 401 || result.status === 503) {
+          // Drop the bad key and put the gate in front of whichever view asked,
+          // so any page can unlock the dashboard — not only the archive.
+          state.s24Key = '';
+          sessionStorage.removeItem('s24DashboardKey');
+          renderKeyGate(result.status === 401
+            ? 'That dashboard key was rejected.'
+            : ((result.json && result.json.error) || 'The dashboard key is not configured on the server.'));
+          var locked = new Error('locked');
+          locked.status = result.status;
+          locked.handled = true;
+          throw locked;
+        }
+        var j = result.json;
+        if (!j.ok) {
+          var error = new Error(j.error || ('view ' + view + ' failed'));
+          error.status = result.status;
+          throw error;
+        }
+        return j;
+      })
       .then(function (j) {
-        if (!j.ok) throw new Error(j.error || ('view ' + view + ' failed'));
         return j.data;
       });
   }
 
   function fail(e) {
+    // A locked view has already drawn the gate; an error banner on top of it
+    // would just be noise.
+    if (e && e.handled) return;
     $('err').innerHTML = '<div class="err">' + esc(e && e.message ? e.message : String(e)) + '</div>';
   }
   function clearErr() { $('err').innerHTML = ''; }
+
+  // The key gate, drawn in front of whichever view is active. Since db-api
+  // gates every view, any page can be the one that finds the key missing.
+  function renderKeyGate(message) {
+    var el = document.querySelector('.page.on') || $('page-overview');
+    el.innerHTML = '<div class="private-gate"><h3>Dashboard key required</h3>' +
+      '<p>' + esc(message || 'Enter the dashboard key to view this data. The key stays in this browser tab and is sent only as a request header.') + '</p>' +
+      '<form id="dbUnlock"><input id="dbKeyInput" type="password" autocomplete="current-password" placeholder="Dashboard key" aria-label="Dashboard key">' +
+      '<button class="btn" type="submit">Unlock</button></form></div>';
+    $('dbUnlock').addEventListener('submit', function (event) {
+      event.preventDefault();
+      var value = $('dbKeyInput').value.trim();
+      if (!value) return;
+      state.s24Key = value;
+      sessionStorage.setItem('s24DashboardKey', value);
+      el.innerHTML = '<div class="empty">Checking key…</div>';
+      clearErr();
+      draw();
+    });
+  }
 
   // ---------- render primitives ----------
   function kpi(label, value, sub) {
@@ -633,6 +688,107 @@
     });
   };
 
+  function renderS24Gate(message) {
+    var el = $('page-s24');
+    el.innerHTML = '<div class="private-gate"><h3>Private phone archive</h3>' +
+      '<p>' + esc(message || 'Enter the dashboard key to view local-first S24 records. The key stays in this browser tab and is sent only as a request header.') + '</p>' +
+      '<form id="s24Unlock"><input id="s24KeyInput" type="password" autocomplete="current-password" placeholder="Dashboard key" aria-label="Dashboard key">' +
+      '<button class="btn" type="submit">Unlock archive</button></form></div>';
+    $('s24Unlock').addEventListener('submit', function (event) {
+      event.preventDefault();
+      var value = $('s24KeyInput').value.trim();
+      if (!value) return;
+      state.s24Key = value;
+      sessionStorage.setItem('s24DashboardKey', value);
+      el.innerHTML = '<div class="empty">Checking key…</div>';
+      draw();
+    });
+  }
+
+  RENDER.s24 = function () {
+    if (!state.s24Key) {
+      renderS24Gate();
+      return Promise.resolve();
+    }
+    return get('s24', Object.assign(
+      { limit: 100, offset: state.offsets.s24 },
+      state.s24Dataset ? { dataset: state.s24Dataset } : {}
+    )).then(function (d) {
+      if (!d.migrated) {
+        $('page-s24').innerHTML = '<div class="err">The S24 database migration has not been applied yet.</div>';
+        return;
+      }
+      var latest = (d.runs || [])[0] || {};
+      var datasetOptions = '<option value="">All datasets</option>' + (d.datasets || []).map(function (row) {
+        return '<option value="' + esc(row.dataset) + '"' + (state.s24Dataset === row.dataset ? ' selected' : '') + '>' +
+          esc(row.dataset.replace(/_/g, ' ')) + ' · ' + num(row.stored_records) + '</option>';
+      }).join('');
+      var coverage = (d.datasets || []).map(function (row) {
+        var cls = row.status === 'ok' ? 'ok' : row.status === 'empty' ? 'mute' : row.status === 'denied' ? 'warn' : 'bad';
+        return '<div class="row"><div class="lbl"><span class="pill ' + cls + '">' + esc(row.status) + '</span> ' +
+          '<span class="mono">' + esc(row.dataset) + '</span>' +
+          (row.detail ? '<div style="color:var(--ink-faint);font-size:10.5px;margin-top:3px">' + esc(row.detail) + '</div>' : '') + '</div>' +
+          '<div class="val">' + num(row.stored_records) + ' stored / ' + num(row.record_count) + ' seen</div></div>';
+      }).join('') || '<div class="empty">No local pull has reached Vercel yet</div>';
+      var el = $('page-s24');
+      el.innerHTML =
+        '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px">' +
+          '<select id="s24DatasetSel" title="Phone dataset">' + datasetOptions + '</select>' +
+          '<button class="btn" id="s24Lock">Lock archive</button>' +
+          '<span style="color:var(--ink-faint);font-size:11px">phone Termux → Firestore → laptop JSON → signed HTTPS → Neon</span>' +
+        '</div>' +
+        '<div class="grid kpis" style="margin-bottom:12px">' +
+          kpi('Stored records', num(d.total), state.s24Dataset || 'all datasets') +
+          kpi('Datasets checked', num((d.datasets || []).length), 'including denied and empty') +
+          kpi('Sync runs', num((d.runs || []).length), latest.upload_status || 'none yet') +
+          kpi('Last local pull', latest.started_at ? ago(latest.started_at) : '—', when(latest.started_at)) +
+          kpi('Phone model', latest.model || '—', latest.android_version ? 'Android ' + latest.android_version : 'not synced') +
+          kpi('Signing key', latest.key_id ? latest.key_id.slice(0, 12) + '…' : '—', 'asymmetric upload identity') +
+        '</div>' +
+        '<div class="grid cards-2" style="margin-bottom:12px">' +
+          card('Latest pull coverage', '<div class="bars">' + coverage + '</div>', 'no silent gaps', true) +
+          card('Local sync runs', table([
+            { label: 'Started', render: function (r) { return when(r.started_at); } },
+            { label: 'Host', key: 'host' },
+            { label: 'Records', key: 'record_count', num: true },
+            { label: 'Received', render: function (r) { return num(r.uploaded_records) + ' · <span class="pill ' + (r.upload_status === 'complete' ? 'ok' : 'warn') + '">' + esc(r.upload_status) + '</span>'; } },
+            { label: 'Uploaded', render: function (r) { return ago(r.uploaded_at); } },
+            { label: 'Key', render: function (r) { return '<span class="mono">' + esc((r.key_id || '').slice(0, 10)) + '…</span>'; } }
+          ], d.runs), null, true) +
+        '</div>' +
+        '<div class="card"><h3>Phone records<span class="tag">' + num(d.total) + ' matching</span></h3><div class="body flush">' +
+          table([
+            { label: 'Dataset', render: function (r) { return '<span class="pill info">' + esc(r.dataset) + '</span>'; } },
+            { label: 'When', render: function (r) { return when(r.occurred_at || r.last_seen); } },
+            { label: 'Label', render: function (r) { return '<span class="trunc" style="max-width:280px">' + esc(r.label || '—') + '</span>'; } },
+            { label: 'Record id', render: function (r) { return '<span class="mono trunc" style="max-width:220px">' + esc(r.record_id) + '</span>'; } },
+            { label: 'Last synced', render: function (r) { return ago(r.last_seen); } }
+          ], d.rows, { onRow: true }) + '</div>' + pager('s24', d) + '</div>';
+      $('s24DatasetSel').addEventListener('change', function () {
+        state.s24Dataset = this.value;
+        state.offsets.s24 = 0;
+        draw();
+      });
+      $('s24Lock').addEventListener('click', function () {
+        state.s24Key = '';
+        sessionStorage.removeItem('s24DashboardKey');
+        renderS24Gate('Archive locked. Enter the dashboard key to unlock it again.');
+      });
+      wireRows(el, d.rows, function (row) {
+        openDrawer(row.dataset + ' · ' + (row.label || row.record_id),
+          kvList(row, ['payload']) + '<pre>' + esc(JSON.stringify(row.payload || {}, null, 2)) + '</pre>');
+      });
+    }).catch(function (error) {
+      if (error.status === 401 || error.status === 503) {
+        state.s24Key = '';
+        sessionStorage.removeItem('s24DashboardKey');
+        renderS24Gate(error.status === 401 ? 'That dashboard key was rejected.' : error.message);
+        return;
+      }
+      throw error;
+    });
+  };
+
   RENDER.letters = function () {
     return get('letters').then(function (rows) {
       var el = $('page-letters');
@@ -796,6 +952,10 @@
     var render = RENDER[state.page] || function () { return Promise.resolve(); };
     render().catch(function (e) {
       if (token !== drawToken) return;
+      // A handled lock has already drawn the unlock form into this very
+      // element. Overwriting it with an error view would leave the operator
+      // locked out with no way back in.
+      if (e && e.handled) return;
       // Write the failure into the page itself. Sending it only to the shared
       // banner left the page stuck on "Loading…", and the next draw wiped the
       // banner — so the error vanished with nothing to show for it.
@@ -832,7 +992,7 @@
     }).catch(fail);
   }
 
-  function resetPaging() { state.offsets = { visitors: 0, sessions: 0, events: 0, video: 0, emails: 0 }; }
+  function resetPaging() { state.offsets = { visitors: 0, sessions: 0, events: 0, video: 0, emails: 0, s24: 0 }; }
 
   $('siteSel').addEventListener('change', function () {
     state.site = this.value;

@@ -36,21 +36,27 @@ jobs:
             exit 1
           fi
       
+      # These two are key-gated, and this probe is unauthenticated on purpose —
+      # putting the dashboard key in CI just to ping a route is a worse trade
+      # than reading 401 for what it is. A 401 means the function ran, reached
+      # the guard and refused, which is exactly healthy. A 503 means STATS_KEY
+      # is missing on the deployment, and a 5xx means the route is broken, so
+      # both still fail the check.
       - name: Test Devices API
         run: |
           RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" https://jpbirrestructured.vercel.app/api/jp-devices)
-          if [ "$RESPONSE" -eq 200 ]; then
-            echo "✅ Devices API OK"
+          if [ "$RESPONSE" -eq 200 ] || [ "$RESPONSE" -eq 401 ]; then
+            echo "✅ Devices API OK (HTTP $RESPONSE)"
           else
             echo "❌ Devices API failed with status $RESPONSE"
             exit 1
           fi
-      
+
       - name: Test Stats API
         run: |
           RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" https://jpbirrestructured.vercel.app/api/jp-stats)
-          if [ "$RESPONSE" -eq 200 ]; then
-            echo "✅ Stats API OK"
+          if [ "$RESPONSE" -eq 200 ] || [ "$RESPONSE" -eq 401 ]; then
+            echo "✅ Stats API OK (HTTP $RESPONSE)"
           else
             echo "❌ Stats API failed with status $RESPONSE"
             exit 1

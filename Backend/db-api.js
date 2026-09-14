@@ -15,6 +15,7 @@
 // Read-only: nothing here writes. The ingest paths still write to Blob and
 // Firestore as before, and mirror into Postgres.
 import { query, isConfigured } from '../Integrations/postgres.js';
+import { checkKey } from './_auth.js';
 
 const DEFAULT_SITE = 'jaytibirthday.in';
 
@@ -283,12 +284,66 @@ const VIEWS = {
     return { total, limit, offset, rows, byRecipient };
   },
 
+  // Private phone data. Unlike aggregate site analytics, this can contain
+  // names, numbers, message text and file paths, so the handler gates this view
+  // with STATS_KEY before any query runs.
+  async s24({ limit, offset, dataset }) {
+    const tableCheck = await query(
+      "SELECT to_regclass('public.s24_sync_runs') AS runs, to_regclass('public.s24_records') AS records"
+    );
+    if (!tableCheck.rows[0].runs || !tableCheck.rows[0].records) {
+      return { migrated: false, total: 0, limit, offset, rows: [], datasets: [], runs: [] };
+    }
+
+    const params = ['samsung-s24-ultra'];
+    const where = ['device_id = $1'];
+    if (dataset) { params.push(dataset); where.push(`dataset = $${params.length}`); }
+    const clause = where.join(' AND ');
+    const rows = (await query(
+      `SELECT device_id, dataset, record_id, run_id, occurred_at, label, payload,
+              first_seen, last_seen
+         FROM s24_records WHERE ${clause}
+        ORDER BY occurred_at DESC NULLS LAST, last_seen DESC
+        LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+      params.concat([limit, offset])
+    )).rows;
+    const total = (await query(`SELECT COUNT(*)::int n FROM s24_records WHERE ${clause}`, params)).rows[0].n;
+
+    const datasets = (await query(
+      `WITH latest_run AS (
+         SELECT run_id FROM s24_sync_runs
+          WHERE device_id = $1 ORDER BY started_at DESC LIMIT 1
+       ), stored AS (
+         SELECT dataset, COUNT(*)::int stored_records, MAX(last_seen) last_seen
+           FROM s24_records WHERE device_id = $1 GROUP BY dataset
+       )
+       SELECT d.dataset, d.status, d.record_count, d.source, d.detail, d.collected_at,
+              COALESCE(s.stored_records, 0)::int stored_records, s.last_seen
+         FROM s24_sync_datasets d
+         JOIN latest_run l ON l.run_id = d.run_id
+         LEFT JOIN stored s ON s.dataset = d.dataset
+        ORDER BY d.dataset`, ['samsung-s24-ultra'])).rows;
+
+    const runs = (await query(
+      `SELECT run_id, started_at, finished_at, key_id, host, adb_serial,
+              android_version, model, record_count, uploaded_records, upload_status, uploaded_at, notes
+         FROM s24_sync_runs WHERE device_id = $1
+        ORDER BY started_at DESC LIMIT 25`, ['samsung-s24-ultra'])).rows;
+    const statusCounts = (await query(
+      `SELECT status AS label, COUNT(*)::int n
+         FROM s24_sync_datasets
+        WHERE run_id = (SELECT run_id FROM s24_sync_runs WHERE device_id = $1 ORDER BY started_at DESC LIMIT 1)
+        GROUP BY status ORDER BY n DESC`, ['samsung-s24-ultra'])).rows;
+    return { migrated: true, total, limit, offset, rows, datasets, runs, statusCounts };
+  },
+
   // Every table, every column — the "is anything missing" panel.
   async health({ site }) {
     const tables = [
       'events', 'visitors', 'sessions', 'letters', 'email_opens', 'video_events', 'devices',
       // 004_whatsapp: shared with jaytibirthday-site's galaxy read path.
       'wa_chats', 'wa_messages', 'wa_sync_runs',
+      's24_sync_runs', 's24_sync_datasets', 's24_sync_batches', 's24_records', 's24_ingest_seen',
     ];
     const counts = {};
     const countsForSite = {};
@@ -335,6 +390,16 @@ export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
   res.setHeader('Content-Type', 'application/json');
 
+  // Every view, not only s24, and before any state is reported. The rest of
+  // this API reads the same visitor analytics the dashboard shows — sessions,
+  // IPs, user agents, per-visitor trails — and none of it belongs to the
+  // public; only the archive was ever gated, so everything else was readable
+  // by anyone who called the route.
+  const auth = checkKey(req);
+  if (!auth.ok) {
+    return res.status(auth.status).json({ ok: false, view: String(req.query.view || 'overview'), error: auth.error });
+  }
+
   if (!isConfigured()) {
     return res.status(500).json({ ok: false, error: 'DATABASE_URL not set on this deployment' });
   }
@@ -353,6 +418,7 @@ export default async function handler(req, res) {
       offset: clampInt(req.query.offset, 0, 0, 1_000_000),
       id: req.query.id ? String(req.query.id) : null,
       type: req.query.type ? String(req.query.type) : null,
+      dataset: req.query.dataset ? String(req.query.dataset).slice(0, 80) : null,
       includeNoise: req.query.noise === '1',
     });
     return res.status(200).json({ ok: true, view, data });
