@@ -299,15 +299,21 @@
                 $('liveDot').classList.toggle('off', !live);
                 $('liveText').textContent = live ? 'LIVE' : 'OFFLINE';
 
-                var threshold = 3 * (dev.heartbeatIntervalSeconds || 45);
+                var threshold = dev.heartbeatMaxAgeSeconds || 300;
+                var reason = dev.liveness && dev.liveness.reason ? dev.liveness.reason : 'strict liveness checks did not pass';
                 if (live) {
                     setLight(true, 'Device connected — ONLINE',
                         'Heartbeat received ' + (dev.lastSeenAgeSeconds != null ? dev.lastSeenAgeSeconds + 's ago' : 'just now') +
-                        ' (live threshold ' + threshold + 's). Green light blinks while the phone daemon keeps heartbeating.');
+                        ' (strict heartbeat window ' + threshold + 's; command ACK window 300s). Green light blinks while the phone daemon keeps heartbeating.');
                 } else if (!dev.lastSeen) {
                     setLight(false, 'Device registered but never heartbeated',
                         '<code>lastSeen</code> is empty — the S24 phone daemon (<code>s24_phone_direct_cloud.py</code>) has never published to Firestore. ' +
                         'Fix: start the daemon in Termux on the phone.' + recoveryHtml());
+                } else if (dev.liveness && dev.liveness.mode === 'strict-s24-attestation') {
+                    setLight(false, 'Device OFFLINE — strict proof missing',
+                        'The dashboard ignores the stored <code>online</code> flag. ' +
+                        esc(reason) + '. Last heartbeat was ' + (dev.lastSeenAgeSeconds != null ? dev.lastSeenAgeSeconds + 's' : '?') +
+                        ' ago; the required command acknowledgement window is 300s.' + recoveryHtml());
                 } else {
                     setLight(false, 'Device OFFLINE — heartbeat stale',
                         'Last heartbeat ' + (dev.lastSeenAgeSeconds != null ? dev.lastSeenAgeSeconds + 's' : '?') + ' ago exceeds the ' +
@@ -339,10 +345,12 @@
                     '<div class="kv-item"><div class="k">Last seen</div><div class="v">' + (dev.lastSeen ? fmtTime(dev.lastSeen) : '—') + '</div></div>' +
                     '<div class="kv-item"><div class="k">Age</div><div class="v">' + (dev.lastSeenAgeSeconds != null ? dev.lastSeenAgeSeconds + 's' : '—') + '</div></div>' +
                     '<div class="kv-item"><div class="k">Connection</div><div class="v">' + esc(dev.connectionMethod || '—') + '</div></div>' +
+                    '<div class="kv-item"><div class="k">Agent proof</div><div class="v">' + esc(dev.agentVersion || '—') + '</div></div>' +
+                    '<div class="kv-item"><div class="k">Last command ACK</div><div class="v">' + (dev.lastCommandAckAgeSeconds != null ? dev.lastCommandAckAgeSeconds + 's ago' : '—') + '</div></div>' +
                     '<div class="kv-item"><div class="k">Queued commands</div><div class="v">' + (dev.commandQueueDepth || 0) + '</div></div>' +
                     '</div>';
                 $('liveDetail').innerHTML = html;
-                $('liveHint').textContent = 'Firestore · ' + res.body.database + ' · liveness = lastSeen < 3×heartbeat';
+                $('liveHint').textContent = 'Firestore · ' + res.body.database + ' · strict liveness = authenticated heartbeat + attestation + ACK';
 
                 renderNetwork(dev);
                 renderQueue(dev);
