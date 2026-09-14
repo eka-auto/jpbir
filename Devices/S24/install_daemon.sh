@@ -103,6 +103,58 @@ if ! printf '%s\n' "$CURRENT_CRON" | grep -qF "$APP_DIR/wa_push_tick.sh"; then
 else
   echo "==> Cron entry already present; not duplicated"
 fi
+
+# ---- Media & audio pusher (path 3) ----------------------------------
+# Walks ~/storage/shared/Android/media/com.whatsapp/WhatsApp/Media/, uploads
+# each file ≤4 MB to Vercel Blob via /api/wa-blob-upload, POSTs metadata to
+# /api/wa-ingest as attachments. Same env file as wa_push, so the key set
+# above is reused. Skipped when the env file has no key.
+if [ -f "$WA_DIR/wa_media_push.py" ]; then
+  cp "$WA_DIR/wa_media_push.py" "$APP_DIR/wa_media_push.py"
+  chmod +x "$APP_DIR/wa_media_push.py"
+  cat > "$APP_DIR/wa_media_tick.sh" <<'RUN'
+#!/data/data/com.termux/files/usr/bin/bash
+set -euo pipefail
+ENV_FILE="$HOME/s24-agent/wa_push.env"
+[ -f "$ENV_FILE" ] || { echo "[wa_media_push] no env"; exit 0; }
+set -a; . "$ENV_FILE"; set +a
+[ -n "${WA_INGEST_KEY:-}" ] || { echo "[wa_media_push] WA_INGEST_KEY blank; skipping"; exit 0; }
+exec python "$HOME/s24-agent/wa_media_push.py" --once --limit "${WA_MEDIA_LIMIT:-300}"
+RUN
+  chmod +x "$APP_DIR/wa_media_tick.sh"
+  MEDIA_CRON="15,45 * * * * $APP_DIR/wa_media_tick.sh >> $APP_DIR/wa_media_push.log 2>&1"
+  if ! crontab -l 2>/dev/null | grep -qF "$APP_DIR/wa_media_tick.sh"; then
+    (crontab -l 2>/dev/null || true; echo "$MEDIA_CRON") | grep -vE '^$' | crontab -
+    echo "==> Installed media-push cron (:15 and :45 every hour)"
+  fi
+fi
+
+# ---- Chat-export importer (path 2) ----------------------------------
+# Reads WhatsApp Chat Export .txt files placed in ~/wa-exports/ (with a
+# mapping.json alongside naming which chat_id each file belongs to), parses
+# the bodies, POSTs to /api/wa-ingest as messages. Nothing runs until the
+# operator drops the first .txt file, so the cron is safe to install now.
+if [ -f "$WA_DIR/wa_export_import.py" ]; then
+  cp "$WA_DIR/wa_export_import.py" "$APP_DIR/wa_export_import.py"
+  chmod +x "$APP_DIR/wa_export_import.py"
+  mkdir -p "$HOME/wa-exports"
+  cat > "$APP_DIR/wa_export_tick.sh" <<'RUN'
+#!/data/data/com.termux/files/usr/bin/bash
+set -euo pipefail
+ENV_FILE="$HOME/s24-agent/wa_push.env"
+[ -f "$ENV_FILE" ] || { echo "[wa_export_import] no env"; exit 0; }
+set -a; . "$ENV_FILE"; set +a
+[ -n "${WA_INGEST_KEY:-}" ] || { echo "[wa_export_import] WA_INGEST_KEY blank; skipping"; exit 0; }
+[ -f "$HOME/wa-exports/mapping.json" ] || { echo "[wa_export_import] no mapping.json in ~/wa-exports/; skipping"; exit 0; }
+exec python "$HOME/s24-agent/wa_export_import.py" --dir "$HOME/wa-exports" --once
+RUN
+  chmod +x "$APP_DIR/wa_export_tick.sh"
+  EXPORT_CRON="30 3 * * * $APP_DIR/wa_export_tick.sh >> $APP_DIR/wa_export_import.log 2>&1"
+  if ! crontab -l 2>/dev/null | grep -qF "$APP_DIR/wa_export_tick.sh"; then
+    (crontab -l 2>/dev/null || true; echo "$EXPORT_CRON") | grep -vE '^$' | crontab -
+    echo "==> Installed chat-export cron (03:30 daily)"
+  fi
+fi
 # Make sure crond itself is running; on Termux this is a plain background
 # start, no service manager.
 if ! pgrep -x crond >/dev/null 2>&1; then
