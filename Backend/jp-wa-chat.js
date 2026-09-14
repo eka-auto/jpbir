@@ -8,10 +8,15 @@
 // and the owner's wa-import. Message bodies land here later (path 2, chat
 // export ingest); attachments land here later (path 3, Vercel Blob).
 import { query, isConfigured } from '../Integrations/postgres.js';
+import { requireKey } from './_auth.js';
 
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'private, no-store');
   res.setHeader('Content-Type', 'application/json');
+
+  // Raw names, chat ids and message statistics are private. Authenticate
+  // before validating identifiers or reporting database configuration.
+  if (!requireKey(req, res)) return;
 
   if (req.method !== 'GET' && req.method !== 'HEAD') {
     res.setHeader('Allow', 'GET, HEAD');
