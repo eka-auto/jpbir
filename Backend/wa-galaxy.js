@@ -42,7 +42,14 @@ export default async function handler(req, res) {
         chats: [],
       });
     }
-    return res.status(200).json({ ok: true, ...galaxyPayload(r.rows, { names: 'full' }) });
+    // When the inventory was last loaded, not when this request ran. Letting
+    // galaxyPayload default `generatedAt` to now() would make the section's
+    // "imported ... ago" read "just now" on every page load, which is exactly
+    // the opposite of what it is there to tell you.
+    const stamp = await query('SELECT max(updated_at) AS at FROM wa_chats');
+    const importedAt = stamp.rows[0] && stamp.rows[0].at ? new Date(stamp.rows[0].at).toISOString() : undefined;
+
+    return res.status(200).json({ ok: true, ...galaxyPayload(r.rows, { names: 'full', generatedAt: importedAt }) });
   } catch (err) {
     // 42P01 = undefined_table: 004_whatsapp.sql has not been applied yet. That
     // is "nothing here", not a fault — report it as the setup step it is.
