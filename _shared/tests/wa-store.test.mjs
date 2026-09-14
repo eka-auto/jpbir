@@ -1,0 +1,194 @@
+// The WhatsApp inventory path, end to end, without a database: shape
+// normalisation, the chunked upserts (against a query stub that records the
+// SQL), the galaxy payload in both name modes, and the read handler's guards.
+// Run: node _shared/tests/wa-store.test.mjs
+import {
+  normalizeChat, normalizeMessage, chatIdFor, assignChatIds, idlessChats, upsertChats, upsertMessages, ingestBatch,
+  galaxyPayload, redactChats, toCompact, CHUNK,
+} from '../../Integrations/wa-store.js';
+
+let failures = 0;
+const check = (label, ok, detail) => {
+  if (!ok) failures++;
+  console.log(`${ok ? 'PASS' : 'FAIL'}  ${label}${ok ? '' : `\n      ${detail}`}`);
+};
+const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+
+/* ---------- normalizeChat ---------- */
+const compact = { n: 'Test 001', k: 'direct', u: 0, m: 1813, e: 1769, md: 63, au: 112, cl: 93, f: '2025-10-28', l: '2026-02-23', sz: 0 };
+const c1 = normalizeChat(compact);
+check('compact chat normalises', c1 && c1.name === 'Test 001' && c1.kind === 'direct' && c1.msg_count === 1813
+  && c1.enc_count === 1769 && c1.media_count === 63 && c1.audio_count === 112 && c1.call_count === 93
+  && c1.first_at === '2025-10-28' && c1.last_at === '2026-02-23' && c1.member_count === 0 && c1.unresolved === false,
+  JSON.stringify(c1));
+
+const verbose = { id: 'g1@g.us', name: 'Test Group', kind: 'g', unresolved: true, messages: 10, encrypted: 12, media: 2, audio: 1, calls: 0, first: '2024-01-01T10:00:00Z', last: '', size: 7 };
+const c2 = normalizeChat(verbose);
+check('verbose chat normalises, short kind expands', c2 && c2.kind === 'group' && c2.member_count === 7 && c2.unresolved === true, JSON.stringify(c2));
+check('explicit id is kept', c2 && c2.chat_id === 'g1@g.us', c2 && c2.chat_id);
+check('enc_count is capped at msg_count', c2 && c2.enc_count === 10, c2 && String(c2.enc_count));
+check('undated last stays null', c2 && c2.last_at === null && c2.first_at === '2024-01-01', JSON.stringify(c2));
+check('hash id is stable and shape-independent', chatIdFor({ n: 'X', k: 'd' }) === chatIdFor({ name: 'X', kind: 'direct' })
+  && chatIdFor({ n: 'X', k: 'd' }) !== chatIdFor({ n: 'X', k: 'g' }), chatIdFor({ n: 'X', k: 'd' }));
+check('unusable records return null', normalizeChat({ k: 'direct' }) === null && normalizeChat({ n: 'A', k: 'club' }) === null
+  && normalizeChat(null) === null && normalizeChat('x') === null, 'expected null');
+const c3 = normalizeChat({ n: 'Dates', k: 'd', m: 1, f: '2024-02-31', l: '2024-02-29' });
+check('calendar-invalid date becomes null, a real leap day stays', c3 && c3.first_at === null && c3.last_at === '2024-02-29', JSON.stringify(c3));
+const c4 = normalizeChat({ n: 'Dates', k: 'd', m: 1, f: '2023-02-29', l: '2025-13-01' });
+check('non-leap Feb 29 and month 13 are rejected', c4 && c4.first_at === null && c4.last_at === null, JSON.stringify(c4));
+
+/* ---------- assignChatIds: same name, different chats ---------- */
+{
+  const twins = [{ n: 'Family', k: 'g', m: 1 }, { n: 'Family', k: 'g', m: 2 }, { id: 'j1', n: 'Family', k: 'g', m: 3 }, { n: 'Family', k: 'd', m: 4 }];
+  const ids = assignChatIds(twins).map(chatIdFor);
+  check('same-name chats get distinct keys, the first one unchanged', new Set(ids).size === 4 && ids[0] === chatIdFor(twins[0]) && ids[2] === 'j1', ids.join(','));
+  check('assignChatIds is deterministic and leaves the input alone', eq(assignChatIds(twins), assignChatIds(twins)) && !('id' in twins[0]), JSON.stringify(twins[0]));
+  check('idlessChats lists the records the endpoint must refuse',
+    eq(idlessChats([{ id: 'a' }, { n: 'B', k: 'd' }, null, { jid: 'j' }, { chat_id: 'c' }, { id: '', n: 'E', k: 'd' }]), [1, 5])
+    && eq(idlessChats(assignChatIds(twins)), []) && eq(idlessChats(undefined), []), JSON.stringify(idlessChats([{ n: 'B', k: 'd' }])));
+}
+
+/* ---------- normalizeMessage ---------- */
+const m1 = normalizeMessage({ id: 'ABC', ts: 1700000000, from_me: 1, text: 'hi', type: 'text' }, 'g1@g.us');
+check('message normalises with epoch seconds', m1 && m1.msg_id === 'g1@g.us:ABC' && m1.sent_at === '2023-11-14T22:13:20.000Z'
+  && m1.from_me === true && m1.body === 'hi' && m1.encrypted === false && m1.kind === 'text', JSON.stringify(m1));
+const m2 = normalizeMessage({ chat: 'c9', key: 'K', timestamp: '2026-01-02T03:04:05Z', kind: 'voice' });
+check('message without body is sealed, unknown kind -> other', m2 && m2.encrypted === true && m2.kind === 'other' && m2.chat_id === 'c9', JSON.stringify(m2));
+check('message without key is dropped', normalizeMessage({ chat: 'c9', text: 'x' }) === null, 'expected null');
+
+/* ---------- upserts against a recording stub ---------- */
+// rowCount mimics pg: every chat row is written; message rows can be filtered by the chat guard
+function stub(messageRowCount = null) {
+  const calls = [];
+  const query = async (text, params) => {
+    calls.push({ text, params });
+    const isMsg = /INSERT INTO wa_messages/.test(text);
+    return { rows: [], rowCount: isMsg && messageRowCount !== null ? messageRowCount : (params && params[0] ? params[0].length : 0) };
+  };
+  return { calls, query };
+}
+{
+  const s = stub();
+  const many = Array.from({ length: CHUNK * 2 + 50 }, (_, i) => ({ n: `P ${i}`, k: i % 5 ? 'direct' : 'group', m: i, e: 0, md: 0, au: 0, cl: 0, f: '', l: '', sz: 0 }));
+  const r = await upsertChats(s.query, [...many, { k: 'direct' }], { device: 'dev', runId: 'r1', source: 'test' });
+  check('chats are chunked', s.calls.length === 3 && r.upserted === CHUNK * 2 + 50 && r.skipped === 1,
+    `${s.calls.length} statements, ${JSON.stringify(r)}`);
+  check('chunk carries parallel arrays', s.calls[0].params.length === 16 && s.calls[0].params.every((p) => p.length === CHUNK)
+    && s.calls[2].params[0].length === 50, `lengths ${s.calls[0].params.map((p) => p.length).join(',')}`);
+  check('chunk statement is an upsert on chat_id', /INSERT INTO wa_chats/.test(s.calls[0].text) && /ON CONFLICT \(chat_id\) DO UPDATE/.test(s.calls[0].text), s.calls[0].text.slice(0, 80));
+  check('meta lands in every row', s.calls[0].params[12].every((d) => d === 'dev') && s.calls[0].params[13].every((x) => x === 'r1')
+    && s.calls[0].params[14].every((x) => x === 'test'), 'device/run/source columns');
+}
+{
+  // three messages sent, the store keeps one (two belong to a chat never ingested)
+  const s = stub(1);
+  const r = await upsertMessages(s.query, [
+    { chat_id: 'g1@g.us', id: 'M1', text: 'x' }, { chat_id: 'ghost', id: 'M2', text: 'y' }, { chat_id: 'ghost', id: 'M3', text: 'z' },
+  ], { runId: 'r1' });
+  check('messages report what was stored, not what was sent', r.upserted === 1 && r.skipped === 0, JSON.stringify(r));
+  check('message statement is guarded by the chat existing', /WHERE EXISTS \(SELECT 1 FROM wa_chats/.test(s.calls[0].text), s.calls[0].text.slice(0, 120));
+}
+{
+  // two id-less "Family" groups plus the same explicit id twice: one statement, three distinct keys
+  const s = stub();
+  const r = await upsertChats(s.query, [
+    { n: 'Family', k: 'g', m: 1 }, { n: 'Family', k: 'g', m: 2 },
+    { id: 'j1', n: 'Old', k: 'd', m: 5 }, { id: 'j1', n: 'New', k: 'd', m: 7 },
+  ], { runId: 'r1' });
+  const ids = s.calls[0].params[0];
+  check('one statement never carries the same chat_id twice', s.calls.length === 1 && ids.length === 3 && new Set(ids).size === 3
+    && r.upserted === 3 && r.duplicates === 1 && r.skipped === 0, `${JSON.stringify(ids)} ${JSON.stringify(r)}`);
+  check('a repeated explicit id keeps the last record', s.calls[0].params[1][2] === 'New' && s.calls[0].params[4][2] === 7, JSON.stringify(s.calls[0].params[1]));
+  const sm = stub();
+  const rm = await upsertMessages(sm.query, [{ chat_id: 'j1', id: 'M', text: 'a' }, { chat_id: 'j1', id: 'M', text: 'b' }], { runId: 'r1' });
+  check('a repeated message key collapses to one row, last body wins', sm.calls[0].params[0].length === 1 && sm.calls[0].params[7][0] === 'b'
+    && rm.upserted === 1 && rm.duplicates === 1, JSON.stringify(rm));
+}
+{
+  const s = stub();
+  const r = await ingestBatch(s.query, {
+    device: 'samsung-s24-ultra', run_id: 'run9', done: true,
+    chats: [compact, verbose],
+    messages: [{ chat_id: 'g1@g.us', id: 'M1', ts: 1700000000, text: 'x' }, { nope: true }],
+  }, { source: 'wa-ingest' });
+  const kinds = s.calls.map((c) => (/INSERT INTO wa_chats/.test(c.text) ? 'chats' : /INSERT INTO wa_messages/.test(c.text) ? 'messages' : /INSERT INTO wa_sync_runs/.test(c.text) ? 'run' : '?'));
+  check('ingestBatch writes chats, messages, then the run', eq(kinds, ['chats', 'messages', 'run']), kinds.join(','));
+  check('ingestBatch reports counts and closes the run', r.run_id === 'run9' && r.device === 'samsung-s24-ultra' && r.chats.upserted === 2
+    && r.messages.upserted === 1 && r.messages.skipped === 1 && r.done === true, JSON.stringify(r));
+  const run = s.calls[2];
+  check('run row marks done with a finish time', run.params[2] === 'done' && typeof run.params[4] === 'string', JSON.stringify(run.params));
+  check('run tallies are recomputed from rows, not added per batch',
+    /\(SELECT COUNT\(\*\)::int FROM wa_chats\s+WHERE run_id = \$1\)/.test(run.text)
+    && /\(SELECT COUNT\(\*\)::int FROM wa_messages WHERE run_id = \$1\)/.test(run.text)
+    && !/wa_sync_runs\.chats_seen \+/.test(run.text) && run.params.length === 5, run.text.replace(/\s+/g, ' ').slice(0, 300));
+  const s2 = stub();
+  const r2 = await ingestBatch(s2.query, {}, {});
+  check('empty batch still records a run with a unique id', s2.calls.length === 1 && /^run_[0-9a-f-]{36}$/.test(r2.run_id) && r2.done === false, JSON.stringify(r2));
+  const r3 = await ingestBatch(stub().query, {}, {});
+  check('two id-less batches get different runs', r2.run_id !== r3.run_id, `${r2.run_id} vs ${r3.run_id}`);
+}
+
+/* ---------- galaxy payload ---------- */
+{
+  const rows = [
+    { chat_id: '919999999999@s.whatsapp.net', name: 'A', kind: 'direct', unresolved: false, msg_count: 10, enc_count: 4, media_count: 1, audio_count: 2, call_count: 3, member_count: null, first_at: '2025-01-01', last_at: '2025-02-01' },
+    { chat_id: 'b', name: 'B', kind: 'group', unresolved: true, msg_count: 5, enc_count: 5, media_count: 0, audio_count: 0, call_count: 0, member_count: 9, first_at: null, last_at: null },
+    { chat_id: 'c', name: 'C', kind: 'direct', unresolved: false, msg_count: 1, enc_count: 0, media_count: 0, audio_count: 0, call_count: 0, member_count: null, first_at: '2025-03-01', last_at: '2025-03-01' },
+  ];
+  const full = galaxyPayload(rows, { generatedAt: '2026-09-13T00:00:00Z' });
+  check('payload shape matches cards_data.json', eq(Object.keys(full), ['totals', 'sample', 'names', 'source', 'generated_at', 'chats'])
+    && full.sample === false && full.names === 'full', Object.keys(full).join(','));
+  check('totals add up', eq(full.totals, { chats: 3, groups: 1, direct: 2, msgs: 16, media: 1, audio: 2, calls: 3, enc: 9, undated: 1 }), JSON.stringify(full.totals));
+  check('compact row keeps the page fields and no jid', eq(toCompact(rows[1]), { n: 'B', k: 'group', u: 1, m: 5, e: 5, md: 0, au: 0, cl: 0, f: '', l: '', sz: 9 })
+    && !('id' in toCompact(rows[0])), JSON.stringify(toCompact(rows[1])));
+  const red = galaxyPayload(rows, { names: 'redacted', generatedAt: '2026-09-13T00:00:00Z' });
+  check('redacted payload numbers people and groups separately, in order',
+    eq(red.chats.map((c) => c.n), ['Person 001', 'Group 001', 'Person 002']) && red.sample === true && red.names === 'redacted',
+    JSON.stringify(red.chats.map((c) => c.n)));
+  check('redaction keeps every count and the same totals', eq(red.totals, full.totals) && red.chats.every((c, i) => c.m === full.chats[i].m && c.k === full.chats[i].k),
+    JSON.stringify(red.totals));
+  check('redacted payload carries no real name or jid', !JSON.stringify(red).includes('919999999999') && !/"n":"[ABC]"/.test(JSON.stringify(red)), JSON.stringify(red).slice(0, 200));
+  check('redactChats leaves the input alone', redactChats(full.chats)[0].n === 'Person 001' && full.chats[0].n === 'A', full.chats[0].n);
+}
+
+/* ---------- handler guard (no DATABASE_URL in this process) ----------
+   This project ships no ingest endpoint: the inventory is loaded from the
+   owner's machine by Database/scripts/wa-import.mjs. The one route is the
+   key-gated read, and the dashboard key is the only thing standing between a
+   caller and 862 real contact names, so every way past it is checked here. */
+delete process.env.DATABASE_URL; delete process.env.POSTGRES_URL;
+const mkRes = () => ({ statusCode: null, payload: null, headers: {}, setHeader(k, v) { this.headers[k] = v; }, status(c) { this.statusCode = c; return this; }, json(b) { this.payload = b; return this; } });
+
+// _auth.js reads STATS_KEY into a module constant at import time, so the
+// environment has to be right *before* the import, and the unconfigured case
+// needs its own module instance — hence the cache-busting specifier below.
+process.env.STATS_KEY = 'k-test';
+const { default: galaxy } = await import('../../Backend/wa-galaxy.js');
+
+let res = mkRes(); await galaxy({ method: 'GET', headers: {}, query: {} }, res);
+check('galaxy without a key is 401', res.statusCode === 401, String(res.statusCode));
+res = mkRes(); await galaxy({ method: 'GET', headers: {}, query: { key: 'wrong' } }, res);
+check('galaxy with the wrong key is 401', res.statusCode === 401, String(res.statusCode));
+res = mkRes(); await galaxy({ method: 'GET', headers: { 'x-stats-key': 'k-test' }, query: {} }, res);
+check('the key is accepted from a header too', res.statusCode !== 401 && res.statusCode !== 503, String(res.statusCode));
+res = mkRes(); await galaxy({ method: 'POST', headers: {}, query: { key: 'k-test' } }, res);
+check('galaxy POST is 405', res.statusCode === 405, String(res.statusCode));
+
+res = mkRes(); await galaxy({ method: 'GET', headers: {}, query: { key: 'k-test' } }, res);
+check('names never sit in a shared cache', res.headers['Cache-Control'] === 'private, no-store', JSON.stringify(res.headers));
+check('the right key with no store is a clear 500', res.statusCode === 500 && /DATABASE_URL/.test(res.payload.error), `${res.statusCode} ${JSON.stringify(res.payload)}`);
+
+// Fails closed when the server was never configured. The rule lives in
+// _auth.js, which reads STATS_KEY once at import, so this case needs its own
+// instance of _auth.js — a query string on wa-galaxy.js would not give it one,
+// because wa-galaxy's own import of _auth.js stays cached under the plain
+// specifier and would still hold the key set above.
+delete process.env.STATS_KEY;
+const { checkKey } = await import('../../Backend/_auth.js?no-stats-key');
+const unconfigured = checkKey({ query: { key: 'anything' }, headers: {} });
+check('a server with no STATS_KEY fails closed, and says so',
+  unconfigured.ok === false && unconfigured.status === 503 && /not configured/.test(unconfigured.error),
+  JSON.stringify(unconfigured));
+
+console.log(failures ? `\n${failures} check(s) failed` : '\nall checks passed');
+process.exit(failures ? 1 : 0);
