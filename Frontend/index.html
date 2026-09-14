@@ -2503,9 +2503,17 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
 
     function loadVercel() {
         $('vercelHint').textContent = 'Loading from the Vercel API…';
-        fetch('/api/vercel-analytics?days=14')
-            .then(function (r) { return r.json(); })
-            .then(function (j) {
+        fetch('/api/vercel-analytics?' + new URLSearchParams({ key: KEY, days: '14' }).toString())
+            .then(function (r) { return r.json().then(function (b) { return { status: r.status, body: b }; }); })
+            .then(function (res) {
+                if (res.status === 401) {
+                    sessionStorage.removeItem(KEY_STORAGE);
+                    KEY = '';
+                    $('gateMsg').textContent = 'Invalid key.';
+                    showGate();
+                    return;
+                }
+                var j = res.body;
                 if (!j.configured) {
                     $('vercelHint').textContent = j.reason || 'Not configured.';
                     $('vercelKpis').innerHTML =
