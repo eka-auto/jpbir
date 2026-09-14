@@ -104,6 +104,10 @@
     {
       "src": "Backend/wa-chat.js",
       "use": "@vercel/node"
+    },
+    {
+      "src": "Backend/wa-ingest.js",
+      "use": "@vercel/node"
     }
   ],
   "routes": [
