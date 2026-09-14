@@ -287,27 +287,90 @@ const VIEWS = {
   // Private phone data. Unlike aggregate site analytics, this can contain
   // names, numbers, message text and file paths, so the handler gates this view
   // with STATS_KEY before any query runs.
-  async s24({ limit, offset, dataset }) {
+  async s24({ limit, offset, dataset, section }) {
     const tableCheck = await query(
-      "SELECT to_regclass('public.s24_sync_runs') AS runs, to_regclass('public.s24_records') AS records"
+      "SELECT to_regclass('public.s24_sync_runs') AS runs, to_regclass('public.s24_records') AS records, to_regclass('public.s24_calls') AS normalized"
     );
     if (!tableCheck.rows[0].runs || !tableCheck.rows[0].records) {
       return { migrated: false, total: 0, limit, offset, rows: [], datasets: [], runs: [] };
     }
 
-    const params = ['samsung-s24-ultra'];
-    const where = ['device_id = $1'];
-    if (dataset) { params.push(dataset); where.push(`dataset = $${params.length}`); }
-    const clause = where.join(' AND ');
-    const rows = (await query(
+    const normalized = Boolean(tableCheck.rows[0].normalized);
+    const selected = ['overview', 'calls', 'sms', 'locations', 'agents', 'commands', 'files', 'queue', 'all'].includes(section)
+      ? section : 'overview';
+
+    const rawParams = ['samsung-s24-ultra'];
+    const rawWhere = ['device_id = $1'];
+    if (dataset && selected === 'all') { rawParams.push(dataset); rawWhere.push(`dataset = $${rawParams.length}`); }
+    const rawClause = rawWhere.join(' AND ');
+    const rawRows = async () => (await query(
       `SELECT device_id, dataset, record_id, run_id, occurred_at, label, payload,
               first_seen, last_seen
-         FROM s24_records WHERE ${clause}
+         FROM s24_records WHERE ${rawClause}
         ORDER BY occurred_at DESC NULLS LAST, last_seen DESC
-        LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
-      params.concat([limit, offset])
+        LIMIT $${rawParams.length + 1} OFFSET $${rawParams.length + 2}`,
+      rawParams.concat([limit, offset])
     )).rows;
-    const total = (await query(`SELECT COUNT(*)::int n FROM s24_records WHERE ${clause}`, params)).rows[0].n;
+    const rawTotal = async () => (await query(
+      `SELECT COUNT(*)::int n FROM s24_records WHERE ${rawClause}`, rawParams)).rows[0].n;
+
+    const sectionSql = {
+      calls: {
+        count: 'SELECT COUNT(*)::int n FROM s24_calls',
+        rows: `SELECT source_dataset AS dataset, record_id, run_id, called_at, contact_name,
+                      phone_number, call_type, duration_sec, backed_up_at, raw_payload AS payload, last_seen
+                 FROM s24_calls ORDER BY called_at DESC NULLS LAST, last_seen DESC LIMIT $1 OFFSET $2`,
+      },
+      sms: {
+        count: 'SELECT COUNT(*)::int n FROM s24_sms',
+        rows: `SELECT source_dataset AS dataset, record_id, run_id, sent_at, correspondent,
+                      message_type, body, raw_payload AS payload, last_seen
+                 FROM s24_sms ORDER BY sent_at DESC NULLS LAST, last_seen DESC LIMIT $1 OFFSET $2`,
+      },
+      locations: {
+        count: 'SELECT COUNT(*)::int n FROM s24_locations',
+        rows: `SELECT source_dataset AS dataset, record_id, run_id, observed_at, latitude,
+                      longitude, accuracy_m, provider, raw_payload AS payload, last_seen
+                 FROM s24_locations ORDER BY observed_at DESC NULLS LAST, last_seen DESC LIMIT $1 OFFSET $2`,
+      },
+      agents: {
+        count: 'SELECT COUNT(*)::int n FROM s24_agents',
+        rows: `SELECT 'firestore_agents' AS dataset, record_id, run_id, agent_name, status,
+                      model, api_enabled, bridged, port, registered_at, activated_at,
+                      raw_payload AS payload, last_seen
+                 FROM s24_agents ORDER BY activated_at DESC NULLS LAST, last_seen DESC LIMIT $1 OFFSET $2`,
+      },
+      commands: {
+        count: 'SELECT COUNT(*)::int n FROM s24_commands',
+        rows: `SELECT source_dataset AS dataset, record_id, run_id, action, command_type,
+                      status, priority, requested_at, resolved_at, requested_by,
+                      raw_payload AS payload, last_seen
+                 FROM s24_commands ORDER BY requested_at DESC NULLS LAST, last_seen DESC LIMIT $1 OFFSET $2`,
+      },
+      files: {
+        count: 'SELECT COUNT(*)::int n FROM s24_files',
+        rows: `SELECT 'firestore_files' AS dataset, record_id, run_id, filename, file_type,
+                      status, size_bytes, created_at, uploaded_at, content,
+                      raw_payload AS payload, last_seen
+                 FROM s24_files ORDER BY uploaded_at DESC NULLS LAST, last_seen DESC LIMIT $1 OFFSET $2`,
+      },
+      queue: {
+        count: 'SELECT COUNT(*)::int n FROM s24_queue_items',
+        rows: `SELECT 'firestore_queue' AS dataset, record_id, run_id, action, item_type,
+                      status, priority, description, created_at, raw_payload AS payload, last_seen
+                 FROM s24_queue_items ORDER BY created_at DESC NULLS LAST, last_seen DESC LIMIT $1 OFFSET $2`,
+      },
+    };
+
+    let rows;
+    let total;
+    if (normalized && sectionSql[selected]) {
+      rows = (await query(sectionSql[selected].rows, [limit, offset])).rows;
+      total = (await query(sectionSql[selected].count)).rows[0].n;
+    } else {
+      rows = await rawRows();
+      total = await rawTotal();
+    }
 
     const datasets = (await query(
       `WITH latest_run AS (
@@ -334,7 +397,26 @@ const VIEWS = {
          FROM s24_sync_datasets
         WHERE run_id = (SELECT run_id FROM s24_sync_runs WHERE device_id = $1 ORDER BY started_at DESC LIMIT 1)
         GROUP BY status ORDER BY n DESC`, ['samsung-s24-ultra'])).rows;
-    return { migrated: true, total, limit, offset, rows, datasets, runs, statusCounts };
+    let counts = { all: await rawTotal() };
+    let device = null;
+    if (normalized) {
+      counts = (await query(
+        `SELECT
+          (SELECT COUNT(*)::int FROM s24_records) AS all,
+          (SELECT COUNT(*)::int FROM s24_calls) AS calls,
+          (SELECT COUNT(*)::int FROM s24_sms) AS sms,
+          (SELECT COUNT(*)::int FROM s24_locations) AS locations,
+          (SELECT COUNT(*)::int FROM s24_agents) AS agents,
+          (SELECT COUNT(*)::int FROM s24_commands) AS commands,
+          (SELECT COUNT(*)::int FROM s24_files) AS files,
+          (SELECT COUNT(*)::int FROM s24_queue_items) AS queue`)).rows[0];
+      device = (await query(
+        `SELECT observed_at, agent_version, android_version, model, manufacturer,
+                battery_level, status, connection_method, heartbeat_auth, source_type,
+                runtime_is_android, live_device_verified, last_seen
+           FROM s24_device_snapshots ORDER BY observed_at DESC NULLS LAST LIMIT 1`)).rows[0] || null;
+    }
+    return { migrated: true, normalized, section: selected, total, limit, offset, rows, datasets, runs, statusCounts, counts, device };
   },
 
   // Every table, every column — the "is anything missing" panel.
@@ -344,6 +426,8 @@ const VIEWS = {
       // 004_whatsapp: shared with jaytibirthday-site's galaxy read path.
       'wa_chats', 'wa_messages', 'wa_sync_runs',
       's24_sync_runs', 's24_sync_datasets', 's24_sync_batches', 's24_records', 's24_ingest_seen',
+      's24_device_snapshots', 's24_calls', 's24_sms', 's24_locations',
+      's24_agents', 's24_commands', 's24_files', 's24_queue_items',
     ];
     const counts = {};
     const countsForSite = {};
@@ -419,6 +503,7 @@ export default async function handler(req, res) {
       id: req.query.id ? String(req.query.id) : null,
       type: req.query.type ? String(req.query.type) : null,
       dataset: req.query.dataset ? String(req.query.dataset).slice(0, 80) : null,
+      section: req.query.section ? String(req.query.section).slice(0, 40) : null,
       includeNoise: req.query.noise === '1',
     });
     return res.status(200).json({ ok: true, view, data });
