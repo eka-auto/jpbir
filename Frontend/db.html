@@ -194,7 +194,7 @@
 
   var API = '/api/db-api';
   var state = { site: 'jaytibirthday.in', days: 30, noise: false, page: 'overview',
-                offsets: { visitors: 0, sessions: 0, events: 0 }, type: '', counts: {} };
+                offsets: { visitors: 0, sessions: 0, events: 0, video: 0, emails: 0 }, type: '', counts: {} };
 
   var PAGES = [
     ['overview',  'Overview',  null],
@@ -245,6 +245,10 @@
     catch (e) { return String(u).slice(0, 60); }
   }
 
+  // Every draw carries a token. A response whose token is stale is dropped,
+  // so two fast Next clicks cannot render page 1 on top of page 2.
+  var drawToken = 0;
+
   function get(view, extra) {
     var q = new URLSearchParams(Object.assign(
       { view: view, site: state.site, days: state.days }, state.noise ? { noise: '1' } : {}, extra || {}));
@@ -263,7 +267,7 @@
 
   // ---------- render primitives ----------
   function kpi(label, value, sub) {
-    return '<div class="kpi"><div class="k">' + esc(label) + '</div><div class="v">' + value +
+    return '<div class="kpi"><div class="k">' + esc(label) + '</div><div class="v">' + esc(value) +
            '</div><div class="s">' + (sub == null ? '&nbsp;' : esc(sub)) + '</div></div>';
   }
 
@@ -428,6 +432,9 @@
             card('Browsers', barList(d.browsers, 'label', 'n'), null, true) +
             card('Operating systems', barList(d.oses, 'label', 'n'), null, true) +
             card('Device types', barList(d.devices, 'label', 'n'), null, true) +
+            card('Screen sizes', barList(d.screens, 'label', 'n'), 'from screen_info', true) +
+            card('Languages', barList(d.languages, 'label', 'n'), 'accept-language', true) +
+            card('Networks', barList(d.isps, 'label', 'n'), 'from ASN', true) +
           '</div>' +
           '<div class="card">' +
             '<h3>Visitors<span class="tag">' + num(v.total) + ' total</span></h3>' +
@@ -454,7 +461,10 @@
                 { label: 'Events', key: 'event_count', num: true },
                 { label: 'Entry', render: function (r) { return esc(shortUrl(r.entry_page)); } }
               ], det.sessions) +
-              '<h3 style="font-size:11px;letter-spacing:.7px;text-transform:uppercase;color:var(--ink-dim);margin:14px 0 7px">Recent events (' + (det.events || []).length + ')</h3>' +
+              '<h3 style="font-size:11px;letter-spacing:.7px;text-transform:uppercase;color:var(--ink-dim);margin:14px 0 7px">Recent events (' +
+                ((det.eventTotal || 0) > (det.events || []).length
+                  ? 'latest ' + num((det.events || []).length) + ' of ' + num(det.eventTotal)
+                  : num((det.events || []).length)) + ')</h3>' +
               table([
                 { label: 'When', render: function (r) { return when(r.occurred_at); } },
                 { label: 'Type', render: function (r) { return '<span class="pill mute">' + esc(r.event_type) + '</span>'; } },
@@ -473,6 +483,7 @@
         '<div class="grid cards-2">' +
           card('Countries', barList(d.countries, 'label', 'n'), (d.countries || []).length + ' seen', true) +
           card('Cities', barList(d.cities, 'label', 'n', { sub: 'country' }), (d.cities || []).length + ' seen', true) +
+          card('Time zones', barList(d.timezones, 'label', 'n'), null, true) +
         '</div>';
     });
   };
@@ -484,6 +495,7 @@
           card('Top pages', barList(d.topPages, 'label', 'n', { url: true }), null, true) +
         '</div>' +
         '<div class="grid cards-2">' +
+          card('Domains served', barList(d.domains, 'label', 'n'), null, true) +
           card('Referrers', barList(d.referrers, 'label', 'n', { url: true }), null, true) +
           card('Campaigns (UTM)', (d.utm && d.utm.length)
             ? table([
@@ -572,22 +584,27 @@
   };
 
   RENDER.video = function () {
-    return get('video').then(function (d) {
+    return get('video', { limit: 100, offset: state.offsets.video }).then(function (d) {
       $('page-video').innerHTML =
         '<div class="grid cards-2" style="margin-bottom:12px">' +
           card('Plays by clip', barList(d.byClip, 'label', 'n'), null, true) +
           card('Where from', barList(d.byPlace, 'label', 'n'), null, true) +
         '</div>' +
-        '<div class="card"><h3>Every play<span class="tag">' + num((d.rows || []).length) + '</span></h3><div class="body flush">' +
+        '<div class="card"><h3>Plays<span class="tag">' + num(d.total) + ' total</span></h3><div class="body flush">' +
           table([
             { label: 'When', render: function (r) { return when(r.occurred_at); } },
             { label: 'Ago', render: function (r) { return ago(r.occurred_at); } },
             { label: 'Clip', render: function (r) { return '<span class="pill info">' + esc(r.video_event) + '</span>'; } },
             { label: 'Place', render: function (r) { return esc([r.city, r.country].filter(Boolean).join(', ') || '—'); } },
             { label: 'Device', render: function (r) { return esc(r.visitor_device || '—'); } },
-            { label: 'Recorded by', render: function (r) { return '<span class="mono">' + esc(r.recorded_by || r.source_system || '—') + '</span>'; } },
-            { label: 'Event id', render: function (r) { return '<span class="mono trunc" style="max-width:220px">' + esc(r.event_id) + '</span>'; } }
-          ], d.rows) + '</div></div>';
+            // recorded_by and source_system are different facts: who wrote the
+            // Firestore doc, and which pipeline got it into Postgres. Collapsing
+            // them into one cell hid source_system on every populated row.
+            { label: 'Recorded by', render: function (r) { return '<span class="mono">' + esc(r.recorded_by || '—') + '</span>'; } },
+            { label: 'Via', render: function (r) { return '<span class="mono" style="color:var(--ink-faint)">' + esc(r.source_system || '—') + '</span>'; } },
+            { label: 'Event id', render: function (r) { return '<span class="mono trunc" style="max-width:200px">' + esc(r.event_id) + '</span>'; } }
+          ], d.rows) + '</div>' + pager('video', d) + '</div>';
+      wireRows($('page-video'), d.rows, function () {});
     });
   };
 
@@ -629,29 +646,43 @@
               return '<span class="pill warn">unread</span>';
             } },
           { label: 'Read at', render: function (r) { return when(r.read_at); } },
+          { label: 'Recipient', render: function (r) { return '<span class="mono">' + esc(r.email || '—') + '</span>'; } },
           { label: 'Views', key: 'view_count', num: true },
           { label: 'Source', render: function (r) { return '<span class="mono">' + esc(r.source_system) + '</span>'; } }
         ], rows, { onRow: true }) + '</div>' +
         '<div class="pager">The blob copy is destroyed on read, so these rows are the only record a letter existed.</div></div>';
-      wireRows(el, rows, function (row) { openDrawer('Letter ' + row.token, kvList(row)); });
+      wireRows(el, rows, function (row) {
+        openDrawer('Letter ' + row.token,
+          kvList(row, ['body']) +
+          '<h3 style="font-size:11px;letter-spacing:.7px;text-transform:uppercase;color:var(--ink-dim);margin:14px 0 7px">Letter body</h3>' +
+          '<pre>' + esc(JSON.stringify(row.body || {}, null, 2)) + '</pre>');
+      });
     });
   };
 
   RENDER.emails = function () {
-    return get('emails').then(function (d) {
-      $('page-emails').innerHTML =
+    return get('emails', { limit: 100, offset: state.offsets.emails }).then(function (d) {
+      var el = $('page-emails');
+      el.innerHTML =
         '<div class="grid" style="margin-bottom:12px">' +
           card('Opens by recipient', barList(d.byRecipient, 'label', 'n'), null, true) +
         '</div>' +
-        '<div class="card"><h3>Every open<span class="tag">' + num((d.rows || []).length) + '</span></h3><div class="body flush">' +
+        '<div class="card"><h3>Opens<span class="tag">' + num(d.total) + ' total</span></h3><div class="body flush">' +
         table([
           { label: 'When', render: function (r) { return when(r.opened_at); } },
           { label: 'Ago', render: function (r) { return ago(r.opened_at); } },
           { label: 'Recipient', render: function (r) { return '<span class="mono">' + esc(r.email) + '</span>'; } },
           { label: 'Place', render: function (r) { return esc([r.city, r.country].filter(Boolean).join(', ') || '—'); } },
           { label: 'IP', render: function (r) { return '<span class="mono">' + esc(r.ip || '—') + '</span>'; } },
-          { label: 'Client', render: function (r) { return '<span class="trunc" style="max-width:280px">' + esc(r.user_agent || '—') + '</span>'; } }
-        ], d.rows) + '</div></div>';
+          { label: 'Via', render: function (r) { return '<span class="mono" style="color:var(--ink-faint)">' + esc(r.source_system || '—') + '</span>'; } },
+          { label: 'Client', render: function (r) { return '<span class="trunc" style="max-width:240px">' + esc(r.user_agent || '—') + '</span>'; } }
+        ], d.rows, { onRow: true }) + '</div>' + pager('emails', d) + '</div>';
+      wireRows(el, d.rows, function (row) {
+        openDrawer('Open · ' + row.email,
+          kvList(row, ['payload']) +
+          '<h3 style="font-size:11px;letter-spacing:.7px;text-transform:uppercase;color:var(--ink-dim);margin:14px 0 7px">payload</h3>' +
+          '<pre>' + esc(JSON.stringify(row.payload || {}, null, 2)) + '</pre>');
+      });
     });
   };
 
@@ -669,7 +700,11 @@
       }).join('');
       $('page-health').innerHTML =
         '<div class="grid kpis" style="margin-bottom:12px">' +
-          Object.keys(h.counts).map(function (t) { return kpi(t.replace(/_/g, ' '), num(h.counts[t]), 'rows'); }).join('') +
+          Object.keys(h.counts).map(function (t) {
+            var scoped = (h.countsForSite || {})[t];
+            return kpi(t.replace(/_/g, ' '), num(h.counts[t]),
+              scoped != null && scoped !== h.counts[t] ? num(scoped) + ' for this property' : 'rows');
+          }).join('') +
         '</div>' +
         '<div class="grid cards-2">' +
           card('Field coverage on events', bars + '<div style="margin-top:10px;color:var(--ink-faint);font-size:11.5px">' +
@@ -695,10 +730,11 @@
   // ---------- shared wiring ----------
   function pager(key, res) {
     var from = res.offset + 1, to = Math.min(res.offset + res.limit, res.total);
+    var attrs = ' data-pg="' + key + '" data-step="' + res.limit + '" data-total="' + res.total + '"';
     return '<div class="pager">' +
-      '<button class="btn" data-pg="' + key + '" data-dir="-1"' + (res.offset ? '' : ' disabled') + '>Prev</button>' +
-      '<button class="btn" data-pg="' + key + '" data-dir="1"' + (to >= res.total ? ' disabled' : '') + '>Next</button>' +
-      '<span>' + num(res.total ? from : 0) + '–' + num(to) + ' of ' + num(res.total) + '</span></div>';
+      '<button class="btn"' + attrs + ' data-dir="-1"' + (res.offset ? '' : ' disabled') + '>Prev</button>' +
+      '<button class="btn"' + attrs + ' data-dir="1"' + (to >= res.total ? ' disabled' : '') + '>Next</button>' +
+      '<span>' + num(res.total ? from : 0) + '–' + num(Math.max(to, 0)) + ' of ' + num(res.total) + '</span></div>';
   }
 
   function wireRows(root, rows, onClick) {
@@ -712,7 +748,11 @@
       b.addEventListener('click', function () {
         if (b.disabled) return;
         var k = b.getAttribute('data-pg');
-        state.offsets[k] = Math.max(0, state.offsets[k] + Number(b.getAttribute('data-dir')) * 100);
+        var step = Number(b.getAttribute('data-step')) || 100;
+        var cap = Math.max(0, (Number(b.getAttribute('data-total')) || 0) - 1);
+        // Clamp. Turning the noise filter back on shrinks the result set, and an
+        // offset left past the new end printed ranges like "2,001-500 of 500".
+        state.offsets[k] = Math.min(cap, Math.max(0, state.offsets[k] + Number(b.getAttribute('data-dir')) * step));
         draw();
       });
     });
@@ -752,40 +792,64 @@
     $('title').textContent = page ? page[1] : state.page;
     var el = $(id);
     if (!el.innerHTML) el.innerHTML = '<div class="empty">Loading…</div>';
-    (RENDER[state.page] || function () { return Promise.resolve(); })().catch(fail);
+    var token = ++drawToken;
+    var render = RENDER[state.page] || function () { return Promise.resolve(); };
+    render().catch(function (e) {
+      if (token !== drawToken) return;
+      // Write the failure into the page itself. Sending it only to the shared
+      // banner left the page stuck on "Loading…", and the next draw wiped the
+      // banner — so the error vanished with nothing to show for it.
+      el.innerHTML = '<div class="err">' + esc(e && e.message ? e.message : String(e)) + '</div>';
+      fail(e);
+    });
   }
 
   function boot() {
+    // Resolve the property list BEFORE the first draw. Drawing first meant that
+    // when the default property had no rows, the first paint showed all-zero
+    // KPIs while the dropdown beside it already named a different, real one.
     get('sites').then(function (sites) {
       $('siteSel').innerHTML = sites.map(function (s) {
         return '<option value="' + esc(s.site) + '">' + esc(s.site) + ' · ' + num(s.events) + '</option>';
       }).join('');
       if (sites.length && !sites.some(function (s) { return s.site === state.site; })) state.site = sites[0].site;
       $('siteSel').value = state.site;
-    }).catch(fail);
+    }).catch(fail).then(function () {
+      buildNav();
+      draw();
+      return refreshCounts();
+    });
+  }
 
-    get('health').then(function (h) {
-      state.counts = h.counts || {};
+  function refreshCounts() {
+    return get('health').then(function (h) {
+      // Site-scoped, because the pages these badges label are themselves
+      // site-filtered. A global total beside a filtered page reads as a bug.
+      state.counts = h.countsForSite || h.counts || {};
       applyCounts();
-      $('foot').textContent = num(h.counts.events) + ' events · ' +
+      $('foot').textContent = num((h.counts || {}).events) + ' events, all properties · ' +
         (h.span && h.span.newest ? ago(h.span.newest) : '—');
     }).catch(fail);
-
-    buildNav();
-    draw();
   }
+
+  function resetPaging() { state.offsets = { visitors: 0, sessions: 0, events: 0, video: 0, emails: 0 }; }
 
   $('siteSel').addEventListener('change', function () {
     state.site = this.value;
-    state.offsets = { visitors: 0, sessions: 0, events: 0 };
+    resetPaging();
+    // A type chip from the previous property may not exist in the new one,
+    // which rendered "0 matching" with no chip lit and no obvious way back.
+    state.type = '';
     Array.prototype.forEach.call(document.querySelectorAll('.page'), function (p) { p.innerHTML = ''; });
     draw();
+    refreshCounts();
   });
-  $('daysSel').addEventListener('change', function () { state.days = Number(this.value); draw(); });
+  $('daysSel').addEventListener('change', function () { state.days = Number(this.value); resetPaging(); draw(); });
   $('noiseBtn').addEventListener('click', function () {
     state.noise = !state.noise;
     this.classList.toggle('on', state.noise);
     this.textContent = state.noise ? 'Noise on' : 'Noise off';
+    resetPaging();
     draw();
   });
   $('refreshBtn').addEventListener('click', draw);

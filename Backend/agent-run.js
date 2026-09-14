@@ -15,6 +15,12 @@ const _env = (typeof process !== 'undefined' ? process : globalThis['proc' + 'es
 const AGENT_URL = (_env['JP_AGENT_' + 'URL'] || '').replace(/\/+$/, '');
 const AGENT_TOKEN = _env['JP_AGENT_' + 'TOKEN'] || '';
 
+// 800s is the Pro-plan ceiling for a Node function; the default is 300s, which
+// is what actually capped a dashboard turn before — not the agent's maxTurns.
+// vercel.json uses `builds`, and `functions` cannot be combined with it, so the
+// per-route value has to be exported from the route itself.
+export const config = { maxDuration: 800 };
+
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
 
@@ -43,9 +49,12 @@ export default async function handler(req, res) {
 
   // A single agent task can legitimately run for minutes. Abort well before the
   // function's own ceiling so the client gets a clean error rather than a
-  // truncated stream with no explanation.
+  // truncated stream with no explanation. 780s against the 800s maxDuration
+  // below: 20s of headroom is enough to write the SSE error frame and end the
+  // response. Raising this without raising maxDuration just moves the failure
+  // from a clean "agent timed out" to a platform-level kill mid-stream.
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 280000);
+  const timeout = setTimeout(() => controller.abort(), 780000);
 
   try {
     const upstream = await fetch(`${AGENT_URL}/ask`, {

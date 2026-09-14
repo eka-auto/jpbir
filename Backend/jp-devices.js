@@ -78,6 +78,72 @@ export function normalizeCommandQueue(queue) {
     .sort((a, b) => (b.queuedAt || '').localeCompare(a.queuedAt || ''));
 }
 
+const S24_DEVICE_ID = 'samsung-s24-ultra';
+
+// The same phone is written to more than one document: devices/Samsung-S24 is
+// a legacy alias carrying canonicalDeviceId='samsung-s24-ultra', and the
+// collector updates both every cycle. Keying strict mode on the literal
+// document id left the alias on plain timestamp-freshness, so the phone showed
+// live:true there while the strict document beside it said live:false — the
+// attestation bypassed by picking the other row.
+function isS24Document(deviceId, fields) {
+  return deviceId === S24_DEVICE_ID ||
+    fields.canonicalDeviceId === S24_DEVICE_ID ||
+    (Array.isArray(fields.legacyDeviceIds) && fields.legacyDeviceIds.includes(deviceId) &&
+      fields.canonicalDeviceId === S24_DEVICE_ID);
+}
+const S24_ACK_MAX_AGE_SECONDS = 300;
+const S24_SOURCE_TYPES = new Set(['live_termux', 'live_daemon']);
+
+// Every other field this check reads is written by whatever process owns the
+// document, so a bridge running off-device could assert all of them about
+// itself — and one did: a Windows process writing heartbeatAuth='termux-phone',
+// sourceType='live_termux' and liveDeviceVerified=true for the S24. The agent
+// version prefix was the only thing standing in its way, and a version string
+// is one edit away from matching.
+//
+// runtimeIsAndroid is set by the collector from the platform it is actually
+// executing on, and the collector now reports false off Termux rather than
+// omitting the field. Requiring it strictly true means an absent field — an
+// older build that predates this, or anything that simply does not set it —
+// fails closed, which is the behaviour we want while the fleet catches up.
+const S24_RUNTIME_EVIDENCE = 'runtimeIsAndroid';
+
+function nonFutureAgeSeconds(value, now) {
+  if (!value) return null;
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp) || timestamp > now) return null;
+  return Math.round((now - timestamp) / 1000);
+}
+
+function commandAckTimestamp(fields) {
+  const lastAck = fields.lastAck && typeof fields.lastAck === 'object'
+    ? fields.lastAck
+    : {};
+  return fields.lastCommandAckAt || fields.ackAt || lastAck.ackAt ||
+    lastAck.completedAt || lastAck.at || null;
+}
+
+export function strictS24Liveness(fields, heartbeatAgeSeconds, ackAgeSeconds) {
+  const checks = {
+    heartbeatFresh: heartbeatAgeSeconds !== null && heartbeatAgeSeconds <= S24_ACK_MAX_AGE_SECONDS,
+    authenticatedAgent: typeof fields.agentVersion === 'string' &&
+      fields.agentVersion.startsWith('s24-termux-'),
+    heartbeatAuth: fields.heartbeatAuth === 'termux-phone',
+    liveDeviceVerified: fields.liveDeviceVerified === true,
+    liveSource: S24_SOURCE_TYPES.has(fields.sourceType),
+    androidRuntime: fields[S24_RUNTIME_EVIDENCE] === true,
+    commandAckFresh: ackAgeSeconds !== null && ackAgeSeconds <= S24_ACK_MAX_AGE_SECONDS,
+  };
+  const failed = Object.entries(checks).find(([, passed]) => !passed);
+  return {
+    mode: 'strict-s24-attestation',
+    live: !failed,
+    checks,
+    reason: failed ? `${failed[0]} is missing or stale` : 'authenticated heartbeat and command acknowledgement are fresh',
+  };
+}
+
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
   if (!FIREBASE_SA_JSON) {
@@ -110,6 +176,7 @@ export default async function handler(req, res) {
     const devices = (data.documents || []).map((d) => {
       const f = {};
       for (const [k, v] of Object.entries(d.fields || {})) f[k] = dec(v);
+      const deviceId = d.name.split('/').pop();
       const lastSeen = f.lastSeen || null;
       // Only an always-on agent can be expected to check in every 45s. Phones
       // heartbeat opportunistically (samsung-s24-ultra uses a native Android
@@ -120,8 +187,23 @@ export default async function handler(req, res) {
       const interval = typeof f.heartbeatIntervalSeconds === 'number'
         ? f.heartbeatIntervalSeconds
         : (DEFAULT_INTERVAL_SECONDS[f.deviceType] || 45);
-      const ageMs = lastSeen ? now - new Date(lastSeen).getTime() : null;
-      const live = ageMs !== null && ageMs < 3 * interval * 1000;
+      const heartbeatAgeSeconds = nonFutureAgeSeconds(lastSeen, now);
+      const isS24 = isS24Document(deviceId, f);
+      const heartbeatMaxAgeSeconds = isS24
+        ? S24_ACK_MAX_AGE_SECONDS
+        : 3 * interval;
+      const heartbeatFresh = heartbeatAgeSeconds !== null && heartbeatAgeSeconds <= heartbeatMaxAgeSeconds;
+      const lastCommandAckAt = commandAckTimestamp(f);
+      const lastCommandAckAgeSeconds = nonFutureAgeSeconds(lastCommandAckAt, now);
+      const strict = isS24
+        ? strictS24Liveness(f, heartbeatAgeSeconds, lastCommandAckAgeSeconds)
+        : {
+          mode: 'timestamp-freshness',
+          live: heartbeatFresh,
+          checks: { heartbeatFresh },
+          reason: heartbeatFresh ? 'lastSeen is within the device heartbeat window' : 'lastSeen is missing, stale, invalid, or in the future',
+        };
+      const live = strict.live;
       const cq = f.commandQueue || {};
       const commandQueue = normalizeCommandQueue(cq);
       // Phones report connectivity under `info`/`networkType`, not the
@@ -155,14 +237,22 @@ export default async function handler(req, res) {
         };
       }
       return {
-        deviceId: d.name.split('/').pop(),
-        deviceDisplayName: f.deviceDisplayName || d.name.split('/').pop(),
+        deviceId,
+        deviceDisplayName: f.deviceDisplayName || deviceId,
         online: f.online === true,
         live,
         lastSeen,
-        lastSeenAgeSeconds: ageMs !== null ? Math.round(ageMs / 1000) : null,
+        lastSeenAgeSeconds: heartbeatAgeSeconds,
+        heartbeatMaxAgeSeconds,
+        liveness: strict,
         connectionMethod: f.connectionMethod || null,
         heartbeatIntervalSeconds: interval,
+        agentVersion: f.agentVersion || null,
+        heartbeatAuth: f.heartbeatAuth || null,
+        liveDeviceVerified: f.liveDeviceVerified === true,
+        sourceType: f.sourceType || null,
+        lastCommandAckAt,
+        lastCommandAckAgeSeconds,
         commandQueueDepth: Object.keys(cq).length,
         commandQueuePendingDepth: commandQueue.filter((entry) =>
           ['pending', 'queued', 'requested', 'claimed'].includes(entry.status)

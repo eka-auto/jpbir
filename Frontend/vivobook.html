@@ -135,7 +135,6 @@
         <div class="panel-head">
             <div><h2>Event history</h2><div class="hint" id="histHint">Events synced from the VivoBook agent</div></div>
             <div class="tools">
-                <button id="askBtn" title="Ask the VivoBook agent to sync data now">Ask device for data</button>
                 <button id="histRefreshBtn">Refresh</button>
             </div>
         </div>
@@ -149,7 +148,7 @@
 
     <div class="panel">
         <div class="panel-head">
-            <div><h2>Command queue</h2><div class="hint" id="queueHint">Pending commands waiting for the VivoBook agent to pick up</div></div>
+            <div><h2>Command queue</h2><div class="hint" id="queueHint">Read-only queue · VivoBook controls are not exposed from this page</div></div>
         </div>
         <div class="table-wrap">
             <table id="queueTable">
@@ -295,7 +294,7 @@
                 var evs = res.body.device_events || [];
                 var tbody = $('histTable').querySelector('tbody');
                 if (!evs.length) {
-                    tbody.innerHTML = '<tr><td colspan="4" class="state">No events synced yet. Click "Ask device for data".</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="4" class="state">No events synced yet.</td></tr>';
                     $('histHint').textContent = 'No events yet.';
                     return;
                 }
@@ -306,26 +305,6 @@
             })
             .catch(function (e) { $('histHint').textContent = 'Error: ' + e.message; });
     }
-
-    $('askBtn').addEventListener('click', function () {
-        /* open dashboard: no key required */
-        var btn = $('askBtn');
-        btn.disabled = true; btn.textContent = 'Sending…';
-        fetch('/api/jp-device', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ key: KEY, device: DEVICE_ID, action: 'sync-now' })
-        })
-            .then(function (r) { return r.json(); })
-            .then(function (res) {
-                if (res.success) {
-                    $('histHint').textContent = 'Command queued: ' + res.action + ' (id ' + res.reqId + ') — waiting for VivoBook agent…';
-                    setTimeout(loadHistory, 15000);
-                } else { $('histHint').textContent = 'Failed: ' + (res.error || 'unknown'); }
-            })
-            .catch(function (e) { $('histHint').textContent = 'Ask failed: ' + e.message; })
-            .finally(function () { btn.disabled = false; btn.textContent = 'Ask device for data'; });
-    });
 
     $('refreshBtn').addEventListener('click', loadLive);
     $('histRefreshBtn').addEventListener('click', loadHistory);
