@@ -124,6 +124,10 @@
     {
       "src": "Backend/jp-wa-attachments.js",
       "use": "@vercel/node"
+    },
+    {
+      "src": "Backend/jp-wa-messages.js",
+      "use": "@vercel/node"
     }
   ],
   "routes": [
