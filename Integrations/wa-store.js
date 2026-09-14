@@ -231,8 +231,95 @@ export async function upsertMessages(query, records, meta = {}) {
   return { upserted, skipped, duplicates };
 }
 
+const ATT_KINDS = new Set(['image', 'video', 'audio', 'ptt', 'document', 'sticker', 'other']);
+const isoOrNull = (v) => {
+  if (v == null || v === '') return null;
+  const d = new Date(v);
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+};
+
 /**
- * One ingest call: `{ device?, run_id?, chats?: [], messages?: [], done?: bool, note? }`.
+ * Attachment shape:
+ *   { att_id?, chat_id, msg_id?, kind, mime?, file_name?, size_bytes?,
+ *     duration_sec?, width?, height?, blob_url, sent_at?, raw? }
+ * att_id is deterministic (chat_id:msg_key:hash) when the S24 daemon supplies
+ * it; when absent, hash blob_url so a re-run reuses the same key.
+ */
+export function normalizeAttachment(rec) {
+  if (!rec || typeof rec !== 'object') return null;
+  const chatId = str(rec.chat_id);
+  const blobUrl = str(rec.blob_url);
+  if (!chatId || !blobUrl) return null;
+  const kind = str(rec.kind).toLowerCase();
+  if (!ATT_KINDS.has(kind)) return null;
+  const attId = str(rec.att_id) || hashId(`${chatId}:${str(rec.msg_id) || blobUrl}`);
+  return {
+    att_id: attId,
+    chat_id: chatId,
+    msg_id: str(rec.msg_id) || null,
+    kind,
+    mime: str(rec.mime) || null,
+    file_name: str(rec.file_name) || null,
+    size_bytes: rec.size_bytes == null ? null : Number(rec.size_bytes) || 0,
+    duration_sec: intOrNull(rec.duration_sec),
+    width: intOrNull(rec.width),
+    height: intOrNull(rec.height),
+    blob_url: blobUrl,
+    sent_at: isoOrNull(rec.sent_at),
+  };
+}
+
+export async function upsertAttachments(query, records, meta = {}) {
+  const rows = new Map();
+  let skipped = 0;
+  for (const rec of records || []) {
+    const a = normalizeAttachment(rec);
+    if (!a) { skipped++; continue; }
+    rows.set(a.att_id, { ...a, raw: JSON.stringify(rec) });
+  }
+  const col = (batch, k) => batch.map((r) => r[k]);
+  let upserted = 0;
+  for (const batch of chunks([...rows.values()], CHUNK)) {
+    const result = await query(
+      `INSERT INTO wa_attachments (att_id, chat_id, msg_id, kind, mime, file_name, size_bytes,
+                                   duration_sec, width, height, blob_url, sent_at,
+                                   device_id, run_id, source_system, raw)
+       SELECT u.* FROM UNNEST($1::text[], $2::text[], $3::text[], $4::text[], $5::text[], $6::text[],
+                              $7::bigint[], $8::int[], $9::int[], $10::int[], $11::text[],
+                              $12::timestamptz[], $13::text[], $14::text[], $15::text[], $16::jsonb[]) AS u(
+                              att_id, chat_id, msg_id, kind, mime, file_name, size_bytes,
+                              duration_sec, width, height, blob_url, sent_at,
+                              device_id, run_id, source_system, raw)
+        WHERE EXISTS (SELECT 1 FROM wa_chats c WHERE c.chat_id = u.chat_id)
+       ON CONFLICT (att_id) DO UPDATE SET
+         msg_id       = COALESCE(EXCLUDED.msg_id, wa_attachments.msg_id),
+         kind         = EXCLUDED.kind,
+         mime         = COALESCE(EXCLUDED.mime, wa_attachments.mime),
+         file_name    = COALESCE(EXCLUDED.file_name, wa_attachments.file_name),
+         size_bytes   = COALESCE(EXCLUDED.size_bytes, wa_attachments.size_bytes),
+         duration_sec = COALESCE(EXCLUDED.duration_sec, wa_attachments.duration_sec),
+         width        = COALESCE(EXCLUDED.width, wa_attachments.width),
+         height       = COALESCE(EXCLUDED.height, wa_attachments.height),
+         blob_url     = EXCLUDED.blob_url,
+         sent_at      = COALESCE(EXCLUDED.sent_at, wa_attachments.sent_at),
+         run_id       = EXCLUDED.run_id,
+         raw          = EXCLUDED.raw`,
+      [
+        col(batch, 'att_id'), col(batch, 'chat_id'), col(batch, 'msg_id'), col(batch, 'kind'),
+        col(batch, 'mime'), col(batch, 'file_name'), col(batch, 'size_bytes'),
+        col(batch, 'duration_sec'), col(batch, 'width'), col(batch, 'height'),
+        col(batch, 'blob_url'), col(batch, 'sent_at'),
+        batch.map(() => meta.device || null), batch.map(() => meta.runId || null),
+        batch.map(() => meta.source || 'wa-ingest'), col(batch, 'raw'),
+      ]
+    );
+    upserted += Number.isInteger(result && result.rowCount) ? result.rowCount : 0;
+  }
+  return { upserted, skipped };
+}
+
+/**
+ * One ingest call: `{ device?, run_id?, chats?: [], messages?: [], attachments?: [], done?: bool, note? }`.
  * Records the run, upserts what is present, and closes the run when `done` is
  * set. Idempotent: the same batch twice writes the same rows.
  */
@@ -244,9 +331,11 @@ export async function ingestBatch(query, body, meta = {}) {
   const source = meta.source || 'wa-ingest';
   const chats = Array.isArray(b.chats) ? b.chats : [];
   const messages = Array.isArray(b.messages) ? b.messages : [];
+  const attachments = Array.isArray(b.attachments) ? b.attachments : [];
 
   const c = await upsertChats(query, chats, { device, runId, source });
   const m = await upsertMessages(query, messages, { device, runId, source, chatId: b.chat_id });
+  const a = attachments.length ? await upsertAttachments(query, attachments, { device, runId, source }) : { upserted: 0, skipped: 0 };
 
   // Non-additive accounting: the tallies are the rows that carry this run_id
   // right now, so a retried batch (same run_id, idempotent upserts above)
@@ -268,7 +357,7 @@ export async function ingestBatch(query, body, meta = {}) {
       b.done ? new Date().toISOString() : null]
   );
 
-  return { run_id: runId, device, chats: c, messages: m, done: Boolean(b.done) };
+  return { run_id: runId, device, chats: c, messages: m, attachments: a, done: Boolean(b.done) };
 }
 
 /** The read side: every chat in the compact shape the galaxy page renders. */
