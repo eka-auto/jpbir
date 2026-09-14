@@ -597,6 +597,16 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
                         <div id="waAttGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;margin-top:12px"></div>
                         <div id="waAttEmpty" class="hint" style="margin-top:10px;display:none"></div>
                     </div>
+                    <div class="panel" style="margin-top:14px">
+                        <div class="panel-head">
+                            <div><h2>Messages</h2><div class="hint" id="waMsgHint">Bodies imported from WhatsApp Chat Export .txt files.</div></div>
+                            <div class="tools">
+                                <input id="waMsgSearch" type="text" placeholder="Search body…" style="padding:6px 10px;border:1px solid var(--border);border-radius:9px;background:var(--panel2);color:var(--ink);font-family:var(--sans);font-size:12px;outline:none;width:180px">
+                            </div>
+                        </div>
+                        <div id="waMsgList" style="margin-top:12px;max-height:520px;overflow-y:auto;display:flex;flex-direction:column;gap:6px"></div>
+                        <div id="waMsgEmpty" class="hint" style="margin-top:10px;display:none"></div>
+                    </div>
                 </div>
             </section>
 
@@ -2428,6 +2438,48 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
             })
             .catch(function (e) { if (waAttState.chatId !== chatId) return; $('waAttHint').textContent = 'Load failed: ' + e.message; });
     }
+    var waMsgState = { chatId: null, q: '', reqId: 0 };
+    function waMsgRow(m) {
+        var when = m.sent_at ? new Date(m.sent_at).toISOString().replace('T', ' ').slice(0, 16) + ' UTC' : 'undated';
+        var mine = m.from_me === true;
+        var align = mine ? 'flex-end' : 'flex-start';
+        var bg = mine ? 'rgba(240,185,104,.16)' : 'rgba(255,248,238,.05)';
+        var border = mine ? 'rgba(240,185,104,.35)' : 'rgba(255,248,238,.12)';
+        var head = (m.sender ? '<span style="font-weight:600">' + esc(m.sender) + '</span> · ' : '')
+            + '<span>' + esc(when) + '</span>'
+            + (m.kind && m.kind !== 'text' ? ' · <span style="color:var(--warn)">' + esc(m.kind) + '</span>' : '');
+        var body = esc(m.body || '').replace(/\n/g, '<br>');
+        return '<div style="display:flex;justify-content:' + align + '">'
+            + '<div style="max-width:80%;padding:8px 12px;border-radius:10px;background:' + bg + ';border:1px solid ' + border + '">'
+            + '<div style="font-size:10.5px;color:var(--ink-muted);margin-bottom:4px">' + head + '</div>'
+            + '<div style="font-size:13px;line-height:1.4;white-space:pre-wrap;word-wrap:break-word">' + body + '</div>'
+            + '</div></div>';
+    }
+    function loadMessages(chatId, q) {
+        waMsgState.chatId = chatId; waMsgState.q = q || '';
+        var token = ++waMsgState.reqId;
+        var list = $('waMsgList'); var empty = $('waMsgEmpty');
+        list.innerHTML = '<div class="hint">Loading…</div>'; empty.style.display = 'none';
+        var params = { chat_id: chatId, limit: 200 };
+        if (q) params.q = q;
+        fetch('/api/jp-wa-messages?' + new URLSearchParams(params).toString(), { cache: 'no-store' })
+            .then(function (r) { return r.json(); })
+            .then(function (j) {
+                if (waMsgState.reqId !== token || waMsgState.chatId !== chatId) return;
+                list.innerHTML = '';
+                if (!j.ok) { $('waMsgHint').textContent = 'Load failed: ' + (j.error || 'unknown'); return; }
+                if (j.migrated === false) { $('waMsgHint').textContent = 'wa_messages table not migrated yet.'; empty.textContent = 'Run npm run db:migrate.'; empty.style.display = 'block'; return; }
+                if (!(j.messages || []).length) {
+                    $('waMsgHint').textContent = q ? 'No messages match "' + esc(q) + '".' : 'No message bodies imported for this chat.';
+                    empty.textContent = q ? '' : 'Drop a WhatsApp Chat Export into ~/wa-exports/ on the phone and run wa_export_import.py.';
+                    empty.style.display = empty.textContent ? 'block' : 'none';
+                    return;
+                }
+                $('waMsgHint').textContent = fmt(j.count) + ' messages' + (q ? ' matching "' + esc(q) + '"' : '') + ', newest first.';
+                list.innerHTML = j.messages.map(waMsgRow).join('');
+            })
+            .catch(function (e) { if (waMsgState.reqId !== token) return; list.innerHTML = ''; $('waMsgHint').textContent = 'Load failed: ' + e.message; });
+    }
     function loadWaChat(chatId) {
         var token = ++waDetailReq;
         var d = $('waDetail'); d.style.display = '';
@@ -2437,8 +2489,10 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
         $('waDetailKinds').innerHTML = '<div class="hint">Loading…</div>';
         $('waDetailMonths').innerHTML = '<div class="hint">Loading…</div>';
         $('waAttGrid').innerHTML = ''; $('waAttEmpty').style.display = 'none'; $('waAttKinds').innerHTML = ''; $('waAttHint').textContent = 'Loading…';
+        var msgSearch = $('waMsgSearch'); if (msgSearch) msgSearch.value = '';
         try { d.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (e) { /* no-op */ }
         loadAttachments(chatId, '');
+        loadMessages(chatId, '');
         fetch('/api/jp-wa-chat?' + new URLSearchParams({ chat_id: chatId }).toString(), { cache: 'no-store' })
             .then(function (r) { return r.json(); })
             .then(function (j) {
@@ -2497,6 +2551,14 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
                 }
                 t = t.parentNode;
             }
+        });
+        var msgSearch = $('waMsgSearch');
+        var msgDebounce = null;
+        if (msgSearch) msgSearch.addEventListener('input', function () {
+            if (!waMsgState.chatId) return;
+            if (msgDebounce) clearTimeout(msgDebounce);
+            var val = msgSearch.value;
+            msgDebounce = setTimeout(function () { loadMessages(waMsgState.chatId, val); }, 220);
         });
     })();
     function loadWhatsApp(force) {
