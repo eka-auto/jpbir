@@ -25,6 +25,209 @@ function str(v, max) {
   return max && s.length > max ? s.slice(0, max) : s;
 }
 
+function number(v, integer = false) {
+  if (v == null || v === '') return null;
+  const n = Number(v);
+  if (!Number.isFinite(n)) return null;
+  return integer ? Math.trunc(n) : n;
+}
+
+function bool(v) {
+  if (v === true || v === 'true') return true;
+  if (v === false || v === 'false') return false;
+  return null;
+}
+
+function dateFrom(payload, keys, fallback = null) {
+  for (const key of keys) {
+    const parsed = asIso(payload?.[key]);
+    if (parsed) return parsed;
+  }
+  return asIso(fallback);
+}
+
+export function specializedTableForDataset(dataset) {
+  if (dataset === 'device_document') return 's24_device_snapshots';
+  if (dataset === 'direct_call_logs' || dataset === 'firestore_callLogs') return 's24_calls';
+  if (dataset === 'direct_sms' || dataset === 'firestore_sms') return 's24_sms';
+  if (dataset === 'direct_location') return 's24_locations';
+  if (dataset === 'firestore_agents') return 's24_agents';
+  if (dataset === 'firestore_commands') return 's24_commands';
+  if (dataset === 'firestore_files') return 's24_files';
+  if (dataset === 'firestore_queue') return 's24_queue_items';
+  return null;
+}
+
+async function writeSpecialized(query, run, record) {
+  const table = specializedTableForDataset(record.dataset);
+  if (!table) return;
+  const p = record.payload;
+  const base = [str(run.run_id, 200), str(run.device_id, 120)];
+
+  if (table === 's24_device_snapshots') {
+    await query(
+      `INSERT INTO s24_device_snapshots
+         (run_id, device_id, observed_at, agent_version, android_version, model,
+          manufacturer, battery_level, status, connection_method, heartbeat_auth,
+          source_type, runtime_is_android, live_device_verified, last_seen, raw_payload)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+       ON CONFLICT (run_id) DO UPDATE SET
+         observed_at=EXCLUDED.observed_at, agent_version=EXCLUDED.agent_version,
+         android_version=EXCLUDED.android_version, model=EXCLUDED.model,
+         manufacturer=EXCLUDED.manufacturer, battery_level=EXCLUDED.battery_level,
+         status=EXCLUDED.status, connection_method=EXCLUDED.connection_method,
+         heartbeat_auth=EXCLUDED.heartbeat_auth, source_type=EXCLUDED.source_type,
+         runtime_is_android=EXCLUDED.runtime_is_android,
+         live_device_verified=EXCLUDED.live_device_verified,
+         last_seen=EXCLUDED.last_seen, raw_payload=EXCLUDED.raw_payload`,
+      base.concat([
+        asIso(record.occurred_at), str(p.agentVersion, 160), str(p.androidVersion, 40),
+        str(p.model, 120), str(p.manufacturer, 120), number(p.batteryLevel ?? p.battery),
+        str(p.status, 80), str(p.connectionMethod, 120), str(p.heartbeatAuth, 120),
+        str(p.sourceType, 120), bool(p.runtimeIsAndroid), bool(p.liveDeviceVerified),
+        dateFrom(p, ['lastSeen'], record.occurred_at), JSON.stringify(p),
+      ])
+    );
+    return;
+  }
+
+  if (table === 's24_calls') {
+    await query(
+      `INSERT INTO s24_calls
+         (source_dataset, record_id, run_id, device_id, called_at, contact_name,
+          phone_number, call_type, duration_sec, backed_up_at, raw_payload)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+       ON CONFLICT (source_dataset, record_id) DO UPDATE SET
+         run_id=EXCLUDED.run_id, called_at=COALESCE(EXCLUDED.called_at,s24_calls.called_at),
+         contact_name=COALESCE(EXCLUDED.contact_name,s24_calls.contact_name),
+         phone_number=COALESCE(EXCLUDED.phone_number,s24_calls.phone_number),
+         call_type=COALESCE(EXCLUDED.call_type,s24_calls.call_type),
+         duration_sec=COALESCE(EXCLUDED.duration_sec,s24_calls.duration_sec),
+         backed_up_at=COALESCE(EXCLUDED.backed_up_at,s24_calls.backed_up_at),
+         raw_payload=EXCLUDED.raw_payload, last_seen=now()`,
+      [str(record.dataset, 80), str(record.record_id, 400), ...base,
+       dateFrom(p, ['date', 'timestamp'], record.occurred_at), str(p.name, 400),
+       str(p.number ?? p.address, 200), str(p.type, 80), number(p.duration, true),
+       dateFrom(p, ['backed_up_at']), JSON.stringify(p)]
+    );
+    return;
+  }
+
+  if (table === 's24_sms') {
+    await query(
+      `INSERT INTO s24_sms
+         (source_dataset, record_id, run_id, device_id, sent_at, correspondent,
+          message_type, body, raw_payload)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+       ON CONFLICT (source_dataset, record_id) DO UPDATE SET
+         run_id=EXCLUDED.run_id, sent_at=COALESCE(EXCLUDED.sent_at,s24_sms.sent_at),
+         correspondent=COALESCE(EXCLUDED.correspondent,s24_sms.correspondent),
+         message_type=COALESCE(EXCLUDED.message_type,s24_sms.message_type),
+         body=COALESCE(EXCLUDED.body,s24_sms.body), raw_payload=EXCLUDED.raw_payload,
+         last_seen=now()`,
+      [str(record.dataset, 80), str(record.record_id, 400), ...base,
+       dateFrom(p, ['date', 'timestamp'], record.occurred_at),
+       str(p.sender ?? p.address ?? p.number, 200), str(p.type ?? p.message_type, 80),
+       str(p.body ?? p.text ?? p.message, 100000), JSON.stringify(p)]
+    );
+    return;
+  }
+
+  if (table === 's24_locations') {
+    await query(
+      `INSERT INTO s24_locations
+         (source_dataset, record_id, run_id, device_id, observed_at, latitude,
+          longitude, accuracy_m, provider, raw_payload)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+       ON CONFLICT (source_dataset, record_id) DO UPDATE SET
+         run_id=EXCLUDED.run_id, observed_at=COALESCE(EXCLUDED.observed_at,s24_locations.observed_at),
+         latitude=COALESCE(EXCLUDED.latitude,s24_locations.latitude),
+         longitude=COALESCE(EXCLUDED.longitude,s24_locations.longitude),
+         accuracy_m=COALESCE(EXCLUDED.accuracy_m,s24_locations.accuracy_m),
+         provider=COALESCE(EXCLUDED.provider,s24_locations.provider),
+         raw_payload=EXCLUDED.raw_payload, last_seen=now()`,
+      [str(record.dataset, 80), str(record.record_id, 400), ...base,
+       dateFrom(p, ['timestamp', 'time'], record.occurred_at), number(p.latitude ?? p.lat),
+       number(p.longitude ?? p.lng ?? p.lon), number(p.accuracy), str(p.provider, 100), JSON.stringify(p)]
+    );
+    return;
+  }
+
+  if (table === 's24_agents') {
+    await query(
+      `INSERT INTO s24_agents
+         (record_id, run_id, device_id, agent_name, status, model, api_enabled,
+          bridged, port, registered_at, activated_at, raw_payload)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+       ON CONFLICT (record_id) DO UPDATE SET
+         run_id=EXCLUDED.run_id, agent_name=EXCLUDED.agent_name, status=EXCLUDED.status,
+         model=EXCLUDED.model, api_enabled=EXCLUDED.api_enabled, bridged=EXCLUDED.bridged,
+         port=EXCLUDED.port, registered_at=EXCLUDED.registered_at,
+         activated_at=EXCLUDED.activated_at, raw_payload=EXCLUDED.raw_payload, last_seen=now()`,
+      [str(record.record_id, 400), ...base, str(p.agent_name, 300), str(p.status, 80),
+       str(p.api_model, 160), bool(p.api_enabled), bool(p.bridged), number(p.port, true),
+       dateFrom(p, ['registered_at']), dateFrom(p, ['activated_at']), JSON.stringify(p)]
+    );
+    return;
+  }
+
+  if (table === 's24_commands') {
+    await query(
+      `INSERT INTO s24_commands
+         (source_dataset, record_id, run_id, device_id, action, command_type,
+          status, priority, requested_at, resolved_at, requested_by, raw_payload)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+       ON CONFLICT (source_dataset, record_id) DO UPDATE SET
+         run_id=EXCLUDED.run_id, action=EXCLUDED.action, command_type=EXCLUDED.command_type,
+         status=EXCLUDED.status, priority=EXCLUDED.priority,
+         requested_at=COALESCE(EXCLUDED.requested_at,s24_commands.requested_at),
+         resolved_at=COALESCE(EXCLUDED.resolved_at,s24_commands.resolved_at),
+         requested_by=COALESCE(EXCLUDED.requested_by,s24_commands.requested_by),
+         raw_payload=EXCLUDED.raw_payload, last_seen=now()`,
+      [str(record.dataset, 80), str(record.record_id, 400), ...base,
+       str(p.action ?? p.command ?? p.cmd, 500), str(p.type, 100), str(p.status, 80),
+       str(p.priority, 80), dateFrom(p, ['requestedAt', 'createdAt'], record.occurred_at),
+       dateFrom(p, ['resolvedAt', 'cancelledAt']), str(p.requestedBy, 300), JSON.stringify(p)]
+    );
+    return;
+  }
+
+  if (table === 's24_files') {
+    await query(
+      `INSERT INTO s24_files
+         (record_id, run_id, device_id, filename, file_type, status, size_bytes,
+          created_at, uploaded_at, content, raw_payload)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+       ON CONFLICT (record_id) DO UPDATE SET
+         run_id=EXCLUDED.run_id, filename=EXCLUDED.filename, file_type=EXCLUDED.file_type,
+         status=EXCLUDED.status, size_bytes=EXCLUDED.size_bytes,
+         created_at=COALESCE(EXCLUDED.created_at,s24_files.created_at),
+         uploaded_at=COALESCE(EXCLUDED.uploaded_at,s24_files.uploaded_at),
+         content=EXCLUDED.content, raw_payload=EXCLUDED.raw_payload, last_seen=now()`,
+      [str(record.record_id, 400), ...base, str(p.filename, 1000), str(p.type, 120),
+       str(p.status, 80), number(p.size, true), dateFrom(p, ['created_at']),
+       dateFrom(p, ['uploaded_at']), str(p.content, 1000000), JSON.stringify(p)]
+    );
+    return;
+  }
+
+  await query(
+    `INSERT INTO s24_queue_items
+       (record_id, run_id, device_id, action, item_type, status, priority,
+        description, created_at, raw_payload)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+     ON CONFLICT (record_id) DO UPDATE SET
+       run_id=EXCLUDED.run_id, action=EXCLUDED.action, item_type=EXCLUDED.item_type,
+       status=EXCLUDED.status, priority=EXCLUDED.priority,
+       description=EXCLUDED.description,
+       created_at=COALESCE(EXCLUDED.created_at,s24_queue_items.created_at),
+       raw_payload=EXCLUDED.raw_payload, last_seen=now()`,
+    [str(record.record_id, 400), ...base, str(p.command ?? p.action, 500),
+     str(p.type, 100), str(p.status, 80), str(p.priority, 80), str(p.description, 2000),
+     dateFrom(p, ['created_at'], record.occurred_at), JSON.stringify(p)]
+  );
+}
+
 /**
  * Validate a batch without touching the database.
  * Returns { ok: true, batch } or { ok: false, error, detail }.
@@ -79,6 +282,12 @@ export function validateBatch(body) {
   const undeclared = [...new Set(records.map((r) => r.dataset))].filter((d) => !datasetNames.has(d));
   if (undeclared.length) {
     return { ok: false, error: 'records reference datasets with no status row', detail: undeclared };
+  }
+  const invalidPayloads = records
+    .map((r, i) => (!r.payload || typeof r.payload !== 'object' || Array.isArray(r.payload)) ? i : null)
+    .filter((i) => i != null);
+  if (invalidPayloads.length) {
+    return { ok: false, error: 'records need an object payload', detail: invalidPayloads.slice(0, 20) };
   }
 
   return { ok: true, batch: { run, datasets, records, upload } };
@@ -148,6 +357,7 @@ export async function ingestBatch(query, batch, meta = {}) {
         asIso(r.occurred_at), str(r.label, 400), JSON.stringify(r.payload ?? r),
       ]
     );
+    await writeSpecialized(query, run, r);
     written++;
   }
 
