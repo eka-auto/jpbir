@@ -21987,8 +21987,8 @@
     "Backend/service/markdown-it-front-matter.js: '../yamlProperties' -> './yamlProperties' (pre-existing break).",
     "_shared/tests/*.mjs: '../Backend/' -> '../../Backend/', vercel.json path and build-frontend.mjs import repointed (pre-existing breaks)."
   ],
-  "resume_point": "phase5_push_and_verify_deploy",
-  "resume_detail": "The restructure and the vercel.json rewrite are complete and committed on branch `restructure/five-layer`. NOT pushed, NOT deployed. Next: push the branch, open a PR, and confirm the Vercel PREVIEW deploy serves `/`, `/s24`, `/vivobook` and `/api/*` before merging. `main` is untouched, so production is unaffected until that merge.",
+  "resume_point": "fix_channel_sandbox_root_directory",
+  "resume_detail": "The restructure and the vercel.json rewrite are merged into `main` (PRs #10, #11, #12) and deployed; on `main` @ `ece3ece` the dashboard serves `/`, `/s24`, `/vivobook` and `/api/*` correctly. Outstanding: this repo feeds three Vercel projects from `main` (`jpbir_restructured`, `jayti-dashboard`, `channel-sandbox`), and `channel-sandbox` has served `X-Vercel-Error: NOT_FOUND` on every path since Merge #10 because its Root Directory is still `app/sandbox`, the path this restructure renamed to `Devices/sandbox`. The build reports success because it produces no output rather than failing, so GitHub's commit status stays green. Fix is one Vercel dashboard setting — Root Directory -> `Devices/sandbox` — no code change.",
   "open_questions": [
     {
       "file": "(34 duplicate groups / 49 redundant files)",
