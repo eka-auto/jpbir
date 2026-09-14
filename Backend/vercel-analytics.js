@@ -14,6 +14,7 @@
 // Requires VERCEL_API_TOKEN (a Vercel account/team token, read scope is
 // enough). Without it the endpoint returns configured:false and the UI shows
 // setup instructions instead of an error.
+import { requireKey } from './_auth.js';
 
 const API = 'https://api.vercel.com';
 
@@ -89,8 +90,12 @@ async function webAnalytics(c, since, until) {
 }
 
 export default async function handler(req, res) {
-  const c = cfg();
   res.setHeader('Cache-Control', 'no-store');
+  // Traffic figures plus this project's own Vercel identifiers, so it is
+  // gated before the config is even read.
+  if (!requireKey(req, res)) return;
+
+  const c = cfg();
 
   if (!c.token) {
     return res.status(200).json({
