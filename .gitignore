@@ -1,6 +1,13 @@
 node_modules/
 .env
 *.log
+
+# Built WhatsApp inventory: real contact names, straight from the recovery
+# dump to Neon. It is written here for convenience and must never be committed.
+Database/wa-inventory.json
+wa-inventory.json
+Database/wa-messages.json
+wa-messages.json
 *.jsonl
 *.jsonl.*
 *.db

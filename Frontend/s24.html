@@ -155,7 +155,6 @@
         <div class="panel-head">
             <div><h2>Tracked site activity</h2><div class="hint" id="histHint">Sites visited on tracked domains</div></div>
             <div class="tools">
-                <button id="askBtn" title="Ask the S24 daemon to refresh its device telemetry now">Sync device now</button>
                 <button id="histRefreshBtn">Refresh</button>
             </div>
         </div>
@@ -169,7 +168,7 @@
 
     <div class="panel">
         <div class="panel-head">
-            <div><h2>Command queue</h2><div class="hint" id="queueHint">Pending commands waiting for the S24 daemon to pick up</div></div>
+            <div><h2>Command queue</h2><div class="hint" id="queueHint">Read-only queue · use the authenticated main dashboard to send S24 commands</div></div>
         </div>
         <div class="table-wrap">
             <table id="queueTable">
@@ -216,55 +215,6 @@
 
     var _deviceData = null;
 
-    /* Recovery affordance.
-       Once the phone daemon stops polling there is no remote way back in: the
-       command queue, the legacy forceWakeup flags and the FCM listener all
-       need a process that is already running, and the phone sits behind
-       carrier NAT so adb/ssh cannot reach it inbound. The one thing on the
-       device still under our control is its browser - so when THIS page is
-       opened on the phone, make recovery a tap instead of a typing exercise.
-
-       Opening Termux matters beyond convenience: Android will not run a
-       force-stopped app's JobScheduler work, so launching it clears that state
-       and lets the persisted watchdog (job 240619, 15-minute period) fire and
-       restart the daemon on its own. */
-    var RECOVERY_CMD = 'bash ~/eka-runner/termux/boot/start_s24_direct_cloud.sh';
-    var TERMUX_INTENT = 'intent:#Intent;package=com.termux;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;end';
-
-    function recoveryHtml() {
-        var onAndroid = /Android/i.test(navigator.userAgent);
-        var btn = 'display:inline-block;margin:8px 8px 0 0;padding:7px 13px;border-radius:7px;' +
-                  'border:1px solid currentColor;font:inherit;font-size:13px;cursor:pointer;' +
-                  'background:transparent;color:inherit;text-decoration:none';
-        var h = '<div style="margin-top:10px">';
-        if (onAndroid) {
-            h += '<a href="' + TERMUX_INTENT + '" style="' + btn + '">Open Termux</a>';
-        }
-        h += '<button type="button" id="copyRecovery" style="' + btn + '">Copy recovery command</button>';
-        h += '<div style="margin-top:8px"><code>' + esc(RECOVERY_CMD) + '</code></div>';
-        if (onAndroid) {
-            h += '<div style="margin-top:6px;font-size:12px;opacity:.75">Opening Termux re-enables its background watchdog, ' +
-                 'which restarts the agent within ~15 minutes. Paste the command to do it immediately.</div>';
-        } else {
-            h += '<div style="margin-top:6px;font-size:12px;opacity:.75">Open this page on the phone for a one-tap fix.</div>';
-        }
-        return h + '</div>';
-    }
-
-    /* innerHTML replaces the node, so the handler is bound after each render. */
-    function wireRecovery() {
-        var b = $('copyRecovery');
-        if (!b) return;
-        b.addEventListener('click', function () {
-            var done = function () { b.textContent = 'Copied'; setTimeout(function () { b.textContent = 'Copy recovery command'; }, 1800); };
-            if (navigator.clipboard && navigator.clipboard.writeText) {
-                navigator.clipboard.writeText(RECOVERY_CMD).then(done, function () { b.textContent = 'Copy failed — select it below'; });
-            } else {
-                b.textContent = 'Copy unavailable — select it below';
-            }
-        });
-    }
-
     function setLight(green, title, bodyHtml) {
         var light = $('statusLight');
         light.className = 'status-light ' + (green ? 'green' : 'red');
@@ -272,7 +222,6 @@
         box.className = 'diag ' + (green ? 'ok' : 'bad');
         $('diagTitle').textContent = title;
         $('diagBody').innerHTML = bodyHtml;
-        wireRecovery();
     }
 
     function loadLive() {
@@ -291,7 +240,7 @@
                     $('liveText').textContent = 'OFFLINE';
                     setLight(false, 'Device not connected',
                         'No document for <code>samsung-s24-ultra</code> in Firestore <code>eka-agent/devices</code>. ' +
-                        'Fix: run the connect script once — <code>python Dashboard/S24/tools/connect_and_freeze.py --device samsung-s24-ultra --display "Samsung S24 Ultra"</code>');
+                        'Start the phone daemon in Termux, then use the authenticated main dashboard to request a sync.');
                     return;
                 }
                 _deviceData = dev;
@@ -299,19 +248,25 @@
                 $('liveDot').classList.toggle('off', !live);
                 $('liveText').textContent = live ? 'LIVE' : 'OFFLINE';
 
-                var threshold = 3 * (dev.heartbeatIntervalSeconds || 45);
+                var threshold = dev.heartbeatMaxAgeSeconds || 300;
+                var reason = dev.liveness && dev.liveness.reason ? dev.liveness.reason : 'strict liveness checks did not pass';
                 if (live) {
                     setLight(true, 'Device connected — ONLINE',
                         'Heartbeat received ' + (dev.lastSeenAgeSeconds != null ? dev.lastSeenAgeSeconds + 's ago' : 'just now') +
-                        ' (live threshold ' + threshold + 's). Green light blinks while the phone daemon keeps heartbeating.');
+                        ' (strict heartbeat window ' + threshold + 's; command ACK window 300s). Green light blinks while the phone daemon keeps heartbeating.');
                 } else if (!dev.lastSeen) {
                     setLight(false, 'Device registered but never heartbeated',
                         '<code>lastSeen</code> is empty — the S24 phone daemon (<code>s24_phone_direct_cloud.py</code>) has never published to Firestore. ' +
-                        'Fix: start the daemon in Termux on the phone.' + recoveryHtml());
+                        'Fix: start the daemon in Termux on the phone, then use the authenticated main dashboard to request a sync.');
+                } else if (dev.liveness && dev.liveness.mode === 'strict-s24-attestation') {
+                    setLight(false, 'Device OFFLINE — strict proof missing',
+                        'The dashboard ignores the stored <code>online</code> flag. ' +
+                        esc(reason) + '. Last heartbeat was ' + (dev.lastSeenAgeSeconds != null ? dev.lastSeenAgeSeconds + 's' : '?') +
+                        ' ago; the required command acknowledgement window is 300s. Use the authenticated main dashboard to request a fresh sync.');
                 } else {
                     setLight(false, 'Device OFFLINE — heartbeat stale',
                         'Last heartbeat ' + (dev.lastSeenAgeSeconds != null ? dev.lastSeenAgeSeconds + 's' : '?') + ' ago exceeds the ' +
-                        threshold + 's live threshold. The phone daemon stopped checking in.' + recoveryHtml());
+                        threshold + 's live threshold. The phone daemon stopped checking in. Start it in Termux, then use the authenticated main dashboard to request a fresh sync.');
                 }
 
                 $('kpiStatus').textContent = live ? 'LIVE' : 'OFFLINE';
@@ -339,10 +294,12 @@
                     '<div class="kv-item"><div class="k">Last seen</div><div class="v">' + (dev.lastSeen ? fmtTime(dev.lastSeen) : '—') + '</div></div>' +
                     '<div class="kv-item"><div class="k">Age</div><div class="v">' + (dev.lastSeenAgeSeconds != null ? dev.lastSeenAgeSeconds + 's' : '—') + '</div></div>' +
                     '<div class="kv-item"><div class="k">Connection</div><div class="v">' + esc(dev.connectionMethod || '—') + '</div></div>' +
+                    '<div class="kv-item"><div class="k">Agent proof</div><div class="v">' + esc(dev.agentVersion || '—') + '</div></div>' +
+                    '<div class="kv-item"><div class="k">Last command ACK</div><div class="v">' + (dev.lastCommandAckAgeSeconds != null ? dev.lastCommandAckAgeSeconds + 's ago' : '—') + '</div></div>' +
                     '<div class="kv-item"><div class="k">Queued commands</div><div class="v">' + (dev.commandQueueDepth || 0) + '</div></div>' +
                     '</div>';
                 $('liveDetail').innerHTML = html;
-                $('liveHint').textContent = 'Firestore · ' + res.body.database + ' · liveness = lastSeen < 3×heartbeat';
+                $('liveHint').textContent = 'Firestore · ' + res.body.database + ' · strict liveness = authenticated heartbeat + attestation + ACK';
 
                 renderNetwork(dev);
                 renderQueue(dev);
@@ -392,7 +349,7 @@
         var tbody = $('queueTable').querySelector('tbody');
         if (!q || !q.length) {
             tbody.innerHTML = '<tr><td colspan="4" class="state">No commands queued.</td></tr>';
-            $('queueHint').textContent = 'No commands queued.';
+            $('queueHint').textContent = 'No commands queued · use the authenticated main dashboard to send S24 commands.';
             return;
         }
         tbody.innerHTML = q.map(function (c) {
@@ -427,26 +384,6 @@
             })
             .catch(function (e) { $('histHint').textContent = 'Error: ' + e.message; });
     }
-
-    $('askBtn').addEventListener('click', function () {
-        /* open dashboard: no key required */
-        var btn = $('askBtn');
-        btn.disabled = true; btn.textContent = 'Sending…';
-        fetch('/api/jp-ask', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ key: KEY, device: DEVICE_ID, action: 'sync-now' })
-        })
-            .then(function (r) { return r.json(); })
-            .then(function (res) {
-                if (res.success) {
-                    $('histHint').textContent = 'Command queued: ' + res.action + ' (id ' + res.reqId + ') — waiting for S24 daemon…';
-                    setTimeout(loadHistory, 15000);
-                } else { $('histHint').textContent = 'Failed: ' + (res.error || 'unknown'); }
-            })
-            .catch(function (e) { $('histHint').textContent = 'Ask failed: ' + e.message; })
-            .finally(function () { btn.disabled = false; btn.textContent = 'Sync device now'; });
-    });
 
     $('refreshBtn').addEventListener('click', loadLive);
     $('histRefreshBtn').addEventListener('click', loadHistory);

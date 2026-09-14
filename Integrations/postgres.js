@@ -31,6 +31,16 @@ export function pool() {
   return g.__jpPgPool;
 }
 
+/** Direct (non-pooled) connection — migrations only. */
+export function directPool() {
+  return makePool(
+    process.env.DATABASE_URL_UNPOOLED ||
+    process.env.POSTGRES_URL_NON_POOLING ||
+    process.env.DATABASE_URL ||
+    process.env.POSTGRES_URL
+  );
+}
+
 export async function query(text, params) {
   return pool().query(text, params);
 }

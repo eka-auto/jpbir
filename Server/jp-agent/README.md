@@ -67,6 +67,28 @@ vercel env add JP_AGENT_TOKEN production --scope jayti --project jayti-dashboard
 vercel env add JP_AGENT_URL   production --scope jayti --project jayti-dashboard   # https://runner.jaytipargal.tech
 ```
 
+## Model and limits
+
+Optional vars in `/etc/jp-agent.env`; change and `systemctl restart jp-agent`.
+No redeploy — `server.mjs` reads them at startup.
+
+| Var | Default | Notes |
+|---|---|---|
+| `JP_AGENT_MODEL` | `claude-sonnet-5` | Agentic-coding tier at $2/$10 per MTok. Opus 5 is $5/$25 for the same job here. |
+| `JP_AGENT_MAX_TURNS` | `150` | Agent-loop cap. |
+| `JP_AGENT_PORT` | `8790` | Bound to `127.0.0.1`. |
+| `JP_AGENT_WORKSPACE` | `/srv/workspace` | Must stay inside the unit's `ReadWritePaths`. |
+
+The turn cap is not what limits a dashboard question — `Backend/agent-run.js`
+aborts the proxy at 280s, so wall-clock binds first. Raise `maxTurns` for long
+runs driven from the droplet itself; for the dashboard, the 280s abort is the
+number to change.
+
+Cost per turn is dominated by the SDK's system prompt and 18 tool definitions,
+so a short answer is not cheap: a one-word reply on a cold session bills ~$0.08,
+while the same reply on a warm cached session bills ~$0.006. Reusing a session
+matters more than the model choice for short questions.
+
 ## TLS — done
 
 Served over HTTPS at **https://runner.jaytipargal.tech**, Let's Encrypt, with
@@ -75,6 +97,21 @@ bearer token is never in cleartext on the wire.
 
 `runner.` and not `agent.`: `agent.jaytipargal.tech` was already a live Vercel
 CNAME serving another project, and taking it would have broken that.
+
+The 301 only applies when the Host header matches. Certbot's `:80` block is
+`server_name runner.jaytipargal.tech`, and it is now the *only* port-80 server,
+so it is also the default — **any HTTP request with a different Host gets a bare
+404**, including `curl http://<droplet-ip>/health`. That 404 is nginx working as
+configured, not the service being down. Health-check the real name over HTTPS:
+
+```bash
+curl -s https://runner.jaytipargal.tech/health          # 200 {"ok":true,...}
+curl -s -o /dev/null -w '%{http_code}\n' http://<ip>/health   # 404 — expected
+```
+
+Nothing reaches the agent without the bearer token either, so `401 unauthorized`
+from `/ask` is also healthy. `missing key` is never from here — that string is
+the dashboard's own `STATS_KEY` gate in `Backend/_auth.js`.
 
 jaytipargal.tech runs on Vercel nameservers, so the A record is managed with
 `vercel dns`, not doctl:

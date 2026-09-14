@@ -95,9 +95,17 @@ test('normalizes command queue entries for the S24 frontend', () => {
   deepStrictEqual(normalizeCommandQueue(null), []);
 });
 
-test('S24 sync button targets the command endpoint and shows pageviews', async () => {
-  const source = await readFile(new URL('../../Frontend/s24.html', import.meta.url), 'utf8');
-  strictEqual(source.includes("fetch('/api/jp-ask', {"), true);
-  strictEqual(source.includes("fetch('/api/jp-device', {\n            method: 'POST'"), false);
-  strictEqual(source.includes("e.event_type === 'pageview'"), true);
+test('owner dashboard uses the authenticated S24 command endpoint and public device pages stay read-only', async () => {
+  const index = await readFile(new URL('../../Frontend/index.html', import.meta.url), 'utf8');
+  const s24 = await readFile(new URL('../../Frontend/s24.html', import.meta.url), 'utf8');
+  const vivobook = await readFile(new URL('../../Frontend/vivobook.html', import.meta.url), 'utf8');
+  strictEqual(index.includes("fetch('/api/s24-command', {"), true);
+  strictEqual(index.includes("'Authorization': 'Bearer ' + KEY"), true);
+  strictEqual(index.includes("fetch('/api/jp-device', {\n            method: 'POST'"), false);
+  strictEqual(s24.includes("fetch('/api/s24-command', {"), false);
+  strictEqual(s24.includes("fetch('/api/jp-device', {\n            method: 'POST'"), false);
+  strictEqual(s24.includes('RECOVERY_CMD'), false);
+  strictEqual(vivobook.includes('askBtn'), false);
+  strictEqual(vivobook.includes("fetch('/api/jp-device', {\n            method: 'POST'"), false);
+  strictEqual(index.includes("e.event_type === 'pageview'"), true);
 });

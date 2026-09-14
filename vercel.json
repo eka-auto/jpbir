@@ -34,7 +34,7 @@
       "use": "@vercel/node"
     },
     {
-      "src": "Backend/jp-ask.js",
+      "src": "Backend/s24-command.js",
       "use": "@vercel/node"
     },
     {
@@ -99,6 +99,15 @@
     },
     {
       "src": "Backend/jp-whatsapp.js",
+      "src": "Backend/wa-galaxy.js",
+      "use": "@vercel/node"
+    },
+    {
+      "src": "Backend/wa-chat.js",
+      "use": "@vercel/node"
+    },
+    {
+      "src": "Backend/wa-ingest.js",
       "use": "@vercel/node"
     }
   ],
@@ -126,6 +135,10 @@
     {
       "src": "/api/device-command-complete/(?<commandId>[^/]+)",
       "dest": "Backend/broker-command-complete.js?commandId=$commandId"
+    },
+    {
+      "src": "/api/s24-command",
+      "dest": "Backend/s24-command.js"
     },
     {
       "src": "/api/(.*)(.js)?",
