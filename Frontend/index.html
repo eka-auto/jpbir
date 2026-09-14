@@ -325,6 +325,7 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
             <button class="nav-item" data-page="sessions"><span class="ico">≡</span> Sessions</button>
             <button class="nav-item" data-page="email"><span class="ico">✉</span> Email opens</button>
             <button class="nav-item" data-page="device"><span class="ico">📋</span> Device Dashboard</button>
+            <button class="nav-item" data-page="firestore"><span class="ico">🔥</span> Firestore</button>
             <button class="nav-item" data-page="terminal"><span class="ico">▮</span> Terminal</button>
             <button class="nav-item" data-page="vercel"><span class="ico">▲</span> Vercel</button>
             <button class="nav-item" data-page="agent"><span class="ico">🤖</span> Ask agent</button>
@@ -542,6 +543,43 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
                 </div>
             </section>
 
+            <!-- FIRESTORE -->
+            <!-- Live view of every document in the eka-agent Firestore database.
+                 Polls /api/jp-devices?full=1 every 10 seconds and replaces the
+                 rendered contents in place, so no stale document lingers: what
+                 Firestore currently has is what shows. Same STATS_KEY gate. -->
+            <section class="page" id="page-firestore">
+                <div class="panel">
+                    <div class="panel-head">
+                        <div>
+                            <h2>Firestore documents</h2>
+                            <div class="hint" id="firestoreHead">Live sync of every document in the eka-agent database. Poll interval 10 s.</div>
+                        </div>
+                        <div class="tools">
+                            <span id="firestoreDot" class="live-dot"></span>
+                            <button id="firestoreRefreshBtn">Refresh now</button>
+                        </div>
+                    </div>
+                    <div id="firestoreSummary" class="hint" style="margin-bottom:8px"></div>
+                    <div class="table-wrap">
+                        <table id="firestoreTable">
+                            <thead><tr>
+                                <th>Document</th>
+                                <th>Type / model</th>
+                                <th>Status</th>
+                                <th>Last seen</th>
+                                <th>Fields</th>
+                            </tr></thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="panel">
+                    <div class="panel-head"><div><h2>Complete Firestore payloads</h2><div class="hint">Raw decoded documents from the <code>devices</code> collection. Replaces on each poll — no cluttered history.</div></div></div>
+                    <div id="firestorePayloadList" class="payload-list"></div>
+                </div>
+            </section>
+
             <!-- AGENT -->
             <!-- WHATSAPP -->
             <section class="page" id="page-whatsapp">
@@ -732,8 +770,88 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
             btn.classList.add('active');
             document.querySelectorAll('.page').forEach(function (p) { p.classList.remove('active'); });
             $('page-' + btn.getAttribute('data-page')).classList.add('active');
+            // Firestore page: only poll while it's the active view. Starting a
+            // 10 s interval while the user is on Overview would waste requests
+            // and burn the STATS_KEY-gated Firestore read quota.
+            var pageName = btn.getAttribute('data-page');
+            if (pageName === 'firestore') startFirestorePolling();
+            else stopFirestorePolling();
         });
     });
+
+    /* ===== FIRESTORE (live sync) ===== */
+    // Fetches every document in the devices collection and re-renders in
+    // place. Because Firestore stores one document per device (identified by
+    // deviceId) and the daemon updates it in place rather than appending, a
+    // "replace on poll" render naturally implements "old data removed when new
+    // data syncs" — the page never accumulates history, only the current
+    // snapshot lives on screen.
+    var _fsTimer = null;
+
+    async function refreshFirestorePage() {
+        var summary = $('firestoreSummary');
+        var head = $('firestoreHead');
+        var tbody = document.querySelector('#firestoreTable tbody');
+        var payload = $('firestorePayloadList');
+        var dot = $('firestoreDot');
+        if (!tbody || !payload) return;
+        try {
+            var res = await fetch('/api/jp-devices?' + new URLSearchParams({ key: KEY, full: '1' }).toString());
+            var j = await res.json();
+            if (!res.ok || j.success === false) {
+                throw new Error(j.error || ('HTTP ' + res.status));
+            }
+            var devices = j.devices || [];
+            var when = j.generated_at ? new Date(j.generated_at) : new Date();
+
+            tbody.innerHTML = devices.map(function (d) {
+                var full = d.full_payload || {};
+                var fields = Object.keys(full).length;
+                var pill = d.live
+                    ? '<span class="pill" style="background:rgba(62,142,78,.2);color:#A8D8B0">live</span>'
+                    : '<span class="pill">offline</span>';
+                return '<tr>' +
+                    '<td class="mono">' + esc(d.deviceId || '–') + '</td>' +
+                    '<td>' + esc((d.deviceType || '–') + ' · ' + (d.model || '')) + '</td>' +
+                    '<td>' + pill + '</td>' +
+                    '<td>' + esc(d.lastSeen || '–') + '</td>' +
+                    '<td>' + fields + ' field(s)</td>' +
+                    '</tr>';
+            }).join('') || '<tr><td colspan="5" class="hint">no documents in Firestore</td></tr>';
+
+            payload.innerHTML = devices.map(function (d) {
+                var body = d.full_payload || {};
+                return '<div class="payload-section">' +
+                    '<div class="payload-section-head">' +
+                        '<h3>' + esc(d.deviceId || 'unknown') + '</h3>' +
+                        '<div class="payload-section-hint">' + esc(d.deviceType || '–') + ' · ' + esc(d.model || '–') + ' · ' + (d.live ? 'live' : 'offline') + '</div>' +
+                    '</div>' +
+                    '<pre class="mono" style="white-space:pre-wrap;background:rgba(0,0,0,.15);padding:10px;border-radius:6px;font-size:11px;overflow-x:auto;">' +
+                        esc(JSON.stringify(body, null, 2)) +
+                    '</pre>' +
+                '</div>';
+            }).join('') || '<div class="hint">no documents in Firestore</div>';
+
+            summary.textContent = devices.length + ' document(s) · database ' + (j.database || '?') + ' · synced at ' + when.toLocaleTimeString();
+            head.textContent = 'Live sync of every document in the ' + (j.database || 'eka-agent') + ' database. Poll interval 10 s. Old data is replaced on every sync, so nothing clutters the view.';
+            if (dot) dot.className = 'live-dot';
+        } catch (err) {
+            summary.textContent = 'error: ' + (err && err.message ? err.message : String(err));
+            if (dot) dot.className = 'live-dot off';
+        }
+    }
+
+    function startFirestorePolling() {
+        if (_fsTimer) return;
+        refreshFirestorePage();
+        _fsTimer = setInterval(refreshFirestorePage, 10000);
+    }
+    function stopFirestorePolling() {
+        if (_fsTimer) { clearInterval(_fsTimer); _fsTimer = null; }
+    }
+
+    var _fsRefreshBtn = document.getElementById('firestoreRefreshBtn');
+    if (_fsRefreshBtn) _fsRefreshBtn.addEventListener('click', refreshFirestorePage);
 
     /* ===== STATUS ===== */
     function setStatus(msg, type) {
