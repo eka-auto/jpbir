@@ -35,8 +35,9 @@ log = logging.getLogger("channel_sandbox.dashboard")
 app = Flask("channel_sandbox_dashboard")
 
 # Routes that answer before config and auth are resolved. Keeping the health
-# check open is what makes a deployment verifiable without handing out the key.
-PUBLIC_ENDPOINTS = {"api_status"}
+# check and the diagnostic endpoint open is what makes a deployment verifiable
+# without handing out the key.
+PUBLIC_ENDPOINTS = {"api_status", "api_diag"}
 
 
 class ConfigError(RuntimeError):
@@ -153,6 +154,96 @@ def guard_and_bootstrap():
 @app.get("/api/status")
 def api_status():
     return jsonify({"name": "channel-sandbox-dashboard", "status": "ok", "version": "1.0"})
+
+
+@app.get("/api/diag")
+def api_diag():
+    """Report the state of every dependency this service needs, WITHOUT leaking
+    secret values. Public so an operator can figure out what to fix without
+    holding the key.
+
+    Reports for each required env var: whether it is set, whether it parses
+    (for JSON ones), and — for the service-account credential — the public
+    ``client_email`` and ``project_id`` that identify which credential it is.
+    Then tries the two bootstrap steps ``load_config_from_env`` and
+    ``make_client`` and reports what raised. Never touches Firestore itself.
+    """
+    def envmark(name):
+        v = os.environ.get(name)
+        return {"set": bool(v), "length": len(v) if v else 0}
+
+    diag = {
+        "service": "channel-sandbox-dashboard",
+        "version": "1.0",
+        "commit_sha": os.environ.get("VERCEL_GIT_COMMIT_SHA", "unknown")[:12],
+        "region": os.environ.get("VERCEL_REGION") or os.environ.get("AWS_REGION") or "local",
+        "env": {
+            "STATS_KEY": envmark("STATS_KEY"),
+            "SANDBOX_CONFIG_JSON": envmark("SANDBOX_CONFIG_JSON"),
+            "FIREBASE_SERVICE_ACCOUNT_JSON": envmark("FIREBASE_SERVICE_ACCOUNT_JSON"),
+            "AGENT_API_URL": envmark("AGENT_API_URL"),
+            "AGENT_API_KEY": envmark("AGENT_API_KEY"),
+            "SANDBOX_AUTH_DISABLED": {"set": bool(os.environ.get("SANDBOX_AUTH_DISABLED"))},
+        },
+        "config": {"parsed": False},
+        "credential": {"parsed": False},
+        "bootstrap": {"load_config": None, "make_client": None},
+        "ok": False,
+    }
+
+    # SANDBOX_CONFIG_JSON — parse and report which fields are present.
+    raw_cfg = os.environ.get("SANDBOX_CONFIG_JSON")
+    if raw_cfg:
+        try:
+            parsed = json.loads(raw_cfg)
+            diag["config"] = {
+                "parsed": True,
+                "fields_present": sorted(parsed.keys()),
+                "mode": parsed.get("mode"),
+                "project": parsed.get("project"),
+                "database": parsed.get("database"),
+                "collection": parsed.get("collection"),
+            }
+        except (ValueError, TypeError) as exc:
+            diag["config"] = {"parsed": False, "error": f"invalid JSON: {exc}"}
+
+    # FIREBASE_SERVICE_ACCOUNT_JSON — safe to reveal client_email/project_id
+    # (both are public identifiers), never the private key material.
+    raw_cred = os.environ.get("FIREBASE_SERVICE_ACCOUNT_JSON")
+    if raw_cred:
+        try:
+            cred = json.loads(raw_cred)
+            diag["credential"] = {
+                "parsed": True,
+                "type": cred.get("type"),
+                "project_id": cred.get("project_id"),
+                "client_email": cred.get("client_email"),
+                "has_private_key": bool(cred.get("private_key")),
+                "private_key_starts_correct": bool(
+                    isinstance(cred.get("private_key"), str)
+                    and cred["private_key"].lstrip().startswith("-----BEGIN")
+                ),
+            }
+        except (ValueError, TypeError) as exc:
+            diag["credential"] = {"parsed": False, "error": f"invalid JSON: {exc}"}
+
+    # Try the two bootstrap functions in isolation, catching every error so
+    # this endpoint always returns 200 with a useful body.
+    try:
+        cfg = load_config_from_env()
+        diag["bootstrap"]["load_config"] = {"ok": True}
+        try:
+            make_client(cfg)
+            diag["bootstrap"]["make_client"] = {"ok": True}
+            diag["ok"] = True
+        except Exception as exc:  # noqa: BLE001 — surfaced to the operator
+            diag["bootstrap"]["make_client"] = {"ok": False, "error": str(exc)[:400]}
+    except ConfigError as exc:
+        diag["bootstrap"]["load_config"] = {"ok": False, "error": str(exc)[:400]}
+    except Exception as exc:  # noqa: BLE001
+        diag["bootstrap"]["load_config"] = {"ok": False, "error": f"{type(exc).__name__}: {exc}"[:400]}
+
+    return jsonify(diag)
 
 
 @app.get("/api/keys")
