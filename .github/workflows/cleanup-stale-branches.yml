@@ -1,0 +1,43 @@
+name: cleanup-stale-branches
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  delete-branches:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Delete stale branches
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for br in \
+            claude/determined-albattani-v7wrqa \
+            claude/wa-ingest \
+            feat/jp-agent-loosen-limits \
+            feat/s24-complete-dashboard \
+            feat/s24-live-pipeline \
+            feat/single-pipeline \
+            fix/ip-grouping-review-findings \
+            fix/jp-agent-null-body-crash \
+            fix/jp-agent-session-race \
+            fix/strict-device-liveness \
+            fix/verify-db-unauthenticated
+          do
+            echo "== Deleting $br =="
+            if gh api -X DELETE "repos/${{ github.repository }}/git/refs/heads/$br" 2>&1; then
+              echo "  OK"
+            else
+              echo "  (already gone or protected)"
+            fi
+          done
+      - name: Self-delete this workflow file
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/cleanup-stale-branches.yml
+          git commit -m "chore: remove one-shot cleanup-stale-branches workflow"
+          git push
