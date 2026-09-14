@@ -260,10 +260,25 @@
   function get(view, extra) {
     var q = new URLSearchParams(Object.assign(
       { view: view, site: state.site, days: state.days }, state.noise ? { noise: '1' } : {}, extra || {}));
-    var headers = view === 's24' && state.s24Key ? { 'x-stats-key': state.s24Key } : {};
+    // Every view is key-gated now, not just s24, so the key rides on every
+    // request rather than only the archive's.
+    var headers = state.s24Key ? { 'x-stats-key': state.s24Key } : {};
     return fetch(API + '?' + q.toString(), { cache: 'no-store', headers: headers })
       .then(function (r) { return r.json().then(function (j) { return { status: r.status, json: j }; }); })
       .then(function (result) {
+        if (result.status === 401 || result.status === 503) {
+          // Drop the bad key and put the gate in front of whichever view asked,
+          // so any page can unlock the dashboard — not only the archive.
+          state.s24Key = '';
+          sessionStorage.removeItem('s24DashboardKey');
+          renderKeyGate(result.status === 401
+            ? 'That dashboard key was rejected.'
+            : ((result.json && result.json.error) || 'The dashboard key is not configured on the server.'));
+          var locked = new Error('locked');
+          locked.status = result.status;
+          locked.handled = true;
+          throw locked;
+        }
         var j = result.json;
         if (!j.ok) {
           var error = new Error(j.error || ('view ' + view + ' failed'));
@@ -278,9 +293,32 @@
   }
 
   function fail(e) {
+    // A locked view has already drawn the gate; an error banner on top of it
+    // would just be noise.
+    if (e && e.handled) return;
     $('err').innerHTML = '<div class="err">' + esc(e && e.message ? e.message : String(e)) + '</div>';
   }
   function clearErr() { $('err').innerHTML = ''; }
+
+  // The key gate, drawn in front of whichever view is active. Since db-api
+  // gates every view, any page can be the one that finds the key missing.
+  function renderKeyGate(message) {
+    var el = document.querySelector('.page.on') || $('page-overview');
+    el.innerHTML = '<div class="private-gate"><h3>Dashboard key required</h3>' +
+      '<p>' + esc(message || 'Enter the dashboard key to view this data. The key stays in this browser tab and is sent only as a request header.') + '</p>' +
+      '<form id="dbUnlock"><input id="dbKeyInput" type="password" autocomplete="current-password" placeholder="Dashboard key" aria-label="Dashboard key">' +
+      '<button class="btn" type="submit">Unlock</button></form></div>';
+    $('dbUnlock').addEventListener('submit', function (event) {
+      event.preventDefault();
+      var value = $('dbKeyInput').value.trim();
+      if (!value) return;
+      state.s24Key = value;
+      sessionStorage.setItem('s24DashboardKey', value);
+      el.innerHTML = '<div class="empty">Checking key…</div>';
+      clearErr();
+      draw();
+    });
+  }
 
   // ---------- render primitives ----------
   function kpi(label, value, sub) {

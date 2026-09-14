@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { decodeOne } from './lib/geo.js';
+import { requireKey } from './_auth.js';
 
 const _env = (typeof process !== 'undefined' ? process : globalThis['proc' + 'ess']).env;
 const FIREBASE_SA_JSON = _env['FIREBASE_' + 'SERVICE_ACCOUNT_JSON'];
@@ -146,6 +147,8 @@ export function strictS24Liveness(fields, heartbeatAgeSeconds, ackAgeSeconds) {
 
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
+  // The enrolled-device roster, and with ?full=1 the whole stored payload.
+  if (!requireKey(req, res)) return;
   if (!FIREBASE_SA_JSON) {
     return res.status(500).json({ success: false, error: 'FIREBASE_SERVICE_ACCOUNT_JSON not configured' });
   }

@@ -44,6 +44,16 @@ const ROUTES = [
   { file: 'wa-galaxy.js', method: 'GET', refuses: 401 },
   { file: 'wa-chat.js', method: 'GET', refuses: 401, query: { h: 'a'.repeat(16) } },
   { file: 'wa-ingest.js', method: 'POST', refuses: 404, body: {} },
+  // The analytics reads. These were open too — the same defect, a wider blast
+  // radius: visitor IPs, user agents, session trails, the device roster, raw
+  // telemetry rows, and this project's own Vercel identifiers.
+  { file: 'db-api.js', method: 'GET', refuses: 401 },
+  { file: 'jp-debug.js', method: 'GET', refuses: 401 },
+  { file: 'jp-device.js', method: 'GET', refuses: 401 },
+  { file: 'jp-devices.js', method: 'GET', refuses: 401 },
+  { file: 'jp-stats.js', method: 'GET', refuses: 401 },
+  { file: 'stats.js', method: 'GET', refuses: 401 },
+  { file: 'vercel-analytics.js', method: 'GET', refuses: 401 },
 ];
 
 for (const route of ROUTES) {

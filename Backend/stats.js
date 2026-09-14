@@ -1,5 +1,6 @@
 import { list } from '@vercel/blob';
 import { decodeGeo } from './lib/geo.js';
+import { requireKey } from './_auth.js';
 
 const _env = (typeof process !== 'undefined' ? process : globalThis['proc' + 'ess']).env;
 const TOKEN = _env['BLOB_' + 'READ_WRITE_TOKEN'];
@@ -60,6 +61,9 @@ async function mapWithBudget(items, limit, budgetMs, worker) {
 
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
+  // Visitor analytics: gated before the cache, so a cached body can never be
+  // served to a caller who could not have earned it.
+  if (!requireKey(req, res)) return;
   const days = Math.min(Math.max(parseInt(req.query.days) || 7, 1), 90);
   const cacheKey = 'd' + days;
   const cached = _cache.get(cacheKey);

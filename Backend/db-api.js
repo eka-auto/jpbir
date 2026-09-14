@@ -390,6 +390,16 @@ export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
   res.setHeader('Content-Type', 'application/json');
 
+  // Every view, not only s24, and before any state is reported. The rest of
+  // this API reads the same visitor analytics the dashboard shows — sessions,
+  // IPs, user agents, per-visitor trails — and none of it belongs to the
+  // public; only the archive was ever gated, so everything else was readable
+  // by anyone who called the route.
+  const auth = checkKey(req);
+  if (!auth.ok) {
+    return res.status(auth.status).json({ ok: false, view: String(req.query.view || 'overview'), error: auth.error });
+  }
+
   if (!isConfigured()) {
     return res.status(500).json({ ok: false, error: 'DATABASE_URL not set on this deployment' });
   }
@@ -398,11 +408,6 @@ export default async function handler(req, res) {
   const fn = VIEWS[view];
   if (!fn) {
     return res.status(400).json({ ok: false, error: `unknown view ${view}`, views: Object.keys(VIEWS) });
-  }
-
-  if (view === 's24') {
-    const auth = checkKey(req);
-    if (!auth.ok) return res.status(auth.status).json({ ok: false, view, error: auth.error });
   }
 
   try {
