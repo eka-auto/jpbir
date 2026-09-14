@@ -13,6 +13,7 @@
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, ScanCommand } from '@aws-sdk/lib-dynamodb';
 import crypto from 'crypto';
+import { requireKey } from './_auth.js';
 
 const _env = (typeof process !== 'undefined' ? process : globalThis['proc' + 'ess']).env;
 const AWS_ACCESS_KEY_ID = _env['JP_AWS_' + 'ACCESS_KEY_ID'];
@@ -114,16 +115,31 @@ async function verifyFirestore() {
   }
 }
 
+const sha256 = v => crypto.createHash('sha256').update(String(v), 'utf8').digest();
+
+// Digest both sides before comparing. timingSafeEqual throws on a length
+// mismatch, so the previous raw-Buffer compare turned a wrong-length bearer
+// token into an unhandled 500 instead of a 401.
+function cronAuthorized(req) {
+  if (!CRON_SECRET) return false;
+  const auth = String(req.headers['authorization'] || '');
+  if (!auth.startsWith('Bearer ')) return false;
+  return crypto.timingSafeEqual(sha256(auth.slice(7)), sha256(CRON_SECRET));
+}
+
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
   res.setHeader('Content-Type', 'application/json');
 
-  // Open dashboard - no authentication required
-  // Optionally support CRON_SECRET for scheduled checks
-  const auth = String(req.headers['authorization'] || '');
-  if (CRON_SECRET && auth.startsWith('Bearer ') && !crypto.timingSafeEqual(Buffer.from(auth.slice(7)), Buffer.from(CRON_SECRET))) {
-    return res.status(401).json({ success: false, error: 'unauthorized' });
-  }
+  // Was "open dashboard - no authentication required". It answered 200 to
+  // anyone with the DynamoDB table name, the GCP project id, the Firestore
+  // database name and a live device count. The old CRON_SECRET check could not
+  // stop that: it only ran when an Authorization header was present, so sending
+  // no header at all skipped the branch entirely.
+  //
+  // Either credential now gets in, nothing else does: the dashboard key that
+  // gates every other read route, or a CRON_SECRET bearer for scheduled checks.
+  if (!cronAuthorized(req) && !requireKey(req, res)) return;
 
   const [dynamoResult, firestoreResult] = await Promise.all([
     verifyDynamoDB(),
