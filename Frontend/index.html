@@ -589,6 +589,14 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
                         <div class="panel"><h2>By type</h2><div id="waDetailKinds"><div class="hint">Loading…</div></div></div>
                         <div class="panel"><h2>Activity by month</h2><div id="waDetailMonths"><div class="hint">Loading…</div></div></div>
                     </div>
+                    <div class="panel" style="margin-top:14px">
+                        <div class="panel-head">
+                            <div><h2>Media &amp; audio</h2><div class="hint" id="waAttHint">Uploaded from the phone into Vercel Blob.</div></div>
+                            <div class="tools" id="waAttKinds"></div>
+                        </div>
+                        <div id="waAttGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;margin-top:12px"></div>
+                        <div id="waAttEmpty" class="hint" style="margin-top:10px;display:none"></div>
+                    </div>
                 </div>
             </section>
 
@@ -2384,6 +2392,64 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
             + '<div style="width:' + pct + '%;height:100%;background:linear-gradient(90deg,var(--amber-glow),var(--amber))"></div></div>'
             + '<div style="width:64px;text-align:right;font-variant-numeric:tabular-nums">' + fmt(n) + '</div></div>';
     }
+    var waAttState = { chatId: null, kind: '' };
+    function waAttTile(a) {
+        var url = a.blob_url;
+        var meta = (a.file_name ? esc(a.file_name) + ' · ' : '') + (a.size_bytes ? Math.round(a.size_bytes / 1024) + ' KB' : '');
+        var when = a.sent_at ? new Date(a.sent_at).toISOString().slice(0, 10) : '';
+        if (a.kind === 'image' || a.kind === 'sticker') {
+            return '<a href="' + esc(url) + '" target="_blank" rel="noopener" style="display:block;text-decoration:none;color:inherit">'
+                + '<img src="' + esc(url) + '" loading="lazy" style="width:100%;height:120px;object-fit:cover;border-radius:8px;background:rgba(200,122,30,.08)">'
+                + '<div style="font-size:11px;color:var(--ink-muted);margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + meta + '</div>'
+                + '<div style="font-size:10px;color:var(--ink-muted)">' + when + '</div></a>';
+        }
+        if (a.kind === 'video') {
+            return '<div><video src="' + esc(url) + '" controls preload="metadata" style="width:100%;height:120px;border-radius:8px;background:#000"></video>'
+                + '<div style="font-size:11px;color:var(--ink-muted);margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + meta + '</div>'
+                + '<div style="font-size:10px;color:var(--ink-muted)">' + when + '</div></div>';
+        }
+        if (a.kind === 'audio' || a.kind === 'ptt') {
+            return '<div style="padding:10px;border-radius:8px;background:rgba(200,122,30,.08)">'
+                + '<div style="font-size:12px;margin-bottom:6px">' + esc(a.kind === 'ptt' ? 'Voice note' : 'Audio') + '</div>'
+                + '<audio src="' + esc(url) + '" controls preload="none" style="width:100%"></audio>'
+                + '<div style="font-size:11px;color:var(--ink-muted);margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + meta + '</div>'
+                + '<div style="font-size:10px;color:var(--ink-muted)">' + when + '</div></div>';
+        }
+        return '<a href="' + esc(url) + '" target="_blank" rel="noopener" style="display:block;padding:10px;border-radius:8px;background:rgba(200,122,30,.08);text-decoration:none;color:inherit">'
+            + '<div style="font-size:12px;font-weight:600">' + esc(a.file_name || a.kind) + '</div>'
+            + '<div style="font-size:11px;color:var(--ink-muted);margin-top:4px">' + esc(a.mime || a.kind) + ' · ' + (a.size_bytes ? Math.round(a.size_bytes / 1024) + ' KB' : '') + '</div>'
+            + '<div style="font-size:10px;color:var(--ink-muted)">' + when + '</div></a>';
+    }
+    function renderAttKinds(byKind, current) {
+        var host = $('waAttKinds'); if (!host) return;
+        var kinds = Object.keys(byKind || {}).sort();
+        var pill = function (k, n, on) {
+            return '<button class="wa-att-kind" data-kind="' + esc(k) + '" '
+                + 'style="font-family:var(--sans);font-size:11px;color:#F4E9DC;background:' + (on ? 'rgba(240,185,104,.28)' : 'rgba(255,248,238,.06)') + ';border:1px solid rgba(240,185,104,.3);border-radius:9px;padding:5px 10px;cursor:pointer;margin-left:6px">'
+                + esc(k) + ' ' + fmt(n) + '</button>';
+        };
+        var total = Object.values(byKind).reduce(function (a, b) { return a + (b | 0); }, 0);
+        host.innerHTML = pill('', total, !current) + kinds.map(function (k) { return pill(k, byKind[k], current === k); }).join('');
+    }
+    function loadAttachments(chatId, kind) {
+        waAttState.chatId = chatId; waAttState.kind = kind || '';
+        var grid = $('waAttGrid'); var empty = $('waAttEmpty');
+        grid.innerHTML = ''; empty.style.display = 'none';
+        var params = { chat_id: chatId, limit: 60 };
+        if (kind) params.kind = kind;
+        fetch('/api/jp-wa-attachments?' + new URLSearchParams(params).toString(), { cache: 'no-store' })
+            .then(function (r) { return r.json(); })
+            .then(function (j) {
+                if (waAttState.chatId !== chatId) return;
+                if (!j.ok) { $('waAttHint').textContent = 'Load failed: ' + (j.error || 'unknown'); return; }
+                if (j.migrated === false) { $('waAttHint').textContent = j.note || 'attachments table not migrated'; empty.textContent = 'Run npm run db:migrate on Neon.'; empty.style.display = 'block'; return; }
+                renderAttKinds(j.by_kind || {}, kind);
+                $('waAttHint').textContent = 'Showing ' + fmt((j.attachments || []).length) + ' of ' + fmt(j.total | 0) + ' attachments' + (kind ? ' · ' + kind : '') + '. Files stored in Vercel Blob.';
+                if (!(j.attachments || []).length) { empty.textContent = kind ? 'No ' + kind + ' attachments uploaded for this chat.' : 'No attachments uploaded for this chat yet. Run wa_media_push.py on the S24.'; empty.style.display = 'block'; return; }
+                grid.innerHTML = j.attachments.map(waAttTile).join('');
+            })
+            .catch(function (e) { if (waAttState.chatId !== chatId) return; $('waAttHint').textContent = 'Load failed: ' + e.message; });
+    }
     function loadWaChat(chatId) {
         var token = ++waDetailReq;
         var d = $('waDetail'); d.style.display = '';
@@ -2392,7 +2458,9 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
         $('waDetailKpis').innerHTML = '';
         $('waDetailKinds').innerHTML = '<div class="hint">Loading…</div>';
         $('waDetailMonths').innerHTML = '<div class="hint">Loading…</div>';
+        $('waAttGrid').innerHTML = ''; $('waAttEmpty').style.display = 'none'; $('waAttKinds').innerHTML = ''; $('waAttHint').textContent = 'Loading…';
         try { d.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (e) { /* no-op */ }
+        loadAttachments(chatId, '');
         /* Key in the header, never the query string. */
         fetch('/api/jp-wa-chat?' + new URLSearchParams({ chat_id: chatId }).toString(),
             { cache: 'no-store', headers: { 'x-stats-key': KEY } })
@@ -2453,6 +2521,17 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
         });
         var close = $('waDetailClose');
         if (close) close.addEventListener('click', function () { $('waDetail').style.display = 'none'; });
+        var kinds = $('waAttKinds');
+        if (kinds) kinds.addEventListener('click', function (ev) {
+            var t = ev.target;
+            while (t && t !== kinds) {
+                if (t.classList && t.classList.contains('wa-att-kind') && waAttState.chatId) {
+                    loadAttachments(waAttState.chatId, t.getAttribute('data-kind') || '');
+                    return;
+                }
+                t = t.parentNode;
+            }
+        });
     })();
     function loadWhatsApp(force) {
         if (waLoaded && !force) return;
