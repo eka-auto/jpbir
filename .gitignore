@@ -14,6 +14,7 @@ wa-messages.json
 .pr-body.md
 .vercel
 .env*
+!.env.example
 
 # Vercel CLI local env dumps (contain VERCEL_OIDC_TOKEN)
 /production
