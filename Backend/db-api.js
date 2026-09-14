@@ -285,11 +285,23 @@ const VIEWS = {
 
   // Every table, every column — the "is anything missing" panel.
   async health({ site }) {
-    const tables = ['events', 'visitors', 'sessions', 'letters', 'email_opens', 'video_events', 'devices'];
+    const tables = [
+      'events', 'visitors', 'sessions', 'letters', 'email_opens', 'video_events', 'devices',
+      // 004_whatsapp: shared with jaytibirthday-site's galaxy read path.
+      'wa_chats', 'wa_messages', 'wa_sync_runs',
+    ];
     const counts = {};
     const countsForSite = {};
     for (const t of tables) {
-      counts[t] = (await query(`SELECT COUNT(*)::int n FROM ${t}`)).rows[0].n;
+      // A table that hasn't been migrated yet reads as null here rather than
+      // crashing the whole panel — Health is meant to surface what's missing,
+      // not to fail on it.
+      try {
+        counts[t] = (await query(`SELECT COUNT(*)::int n FROM ${t}`)).rows[0].n;
+      } catch (err) {
+        if (err && err.code === '42P01') { counts[t] = null; countsForSite[t] = null; continue; }
+        throw err;
+      }
       // Only some tables carry `site`. The nav badges have to match the
       // site-filtered pages they label, or they read as a bug.
       const hasSite = (await query(
