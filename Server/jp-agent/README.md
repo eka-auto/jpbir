@@ -76,6 +76,21 @@ bearer token is never in cleartext on the wire.
 `runner.` and not `agent.`: `agent.jaytipargal.tech` was already a live Vercel
 CNAME serving another project, and taking it would have broken that.
 
+The 301 only applies when the Host header matches. Certbot's `:80` block is
+`server_name runner.jaytipargal.tech`, and it is now the *only* port-80 server,
+so it is also the default — **any HTTP request with a different Host gets a bare
+404**, including `curl http://<droplet-ip>/health`. That 404 is nginx working as
+configured, not the service being down. Health-check the real name over HTTPS:
+
+```bash
+curl -s https://runner.jaytipargal.tech/health          # 200 {"ok":true,...}
+curl -s -o /dev/null -w '%{http_code}\n' http://<ip>/health   # 404 — expected
+```
+
+Nothing reaches the agent without the bearer token either, so `401 unauthorized`
+from `/ask` is also healthy. `missing key` is never from here — that string is
+the dashboard's own `STATS_KEY` gate in `Backend/_auth.js`.
+
 jaytipargal.tech runs on Vercel nameservers, so the A record is managed with
 `vercel dns`, not doctl:
 
