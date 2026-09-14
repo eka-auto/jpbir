@@ -102,7 +102,16 @@ export default async function handler(req, res) {
       device_id: a.device_id || null,
     }));
 
-    const cursor = rows.length === limit ? rows[rows.length - 1].sent_at : null;
+    // The composite cursor the `before` parser above expects, built from the
+    // raw row because ingested_at is deliberately not carried on the mapped
+    // rows. Emitting sent_at alone here is what kept the original bug alive:
+    // the parser understood a full ordering key, but no client was ever handed
+    // one, so same-timestamp rows were still skipped and NULL-dated pages still
+    // dead-ended.
+    const last = rows.length === limit ? r.rows[r.rows.length - 1] : null;
+    const cursor = last
+      ? `${last.sent_at ? new Date(last.sent_at).toISOString() : ''}|${new Date(last.ingested_at).toISOString()}`
+      : null;
 
     return res.status(200).json({
       ok: true,
