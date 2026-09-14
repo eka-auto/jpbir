@@ -201,7 +201,8 @@
   var API = '/api/db-api';
   var state = { site: 'jaytibirthday.in', days: 30, noise: false, page: 'overview',
                 offsets: { visitors: 0, sessions: 0, events: 0, video: 0, emails: 0, s24: 0 },
-                type: '', s24Dataset: '', s24Key: sessionStorage.getItem('s24DashboardKey') || '', counts: {} };
+                type: '', s24Dataset: '', s24Section: 'overview',
+                s24Key: sessionStorage.getItem('s24DashboardKey') || '', counts: {} };
 
   var PAGES = [
     ['overview',  'Overview',  null],
@@ -705,20 +706,113 @@
     });
   }
 
+  function s24Status(value) {
+    var text = String(value == null || value === '' ? 'unknown' : value);
+    var key = text.toLowerCase();
+    var cls = ['ok', 'active', 'online', 'complete', 'completed', 'available'].includes(key) ? 'ok' :
+      ['pending', 'queued', 'requested', 'uploading', 'partial'].includes(key) ? 'warn' :
+      ['failed', 'error', 'denied', 'offline', 'cancelled', 'blocked', 'unavailable'].includes(key) ? 'bad' : 'mute';
+    return '<span class="pill ' + cls + '">' + esc(text) + '</span>';
+  }
+
+  function fileSize(value) {
+    var n = Number(value);
+    if (!isFinite(n) || n < 0) return '—';
+    if (n < 1024) return num(n) + ' B';
+    if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+    return (n / 1024 / 1024).toFixed(1) + ' MB';
+  }
+
+  function s24Columns(section) {
+    if (section === 'calls') return [
+      { label: 'When', render: function (r) { return when(r.called_at); } },
+      { label: 'Contact', render: function (r) { return esc(r.contact_name || 'Unknown'); } },
+      { label: 'Number', render: function (r) { return '<span class="mono">' + esc(r.phone_number || '—') + '</span>'; } },
+      { label: 'Type', render: function (r) { return s24Status(r.call_type); } },
+      { label: 'Duration', render: function (r) { return secs(r.duration_sec); } },
+      { label: 'Source', render: function (r) { return '<span class="mono">' + esc(r.dataset) + '</span>'; } }
+    ];
+    if (section === 'sms') return [
+      { label: 'When', render: function (r) { return when(r.sent_at); } },
+      { label: 'Correspondent', render: function (r) { return '<span class="mono">' + esc(r.correspondent || '—') + '</span>'; } },
+      { label: 'Direction', render: function (r) { return s24Status(r.message_type); } },
+      { label: 'Message', render: function (r) { return '<span class="trunc" style="max-width:440px">' + esc(r.body || '—') + '</span>'; } },
+      { label: 'Synced', render: function (r) { return ago(r.last_seen); } }
+    ];
+    if (section === 'locations') return [
+      { label: 'Observed', render: function (r) { return when(r.observed_at); } },
+      { label: 'Latitude', render: function (r) { return r.latitude == null ? '—' : '<span class="mono">' + Number(r.latitude).toFixed(6) + '</span>'; } },
+      { label: 'Longitude', render: function (r) { return r.longitude == null ? '—' : '<span class="mono">' + Number(r.longitude).toFixed(6) + '</span>'; } },
+      { label: 'Accuracy', render: function (r) { return r.accuracy_m == null ? '—' : num(r.accuracy_m) + ' m'; } },
+      { label: 'Provider', key: 'provider' }
+    ];
+    if (section === 'agents') return [
+      { label: 'Agent', render: function (r) { return esc(r.agent_name || r.record_id); } },
+      { label: 'Status', render: function (r) { return s24Status(r.status); } },
+      { label: 'Model', render: function (r) { return '<span class="mono">' + esc(r.model || '—') + '</span>'; } },
+      { label: 'API', render: function (r) { return s24Status(r.api_enabled === true ? 'enabled' : r.api_enabled === false ? 'disabled' : 'unknown'); } },
+      { label: 'Port', key: 'port' },
+      { label: 'Activated', render: function (r) { return when(r.activated_at); } }
+    ];
+    if (section === 'commands') return [
+      { label: 'Requested', render: function (r) { return when(r.requested_at); } },
+      { label: 'Action', render: function (r) { return '<span class="mono trunc" style="max-width:340px">' + esc(r.action || r.command_type || '—') + '</span>'; } },
+      { label: 'Status', render: function (r) { return s24Status(r.status); } },
+      { label: 'Priority', render: function (r) { return s24Status(r.priority); } },
+      { label: 'Requested by', key: 'requested_by' },
+      { label: 'Resolved', render: function (r) { return when(r.resolved_at); } }
+    ];
+    if (section === 'files') return [
+      { label: 'File', render: function (r) { return '<span class="mono trunc" style="max-width:360px">' + esc(r.filename || r.record_id) + '</span>'; } },
+      { label: 'Type', key: 'file_type' },
+      { label: 'Size', render: function (r) { return fileSize(r.size_bytes); } },
+      { label: 'Status', render: function (r) { return s24Status(r.status); } },
+      { label: 'Created', render: function (r) { return when(r.created_at); } },
+      { label: 'Uploaded', render: function (r) { return when(r.uploaded_at); } }
+    ];
+    if (section === 'queue') return [
+      { label: 'Created', render: function (r) { return when(r.created_at); } },
+      { label: 'Action', render: function (r) { return '<span class="mono">' + esc(r.action || '—') + '</span>'; } },
+      { label: 'Type', key: 'item_type' },
+      { label: 'Status', render: function (r) { return s24Status(r.status); } },
+      { label: 'Priority', render: function (r) { return s24Status(r.priority); } },
+      { label: 'Description', render: function (r) { return '<span class="trunc" style="max-width:360px">' + esc(r.description || '—') + '</span>'; } }
+    ];
+    return [
+      { label: 'Dataset', render: function (r) { return '<span class="pill info">' + esc(r.dataset) + '</span>'; } },
+      { label: 'When', render: function (r) { return when(r.occurred_at || r.last_seen); } },
+      { label: 'Label', render: function (r) { return '<span class="trunc" style="max-width:280px">' + esc(r.label || '—') + '</span>'; } },
+      { label: 'Record id', render: function (r) { return '<span class="mono trunc" style="max-width:220px">' + esc(r.record_id) + '</span>'; } },
+      { label: 'Last synced', render: function (r) { return ago(r.last_seen); } }
+    ];
+  }
+
   RENDER.s24 = function () {
     if (!state.s24Key) {
       renderS24Gate();
       return Promise.resolve();
     }
     return get('s24', Object.assign(
-      { limit: 100, offset: state.offsets.s24 },
-      state.s24Dataset ? { dataset: state.s24Dataset } : {}
+      { limit: 100, offset: state.offsets.s24, section: state.s24Section },
+      state.s24Section === 'all' && state.s24Dataset ? { dataset: state.s24Dataset } : {}
     )).then(function (d) {
       if (!d.migrated) {
         $('page-s24').innerHTML = '<div class="err">The S24 database migration has not been applied yet.</div>';
         return;
       }
       var latest = (d.runs || [])[0] || {};
+      var counts = d.counts || {};
+      var device = d.device || {};
+      var sections = [
+        ['overview', 'Overview', counts.all], ['calls', 'Calls', counts.calls],
+        ['sms', 'Messages', counts.sms], ['locations', 'Location', counts.locations],
+        ['agents', 'Agents', counts.agents], ['commands', 'Commands', counts.commands],
+        ['files', 'Files', counts.files], ['queue', 'Queue', counts.queue], ['all', 'All JSON', counts.all]
+      ];
+      var sectionNav = '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">' + sections.map(function (item) {
+        return '<button class="btn' + (state.s24Section === item[0] ? ' on' : '') + '" data-s24-section="' + item[0] + '">' +
+          esc(item[1]) + (item[2] != null ? ' · ' + num(item[2]) : '') + '</button>';
+      }).join('') + '</div>';
       var datasetOptions = '<option value="">All datasets</option>' + (d.datasets || []).map(function (row) {
         return '<option value="' + esc(row.dataset) + '"' + (state.s24Dataset === row.dataset ? ' selected' : '') + '>' +
           esc(row.dataset.replace(/_/g, ' ')) + ' · ' + num(row.stored_records) + '</option>';
@@ -731,52 +825,73 @@
           '<div class="val">' + num(row.stored_records) + ' stored / ' + num(row.record_count) + ' seen</div></div>';
       }).join('') || '<div class="empty">No local pull has reached Vercel yet</div>';
       var el = $('page-s24');
+      var selectedLabel = (sections.filter(function (item) { return item[0] === state.s24Section; })[0] || ['', 'Records'])[1];
+      var recordsCard = '<div class="card"><h3>' + esc(state.s24Section === 'overview' ? 'Recently synchronized records' : selectedLabel) +
+        '<span class="tag">' + num(d.total) + ' matching</span></h3><div class="body flush">' +
+        table(s24Columns(state.s24Section), d.rows, { onRow: true }) + '</div>' + pager('s24', d) + '</div>';
+      var devicePanel = '<div class="bars">' +
+        '<div class="row"><div class="lbl">Runtime attestation</div><div class="val">' + s24Status(device.runtime_is_android === true && device.live_device_verified === true ? 'verified Android' : 'not verified') + '</div></div>' +
+        '<div class="row"><div class="lbl">Agent version</div><div class="val mono">' + esc(device.agent_version || '—') + '</div></div>' +
+        '<div class="row"><div class="lbl">Connection</div><div class="val">' + esc(device.connection_method || '—') + '</div></div>' +
+        '<div class="row"><div class="lbl">Heartbeat source</div><div class="val mono">' + esc(device.heartbeat_auth || '—') + ' / ' + esc(device.source_type || '—') + '</div></div>' +
+        '<div class="row"><div class="lbl">Last phone evidence</div><div class="val">' + when(device.last_seen) + '</div></div>' +
+        '</div>';
+      var overviewPanels = '<div class="grid cards-2" style="margin-bottom:12px">' +
+        card('Phone runtime evidence', devicePanel, device.status || 'stored snapshot', true) +
+        card('Latest pull coverage', '<div class="bars">' + coverage + '</div>', 'no silent gaps', true) +
+        card('Local sync runs', table([
+          { label: 'Started', render: function (r) { return when(r.started_at); } },
+          { label: 'Host', key: 'host' },
+          { label: 'Records', key: 'record_count', num: true },
+          { label: 'Received', render: function (r) { return num(r.uploaded_records) + ' · ' + s24Status(r.upload_status); } },
+          { label: 'Uploaded', render: function (r) { return ago(r.uploaded_at); } },
+          { label: 'Key', render: function (r) { return '<span class="mono">' + esc((r.key_id || '').slice(0, 10)) + '…</span>'; } }
+        ], d.runs), null, true) +
+        card('Database coverage', '<div class="bars">' + sections.slice(1, 8).map(function (item) {
+          return '<div class="row"><div class="lbl">' + esc(item[1]) + '</div><div class="val">' + num(item[2] || 0) + '</div></div>';
+        }).join('') + '</div>', d.normalized ? 'typed + lossless JSON' : 'migration pending', true) +
+        '</div>';
       el.innerHTML =
+        sectionNav +
         '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px">' +
-          '<select id="s24DatasetSel" title="Phone dataset">' + datasetOptions + '</select>' +
+          (state.s24Section === 'all' ? '<select id="s24DatasetSel" title="Phone dataset">' + datasetOptions + '</select>' : '') +
           '<button class="btn" id="s24Lock">Lock archive</button>' +
           '<span style="color:var(--ink-faint);font-size:11px">phone Termux → Firestore → laptop JSON → signed HTTPS → Neon</span>' +
         '</div>' +
         '<div class="grid kpis" style="margin-bottom:12px">' +
-          kpi('Stored records', num(d.total), state.s24Dataset || 'all datasets') +
+          kpi('Stored records', num(counts.all), 'lossless JSON archive') +
+          kpi('Calls', num(counts.calls), 'normalized records') +
+          kpi('Messages', num(counts.sms), 'normalized records') +
+          kpi('Commands', num(counts.commands), 'control history') +
           kpi('Datasets checked', num((d.datasets || []).length), 'including denied and empty') +
           kpi('Sync runs', num((d.runs || []).length), latest.upload_status || 'none yet') +
           kpi('Last local pull', latest.started_at ? ago(latest.started_at) : '—', when(latest.started_at)) +
           kpi('Phone model', latest.model || '—', latest.android_version ? 'Android ' + latest.android_version : 'not synced') +
           kpi('Signing key', latest.key_id ? latest.key_id.slice(0, 12) + '…' : '—', 'asymmetric upload identity') +
-        '</div>' +
-        '<div class="grid cards-2" style="margin-bottom:12px">' +
-          card('Latest pull coverage', '<div class="bars">' + coverage + '</div>', 'no silent gaps', true) +
-          card('Local sync runs', table([
-            { label: 'Started', render: function (r) { return when(r.started_at); } },
-            { label: 'Host', key: 'host' },
-            { label: 'Records', key: 'record_count', num: true },
-            { label: 'Received', render: function (r) { return num(r.uploaded_records) + ' · <span class="pill ' + (r.upload_status === 'complete' ? 'ok' : 'warn') + '">' + esc(r.upload_status) + '</span>'; } },
-            { label: 'Uploaded', render: function (r) { return ago(r.uploaded_at); } },
-            { label: 'Key', render: function (r) { return '<span class="mono">' + esc((r.key_id || '').slice(0, 10)) + '…</span>'; } }
-          ], d.runs), null, true) +
-        '</div>' +
-        '<div class="card"><h3>Phone records<span class="tag">' + num(d.total) + ' matching</span></h3><div class="body flush">' +
-          table([
-            { label: 'Dataset', render: function (r) { return '<span class="pill info">' + esc(r.dataset) + '</span>'; } },
-            { label: 'When', render: function (r) { return when(r.occurred_at || r.last_seen); } },
-            { label: 'Label', render: function (r) { return '<span class="trunc" style="max-width:280px">' + esc(r.label || '—') + '</span>'; } },
-            { label: 'Record id', render: function (r) { return '<span class="mono trunc" style="max-width:220px">' + esc(r.record_id) + '</span>'; } },
-            { label: 'Last synced', render: function (r) { return ago(r.last_seen); } }
-          ], d.rows, { onRow: true }) + '</div>' + pager('s24', d) + '</div>';
-      $('s24DatasetSel').addEventListener('change', function () {
-        state.s24Dataset = this.value;
-        state.offsets.s24 = 0;
-        draw();
+        '</div>' + (state.s24Section === 'overview' ? overviewPanels : '') + recordsCard;
+      Array.prototype.forEach.call(el.querySelectorAll('[data-s24-section]'), function (button) {
+        button.addEventListener('click', function () {
+          state.s24Section = button.getAttribute('data-s24-section');
+          state.offsets.s24 = 0;
+          draw();
+        });
       });
+      if ($('s24DatasetSel')) $('s24DatasetSel').addEventListener('change', function () {
+          state.s24Dataset = this.value;
+          state.offsets.s24 = 0;
+          draw();
+        });
       $('s24Lock').addEventListener('click', function () {
         state.s24Key = '';
         sessionStorage.removeItem('s24DashboardKey');
         renderS24Gate('Archive locked. Enter the dashboard key to unlock it again.');
       });
       wireRows(el, d.rows, function (row) {
-        openDrawer(row.dataset + ' · ' + (row.label || row.record_id),
-          kvList(row, ['payload']) + '<pre>' + esc(JSON.stringify(row.payload || {}, null, 2)) + '</pre>');
+        var label = row.contact_name || row.correspondent || row.agent_name || row.action || row.filename || row.label || row.record_id;
+        openDrawer((row.dataset || selectedLabel) + ' · ' + label,
+          kvList(row, ['payload', 'content']) +
+          '<h3 style="font-size:11px;letter-spacing:.7px;text-transform:uppercase;color:var(--ink-dim);margin:14px 0 7px">Complete source record</h3>' +
+          '<pre>' + esc(JSON.stringify(row.payload || {}, null, 2)) + '</pre>');
       });
     }).catch(function (error) {
       if (error.status === 401 || error.status === 503) {
@@ -885,7 +1000,8 @@
 
   // ---------- shared wiring ----------
   function pager(key, res) {
-    var from = res.offset + 1, to = Math.min(res.offset + res.limit, res.total);
+    var total = Number(res.total) || 0;
+    var from = total ? res.offset + 1 : 0, to = Math.min(res.offset + res.limit, total);
     var attrs = ' data-pg="' + key + '" data-step="' + res.limit + '" data-total="' + res.total + '"';
     return '<div class="pager">' +
       '<button class="btn"' + attrs + ' data-dir="-1"' + (res.offset ? '' : ' disabled') + '>Prev</button>' +
