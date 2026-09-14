@@ -37,3 +37,12 @@ test('typed S24 tables are covered by migration, API, and health inventory', () 
 test('the signed S24 ingest handler is included in explicit Vercel builds', () => {
   assert.ok(vercel.builds.some((build) => build.src === 'Backend/s24-ingest.js'));
 });
+
+test('dashboard keys are normalized and validated before becoming request headers', () => {
+  assert.match(html, /function normalizeDashboardKey/);
+  assert.match(html, /\\u200B-\\u200D\\u2060\\uFEFF/);
+  assert.match(html, /function isHeaderSafeDashboardKey/);
+  const validation = html.indexOf('isHeaderSafeDashboardKey(state.s24Key)');
+  const fetchCall = html.indexOf('return fetch(API');
+  assert.ok(validation > -1 && validation < fetchCall, 'key validation must run before fetch');
+});
