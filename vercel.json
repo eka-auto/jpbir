@@ -116,6 +116,14 @@
     {
       "src": "Backend/wa-ingest.js",
       "use": "@vercel/node"
+    },
+    {
+      "src": "Backend/wa-blob-upload.js",
+      "use": "@vercel/node"
+    },
+    {
+      "src": "Backend/jp-wa-attachments.js",
+      "use": "@vercel/node"
     }
   ],
   "routes": [
