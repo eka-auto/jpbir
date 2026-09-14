@@ -5,13 +5,18 @@
 // ingest from the owner's machine populates both sites.
 //
 // This is the owner's private admin dashboard, so names come back as they are
-// stored, not redacted. The site is noindex and lives at jaytipargal.tech;
-// jaytibirthday-site's /api/galaxy keeps its own redaction gate.
+// stored, not redacted — which is exactly why the route is gated on STATS_KEY,
+// the same key every other analytics endpoint here uses. It previously had no
+// check at all: noindex and an obscure hostname are not access control, and
+// this payload is 862 real contact names together with their chat_ids, which
+// are WhatsApp jids — phone numbers. Anyone who guessed the path had all of it.
+// jaytibirthday-site's /api/galaxy keeps its own separate redaction gate.
 //
 // If the wa_* tables have not been created yet (the schema in
 // jaytibirthday-site's Database/schema/002_whatsapp.sql has not been applied),
 // this answers with an empty payload flagged migrated:false so the dashboard
 // can show a "run the migration" hint instead of a broken panel.
+import { requireKey } from './_auth.js';
 import { query, isConfigured } from '../Integrations/postgres.js';
 
 const iso = (v) => (v ? new Date(v).toISOString() : null);
@@ -28,8 +33,12 @@ async function safe(sql, params = []) {
 }
 
 export default async function handler(req, res) {
-  res.setHeader('Cache-Control', 'no-store');
+  // Real names travel in this response, so never let a shared cache hold it.
+  res.setHeader('Cache-Control', 'private, no-store');
   res.setHeader('Content-Type', 'application/json');
+
+  // Before anything touches the store: no key, no inventory.
+  if (!requireKey(req, res)) return;
 
   if (!isConfigured()) {
     return res.status(500).json({ ok: false, error: 'DATABASE_URL not set on this deployment' });
