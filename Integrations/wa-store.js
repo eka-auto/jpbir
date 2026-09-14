@@ -281,9 +281,17 @@ export const CHAT_SELECT = `
    ORDER BY name, chat_id`;
 
 // No chat_id in the payload: a WhatsApp jid is a phone number for a person.
+// `h` is an opaque handle for it — enough for the dashboard to ask for one
+// chat's detail, without the number itself ever reaching the browser. It is a
+// truncated digest, so it is not a secret (the phone-number space is small
+// enough to enumerate); it only avoids publishing the number outright, and it
+// never leaves the key-gated route.
+export const handleFor = (chatId) => crypto.createHash('sha256').update(String(chatId)).digest('hex').slice(0, 16);
+
 export function toCompact(row) {
   const d = (v) => (v ? String(v).slice(0, 10) : '');
   return {
+    h: handleFor(row.chat_id),
     n: row.name,
     k: row.kind,
     u: row.unresolved ? 1 : 0,
