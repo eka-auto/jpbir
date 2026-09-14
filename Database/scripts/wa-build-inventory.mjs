@@ -76,14 +76,22 @@ await readJsonl('328_4_contact.jsonl', (o) => {
 });
 
 const tally = new Map();
-let keyed = 0, unkeyable = 0;
+let keyed = 0, unkeyable = 0, fellBack = 0;
 await readJsonl('328_8_message.jsonl', (o) => {
   const v = o.value || {};
-  let jid = String(v.id || '').split('_')[1] || '';
+  const id = String(v.id || '');
+  let jid = id.split('_')[1] || '';
   if (!jid.includes('@')) {
-    // torn id: fall back to the envelope
+    // Torn id: fall back to the envelope. Direction decides which end is the
+    // chat — an outgoing message carries the owner's own number in `from` and
+    // the peer in `to`, so taking `from` here would file it under the owner
+    // and corrupt that chat's counts. These records carry no `fromMe` field;
+    // the direction is the id's own `true_`/`false_` prefix.
     const to = v.to && typeof v.to === 'object' ? v.to._serialized : v.to;
-    jid = String(v.from || '').includes('@') ? String(v.from) : String(to || '');
+    const outgoing = id.startsWith('true_') || v.fromMe === true;
+    jid = String((outgoing ? to : v.from) || '');
+    if (!jid.includes('@')) jid = String((outgoing ? v.from : to) || '');
+    fellBack++;
   }
   if (!jid.includes('@')) { unkeyable++; return; }
   keyed++;
@@ -136,6 +144,6 @@ for (const c of chats) {
 }
 
 fs.writeFileSync(out, JSON.stringify({ totals, chats }));
-console.log(`\nkeyed ${keyed} messages, ${unkeyable} unkeyable`);
+console.log(`\nkeyed ${keyed} messages, ${unkeyable} unkeyable, ${fellBack} keyed from the envelope (torn id)`);
 console.log(JSON.stringify(totals, null, 2));
 console.log(`\nwrote ${out} (${chats.length} chats) — real names, keep it out of git`);

@@ -21,6 +21,9 @@
 // resumes instead of duplicating.
 import { readFile } from 'node:fs/promises';
 import { ingestBatch, normalizeChat, assignChatIds } from '../../Integrations/wa-store.js';
+import { loadEnv } from './_env.mjs';
+
+loadEnv();
 
 const args = process.argv.slice(2);
 const opt = (name, dflt = null) => { const i = args.indexOf(name); return i !== -1 ? args[i + 1] : dflt; };
