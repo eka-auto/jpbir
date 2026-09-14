@@ -181,11 +181,22 @@ const server = createServer(async (req, res) => {
   if (url.pathname === '/ask' && req.method === 'POST') {
     let body;
     try {
-      body = JSON.parse(await readBody(req) || '{}');
+      // `|| '{}'` only rescues an empty body. `null`, `3` and `"x"` are all
+      // valid JSON and all survive that guard, then throw on the first property
+      // access in handleAsk. Only a plain object is a usable body.
+      const parsed = JSON.parse(await readBody(req) || '{}');
+      body = parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
     } catch (e) {
       return send(res, 400, { ok: false, error: 'invalid JSON body' });
     }
-    return handleAsk(req, res, body);
+    // Nothing awaits handleAsk, so a throw inside it is an unhandled rejection —
+    // fatal on Node >=15, and it takes every other in-flight session with it.
+    // Once the SSE headers are out we can only log and close the stream.
+    return handleAsk(req, res, body).catch(err => {
+      log('handleAsk failed:', err.message);
+      if (!res.headersSent) return send(res, 500, { ok: false, error: 'internal error' });
+      try { res.end(); } catch { /* socket already gone */ }
+    });
   }
 
   return send(res, 404, { ok: false, error: 'not found' });
