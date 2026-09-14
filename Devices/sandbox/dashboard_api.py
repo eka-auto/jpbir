@@ -229,11 +229,13 @@ def api_diag():
 
     # Try the two bootstrap functions in isolation, catching every error so
     # this endpoint always returns 200 with a useful body.
+    cfg = None
+    client = None
     try:
         cfg = load_config_from_env()
         diag["bootstrap"]["load_config"] = {"ok": True}
         try:
-            make_client(cfg)
+            client = make_client(cfg)
             diag["bootstrap"]["make_client"] = {"ok": True}
             diag["ok"] = True
         except Exception as exc:  # noqa: BLE001 — surfaced to the operator
@@ -242,6 +244,41 @@ def api_diag():
         diag["bootstrap"]["load_config"] = {"ok": False, "error": str(exc)[:400]}
     except Exception as exc:  # noqa: BLE001
         diag["bootstrap"]["load_config"] = {"ok": False, "error": f"{type(exc).__name__}: {exc}"[:400]}
+
+    # Firestore probe — only if bootstrap succeeded. Reports which of the
+    # devices configured in SANDBOX_CONFIG_JSON already exist in the target
+    # collection, and whether their subcollections have any data. Doc IDs
+    # come from the same config as the rest of the service and are already
+    # visible in the repo, so surfacing them here is safe.
+    if client is not None and cfg is not None:
+        collection = cfg.get("collection", "devices")
+        subcolls = list(DATA_SUBCOLLECTIONS.values()) if 'DATA_SUBCOLLECTIONS' in globals() else [
+            "whatsappMedia", "callLogs", "sms", "contacts",
+        ]
+        device_probes = []
+        for dev in cfg.get("devices", []) or []:
+            dev_id = dev.get("id")
+            probe = {"id": dev_id, "role": dev.get("role"), "doc_present": False, "subcollections": {}}
+            try:
+                doc = client.get_doc(collection, dev_id)
+                probe["doc_present"] = doc is not None
+                if doc is not None:
+                    probe["field_count"] = len(doc.get("fields", {}))
+            except Exception as exc:  # noqa: BLE001
+                probe["error"] = f"{type(exc).__name__}: {exc}"[:200]
+            for sub in subcolls:
+                try:
+                    docs = client.list_docs(collection, dev_id, sub, limit=1)
+                    probe["subcollections"][sub] = {"any": len(docs) > 0}
+                except Exception as exc:  # noqa: BLE001
+                    probe["subcollections"][sub] = {"error": f"{type(exc).__name__}: {exc}"[:200]}
+            device_probes.append(probe)
+        diag["firestore"] = {
+            "collection": collection,
+            "devices_configured": len(cfg.get("devices", []) or []),
+            "devices_present_in_firestore": sum(1 for p in device_probes if p.get("doc_present")),
+            "probes": device_probes,
+        }
 
     return jsonify(diag)
 
