@@ -1,10 +1,16 @@
 // Admin-side attachments listing for jaytipargal.tech's WhatsApp drill-down.
 //
 // Serves wa_attachments rows for one chat, paged and optionally filtered by
-// kind. The dashboard is site-gated, so this uses raw chat_id and returns
-// raw blob_url + file names — no redaction.
+// kind, with raw chat_id, blob_url and file names — so it is gated on
+// STATS_KEY before it touches the store.
+//
+// The site gate is a browser gate: vercel.json dispatches straight here, so
+// without this check anyone who knew a chat_id (a WhatsApp jid — a phone
+// number) could pull that chat's private media URLs without ever loading the
+// dashboard.
 //
 //   GET /api/jp-wa-attachments?chat_id=<id>&kind=<kind>&limit=<n>&before=<iso>
+import { requireKey } from './_auth.js';
 import { query, isConfigured } from '../Integrations/postgres.js';
 
 const KINDS = new Set(['image', 'video', 'audio', 'ptt', 'document', 'sticker', 'other']);
@@ -17,6 +23,7 @@ export default async function handler(req, res) {
     res.setHeader('Allow', 'GET, HEAD');
     return res.status(405).json({ ok: false, error: 'GET only' });
   }
+  if (!requireKey(req, res)) return;
 
   const chatId = String(req.query.chat_id || '').trim();
   if (!chatId) return res.status(400).json({ ok: false, error: 'chat_id required' });
