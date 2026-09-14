@@ -106,7 +106,27 @@ async function handleAsk(req, res, body) {
     connection: 'keep-alive',
     'x-accel-buffering': 'no',
   });
-  const emit = (event, data) => res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+  // A tab closing mid-stream destroys the socket. With no 'error' listener on
+  // res, the next write emits an unhandled 'error' event, and EventEmitter
+  // turns that into an uncaught exception on a later tick — outside the
+  // try/catch below, so it kills the process and every other live session with
+  // it. Closing the tab on a slow task is normal use, not an edge case.
+  let clientGone = false;
+  res.on('close', () => { clientGone = true; });
+  res.on('error', err => { clientGone = true; log('response stream error:', err.message); });
+  req.on('error', err => { clientGone = true; log('request stream error:', err.message); });
+
+  const emit = (event, data) => {
+    if (clientGone || res.writableEnded || res.destroyed) return false;
+    try {
+      res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+      return true;
+    } catch (err) {
+      clientGone = true;
+      log('write after disconnect:', err.message);
+      return false;
+    }
+  };
 
   emit('start', { session_id: sessionId, model: MODEL, workspace: WORKSPACE });
   log(`ask session=${sessionId} chars=${prompt.length}`);
@@ -123,6 +143,12 @@ async function handleAsk(req, res, body) {
         resume: session.sdkSessionId,
       },
     })) {
+      // Nobody is reading any more. Breaking ends the SDK iterator, which stops
+      // the agent loop — otherwise a closed tab keeps billing turns to nobody.
+      if (clientGone) {
+        log(`client gone, abandoning session=${sessionId}`);
+        break;
+      }
       if (msg.type === 'system' && msg.subtype === 'init') {
         session.sdkSessionId = msg.session_id;
         emit('init', { tools: msg.tools?.length ?? 0 });
@@ -152,7 +178,10 @@ async function handleAsk(req, res, body) {
     log('ask failed:', err.message);
     emit('error', { error: err.message });
   }
-  res.end();
+  // end() on an already-ended or destroyed response throws ERR_STREAM_*, which
+  // here would be the same unhandled rejection the .catch in the route now
+  // absorbs — but not ending a live one leaks the socket.
+  if (!res.writableEnded && !res.destroyed) res.end();
 }
 
 const server = createServer(async (req, res) => {
