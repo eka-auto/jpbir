@@ -2345,7 +2345,13 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
             + '<div style="width:64px;text-align:right">' + waFmt(n) + '</div></div>';
     }
 
+    /* One panel, many clicks: chat A's slower answer must not land after B's
+       and leave A's totals sitting under B's heading. Only the newest request
+       is allowed to paint. */
+    var waDetailReq = 0;
+
     function loadWhatsAppChat(h) {
+        var token = ++waDetailReq;
         var d = $('waDetail');
         d.style.display = '';
         $('waDetailName').textContent = 'Loading…';
@@ -2356,7 +2362,16 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
         fetch('/api/wa-chat?' + new URLSearchParams({ key: KEY, h: h }).toString())
             .then(function (r) { return r.json(); })
             .then(function (j) {
+                if (token !== waDetailReq) return;
                 if (!j.ok) { $('waDetailName').textContent = 'Chat'; $('waDetailHint').textContent = j.error || 'Could not load that chat.'; return; }
+                if (j.empty) {
+                    /* store present but not migrated: keep the instruction the
+                       endpoint sent instead of dereferencing an absent chat */
+                    $('waDetailName').textContent = 'Chat';
+                    $('waDetailHint').textContent = (j.reason || 'Nothing stored yet.')
+                        + ((j.howTo || []).length ? ' — ' + j.howTo.join(' · ') : '');
+                    return;
+                }
                 var c = j.chat, x = j.detail;
                 $('waDetailName').textContent = c.n;
                 $('waDetailHint').textContent = c.k + (c.k === 'group' && c.sz ? ' · ' + waFmt(c.sz) + ' members' : '')
@@ -2373,7 +2388,10 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
                 $('waDetailMonths').innerHTML = (x.months || []).map(function (r) { return waBar(r.month, r.n, mm); }).join('')
                     || '<div class="state">No dated messages.</div>';
             })
-            .catch(function (e) { $('waDetailHint').textContent = 'Failed to load: ' + e.message; });
+            .catch(function (e) {
+                if (token !== waDetailReq) return;
+                $('waDetailHint').textContent = 'Failed to load: ' + e.message;
+            });
     }
 
     document.querySelector('#waTable tbody').addEventListener('click', function (ev) {
