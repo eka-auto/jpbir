@@ -22,8 +22,15 @@ const PORT = Number(process.env.JP_AGENT_PORT || 8790);
 const HOST = '127.0.0.1';
 const TOKEN = process.env.JP_AGENT_TOKEN || '';
 const WORKSPACE = process.env.JP_AGENT_WORKSPACE || '/srv/workspace';
-const MODEL = process.env.JP_AGENT_MODEL || 'claude-opus-5';
-const MAX_TURNS = Number(process.env.JP_AGENT_MAX_TURNS || 40);
+// Sonnet 5 rather than Opus 5: $2/$10 per MTok against $5/$25, and it is the
+// agentic-coding tier, so a dashboard terminal doing edits, greps and test runs
+// keeps its quality at a fraction of the credit burn. Override per-box with
+// JP_AGENT_MODEL if a session genuinely needs Opus.
+const MODEL = process.env.JP_AGENT_MODEL || 'claude-sonnet-5';
+// 40 turns cut off real work — a bug hunt across a few files spends turns fast.
+// Note the practical ceiling for the dashboard path is wall-clock, not this:
+// Backend/agent-run.js aborts at 280s. This cap is for long CLI-side runs.
+const MAX_TURNS = Number(process.env.JP_AGENT_MAX_TURNS || 150);
 
 if (!TOKEN) {
   console.error('JP_AGENT_TOKEN is unset — refusing to start rather than serve unauthenticated.');
@@ -68,7 +75,11 @@ function send(res, status, body) {
   res.end(payload);
 }
 
-async function readBody(req, limit = 256 * 1024) {
+// 4MB, not 256KB: pasting a stack trace, a diff or a whole file into the
+// terminal is the normal way to ask this thing to find a bug. Kept below
+// nginx's client_max_body_size so an oversized prompt fails as our JSON error
+// rather than nginx's HTML 413.
+async function readBody(req, limit = 4 * 1024 * 1024) {
   const chunks = [];
   let size = 0;
   for await (const c of req) {
