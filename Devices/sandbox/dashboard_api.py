@@ -104,12 +104,22 @@ def load_config_from_env():
 
 
 def auth_ok():
-    """Constant-time compare of ``?key=`` / ``X-Stats-Key`` against ``STATS_KEY``."""
+    """Constant-time compare of ``?key=`` / ``X-Stats-Key`` against ``STATS_KEY``.
+
+    Both sides are SHA-256-digested before ``hmac.compare_digest`` so a non-ASCII
+    character in either value (which would make the raw-string comparison raise
+    ``TypeError``) and a length mismatch (which would short-circuit) can never
+    reach the comparator. Same pattern as ``Backend/verify-db.js``.
+    """
+    import hashlib
+
     expected = os.environ.get("STATS_KEY") or ""
     if not expected:
         return False
     presented = request.args.get("key") or request.headers.get("X-Stats-Key") or ""
-    return hmac.compare_digest(presented, expected)
+    a = hashlib.sha256(presented.encode("utf-8")).digest()
+    b = hashlib.sha256(expected.encode("utf-8")).digest()
+    return hmac.compare_digest(a, b)
 
 
 @app.before_request
