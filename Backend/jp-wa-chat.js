@@ -1,12 +1,18 @@
 // Admin-side per-chat detail for jaytipargal.tech's WhatsApp panel.
 //
-// Same shape as /api/wa-chat (which is the public, key-gated, handle-based
-// route on jaytibirthday-site) but this dashboard is already gated at the
-// site level, so it addresses chats by raw chat_id and returns raw names.
+// Same shape as /api/wa-chat (the handle-based route on jaytibirthday-site)
+// but addressed by raw chat_id and returning raw names — so it is gated on
+// STATS_KEY, before it touches the store.
+//
+// The site-level gate is a browser gate: vercel.json dispatches straight to
+// this handler, so anyone who knows a chat_id (a WhatsApp jid — a phone
+// number) could read a chat's names and metadata without ever loading the
+// dashboard. Authentication has to live here, in the handler.
 //
 // What it reads: wa_chats + wa_messages, both populated by the S24 daemon
 // and the owner's wa-import. Message bodies land here later (path 2, chat
 // export ingest); attachments land here later (path 3, Vercel Blob).
+import { requireKey } from './_auth.js';
 import { query, isConfigured } from '../Integrations/postgres.js';
 
 export default async function handler(req, res) {
@@ -17,6 +23,7 @@ export default async function handler(req, res) {
     res.setHeader('Allow', 'GET, HEAD');
     return res.status(405).json({ ok: false, error: 'GET only' });
   }
+  if (!requireKey(req, res)) return;
 
   const chatId = String(req.query.chat_id || '').trim();
   if (!chatId) return res.status(400).json({ ok: false, error: 'chat_id required' });
