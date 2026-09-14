@@ -96,6 +96,10 @@
     {
       "src": "Backend/db-api.js",
       "use": "@vercel/node"
+    },
+    {
+      "src": "Backend/wa-galaxy.js",
+      "use": "@vercel/node"
     }
   ],
   "routes": [

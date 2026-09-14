@@ -328,6 +328,8 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
             <button class="nav-item" data-page="terminal"><span class="ico">▮</span> Terminal</button>
             <button class="nav-item" data-page="vercel"><span class="ico">▲</span> Vercel</button>
             <button class="nav-item" data-page="agent"><span class="ico">🤖</span> Ask agent</button>
+            <div class="section-label">Data</div>
+            <button class="nav-item" data-page="whatsapp"><span class="ico">💬</span> WhatsApp</button>
         </nav>
 
         <main class="content">
@@ -544,6 +546,38 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
                     <div style="display:flex;gap:10px">
                         <input id="agentInput" type="text" placeholder="e.g. what do we know about 210.16.82.193?" style="flex:1;padding:11px 14px;border:1px solid var(--border);border-radius:10px;background:var(--panel2);color:var(--ink);font-family:var(--sans);font-size:13.5px;outline:none">
                         <button id="agentAskBtn" class="primary" style="padding:11px 22px;border:none;border-radius:10px;background:linear-gradient(180deg,var(--amber-glow),var(--amber));color:#241505;font-weight:700;font-size:13px;cursor:pointer;font-family:var(--sans)">Ask</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- WHATSAPP -->
+            <section class="page" id="page-whatsapp">
+                <div class="panel">
+                    <div class="panel-head"><div><h2>WhatsApp inventory</h2><div class="hint" id="waHint">Loading…</div></div>
+                        <div class="tools">
+                            <input id="waSearch" type="text" placeholder="Search chat name…">
+                            <select id="waKind">
+                                <option value="">All chats</option>
+                                <option value="group">Groups</option>
+                                <option value="direct">Direct</option>
+                            </select>
+                        </div></div>
+                    <div id="waKpis" class="kpis" style="margin-top:12px"></div>
+                    <div class="table-wrap">
+                        <table id="waTable">
+                            <thead><tr>
+                                <th data-wakey="n">Chat <span class="arrow"></span></th>
+                                <th data-wakey="k">Kind <span class="arrow"></span></th>
+                                <th data-wakey="m">Messages <span class="arrow"></span></th>
+                                <th data-wakey="md">Media <span class="arrow"></span></th>
+                                <th data-wakey="au">Audio <span class="arrow"></span></th>
+                                <th data-wakey="cl">Calls <span class="arrow"></span></th>
+                                <th data-wakey="sz">Members <span class="arrow"></span></th>
+                                <th data-wakey="f">First <span class="arrow"></span></th>
+                                <th data-wakey="l">Last <span class="arrow"></span></th>
+                            </tr></thead>
+                            <tbody></tbody>
+                        </table>
                     </div>
                 </div>
             </section>
@@ -2212,10 +2246,99 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
             t = t.parentNode;
         }
     });
+    /* ===== WHATSAPP (inventory from Neon, via /api/wa-galaxy) =====
+       Real contact names, so the endpoint is key-gated like every other
+       analytics route and the answer is never cached. Loaded once per unlock;
+       search, kind filter and sorting all run against the copy held here. */
+    var waState = { chats: [], key: 'm', dir: -1, loaded: false };
+
+    function waFmt(n) { return (n == null ? 0 : n).toLocaleString(); }
+
+    function renderWhatsApp() {
+        var q = ($('waSearch').value || '').trim().toLowerCase();
+        var kind = $('waKind').value;
+        var rows = waState.chats.filter(function (c) {
+            if (kind && c.k !== kind) return false;
+            return !q || String(c.n).toLowerCase().indexOf(q) !== -1;
+        });
+        var k = waState.key, dir = waState.dir;
+        rows.sort(function (a, b) {
+            var x = a[k], y = b[k];
+            if (typeof x === 'number' && typeof y === 'number') return (x - y) * dir;
+            return String(x).localeCompare(String(y)) * dir;
+        });
+        var tb = document.querySelector('#waTable tbody');
+        if (!rows.length) {
+            tb.innerHTML = '<tr><td colspan="9"><div class="state">No chat matches that filter.</div></td></tr>';
+            return;
+        }
+        tb.innerHTML = rows.map(function (c) {
+            return '<tr>'
+                + '<td>' + esc(c.n) + (c.u ? ' <span class="pill">no saved contact</span>' : '') + '</td>'
+                + '<td>' + esc(c.k) + '</td>'
+                + '<td>' + waFmt(c.m) + '</td>'
+                + '<td>' + waFmt(c.md) + '</td>'
+                + '<td>' + waFmt(c.au) + '</td>'
+                + '<td>' + waFmt(c.cl) + '</td>'
+                + '<td>' + (c.k === 'group' && c.sz ? waFmt(c.sz) : '—') + '</td>'
+                + '<td>' + esc(c.f || '—') + '</td>'
+                + '<td>' + esc(c.l || '—') + '</td>'
+                + '</tr>';
+        }).join('');
+    }
+
+    function loadWhatsApp() {
+        if (waState.loaded) { renderWhatsApp(); return; }
+        $('waHint').textContent = 'Loading inventory…';
+        fetch('/api/wa-galaxy?' + new URLSearchParams({ key: KEY }).toString())
+            .then(function (r) { return r.json().then(function (j) { return { status: r.status, body: j }; }); })
+            .then(function (res) {
+                var j = res.body || {};
+                if (res.status === 401) {
+                    $('waHint').textContent = 'Locked — unlock the dashboard to see the inventory.';
+                    return;
+                }
+                if (!j.ok) {
+                    $('waHint').textContent = j.error || 'Could not load the inventory.';
+                    return;
+                }
+                if (j.empty) {
+                    /* migrated-but-empty and not-yet-migrated both land here, each
+                       carrying the command that fixes it rather than an error. */
+                    $('waHint').textContent = j.reason || 'Nothing imported yet.';
+                    $('waKpis').innerHTML = '<div class="state">' + (j.howTo || []).map(esc).join('<br>') + '</div>';
+                    return;
+                }
+                var t = j.totals || {};
+                waState.chats = j.chats || [];
+                waState.loaded = true;
+                $('waHint').textContent = waFmt(t.chats) + ' chats · ' + waFmt(t.groups) + ' groups · '
+                    + waFmt(t.direct) + ' direct · imported ' + fmtAgo(j.generated_at);
+                $('waKpis').innerHTML =
+                    vkpi('Chats', waFmt(t.chats)) + vkpi('Messages', waFmt(t.msgs))
+                    + vkpi('Media', waFmt(t.media)) + vkpi('Audio', waFmt(t.audio))
+                    + vkpi('Calls', waFmt(t.calls));
+                renderWhatsApp();
+            })
+            .catch(function (e) { $('waHint').textContent = 'Failed to load: ' + e.message; });
+    }
+
+    $('waSearch').addEventListener('input', renderWhatsApp);
+    $('waKind').addEventListener('change', renderWhatsApp);
+    document.querySelectorAll('#waTable th[data-wakey]').forEach(function (th) {
+        th.addEventListener('click', function () {
+            var k = th.getAttribute('data-wakey');
+            waState.dir = waState.key === k ? -waState.dir : (k === 'n' || k === 'k' ? 1 : -1);
+            waState.key = k;
+            renderWhatsApp();
+        });
+    });
+
     document.querySelectorAll('.nav-item').forEach(function (btn) {
         btn.addEventListener('click', function () {
             if (btn.getAttribute('data-page') === 'device') { loadDeviceHistory(); loadLiveDevices(); }
             if (btn.getAttribute('data-page') === 'vercel') { loadVercel(); }
+            if (btn.getAttribute('data-page') === 'whatsapp') { loadWhatsApp(); }
         });
     });
 
