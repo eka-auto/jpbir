@@ -29,7 +29,7 @@ const WORKSPACE = process.env.JP_AGENT_WORKSPACE || '/srv/workspace';
 const MODEL = process.env.JP_AGENT_MODEL || 'claude-sonnet-5';
 // 40 turns cut off real work — a bug hunt across a few files spends turns fast.
 // Note the practical ceiling for the dashboard path is wall-clock, not this:
-// Backend/agent-run.js aborts at 280s. This cap is for long CLI-side runs.
+// Backend/agent-run.js aborts at 780s. This cap is for long CLI-side runs.
 const MAX_TURNS = Number(process.env.JP_AGENT_MAX_TURNS || 150);
 
 if (!TOKEN) {
@@ -106,12 +106,31 @@ async function handleAsk(req, res, body) {
     connection: 'keep-alive',
     'x-accel-buffering': 'no',
   });
-  const emit = (event, data) => res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+  // A tab closing mid-stream destroys the socket. With no 'error' listener on
+  // res, the next write emits an unhandled 'error' event, and EventEmitter
+  // turns that into an uncaught exception on a later tick — outside the
+  // try/catch below, so it kills the process and every other live session with
+  // it. Closing the tab on a slow task is normal use, not an edge case.
+  let clientGone = false;
+  res.on('close', () => { clientGone = true; });
+  res.on('error', err => { clientGone = true; log('response stream error:', err.message); });
+  req.on('error', err => { clientGone = true; log('request stream error:', err.message); });
+
+  const emit = (event, data) => {
+    if (clientGone || res.writableEnded || res.destroyed) return false;
+    try {
+      res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+      return true;
+    } catch (err) {
+      clientGone = true;
+      log('write after disconnect:', err.message);
+      return false;
+    }
+  };
 
   emit('start', { session_id: sessionId, model: MODEL, workspace: WORKSPACE });
   log(`ask session=${sessionId} chars=${prompt.length}`);
 
-  let text = '';
   try {
     for await (const msg of query({
       prompt,
@@ -123,13 +142,18 @@ async function handleAsk(req, res, body) {
         resume: session.sdkSessionId,
       },
     })) {
+      // Nobody is reading any more. Breaking ends the SDK iterator, which stops
+      // the agent loop — otherwise a closed tab keeps billing turns to nobody.
+      if (clientGone) {
+        log(`client gone, abandoning session=${sessionId}`);
+        break;
+      }
       if (msg.type === 'system' && msg.subtype === 'init') {
         session.sdkSessionId = msg.session_id;
         emit('init', { tools: msg.tools?.length ?? 0 });
       } else if (msg.type === 'assistant') {
         for (const block of msg.message?.content || []) {
           if (block.type === 'text') {
-            text += block.text;
             emit('text', { text: block.text });
           } else if (block.type === 'tool_use') {
             // Name and a short argument preview only — full arguments can carry
@@ -138,7 +162,10 @@ async function handleAsk(req, res, body) {
           }
         }
       } else if (msg.type === 'result') {
-        session.turns.push({ prompt, at: Date.now() });
+        // Keep the size, not the prompt: turns.length is the only thing ever read
+        // (/sessions), and retaining prompts grew RSS ~1:1 with everything pasted
+        // into a session — which is never evicted while it stays in use.
+        session.turns.push({ chars: prompt.length, at: Date.now() });
         emit('done', {
           session_id: sessionId,
           is_error: !!msg.is_error,
@@ -152,7 +179,10 @@ async function handleAsk(req, res, body) {
     log('ask failed:', err.message);
     emit('error', { error: err.message });
   }
-  res.end();
+  // end() on an already-ended or destroyed response throws ERR_STREAM_*, which
+  // here would be the same unhandled rejection the .catch in the route now
+  // absorbs — but not ending a live one leaks the socket.
+  if (!res.writableEnded && !res.destroyed) res.end();
 }
 
 const server = createServer(async (req, res) => {
@@ -181,11 +211,22 @@ const server = createServer(async (req, res) => {
   if (url.pathname === '/ask' && req.method === 'POST') {
     let body;
     try {
-      body = JSON.parse(await readBody(req) || '{}');
+      // `|| '{}'` only rescues an empty body. `null`, `3` and `"x"` are all
+      // valid JSON and all survive that guard, then throw on the first property
+      // access in handleAsk. Only a plain object is a usable body.
+      const parsed = JSON.parse(await readBody(req) || '{}');
+      body = parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
     } catch (e) {
       return send(res, 400, { ok: false, error: 'invalid JSON body' });
     }
-    return handleAsk(req, res, body);
+    // Nothing awaits handleAsk, so a throw inside it is an unhandled rejection —
+    // fatal on Node >=15, and it takes every other in-flight session with it.
+    // Once the SSE headers are out we can only log and close the stream.
+    return handleAsk(req, res, body).catch(err => {
+      log('handleAsk failed:', err.message);
+      if (!res.headersSent) return send(res, 500, { ok: false, error: 'internal error' });
+      try { res.end(); } catch { /* socket already gone */ }
+    });
   }
 
   return send(res, 404, { ok: false, error: 'not found' });
