@@ -139,8 +139,16 @@ function stub(messageRowCount = null) {
   check('payload shape matches cards_data.json', eq(Object.keys(full), ['totals', 'sample', 'names', 'source', 'generated_at', 'chats'])
     && full.sample === false && full.names === 'full', Object.keys(full).join(','));
   check('totals add up', eq(full.totals, { chats: 3, groups: 1, direct: 2, msgs: 16, media: 1, audio: 2, calls: 3, enc: 9, undated: 1 }), JSON.stringify(full.totals));
-  check('compact row keeps the page fields and no jid', eq(toCompact(rows[1]), { n: 'B', k: 'group', u: 1, m: 5, e: 5, md: 0, au: 0, cl: 0, f: '', l: '', sz: 9 })
-    && !('id' in toCompact(rows[0])), JSON.stringify(toCompact(rows[1])));
+  check('compact row keeps the page fields and no jid',
+    eq(toCompact(rows[1]), { h: toCompact(rows[1]).h, n: 'B', k: 'group', u: 1, m: 5, e: 5, md: 0, au: 0, cl: 0, f: '', l: '', sz: 9 })
+    && !('id' in toCompact(rows[0])) && !('chat_id' in toCompact(rows[0])), JSON.stringify(toCompact(rows[1])));
+  // The handle addresses one chat for the drill-down without shipping its jid.
+  check('handle is opaque, stable and distinct per chat',
+    /^[0-9a-f]{16}$/.test(toCompact(rows[0]).h)
+    && toCompact(rows[0]).h === toCompact(rows[0]).h
+    && toCompact(rows[0]).h !== toCompact(rows[1]).h
+    && !JSON.stringify(toCompact(rows[0])).includes('919999999999'),
+    toCompact(rows[0]).h);
   const red = galaxyPayload(rows, { names: 'redacted', generatedAt: '2026-09-13T00:00:00Z' });
   check('redacted payload numbers people and groups separately, in order',
     eq(red.chats.map((c) => c.n), ['Person 001', 'Group 001', 'Person 002']) && red.sample === true && red.names === 'redacted',
@@ -177,6 +185,25 @@ check('galaxy POST is 405', res.statusCode === 405, String(res.statusCode));
 res = mkRes(); await galaxy({ method: 'GET', headers: {}, query: { key: 'k-test' } }, res);
 check('names never sit in a shared cache', res.headers['Cache-Control'] === 'private, no-store', JSON.stringify(res.headers));
 check('the right key with no store is a clear 500', res.statusCode === 500 && /DATABASE_URL/.test(res.payload.error), `${res.statusCode} ${JSON.stringify(res.payload)}`);
+
+/* ---------- the chat drill-down carries the same guards ---------- */
+const { default: chat } = await import('../../Backend/wa-chat.js');
+
+res = mkRes(); await chat({ method: 'GET', headers: {}, query: {} }, res);
+check('wa-chat without a key is 401', res.statusCode === 401, String(res.statusCode));
+res = mkRes(); await chat({ method: 'GET', headers: {}, query: { key: 'wrong', h: 'a'.repeat(16) } }, res);
+check('wa-chat with the wrong key is 401', res.statusCode === 401, String(res.statusCode));
+res = mkRes(); await chat({ method: 'POST', headers: {}, query: { key: 'k-test' } }, res);
+check('wa-chat POST is 405', res.statusCode === 405, String(res.statusCode));
+// A malformed handle is refused before the store is touched, so a caller
+// cannot use this route to probe whether the database is reachable.
+res = mkRes(); await chat({ method: 'GET', headers: {}, query: { key: 'k-test', h: 'not-a-handle' } }, res);
+check('wa-chat rejects a malformed handle with 400, not a store error',
+  res.statusCode === 400 && /handle/.test(res.payload.error), `${res.statusCode} ${JSON.stringify(res.payload)}`);
+res = mkRes(); await chat({ method: 'GET', headers: {}, query: { key: 'k-test', h: 'a'.repeat(16) } }, res);
+check('wa-chat with a well-formed handle and no store is a clear 500',
+  res.statusCode === 500 && /DATABASE_URL/.test(res.payload.error), `${res.statusCode} ${JSON.stringify(res.payload)}`);
+check('wa-chat never lets a shared cache hold a chat', res.headers['Cache-Control'] === 'private, no-store', JSON.stringify(res.headers));
 
 // Fails closed when the server was never configured. The rule lives in
 // _auth.js, which reads STATS_KEY once at import, so this case needs its own

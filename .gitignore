@@ -6,6 +6,8 @@ node_modules/
 # dump to Neon. It is written here for convenience and must never be committed.
 Database/wa-inventory.json
 wa-inventory.json
+Database/wa-messages.json
+wa-messages.json
 *.jsonl
 *.jsonl.*
 *.db
