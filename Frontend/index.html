@@ -642,6 +642,20 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
     'use strict';
     var KEY_STORAGE = 'jbt_stats_key';
     var KEY = sessionStorage.getItem(KEY_STORAGE) || new URLSearchParams(location.search).get('key') || '';
+    /* A ?key= left in the address bar is sent as the Referer on same-origin
+       fetches, so the credential still reaches API logs even though requests
+       now carry it in a header. Keep it in sessionStorage and strip it from
+       the URL before any request goes out. */
+    (function stripKeyFromUrl() {
+        var params = new URLSearchParams(location.search);
+        if (!params.has('key')) return;
+        if (KEY) { try { sessionStorage.setItem(KEY_STORAGE, KEY); } catch (e) { /* private mode */ } }
+        params.delete('key');
+        var qs = params.toString();
+        try {
+            history.replaceState(null, '', location.pathname + (qs ? '?' + qs : '') + location.hash);
+        } catch (e) { /* nothing else to do; the key is already stored */ }
+    })();
     var SITE = sessionStorage.getItem('jbt_site') || 'jbt';
     var DATA = null;
     var REFRESH_MS = 10000;
@@ -1505,6 +1519,14 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
         $('gateMsg').textContent = '';
         showApp();
         load();
+        /* A panel that hit 401 is still sitting at "loading…", and these two
+           only reload from a nav click — so unlocking would otherwise leave
+           whichever one is open stuck until the operator clicked it again. */
+        waLoaded = false;
+        var active = document.querySelector('.nav-item.active');
+        var page = active && active.getAttribute('data-page');
+        if (page === 'whatsapp') loadWhatsApp(true);
+        if (page === 'vercel') loadVercel();
     });
     $('keyInput').addEventListener('keydown', function (e) { if (e.key === 'Enter') $('unlockBtn').click(); });
     $('lockBtn').addEventListener('click', function () {
@@ -2564,11 +2586,29 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
     function loadWhatsApp(force) {
         if (waLoaded && !force) return;
         var runTag = $('waRunTag'); if (runTag) runTag.textContent = 'loading…';
-        return fetch('/api/jp-whatsapp', { cache: 'no-cache' }).then(function (r) { return r.json(); })
-            .then(function (j) {
-                waLoaded = true;
+        /* Key in the header, not the query string: a URL carrying the
+           credential ends up in access logs and monitoring traces. */
+        return fetch('/api/jp-whatsapp', { cache: 'no-cache', headers: { 'x-stats-key': KEY } })
+            .then(function (r) { return r.json().then(function (b) { return { status: r.status, body: b }; }); })
+            .then(function (res) {
+                /* The inventory is real contact names, so the route is gated
+                   like every other analytics endpoint — reopen the gate rather
+                   than reporting a generic failure. */
+                if (res.status === 401) {
+                    sessionStorage.removeItem(KEY_STORAGE);
+                    KEY = '';
+                    if (runTag) runTag.textContent = '';
+                    $('gateMsg').textContent = 'Invalid key.';
+                    showGate();
+                    return;
+                }
+                var j = res.body;
                 if (runTag) runTag.textContent = '';
+                /* Only a real answer counts as loaded. Marking it loaded on a
+                   503 meant the panel never retried once the server was fixed,
+                   short of a page reload. */
                 if (!j.ok) { $('waHint').textContent = 'Error: ' + (j.error || 'unknown'); return; }
+                waLoaded = true;
                 if (j.migrated === false) {
                     $('waHint').textContent = j.note || 'wa_chats table not yet migrated.';
                     renderWaTotals({ chats: 0, groups: 0, direct: 0, msgs: 0, media: 0, audio: 0, calls: 0, enc: 0, undated: 0 });
@@ -2713,9 +2753,29 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
 
     function loadVercel() {
         $('vercelHint').textContent = 'Loading from the Vercel API…';
-        fetch('/api/vercel-analytics?days=14')
-            .then(function (r) { return r.json(); })
-            .then(function (j) {
+        fetch('/api/vercel-analytics?days=14', { headers: { 'x-stats-key': KEY } })
+            .then(function (r) { return r.json().then(function (b) { return { status: r.status, body: b }; }); })
+            .then(function (res) {
+                if (res.status === 401) {
+                    sessionStorage.removeItem(KEY_STORAGE);
+                    KEY = '';
+                    $('gateMsg').textContent = 'Invalid key.';
+                    showGate();
+                    return;
+                }
+                var j = res.body;
+                /* A server-side failure (503 with no STATS_KEY, say) carries
+                   its own error. Falling through to the !configured branch
+                   showed an empty "Not configured" panel and threw that
+                   explanation away. */
+                if (j.success === false) {
+                    $('vercelHint').textContent = j.error || 'Vercel panel unavailable.';
+                    $('vercelKpis').innerHTML = '';
+                    $('vercelMasked').innerHTML = '';
+                    $('vercelDeploys').innerHTML = '';
+                    $('vercelLogs').innerHTML = '';
+                    return;
+                }
                 if (!j.configured) {
                     $('vercelHint').textContent = j.reason || 'Not configured.';
                     $('vercelKpis').innerHTML =

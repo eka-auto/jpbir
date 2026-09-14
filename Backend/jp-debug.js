@@ -1,5 +1,6 @@
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, ScanCommand } from '@aws-sdk/lib-dynamodb';
+import { requireKey } from './_auth.js';
 
 const _env = (typeof process !== 'undefined' ? process : globalThis['proc' + 'ess']).env;
 const AWS_ACCESS_KEY_ID = _env['JP_AWS_' + 'ACCESS_KEY_ID'];
@@ -9,6 +10,9 @@ const TABLE = _env['JP_TELEMETRY_' + 'TABLE'] || 'jaytipargal_telemetry';
 
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
+  // Returns raw telemetry rows — user agents, page URLs, device details — so
+  // it is gated like every other read here rather than left open to the world.
+  if (!requireKey(req, res)) return;
   try {
     const client = DynamoDBDocumentClient.from(new DynamoDBClient({
       region: AWS_REGION,
