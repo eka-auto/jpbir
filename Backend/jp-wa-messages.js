@@ -6,10 +6,15 @@
 //
 //   GET /api/jp-wa-messages?chat_id=<id>&limit=<n>&before=<iso>&q=<text>
 import { query, isConfigured } from '../Integrations/postgres.js';
+import { requireKey } from './_auth.js';
 
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'private, no-store');
   res.setHeader('Content-Type', 'application/json');
+
+  // Message bodies and sender identifiers are private. The guard must run
+  // before validation and before checking whether Neon is configured.
+  if (!requireKey(req, res)) return;
 
   if (req.method !== 'GET' && req.method !== 'HEAD') {
     res.setHeader('Allow', 'GET, HEAD');
