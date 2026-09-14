@@ -180,6 +180,16 @@ t('a record whose dataset has no status row is refused', () => {
   assert.deepEqual(r.detail, ['sms']);
 });
 
+t('a declared record still needs an object payload', () => {
+  const r = validateBatch({
+    run: RUN,
+    datasets: [{ dataset: 'sms', status: 'ok', record_count: 1 }],
+    records: [{ dataset: 'sms', record_id: '1', payload: 'not-an-object' }],
+  });
+  assert.equal(r.ok, false);
+  assert.match(r.error, /object payload/);
+});
+
 t('an unavailable dataset is a valid batch with zero records', () => {
   const r = validateBatch({
     run: RUN,
