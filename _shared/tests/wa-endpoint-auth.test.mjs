@@ -61,6 +61,11 @@ const ROUTES = [
   { file: 'jp-stats.js', method: 'GET', refuses: 401 },
   { file: 'stats.js', method: 'GET', refuses: 401 },
   { file: 'vercel-analytics.js', method: 'GET', refuses: 401 },
+  // Shipped as "open dashboard - no authentication required" and answered 200
+  // to anyone with the DynamoDB table name, the GCP project id, the Firestore
+  // database name and a live device count. Its CRON_SECRET branch only ran when
+  // an Authorization header was present, so sending none skipped the check.
+  { file: 'verify-db.js', method: 'GET', refuses: 401 },
 ];
 
 for (const route of ROUTES) {
