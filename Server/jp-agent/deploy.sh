@@ -22,7 +22,7 @@ scp -o BatchMode=yes -o StrictHostKeyChecking=accept-new -i "$KEY" \
 scp -o BatchMode=yes -o StrictHostKeyChecking=accept-new -i "$KEY" \
   "$(dirname "$0")/jp-agent.service" "root@$IP:/etc/systemd/system/jp-agent.service"
 scp -o BatchMode=yes -o StrictHostKeyChecking=accept-new -i "$KEY" \
-  "$(dirname "$0")/nginx-jp-agent.conf" "root@$IP:/etc/nginx/sites-available/jp-agent"
+  "$(dirname "$0")/nginx-jp-agent.conf" "root@$IP:/etc/nginx/sites-available/jp-agent.new"
 
 "${SSH[@]}" 'bash -s' <<'REMOTE'
 set -euo pipefail
@@ -48,6 +48,19 @@ ENV
   echo "    generated JP_AGENT_TOKEN (read it with: grep JP_AGENT_TOKEN /etc/jp-agent.env)"
 else
   echo "==> /etc/jp-agent.env already present, left untouched"
+fi
+
+# Same rule as the env file above: never clobber what the box has customised.
+# Once certbot has run it rewrites this vhost in place — moves :80 to a redirect
+# block and adds the :443 listener plus cert paths. Overwriting it would silently
+# drop TLS, and JP_AGENT_URL is https://, so the dashboard terminal would break.
+if [ -f /etc/nginx/sites-available/jp-agent ] &&
+   grep -q "managed by Certbot" /etc/nginx/sites-available/jp-agent; then
+  echo "==> nginx vhost is certbot-managed, left untouched"
+  echo "    shipped copy parked at /etc/nginx/sites-available/jp-agent.new"
+  echo "    to adopt it: install it, then re-run certbot --nginx -d runner.jaytipargal.tech"
+else
+  mv /etc/nginx/sites-available/jp-agent.new /etc/nginx/sites-available/jp-agent
 fi
 
 ln -sf /etc/nginx/sites-available/jp-agent /etc/nginx/sites-enabled/jp-agent
