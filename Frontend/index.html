@@ -578,6 +578,19 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
                     <div class="panel-head"><div><h2>Complete Firestore payloads</h2><div class="hint">Raw decoded documents from the <code>devices</code> collection. Replaces on each poll — no cluttered history.</div></div></div>
                     <div id="firestorePayloadList" class="payload-list"></div>
                 </div>
+                <div class="panel">
+                    <div class="panel-head">
+                        <div>
+                            <h2>Live content — recent media, images &amp; documents</h2>
+                            <div class="hint" id="firestoreContentHead">Latest attachments across every chat, last 7 days. Images render inline; documents (including zips) get a download link.</div>
+                        </div>
+                    </div>
+                    <div id="firestoreMediaGrid" class="media-grid"></div>
+                </div>
+                <div class="panel">
+                    <div class="panel-head"><div><h2>Live messages</h2><div class="hint" id="firestoreMsgsHead">Latest WhatsApp messages across every chat, last 7 days.</div></div></div>
+                    <div id="firestoreMsgList"></div>
+                </div>
             </section>
 
             <!-- AGENT -->
@@ -796,7 +809,11 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
         var dot = $('firestoreDot');
         if (!tbody || !payload) return;
         try {
-            var res = await fetch('/api/jp-devices?' + new URLSearchParams({ key: KEY, full: '1', subcollections: '1' }).toString());
+            // subcollections=0 — those Firestore subcollections turned out to
+            // have no writers in the current pipeline; the real content lives
+            // in Postgres wa_attachments/wa_messages, which the separate
+            // /api/jp-live-content call renders below.
+            var res = await fetch('/api/jp-devices?' + new URLSearchParams({ key: KEY, full: '1' }).toString());
             var j = await res.json();
             if (!res.ok || j.success === false) {
                 throw new Error(j.error || ('HTTP ' + res.status));
@@ -839,58 +856,12 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
                 }
             }
 
-            // Subcollection tables (whatsappMedia · callLogs · sms · contacts).
-            // Only rendered when the backend includes subcollections (see
-            // /api/jp-devices?full=1&subcollections=1). Each subcollection is
-            // a small table under the device card. Fresh HTML every poll, so
-            // stale records disappear the instant a device syncs newer ones.
-            var subs = ['whatsappMedia', 'callLogs', 'sms', 'contacts'];
-            var subFriendly = {
-                whatsappMedia: 'WhatsApp media',
-                callLogs: 'Call logs',
-                sms: 'SMS',
-                contacts: 'Contacts',
-            };
-            devices.forEach(function (d) {
-                if (!d.subcollections) return;
-                subs.forEach(function (name) {
-                    var rows = d.subcollections[name] || [];
-                    if (!rows.length) return;
-                    var box = document.createElement('div');
-                    box.className = 'payload-section';
-                    box.style.marginTop = '10px';
-                    var head2 = document.createElement('div');
-                    head2.className = 'payload-section-head';
-                    var h3 = document.createElement('h3');
-                    h3.textContent = subFriendly[name] + ' — ' + (d.deviceId || 'device');
-                    head2.appendChild(h3);
-                    var hint = document.createElement('span');
-                    hint.className = 'payload-section-hint';
-                    hint.textContent = rows.length + ' most-recent record(s) · replaces on every 10 s sync';
-                    head2.appendChild(hint);
-                    box.appendChild(head2);
-                    var keySet = new Set();
-                    rows.forEach(function (r) { Object.keys(r).forEach(function (k) { keySet.add(k); }); });
-                    var cols = ['id'].concat([...keySet].filter(function (k) { return k !== 'id'; }).slice(0, 6));
-                    var table = document.createElement('table');
-                    table.innerHTML = '<thead><tr>' + cols.map(function (c) { return '<th>' + esc(c) + '</th>'; }).join('') + '</tr></thead><tbody>' +
-                        rows.map(function (r) {
-                            return '<tr>' + cols.map(function (c) {
-                                var v = r[c];
-                                if (v == null) return '<td>–</td>';
-                                if (typeof v === 'object') v = JSON.stringify(v);
-                                var s = String(v);
-                                if (s.length > 90) s = s.slice(0, 87) + '…';
-                                return '<td>' + esc(s) + '</td>';
-                            }).join('') + '</tr>';
-                        }).join('') + '</tbody>';
-                    var wrap = document.createElement('div');
-                    wrap.className = 'table-wrap';
-                    wrap.appendChild(table);
-                    box.appendChild(wrap);
-                    payload.appendChild(box);
-                });
-            });
+            // Media, docs and messages don't live in the Firestore devices
+            // doc — they live in Postgres wa_attachments / wa_messages, with
+            // media bytes in Vercel Blob. Separate poll to
+            // /api/jp-live-content pulls the last 7 days newest-first, so no
+            // 2-month-old row can crowd the panel.
+            refreshFirestoreContent();
 
             summary.textContent = devices.length + ' document(s) · database ' + (j.database || '?') + ' · synced at ' + when.toLocaleTimeString();
             head.textContent = 'Live sync of every document in the ' + (j.database || 'eka-agent') + ' database. Poll interval 10 s. Old data is replaced on every sync, so nothing clutters the view.';
@@ -912,6 +883,148 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
 
     var _fsRefreshBtn = document.getElementById('firestoreRefreshBtn');
     if (_fsRefreshBtn) _fsRefreshBtn.addEventListener('click', refreshFirestorePage);
+
+    // Live content — recent media / attachments / messages. Pulls from
+    // /api/jp-live-content (7-day rolling window, newest-first) and re-renders
+    // in place. Media types render as they should: image → <img>, video →
+    // <video controls>, audio → <audio controls>, document (incl. zip) → a
+    // download link that carries file name / size / mime. Everything else
+    // shows filename + kind.
+    function fmtBytes(n) {
+        if (!Number.isFinite(n)) return '';
+        if (n < 1024) return n + ' B';
+        if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+        return (n / (1024 * 1024)).toFixed(2) + ' MB';
+    }
+
+    function renderAttachmentCard(a) {
+        var card = document.createElement('div');
+        card.className = 'media-card';
+        card.style.cssText = 'background:#1a1a1a;border:1px solid #333;border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:6px;';
+
+        var head = document.createElement('div');
+        head.style.cssText = 'display:flex;justify-content:space-between;align-items:baseline;gap:6px;';
+        var kind = document.createElement('span');
+        kind.className = 'pill';
+        kind.textContent = a.kind || '?';
+        var when = document.createElement('span');
+        when.className = 'hint';
+        when.style.fontSize = '10.5px';
+        when.textContent = a.sent_at ? new Date(a.sent_at).toLocaleString() : (a.ingested_at ? new Date(a.ingested_at).toLocaleString() : '–');
+        head.appendChild(kind);
+        head.appendChild(when);
+        card.appendChild(head);
+
+        var body = document.createElement('div');
+        var url = a.blob_url || '';
+        var mime = (a.mime || '').toLowerCase();
+        var isImage = a.kind === 'image' || /^image\//.test(mime);
+        var isVideo = a.kind === 'video' || /^video\//.test(mime);
+        var isAudio = a.kind === 'audio' || a.kind === 'ptt' || /^audio\//.test(mime);
+        var isZip = /zip|compressed|application\/x-7z|application\/x-tar|application\/x-rar/.test(mime) || /\.(zip|7z|tar|gz|rar)$/i.test(a.file_name || '');
+
+        if (isImage && url) {
+            var img = document.createElement('img');
+            img.src = url;
+            img.loading = 'lazy';
+            img.style.cssText = 'width:100%;height:140px;object-fit:cover;border-radius:8px;background:rgba(200,122,30,.08);';
+            img.alt = a.file_name || 'image';
+            body.appendChild(img);
+        } else if (isVideo && url) {
+            var vid = document.createElement('video');
+            vid.src = url;
+            vid.controls = true;
+            vid.style.cssText = 'width:100%;max-height:180px;border-radius:8px;background:#000;';
+            body.appendChild(vid);
+        } else if (isAudio && url) {
+            var aud = document.createElement('audio');
+            aud.src = url;
+            aud.controls = true;
+            aud.style.cssText = 'width:100%;';
+            body.appendChild(aud);
+        } else if (url) {
+            // Documents, zips, everything else — inline preview isn't safe or
+            // useful, so a labeled download link stands in.
+            var doc = document.createElement('a');
+            doc.href = url;
+            doc.target = '_blank';
+            doc.rel = 'noopener';
+            doc.style.cssText = 'display:block;padding:14px;border:1px dashed #444;border-radius:8px;text-decoration:none;color:#F4E9DC;';
+            var icon = isZip ? '🗜️' : '📄';
+            doc.innerHTML = '<div style="font-size:22px">' + icon + '</div>' +
+                '<div style="margin-top:4px">' + esc(a.file_name || '(unnamed)') + '</div>' +
+                '<div class="hint" style="font-size:10.5px;margin-top:2px">' + esc(mime || 'unknown mime') + ' · ' + esc(fmtBytes(a.size_bytes)) + '</div>' +
+                '<div class="hint" style="font-size:10.5px;margin-top:6px;color:#F0B968">Open / download →</div>';
+            body.appendChild(doc);
+        } else {
+            body.textContent = a.file_name || '(no blob_url)';
+        }
+        card.appendChild(body);
+
+        var foot = document.createElement('div');
+        foot.className = 'hint';
+        foot.style.cssText = 'font-size:10.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+        var fname = a.file_name || '(unnamed)';
+        foot.textContent = fname + (a.size_bytes ? ' · ' + fmtBytes(a.size_bytes) : '') + (a.chat_id ? ' · ' + a.chat_id.slice(-14) : '');
+        card.appendChild(foot);
+        return card;
+    }
+
+    async function refreshFirestoreContent() {
+        var grid = $('firestoreMediaGrid');
+        var msgList = $('firestoreMsgList');
+        var mediaHead = $('firestoreContentHead');
+        var msgsHead = $('firestoreMsgsHead');
+        if (!grid || !msgList) return;
+        try {
+            var r = await fetch('/api/jp-live-content?' + new URLSearchParams({ key: KEY, days: '7', limit: '40' }).toString());
+            var j = await r.json();
+            if (!r.ok || j.ok === false) throw new Error(j.error || ('HTTP ' + r.status));
+            grid.innerHTML = '';
+            grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;';
+            (j.attachments || []).forEach(function (a) {
+                grid.appendChild(renderAttachmentCard(a));
+            });
+            if (!(j.attachments || []).length) {
+                grid.innerHTML = '<div class="hint">no attachments in the last ' + (j.window_days || 7) + ' day(s)</div>';
+            }
+            mediaHead.textContent = (j.attachments || []).length + ' attachment(s) in the last ' + (j.window_days || 7) + ' day(s) · Postgres wa_attachments, blob bytes in Vercel Blob · replaces on every 10 s sync';
+
+            msgList.innerHTML = '';
+            var msgs = (j.messages || []).slice(0, 30);
+            if (!msgs.length) {
+                msgList.innerHTML = '<div class="hint">no messages in the last ' + (j.window_days || 7) + ' day(s)</div>';
+            } else {
+                var ul = document.createElement('div');
+                ul.style.cssText = 'display:flex;flex-direction:column;gap:6px;max-height:420px;overflow-y:auto;';
+                msgs.forEach(function (m) {
+                    var row = document.createElement('div');
+                    row.style.cssText = 'padding:8px 10px;border:1px solid #333;border-radius:8px;background:#111;';
+                    var top = document.createElement('div');
+                    top.style.cssText = 'display:flex;justify-content:space-between;gap:6px;font-size:11px;';
+                    var who = document.createElement('span');
+                    who.className = 'mono';
+                    who.textContent = (m.from_me ? '→ ' : '') + (m.sender || m.chat_id || '?');
+                    var ts = document.createElement('span');
+                    ts.className = 'hint';
+                    ts.textContent = m.sent_at ? new Date(m.sent_at).toLocaleString() : '–';
+                    top.appendChild(who);
+                    top.appendChild(ts);
+                    row.appendChild(top);
+                    var body = document.createElement('div');
+                    body.style.cssText = 'margin-top:4px;font-size:13px;white-space:pre-wrap;word-break:break-word;';
+                    body.textContent = m.body || '(' + (m.kind || 'message') + ')';
+                    row.appendChild(body);
+                    ul.appendChild(row);
+                });
+                msgList.appendChild(ul);
+            }
+            msgsHead.textContent = msgs.length + ' message(s) in the last ' + (j.window_days || 7) + ' day(s) · replaces on every 10 s sync';
+        } catch (err) {
+            grid.innerHTML = '<div class="hint">could not load live content — ' + esc(err.message || String(err)) + '</div>';
+            msgList.innerHTML = '';
+        }
+    }
 
     /* ===== STATUS ===== */
     function setStatus(msg, type) {
