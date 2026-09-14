@@ -1,9 +1,17 @@
+import { requireKey } from './_auth.js';
 const _env = (typeof process !== 'undefined' ? process : globalThis['proc' + 'ess']).env;
 const AGENT_API_URL = (_env['AGENT_API_' + 'URL'] || 'http://127.0.0.1:8000').replace(/\/+$/, '');
 const AGENT_API_KEY = _env['AGENT_API_' + 'KEY'] || '';
 
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
+  // This route proxies a query to the agent runtime, which can run shell, so
+  // it is gated on STATS_KEY like every other privileged route here. It had no
+  // check at all: its only gate was AGENT_API_KEY being unset, which fails
+  // closed by accident on one deployment and not at all on another. The guard
+  // also runs before the config check, so an unauthenticated caller cannot
+  // learn whether this deployment is wired up.
+  if (!requireKey(req, res)) return;
   if (!AGENT_API_KEY || AGENT_API_KEY === 'YOUR_AGENT_API_KEY_HERE') {
     return res.status(500).json({ success: false, error: 'AGENT_API_KEY not configured' });
   }
