@@ -578,6 +578,18 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
                         </table>
                     </div>
                 </div>
+
+                <div class="panel" id="waDetail" style="margin-top:14px;display:none">
+                    <div class="panel-head">
+                        <div><h2 id="waDetailName">Chat</h2><div class="hint" id="waDetailHint"></div></div>
+                        <div class="tools"><button id="waDetailClose" style="font-family:var(--sans);font-size:12px;color:#F4E9DC;background:rgba(255,248,238,.07);border:1px solid rgba(240,185,104,.3);border-radius:9px;padding:7px 12px;cursor:pointer">Close</button></div>
+                    </div>
+                    <div id="waDetailKpis" class="kv-grid" style="margin-top:12px"></div>
+                    <div class="grid2" style="margin-top:14px">
+                        <div class="panel"><h2>By type</h2><div id="waDetailKinds"><div class="hint">Loading…</div></div></div>
+                        <div class="panel"><h2>Activity by month</h2><div id="waDetailMonths"><div class="hint">Loading…</div></div></div>
+                    </div>
+                </div>
             </section>
 
             <section class="page" id="page-agent">
@@ -2323,8 +2335,7 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
         if (!rows.length) { table.style.display = 'none'; empty.textContent = q ? 'No chats match "' + q + '".' : 'No chats ingested yet.'; empty.style.display = 'block'; return; }
         empty.style.display = 'none'; table.style.display = 'table';
         body.innerHTML = rows.map(function (c) {
-            var name = c.name + (c.unresolved ? ' <span style="color:var(--warn);font-size:10px">·unresolved</span>' : '');
-            return '<tr>'
+            return '<tr class="wa-chat-row" data-chat-id="' + esc(c.chat_id) + '" style="cursor:pointer">'
                 + '<td style="padding:8px 10px;border-bottom:1px solid var(--border-light)">' + esc(c.name) + (c.unresolved ? ' <span style="color:var(--warn);font-size:10px">·unresolved</span>' : '') + '</td>'
                 + '<td style="padding:8px 10px;border-bottom:1px solid var(--border-light);text-transform:capitalize">' + esc(c.kind) + '</td>'
                 + '<td style="padding:8px 10px;border-bottom:1px solid var(--border-light);text-align:right;font-variant-numeric:tabular-nums">' + fmt(c.msg_count) + '</td>'
@@ -2336,8 +2347,79 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
                 + '<td style="padding:8px 10px;border-bottom:1px solid var(--border-light)">' + esc(c.last_at || '—') + '</td>'
                 + '</tr>';
         }).join('');
-        var hint = $('waChatsHint'); if (hint) hint.textContent = fmt(rows.length) + ' of ' + fmt(WA_STATE.chats.length) + ' chats, ordered by message count.';
+        var hint = $('waChatsHint'); if (hint) hint.textContent = fmt(rows.length) + ' of ' + fmt(WA_STATE.chats.length) + ' chats — click any row for detail.';
     }
+
+    /* Per-chat drill-down. Latest request wins so a slow answer never
+       lands after the user clicked a second row. */
+    var waDetailReq = 0;
+    function waKvi(k, v) { return '<div class="kv-item"><div class="k">' + esc(k) + '</div><div class="v">' + v + '</div></div>'; }
+    function waBar(label, n, max) {
+        var pct = max ? Math.round((n / max) * 100) : 0;
+        return '<div style="display:flex;align-items:center;gap:10px;margin:6px 0;font-size:12.5px">'
+            + '<div style="width:110px;color:var(--ink-muted)">' + esc(label) + '</div>'
+            + '<div style="flex:1;background:rgba(200,122,30,.14);border-radius:6px;overflow:hidden;height:10px">'
+            + '<div style="width:' + pct + '%;height:100%;background:linear-gradient(90deg,var(--amber-glow),var(--amber))"></div></div>'
+            + '<div style="width:64px;text-align:right;font-variant-numeric:tabular-nums">' + fmt(n) + '</div></div>';
+    }
+    function loadWaChat(chatId) {
+        var token = ++waDetailReq;
+        var d = $('waDetail'); d.style.display = '';
+        $('waDetailName').textContent = 'Loading…';
+        $('waDetailHint').textContent = '';
+        $('waDetailKpis').innerHTML = '';
+        $('waDetailKinds').innerHTML = '<div class="hint">Loading…</div>';
+        $('waDetailMonths').innerHTML = '<div class="hint">Loading…</div>';
+        try { d.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (e) { /* no-op */ }
+        fetch('/api/jp-wa-chat?' + new URLSearchParams({ chat_id: chatId }).toString(), { cache: 'no-store' })
+            .then(function (r) { return r.json(); })
+            .then(function (j) {
+                if (token !== waDetailReq) return;
+                if (!j.ok) { $('waDetailName').textContent = 'Chat'; $('waDetailHint').textContent = j.error || 'Could not load that chat.'; return; }
+                if (j.empty) { $('waDetailName').textContent = 'Chat'; $('waDetailHint').textContent = j.reason || 'Nothing stored yet.'; return; }
+                var c = j.chat, x = j.detail, b = j.bodies || {};
+                $('waDetailName').textContent = c.name;
+                $('waDetailHint').textContent = c.kind + (c.kind === 'group' && c.member_count ? ' · ' + fmt(c.member_count) + ' members' : '')
+                    + ' · ' + esc(c.first_at || '?') + ' → ' + esc(c.last_at || '?')
+                    + ' · ' + (b.available ? fmt(b.with_body) + ' bodies imported' : 'metadata only');
+                $('waDetailKpis').innerHTML =
+                    waKvi('Messages held', fmt(x.rows_held))
+                    + waKvi('Sent', fmt(x.sent))
+                    + waKvi('Received', fmt(x.received))
+                    + waKvi('Undated', fmt(x.undated))
+                    + (c.kind === 'group' ? waKvi('Senders', fmt(x.distinct_senders)) : '')
+                    + waKvi('Media', fmt(c.media_count))
+                    + waKvi('Audio', fmt(c.audio_count))
+                    + waKvi('Calls', fmt(c.call_count));
+                var km = Math.max.apply(null, (x.kinds || []).map(function (r) { return r.n; }).concat([0]));
+                $('waDetailKinds').innerHTML = (x.kinds || []).length
+                    ? (x.kinds || []).map(function (r) { return waBar(r.kind, r.n, km); }).join('')
+                    : '<div class="hint">No wa_messages rows for this chat yet.</div>';
+                var mm = Math.max.apply(null, (x.months || []).map(function (r) { return r.n; }).concat([0]));
+                $('waDetailMonths').innerHTML = (x.months || []).length
+                    ? (x.months || []).map(function (r) { return waBar(r.month, r.n, mm); }).join('')
+                    : '<div class="hint">No dated messages for this chat.</div>';
+            })
+            .catch(function (e) {
+                if (token !== waDetailReq) return;
+                $('waDetailName').textContent = 'Chat';
+                $('waDetailHint').textContent = 'Failed to load: ' + e.message;
+            });
+    }
+    (function () {
+        var body = $('waChatsBody');
+        if (body) body.addEventListener('click', function (ev) {
+            var t = ev.target;
+            while (t && t !== body) {
+                if (t.tagName === 'TR' && t.getAttribute && t.getAttribute('data-chat-id')) {
+                    loadWaChat(t.getAttribute('data-chat-id')); return;
+                }
+                t = t.parentNode;
+            }
+        });
+        var close = $('waDetailClose');
+        if (close) close.addEventListener('click', function () { $('waDetail').style.display = 'none'; });
+    })();
     function loadWhatsApp(force) {
         if (waLoaded && !force) return;
         var runTag = $('waRunTag'); if (runTag) runTag.textContent = 'loading…';
