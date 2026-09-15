@@ -28,7 +28,7 @@ jobs:
       
       - name: Test Homepage
         run: |
-          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" https://jpbirrestructured.vercel.app/)
+          RESPONSE=$(curl -sL -o /dev/null -w "%{http_code}" https://jaytipargal.tech/)
           if [ "$RESPONSE" -eq 200 ]; then
             echo "✅ Homepage OK"
           else
@@ -44,7 +44,7 @@ jobs:
       # both still fail the check.
       - name: Test Devices API
         run: |
-          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" https://jpbirrestructured.vercel.app/api/jp-devices)
+          RESPONSE=$(curl -sL -o /dev/null -w "%{http_code}" https://jaytipargal.tech/api/jp-devices)
           if [ "$RESPONSE" -eq 200 ] || [ "$RESPONSE" -eq 401 ]; then
             echo "✅ Devices API OK (HTTP $RESPONSE)"
           else
@@ -54,7 +54,7 @@ jobs:
 
       - name: Test Stats API
         run: |
-          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" https://jpbirrestructured.vercel.app/api/jp-stats)
+          RESPONSE=$(curl -sL -o /dev/null -w "%{http_code}" https://jaytipargal.tech/api/jp-stats)
           if [ "$RESPONSE" -eq 200 ] || [ "$RESPONSE" -eq 401 ]; then
             echo "✅ Stats API OK (HTTP $RESPONSE)"
           else
@@ -64,7 +64,7 @@ jobs:
       
       - name: Test Database Verification
         run: |
-          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" https://jpbirrestructured.vercel.app/api/verify-db)
+          RESPONSE=$(curl -sL -o /dev/null -w "%{http_code}" https://jaytipargal.tech/api/verify-db)
           if [ "$RESPONSE" -eq 200 ] || [ "$RESPONSE" -eq 401 ]; then
             echo "✅ Database Verification OK (HTTP $RESPONSE)"
           else
