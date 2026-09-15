@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="robots" content="noindex, nofollow" />
+<title>JTEKA — Fleet Status</title>
+<style>
+  :root{
+    --bg:#0e1116; --panel:#161b22; --panel2:#1c2230; --ink:#e7ecf3; --soft:#9aa7b6;
+    --border:#2a3342; --accent:#5b8cff; --ok:#2ea56b; --okbg:#123021;
+    --warn:#c98a2b; --warnbg:#2e2411; --off:#8a3b3b; --offbg:#2c1616;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    --sans:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);line-height:1.5}
+  .wrap{max-width:1100px;margin:0 auto;padding:28px 18px 64px}
+  header{display:flex;flex-wrap:wrap;align-items:baseline;gap:12px 16px;border-bottom:1px solid var(--border);padding-bottom:16px}
+  h1{font-size:22px;margin:0;letter-spacing:.02em}
+  h1 b{color:var(--accent)}
+  .tag{font-family:var(--mono);font-size:11px;color:var(--soft);border:1px solid var(--border);border-radius:20px;padding:2px 9px}
+  .meta{margin-left:auto;display:flex;gap:14px;align-items:center;color:var(--soft);font-size:13px}
+  button{font:inherit;cursor:pointer;background:var(--panel2);color:var(--ink);border:1px solid var(--border);border-radius:8px;padding:7px 12px}
+  button:hover{border-color:var(--accent)}
+  button:disabled{opacity:.5;cursor:default}
+  a.link{color:var(--soft);font-size:12px;text-decoration:none;border-bottom:1px dotted var(--border)}
+  .note{color:var(--soft);font-size:13px;margin:14px 0 0}
+
+  .gate{max-width:420px;margin:60px auto;background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:24px}
+  .gate h2{margin:0 0 6px;font-size:16px}
+  .gate p{color:var(--soft);font-size:13px;margin:0 0 16px}
+  .gate input{width:100%;padding:10px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--ink);font-family:var(--mono)}
+  .gate .row{display:flex;gap:10px;margin-top:14px}
+  .err{color:#ff8f8f;font-size:13px;margin-top:10px;min-height:1em}
+
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px;margin-top:20px}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:16px}
+  .card .top{display:flex;align-items:center;gap:10px;justify-content:space-between}
+  .name{font-weight:600;font-size:15px;word-break:break-word}
+  .badges{display:flex;gap:6px;flex:none}
+  .b{font-size:11px;font-weight:600;padding:2px 8px;border-radius:20px;border:1px solid transparent;white-space:nowrap}
+  .b.live{color:#6fe0a6;background:var(--okbg);border-color:#1f5b3d}
+  .b.stale{color:#f0c07a;background:var(--warnbg);border-color:#5a4415}
+  .b.off{color:#f0a0a0;background:var(--offbg);border-color:#5a2a2a}
+  .seen{color:var(--soft);font-size:13px;margin-top:8px}
+  .kv{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;margin-top:12px;font-size:12.5px}
+  .kv dt{color:var(--soft)}
+  .kv dd{margin:0;font-family:var(--mono);word-break:break-word}
+  .reason{color:var(--soft);font-size:11.5px;margin-top:10px;font-style:italic}
+  @media(max-width:520px){.meta{margin-left:0;width:100%}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1><b>JTEKA</b> — Fleet Status</h1>
+    <span class="tag">status only</span>
+    <div class="meta" id="meta" hidden>
+      <span id="count"></span>
+      <span id="gen"></span>
+      <button id="refresh" type="button">Refresh</button>
+    </div>
+  </header>
+
+  <section id="gate" class="gate" hidden>
+    <h2>Enter dashboard key</h2>
+    <p>This panel reads device fleet status from <code>/api/jp-devices</code>. It uses the same key as the main dashboard.</p>
+    <input id="key" type="password" placeholder="dashboard key" autocomplete="off" />
+    <div class="row"><button id="unlock" type="button">Unlock</button></div>
+    <div class="err" id="gateErr"></div>
+  </section>
+
+  <p class="note" id="loading" hidden>Loading fleet status…</p>
+  <div class="grid" id="grid" hidden></div>
+  <p class="note" id="footErr" hidden></p>
+  <p class="note" id="changeWrap" hidden><a class="link" href="#" id="change">Change key</a> · JTEKA fleet status · device liveness, battery &amp; check-in only — no message, media, call or contact data.</p>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  var KEY_STORE = "jbt_site";
+  var ENDPOINT  = "/api/jp-devices";
+  var el = function(id){ return document.getElementById(id); };
+
+  function getKey(){ try { return sessionStorage.getItem(KEY_STORE) || ""; } catch(e){ return ""; } }
+  function setKey(v){ try { sessionStorage.setItem(KEY_STORE, v); } catch(e){} }
+  function clearKey(){ try { sessionStorage.removeItem(KEY_STORE); } catch(e){} }
+
+  function rel(sec){
+    if (sec === null || sec === undefined || !isFinite(sec)) return "unknown";
+    sec = Math.max(0, Math.round(sec));
+    if (sec < 60) return sec + "s ago";
+    var m = Math.floor(sec/60); if (m < 60) return m + "m ago";
+    var h = Math.floor(m/60); if (h < 24) return h + "h " + (m%60) + "m ago";
+    var d = Math.floor(h/24); return d + "d " + (h%24) + "h ago";
+  }
+  function esc(s){ return String(s == null ? "" : s).replace(/[&<>"]/g, function(c){
+    return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c]; }); }
+
+  function showGate(msg){
+    el("gate").hidden = false; el("meta").hidden = true; el("grid").hidden = true;
+    el("loading").hidden = true; el("changeWrap").hidden = true;
+    el("gateErr").textContent = msg || "";
+    el("key").focus();
+  }
+
+  function batteryLabel(d){
+    var n = d.network || {};
+    if (typeof n.batteryCharging === "boolean") return n.batteryCharging ? "charging" : "on battery";
+    return null;
+  }
+
+  function card(d){
+    var liveClass = d.live ? "live" : (d.online ? "stale" : "off");
+    var liveText  = d.live ? "LIVE" : (d.online ? "REPORTED" : "OFFLINE");
+    var rows = [];
+    function row(k,v){ if (v !== null && v !== undefined && v !== "") rows.push("<dt>"+esc(k)+"</dt><dd>"+esc(v)+"</dd>"); }
+    row("model", d.model || d.deviceType);
+    row("type", d.deviceType);
+    row("connection", d.connectionMethod);
+    row("battery", batteryLabel(d));
+    row("agent", d.agentVersion);
+    row("source", d.sourceType);
+    var q = (d.commandQueuePendingDepth != null ? d.commandQueuePendingDepth : 0) + " pending / " + (d.commandQueueDepth != null ? d.commandQueueDepth : 0) + " total";
+    row("queue", q);
+    var reason = d.liveness && d.liveness.reason ? d.liveness.reason : "";
+    return '<div class="card">'
+      + '<div class="top"><span class="name">'+esc(d.deviceDisplayName || d.deviceId)+'</span>'
+      + '<span class="badges"><span class="b '+liveClass+'">'+liveText+'</span></span></div>'
+      + '<div class="seen">last check-in: '+esc(rel(d.lastSeenAgeSeconds))+'</div>'
+      + '<dl class="kv">'+rows.join("")+'</dl>'
+      + (reason ? '<div class="reason">'+esc(reason)+'</div>' : '')
+      + '</div>';
+  }
+
+  function render(data){
+    var devices = (data && data.devices) || [];
+    el("gate").hidden = true; el("loading").hidden = true;
+    el("meta").hidden = false; el("changeWrap").hidden = false;
+    el("count").textContent = devices.length + " device" + (devices.length===1?"":"s");
+    el("gen").textContent = data.generated_at ? ("as of " + new Date(data.generated_at).toLocaleTimeString()) : "";
+    var grid = el("grid");
+    if (!devices.length){ grid.hidden = true; el("footErr").hidden = false; el("footErr").textContent = "No devices enrolled."; return; }
+    el("footErr").hidden = true;
+    grid.hidden = false;
+    grid.innerHTML = devices.map(card).join("");
+  }
+
+  var busy = false;
+  function load(){
+    var key = getKey();
+    if (!key){ showGate(""); return; }
+    if (busy) return; busy = true;
+    el("loading").hidden = false; el("footErr").hidden = true;
+    el("refresh").disabled = true;
+    fetch(ENDPOINT, { headers: { "x-stats-key": key }, cache: "no-store" })
+      .then(function(r){
+        if (r.status === 401 || r.status === 403){ clearKey(); showGate("That key was rejected. Try again."); return null; }
+        if (!r.ok) return r.text().then(function(t){ throw new Error("HTTP " + r.status + " " + t.slice(0,140)); });
+        return r.json();
+      })
+      .then(function(j){ if (j){ if (j.success === false) throw new Error(j.error || "request failed"); render(j); } })
+      .catch(function(e){
+        el("loading").hidden = true; el("meta").hidden = false; el("changeWrap").hidden = false;
+        el("footErr").hidden = false; el("footErr").textContent = "Could not load fleet status: " + e.message;
+      })
+      .then(function(){ busy = false; el("refresh").disabled = false; });
+  }
+
+  el("unlock").addEventListener("click", function(){
+    var v = el("key").value.trim();
+    if (!v){ el("gateErr").textContent = "Enter the key."; return; }
+    setKey(v); el("key").value = ""; load();
+  });
+  el("key").addEventListener("keydown", function(e){ if (e.key === "Enter") el("unlock").click(); });
+  el("refresh").addEventListener("click", load);
+  el("change").addEventListener("click", function(e){ e.preventDefault(); clearKey(); showGate(""); });
+
+  setInterval(function(){ if (getKey() && !document.hidden) load(); }, 30000);
+
+  load();
+})();
+</script>
+</body>
+</html>

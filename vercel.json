@@ -184,6 +184,10 @@
       "dest": "/Frontend/vivobook.html"
     },
     {
+      "src": "/jteka",
+      "dest": "/Frontend/jteka.html"
+    },
+    {
       "src": "/(.*)",
       "dest": "/Frontend/$1"
     }
