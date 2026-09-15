@@ -1,192 +1,112 @@
 {
-  "version": 2,
-  "builds": [
+  "framework": null,
+  "outputDirectory": ".",
+  "cleanUrls": true,
+  "functions": {
+    "api/track.js": {
+      "includeFiles": "Database/data/**"
+    }
+  },
+  "headers": [
     {
-      "src": "Backend/broker-command-claim.js",
-      "use": "@vercel/node"
+      "source": "/assets/(.*).(mp4|webm|jpg|jpeg|png|webp)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=31536000, immutable"
+        }
+      ]
     },
     {
-      "src": "Backend/broker-command-complete.js",
-      "use": "@vercel/node"
-    },
-    {
-      "src": "Backend/check-stale.js",
-      "use": "@vercel/node"
-    },
-    {
-      "src": "Backend/connect.js",
-      "use": "@vercel/node"
-    },
-    {
-      "src": "Backend/device-commands-poll.js",
-      "use": "@vercel/node"
-    },
-    {
-      "src": "Backend/device-enroll.js",
-      "use": "@vercel/node"
-    },
-    {
-      "src": "Backend/device-heartbeat.js",
-      "use": "@vercel/node"
-    },
-    {
-      "src": "Backend/jp-agent.js",
-      "use": "@vercel/node"
-    },
-    {
-      "src": "Backend/s24-command.js",
-      "use": "@vercel/node"
-    },
-    {
-      "src": "Backend/jp-debug.js",
-      "use": "@vercel/node"
-    },
-    {
-      "src": "Backend/jp-device.js",
-      "use": "@vercel/node"
-    },
-    {
-      "src": "Backend/jp-devices.js",
-      "use": "@vercel/node"
-    },
-    {
-      "src": "Backend/jp-live-agent.js",
-      "use": "@vercel/node"
-    },
-    {
-      "src": "Backend/jp-live-content.js",
-      "use": "@vercel/node"
-    },
-    {
-      "src": "Backend/jp-stats.js",
-      "use": "@vercel/node"
-    },
-    {
-      "src": "Backend/jp-track.js",
-      "use": "@vercel/node"
-    },
-    {
-      "src": "Backend/jp-visitor.js",
-      "use": "@vercel/node"
-    },
-    {
-      "src": "Backend/stats.js",
-      "use": "@vercel/node"
-    },
-    {
-      "src": "Backend/visitor.js",
-      "use": "@vercel/node"
-    },
-    {
-      "src": "Backend/verify-db.js",
-      "use": "@vercel/node"
-    },
-    {
-      "src": "Frontend/**",
-      "use": "@vercel/static"
-    },
-    {
-      "src": "Backend/vercel-analytics.js",
-      "use": "@vercel/node"
-    },
-    {
-      "src": "Backend/agent-run.js",
-      "use": "@vercel/node"
-    },
-    {
-      "src": "Backend/db-push.js",
-      "use": "@vercel/node"
-    },
-    {
-      "src": "Backend/db-api.js",
-      "use": "@vercel/node"
-    },
-    {
-      "src": "Backend/jp-whatsapp.js",
-      "use": "@vercel/node"
-    },
-    {
-      "src": "Backend/jp-wa-chat.js",
-      "use": "@vercel/node"
-    },
-    {
-      "src": "Backend/wa-galaxy.js",
-      "use": "@vercel/node"
-    },
-    {
-      "src": "Backend/wa-chat.js",
-      "use": "@vercel/node"
-    },
-    {
-      "src": "Backend/wa-ingest.js",
-      "use": "@vercel/node"
-    },
-    {
-      "src": "Backend/s24-ingest.js",
-      "use": "@vercel/node"
-    },
-    {
-      "src": "Backend/wa-blob-upload.js",
-      "use": "@vercel/node"
-    },
-    {
-      "src": "Backend/jp-wa-attachments.js",
-      "use": "@vercel/node"
-    },
-    {
-      "src": "Backend/jp-wa-messages.js",
-      "use": "@vercel/node"
+      "source": "/assets/js/jaytibirthday-analytics.js",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=0, must-revalidate"
+        }
+      ]
     }
   ],
-  "routes": [
+  "rewrites": [
     {
-      "src": "/api/agent-run",
-      "dest": "Backend/agent-run.js"
+      "source": "/api/db-admin",
+      "destination": "/api/db-admin.js"
     },
     {
-      "src": "/api/vercel-analytics",
-      "dest": "Backend/vercel-analytics.js"
+      "source": "/api/galaxy",
+      "destination": "/api/galaxy.js"
     },
     {
-      "src": "/api/device-command-claim",
-      "dest": "Backend/broker-command-claim.js"
+      "source": "/api/wa-ingest",
+      "destination": "/api/wa-ingest.js"
     },
     {
-      "src": "/api/device-command-claim/(?<commandId>[^/]+)",
-      "dest": "Backend/broker-command-claim.js?commandId=$commandId"
+      "source": "/api/story-unlock",
+      "destination": "/api/story-unlock.js"
     },
     {
-      "src": "/api/device-command-complete",
-      "dest": "Backend/broker-command-complete.js"
+      "source": "/api/track",
+      "destination": "/api/track.js"
     },
     {
-      "src": "/api/device-command-complete/(?<commandId>[^/]+)",
-      "dest": "Backend/broker-command-complete.js?commandId=$commandId"
+      "source": "/api/video-event",
+      "destination": "/api/video-event.js"
     },
     {
-      "src": "/api/s24-command",
-      "dest": "Backend/s24-command.js"
+      "source": "/api/letter",
+      "destination": "/api/letter.js"
     },
     {
-      "src": "/api/(.*)(.js)?",
-      "dest": "Backend/$1.js"
+      "source": "/api/mcp-auth",
+      "destination": "/api/mcp-auth.js"
     },
     {
-      "src": "/db",
-      "dest": "/Frontend/db.html"
+      "source": "/api/mcp-connect",
+      "destination": "/api/mcp-connect.js"
     },
     {
-      "src": "/s24",
-      "dest": "/Frontend/s24.html"
+      "source": "/api/mcp-lookup",
+      "destination": "/api/mcp-lookup.js"
     },
     {
-      "src": "/vivobook",
-      "dest": "/Frontend/vivobook.html"
+      "source": "/api/mcp",
+      "destination": "/api/mcp.js"
     },
     {
-      "src": "/(.*)",
-      "dest": "/Frontend/$1"
+      "source": "/",
+      "destination": "/Frontend"
+    },
+    {
+      "source": "/letter",
+      "destination": "/Frontend/letter"
+    },
+    {
+      "source": "/chat-galaxy",
+      "destination": "/Frontend/chat-galaxy"
+    },
+    {
+      "source": "/jteka",
+      "destination": "/Frontend/jteka.html"
+    },
+    {
+      "source": "/cards_data.json",
+      "destination": "/Frontend/cards_data.json"
+    },
+    {
+      "source": "/cards_secret.json",
+      "destination": "/Frontend/cards_secret.json"
+    },
+    {
+      "source": "/robots.txt",
+      "destination": "/Frontend/robots.txt"
+    },
+    {
+      "source": "/sitemap.xml",
+      "destination": "/Frontend/sitemap.xml"
+    },
+    {
+      "source": "/assets/(.*)",
+      "destination": "/Frontend/assets/$1"
     }
-  ],
-  "outputDirectory": "Frontend"
+  ]
 }
