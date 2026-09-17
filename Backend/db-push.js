@@ -15,6 +15,7 @@ import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, ScanCommand } from '@aws-sdk/lib-dynamodb';
 import { STSClient, GetCallerIdentityCommand } from '@aws-sdk/client-sts';
 import { query, isConfigured } from '../Integrations/postgres.js';
+import { siteFor, insertEvent, rollupVisitors, rollupSessions } from './lib/warehouse.js';
 
 const _env = (typeof process !== 'undefined' ? process : globalThis['proc' + 'ess']).env;
 const AWS_ACCESS_KEY_ID = _env['JP_AWS_' + 'ACCESS_KEY_ID'];
@@ -33,91 +34,24 @@ function credsFor(which) {
 const AWS_REGION = _env['JP_AWS_' + 'REGION'] || 'us-west-2';
 const TABLE = _env['JP_TELEMETRY_' + 'TABLE'] || 'jaytipargal_telemetry';
 
-const SITE = 'jaytipargal.com';
+// Last resort only. Rows written before jp-track started stamping a site
+// carry no page URL either, and 'jaytipargal.com' is the property this table
+// collected for, so that is what they stay. Everything else derives its own.
+const FALLBACK_SITE = 'jaytipargal.com';
 
-const iso = (v) => {
-  if (!v) return null;
-  const d = typeof v === 'number' ? new Date(v) : new Date(String(v));
-  return Number.isNaN(d.getTime()) ? null : d.toISOString();
-};
-const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
-const str = (v) => (v == null ? null : String(v));
-
+// One row, one definition. Backend/lib/warehouse.js owns the INSERT and the
+// rollups so this bulk re-import and jp-track's live mirror cannot disagree
+// about the row id, the site, or what a visitor's event_count means.
 async function insertItem(it) {
-  const at = iso(it.timestamp || it.epoch);
-  if (!at) return false;
-  await query(
-    `INSERT INTO events (
-       id, site, event_type, occurred_at, epoch_ms, session_id, visitor_id,
-       page_url, page_title, referrer, ip, country, region, city, latitude,
-       longitude, timezone, postal_code, user_agent, language, screen,
-       device_type, browser, os, network, time_on_page, scroll_percent,
-       fingerprint, event_data, raw_payload, source_system)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,
-             $19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31)
-     ON CONFLICT (id) DO NOTHING`,
-    [
-      `${SITE}:${it.id}`, SITE, it.eventType || 'event', at,
-      Number.isFinite(it.epoch) ? it.epoch : Date.parse(at),
-      str(it.sessionId), str(it.visitorId), str(it.pageUrl), str(it.pageTitle),
-      str(it.referrer), str(it.ip), str(it.country), str(it.region), str(it.city),
-      str(it.latitude), str(it.longitude), str(it.timezone), str(it.postalCode),
-      str(it.userAgent), str(it.language),
-      typeof it.screen === 'string' ? it.screen : it.screen ? JSON.stringify(it.screen) : null,
-      str(it.deviceType), str(it.browser), str(it.os),
-      it.network ? JSON.stringify(it.network) : null,
-      num(it.timeOnPage), num(it.scrollPercent), str(it.fingerprint),
-      JSON.stringify(it.eventData || {}), JSON.stringify(it), 'dynamodb',
-    ]
-  );
-  return true;
+  const site = it.site || siteFor(it.pageUrl, null) || FALLBACK_SITE;
+  return insertEvent(it, { site, sourceSystem: 'dynamodb' });
 }
 
-// visitors/sessions are rollups. COUNT(DISTINCT ...) is not allowed as a
-// window function in Postgres, so the aggregate is a plain GROUP BY and the
-// "last known" attributes come from a LATERAL pick of the newest row.
+// visitors/sessions are rollups over `events`, recomputed rather than
+// incremented. Scoped to nothing here, so this rebuilds every key.
 async function rebuildRollups() {
-  await query(`
-    INSERT INTO visitors (visitor_id, site, first_seen_at, last_seen_at, event_count,
-                          session_count, country, region, city, timezone, user_agent,
-                          device_type, browser, os, fingerprint)
-    SELECT a.visitor_id, a.site, a.first_seen_at, a.last_seen_at, a.event_count,
-           a.session_count, l.country, l.region, l.city, l.timezone, l.user_agent,
-           l.device_type, l.browser, l.os, l.fingerprint
-      FROM (
-        SELECT site, visitor_id,
-               MIN(occurred_at) AS first_seen_at,
-               MAX(occurred_at) AS last_seen_at,
-               COUNT(*)::int    AS event_count,
-               COUNT(DISTINCT session_id)::int AS session_count
-          FROM events WHERE visitor_id IS NOT NULL
-         GROUP BY site, visitor_id
-      ) a
-      JOIN LATERAL (
-        SELECT country, region, city, timezone, user_agent, device_type,
-               browser, os, fingerprint
-          FROM events e
-         WHERE e.site = a.site AND e.visitor_id = a.visitor_id
-         ORDER BY e.occurred_at DESC LIMIT 1
-      ) l ON true
-    ON CONFLICT (site, visitor_id) DO UPDATE SET
-      first_seen_at = LEAST(visitors.first_seen_at, EXCLUDED.first_seen_at),
-      last_seen_at  = GREATEST(visitors.last_seen_at, EXCLUDED.last_seen_at),
-      event_count   = EXCLUDED.event_count,
-      session_count = EXCLUDED.session_count`);
-
-  await query(`
-    INSERT INTO sessions (session_id, site, visitor_id, started_at, last_event_at,
-                          event_count, entry_page, exit_page)
-    SELECT session_id, site, MIN(visitor_id), MIN(occurred_at), MAX(occurred_at), COUNT(*),
-           (ARRAY_AGG(page_url ORDER BY occurred_at ASC))[1],
-           (ARRAY_AGG(page_url ORDER BY occurred_at DESC))[1]
-      FROM events WHERE session_id IS NOT NULL
-     GROUP BY site, session_id
-    ON CONFLICT (site, session_id) DO UPDATE SET
-      last_event_at = GREATEST(sessions.last_event_at, EXCLUDED.last_event_at),
-      event_count   = EXCLUDED.event_count,
-      exit_page     = EXCLUDED.exit_page`);
+  await rollupVisitors();
+  await rollupSessions();
 }
 
 export default async function handler(req, res) {
@@ -210,7 +144,12 @@ export default async function handler(req, res) {
       const done = !key;
       if (done) await rebuildRollups();
 
-      const total = (await query("SELECT COUNT(*)::int n FROM events WHERE site = $1", [SITE])).rows[0].n;
+      // Was a single count for the hardcoded site. Rows now carry whichever
+      // property their page URL names, so one number would hide the split.
+      const totals = (await query(
+        `SELECT site, COUNT(*)::int n FROM events WHERE source_system = 'dynamodb'
+          GROUP BY site ORDER BY n DESC`
+      )).rows;
 
       return res.status(200).json({
         ok: true,
@@ -218,7 +157,7 @@ export default async function handler(req, res) {
         region: AWS_REGION,
         scannedThisCall: scanned,
         insertedThisCall: inserted,
-        totalForSite: total,
+        totalsBySite: totals,
         done,
         nextKey: key ? JSON.stringify(key) : null,
       });
