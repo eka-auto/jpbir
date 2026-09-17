@@ -16,6 +16,7 @@ import { DynamoDBDocumentClient, ScanCommand } from '@aws-sdk/lib-dynamodb';
 import { STSClient, GetCallerIdentityCommand } from '@aws-sdk/client-sts';
 import { query, isConfigured } from '../Integrations/postgres.js';
 import { siteFor, insertEvent, rollupVisitors, rollupSessions } from './lib/warehouse.js';
+import { cronAuthorized, secretEquals } from './lib/cron-auth.js';
 
 const _env = (typeof process !== 'undefined' ? process : globalThis['proc' + 'ess']).env;
 const AWS_ACCESS_KEY_ID = _env['JP_AWS_' + 'ACCESS_KEY_ID'];
@@ -57,10 +58,21 @@ async function rebuildRollups() {
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
 
+  // Either credential gets in, nothing else does: the admin key a human
+  // presents, or the CRON_SECRET bearer Vercel sends on a scheduled run.
+  //
+  // The schedule is the point. This migration shipped as something someone had
+  // to remember to trigger, nothing triggered it, and the warehouse drifted
+  // behind DynamoDB from 2026-09-13 until a person went looking. jp-track now
+  // mirrors straight into Postgres, but that mirror is deliberately non-fatal —
+  // a Postgres outage leaves the row in DynamoDB and nowhere else. A nightly
+  // run turns that journal into a repair path instead of a silent loss.
   const expected = process.env.DB_ADMIN_KEY;
   const given = req.headers['x-db-admin-key'] || '';
-  // 404 rather than 401, so the route is not discoverable without the key.
-  if (!expected || given !== expected) return res.status(404).json({ error: 'not found' });
+  // 404 rather than 401, so the route is not discoverable without a credential.
+  if (!cronAuthorized(req) && !secretEquals(given, expected)) {
+    return res.status(404).json({ error: 'not found' });
+  }
 
   if (!isConfigured()) {
     return res.status(500).json({ ok: false, error: 'DATABASE_URL not set on this deployment' });
