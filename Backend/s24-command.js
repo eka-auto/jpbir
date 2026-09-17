@@ -11,6 +11,7 @@ export const ALLOWED_ACTIONS = new Set([
   'wakeup',
   'status-only',
   'wa-push',
+  'wa-media-push',
 ]);
 
 function timingSafeEqualText(actual, expected) {
