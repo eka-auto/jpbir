@@ -10,7 +10,7 @@ LOG_PATH="$INSTALL_ROOT/logs/$DEVICE_ID.log"
 BOOT_DIR="$HOME/.termux/boot"
 BOOT_PATH="$BOOT_DIR/start_eka_s24_broker.sh"
 JOB_ID='240619'
-PINNED_COMMIT='183e600d0acd7e6171e35be904c657e7fe967384'
+PINNED_COMMIT='f003fc6f993e43fc3218edd1412de7dab9633f58'
 KIT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
 fail() {
@@ -51,7 +51,7 @@ install_verified() {
   mv -f "$temporary" "$destination"
 }
 
-install_verified 'device_agent.py' '70a74469a2e004f671897b30f85a8759f684aca4ce1f5860bf39c7e12396d2f7'
+install_verified 'device_agent.py' 'be75c4d8e8817bb45b8dff32ad5d1c642db7808ea1ee4a89c7b0dcf058b9296b'
 install_verified 'broker_client.py' 'e380867c5843e49c21d7e46704db20607389a9f1faad4b3cf61f9b4eab173bb1'
 install_verified 'signer.py' '8aabf8e5fff25a067b02901ef4798d061a9c2b3d5844d72e59db1419112632f7'
 install_verified 'single_instance.py' '287fe1c114488e847f0252c89170067e6fe5b33650780c72e8a8f00f7b63843a'
@@ -82,7 +82,7 @@ cat >"$INSTALL_ROOT/devices.json" <<EOF
       "type": "phone"
     }
   ],
-  "allowed_commands": ["status-only", "ping", "echo", "wa-push", "sync-now"]
+  "allowed_commands": ["status-only", "ping", "echo", "wa-push", "wa-media-push", "sync-now"]
 }
 EOF
 
