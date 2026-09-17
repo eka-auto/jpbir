@@ -69,6 +69,42 @@ export function siteFor(pageUrl, fallback) {
   return null;
 }
 
+// The two trackers feeding this table name the same event differently:
+// jaytibirthday-site sends `page_view` (347 rows and counting), jp-tracker.js
+// sends `pageview`. db-api's Overview counts the first spelling for its Page
+// views card, so a .tech property reported 0 page views while its own pageview
+// rows sat in the table. Folded in at ingestion rather than taught to every
+// reader — and to the noise filter, and to anything written later.
+const EVENT_TYPE_ALIASES = { pageview: 'page_view' };
+
+const normaliseEventType = (type) => {
+  const name = type || 'event';
+  return EVENT_TYPE_ALIASES[name] || name;
+};
+
+// `screen` is read as JSON: db-api digs out width/height with ->>. jaytibirthday's
+// tracker stores screen_info JSON, jp-tracker sends the string "1280x720 (DPR:1.5)",
+// and ONE such row used to abort the Overview query for the whole property —
+// Postgres fails the statement, so a stray value cost every card on the page,
+// not one label on the Screens card. Parse it into the dialect the column
+// already speaks, keeping the original under `raw`.
+function normaliseScreen(screen) {
+  if (screen == null || screen === '') return null;
+  if (typeof screen === 'object') return JSON.stringify(screen);
+
+  const text = String(screen);
+  if (/^\s*\{/.test(text)) return text;
+
+  const m = /^(\d+)\s*x\s*(\d+)(?:\s*\(DPR:\s*([\d.]+)\))?/i.exec(text);
+  if (!m) return text;
+  return JSON.stringify({
+    width: Number(m[1]),
+    height: Number(m[2]),
+    ...(m[3] ? { dpr: Number(m[3]) } : {}),
+    raw: text,
+  });
+}
+
 function campaignOf(pageUrl) {
   try {
     const p = new URL(pageUrl).searchParams;
@@ -110,13 +146,13 @@ export async function insertEvent(item, { site, sourceSystem, db = query }) {
              $19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35)
      ON CONFLICT (id) DO NOTHING`,
     [
-      `${site}:${item.id}`, site, item.eventType || 'event', at,
+      `${site}:${item.id}`, site, normaliseEventType(item.eventType), at,
       Number.isFinite(item.epoch) ? item.epoch : Date.parse(at),
       str(item.sessionId), str(item.visitorId), pageUrl, str(item.pageTitle),
       str(item.referrer), str(item.ip), str(item.country), str(item.region), str(item.city),
       str(item.latitude), str(item.longitude), str(item.timezone), str(item.postalCode),
       str(item.userAgent), str(item.language),
-      typeof item.screen === 'string' ? item.screen : item.screen ? JSON.stringify(item.screen) : null,
+      normaliseScreen(item.screen),
       str(item.deviceType), str(item.browser), str(item.os),
       item.network ? JSON.stringify(item.network) : null,
       num(item.timeOnPage), num(item.scrollPercent), str(item.fingerprint),
