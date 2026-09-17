@@ -21,3 +21,22 @@ assert.equal(isAuthorized(request({ authorization: `Bearer ${validToken}x` }), v
 assert.equal(isAuthorized(request({}), validToken), false);
 
 console.log('s24-command contract tests passed');
+
+// ── allowlist is a pinned contract ──────────────────────────────────────
+// The remote command allowlist is the S24's blast radius. PR #32 once
+// silently reverted auth on nearby WhatsApp routes with every check green, so
+// pin the exact set: a new action can't slip in, and an approved one (e.g.
+// wa-media-push, which maps to one fixed on-device wrapper) can't be dropped,
+// without this test failing. Keep it in lockstep with device_agent.py's
+// handle_command and Devices/S24/runtime_contract.json.
+assert.deepEqual(
+  [...ALLOWED_ACTIONS].sort(),
+  ['heartbeat', 'status-only', 'sync-now', 'wa-media-push', 'wa-push', 'wakeup'],
+  'ALLOWED_ACTIONS drifted — update device_agent.py + runtime_contract.json + this pin together',
+);
+// Extraction/destruction actions must never be remotely triggerable here.
+for (const forbidden of ['start-ssh', 'update-and-restart', 'run-shell', 'wipe', 'reset', 'location', 'network-scan']) {
+  assert.equal(ALLOWED_ACTIONS.has(forbidden), false, `${forbidden} must not be allowlisted`);
+}
+
+console.log('s24-command allowlist pin tests passed');
