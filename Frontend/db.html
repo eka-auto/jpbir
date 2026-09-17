@@ -178,6 +178,7 @@
       <section class="page" id="page-video"></section>
       <section class="page" id="page-devices"></section>
       <section class="page" id="page-s24"></section>
+      <section class="page" id="page-whatsapp"></section>
       <section class="page" id="page-letters"></section>
       <section class="page" id="page-emails"></section>
       <section class="page" id="page-health"></section>
@@ -215,7 +216,7 @@
     sessionStorage.removeItem('s24DashboardKey');
   }
   var state = { site: 'jaytibirthday.in', days: 30, noise: false, page: 'overview',
-                offsets: { visitors: 0, sessions: 0, events: 0, video: 0, emails: 0, s24: 0 },
+                offsets: { visitors: 0, sessions: 0, events: 0, video: 0, emails: 0, s24: 0, whatsapp: 0 },
                 type: '', s24Dataset: '', s24Section: 'overview',
                 s24Key: storedDashboardKey, counts: {} };
 
@@ -229,6 +230,7 @@
     ['video',     'Video',     'video_events'],
     ['devices',   'Devices',   'devices'],
     ['s24',       'S24 archive', 's24_records'],
+    ['whatsapp',  'WhatsApp',  'wa_chats'],
     ['letters',   'Letters',   'letters'],
     ['emails',    'Email opens', 'email_opens'],
     ['health',    'Health',    null]
@@ -988,6 +990,89 @@
     });
   };
 
+  RENDER.whatsapp = function () {
+    return get('whatsapp', { limit: 100, offset: state.offsets.whatsapp }).then(function (d) {
+      var t = d.totals || {};
+      var el = $('page-whatsapp');
+      el.innerHTML =
+        '<div class="grid kpis" style="margin-bottom:12px">' +
+          kpi('chats', num(t.chats), t.unresolved ? num(t.unresolved) + ' with no saved contact' : 'threads') +
+          kpi('messages', num(t.messages), t.oldest ? when(t.oldest).split(',')[0] + ' → ' + when(t.newest).split(',')[0] : 'rows') +
+          kpi('attachments', num(t.attachments), 'media rows') +
+          kpi('sync runs', num(t.runs), 'pushes recorded') +
+        '</div>' +
+        '<div class="grid cards-2" style="margin-bottom:12px">' +
+          card('Chats by kind', barList(d.byKind, 'label', 'n', { sub: 'messages' }), 'groups vs direct', true) +
+          card('Recent syncs', table([
+            { label: 'Started', render: function (r) { return when(r.started_at); } },
+            // wa_sync_runs has its own two-value vocabulary (running | done);
+            // s24Status() maps the device pipeline's words and knows neither.
+            { label: 'Status', render: function (r) {
+                var cls = r.status === 'done' ? 'ok' : r.status === 'running' ? 'warn' : 'mute';
+                return '<span class="pill ' + cls + '">' + esc(r.status || '—') + '</span>';
+              } },
+            { label: 'Chats', key: 'chats_seen', num: true },
+            { label: 'Messages', key: 'messages_seen', num: true },
+            { label: 'Device', render: function (r) { return '<span class="mono">' + esc(r.device_id || '—') + '</span>'; } }
+          ], d.runs), null, true) +
+        '</div>' +
+        '<div class="card">' +
+          '<h3>Chats<span class="tag">' + num(d.total) + ' total · every property</span></h3>' +
+          '<div class="body flush">' + table([
+            { label: 'Chat', render: function (r) { return esc(r.name || '(unnamed)') + (r.unresolved ? ' <span class="pill warn">unsaved</span>' : ''); } },
+            { label: 'Kind', render: function (r) { return '<span class="pill info">' + esc(r.kind) + '</span>'; } },
+            { label: 'Messages', key: 'msg_count', num: true },
+            // Sealed bodies are the single most misread number here: a chat can
+            // show 4,000 messages and no readable text at all.
+            { label: 'Sealed', render: function (r) { return r.enc_count ? '<span class="mono">' + num(r.enc_count) + '</span>' : '—'; }, num: true },
+            { label: 'Media', key: 'media_count', num: true },
+            { label: 'Audio', key: 'audio_count', num: true },
+            { label: 'Calls', key: 'call_count', num: true },
+            { label: 'Members', render: function (r) { return r.member_count == null ? '—' : num(r.member_count); }, num: true },
+            { label: 'Last', render: function (r) { return r.last_at ? when(r.last_at).split(',')[0] : '—'; } }
+          ], d.rows, { onRow: true }) + '</div>' +
+          pager('whatsapp', d) +
+        '</div>' +
+        '<div style="color:var(--ink-faint);font-size:11.5px;padding:10px 2px 0">' +
+          'wa_chats / wa_messages / wa_attachments carry no <span class="mono">site</span> column — one phone\'s export is not a ' +
+          'property\'s traffic — so this page ignores the property selector, the same way Devices and the S24 archive do.' +
+        '</div>';
+
+      wireRows(el, d.rows, function (row) {
+        get('whatsapp', { id: row.chat_id }).then(function (det) {
+          var sub = function (text) {
+            return '<h3 style="font-size:11px;letter-spacing:.7px;text-transform:uppercase;color:var(--ink-dim);margin:14px 0 7px">' + esc(text) + '</h3>';
+          };
+          openDrawer(row.name || row.chat_id,
+            kvList(det.chat || row, ['raw']) +
+            sub('Messages by kind') +
+            barList(det.byKind, 'label', 'n') +
+            sub('Attachments (' + (det.attachments || []).length + ' kinds)') +
+            ((det.attachments || []).length
+              ? table([
+                  { label: 'Kind', render: function (r) { return '<span class="pill info">' + esc(r.label) + '</span>'; } },
+                  { label: 'Count', key: 'n', num: true },
+                  { label: 'Size', render: function (r) { return fileSize(r.bytes); }, num: true }
+                ], det.attachments)
+              : '<div class="empty">No media rows for this chat</div>') +
+            sub('Latest ' + num((det.messages || []).length) + ' messages') +
+            table([
+              { label: 'Sent', render: function (r) { return r.sent_at ? when(r.sent_at) : '—'; } },
+              { label: 'From', render: function (r) { return r.from_me ? '<span class="pill ok">me</span>' : esc(r.sender || '—'); } },
+              { label: 'Kind', render: function (r) { return esc(r.kind); } },
+              // An encrypted row has no body by definition; printing an empty
+              // cell there reads as a load failure rather than a sealed message.
+              { label: 'Body', render: function (r) {
+                  return r.encrypted
+                    ? '<span class="pill warn">sealed</span>'
+                    : '<span class="trunc" style="max-width:340px">' + esc(r.body || '—') + '</span>';
+                } }
+            ], det.messages));
+        }).catch(fail);
+      });
+    });
+  };
+
   RENDER.health = function () {
     return Promise.all([get('health'), get('sites')]).then(function (r) {
       var h = r[0], sites = r[1];
@@ -1139,7 +1224,7 @@
     }).catch(fail);
   }
 
-  function resetPaging() { state.offsets = { visitors: 0, sessions: 0, events: 0, video: 0, emails: 0, s24: 0 }; }
+  function resetPaging() { state.offsets = { visitors: 0, sessions: 0, events: 0, video: 0, emails: 0, s24: 0, whatsapp: 0 }; }
 
   $('siteSel').addEventListener('change', function () {
     state.site = this.value;
