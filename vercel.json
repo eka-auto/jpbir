@@ -144,16 +144,6 @@
   ],
   "routes": [
     {
-      "src": "/",
-      "has": [
-        {
-          "type": "host",
-          "value": "agent.jaytipargal.tech"
-        }
-      ],
-      "dest": "/Frontend/agent.html"
-    },
-    {
       "src": "/agent",
       "dest": "/Frontend/agent.html"
     },
