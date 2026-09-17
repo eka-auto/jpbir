@@ -970,6 +970,20 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
         return card;
     }
 
+    // Empty-window copy that distinguishes "quiet feed" from "broken feed":
+    // when nothing landed in the window, say so AND when the last item overall
+    // arrived, so a blank panel reads as "no new WhatsApp <kind> — latest was
+    // <date>" rather than an ambiguous "none". `newest` is an ISO string or
+    // null (never any data).
+    function emptyLine(kind, days, newest) {
+        var base = 'No new ' + kind + ' in the last ' + days + ' day(s).';
+        if (!newest) return base + ' Nothing has ever synced — check the S24 pusher.';
+        var d = new Date(newest);
+        var ago = Math.floor((Date.now() - d.getTime()) / 86400000);
+        return base + ' Latest ' + kind + ': ' + d.toLocaleString() +
+            (ago >= 1 ? ' (' + ago + ' day' + (ago === 1 ? '' : 's') + ' ago)' : '') + '.';
+    }
+
     async function refreshFirestoreContent() {
         var grid = $('firestoreMediaGrid');
         var msgList = $('firestoreMsgList');
@@ -986,14 +1000,14 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
                 grid.appendChild(renderAttachmentCard(a));
             });
             if (!(j.attachments || []).length) {
-                grid.innerHTML = '<div class="hint">no attachments in the last ' + (j.window_days || 7) + ' day(s)</div>';
+                grid.innerHTML = '<div class="hint">' + emptyLine('media', j.window_days || 7, j.newest_attachment_at) + '</div>';
             }
             mediaHead.textContent = (j.attachments || []).length + ' attachment(s) in the last ' + (j.window_days || 7) + ' day(s) · Postgres wa_attachments, blob bytes in Vercel Blob · replaces on every 10 s sync';
 
             msgList.innerHTML = '';
             var msgs = (j.messages || []).slice(0, 30);
             if (!msgs.length) {
-                msgList.innerHTML = '<div class="hint">no messages in the last ' + (j.window_days || 7) + ' day(s)</div>';
+                msgList.innerHTML = '<div class="hint">' + emptyLine('messages', j.window_days || 7, j.newest_message_at) + '</div>';
             } else {
                 var ul = document.createElement('div');
                 ul.style.cssText = 'display:flex;flex-direction:column;gap:6px;max-height:420px;overflow-y:auto;';

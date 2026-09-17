@@ -58,20 +58,39 @@ export default async function handler(req, res) {
     // Same window for messages. Attachments-only rows are already covered
     // above, so kind='image'|'video'|etc rows appearing here are OK — they
     // just also have body text.
+    //
+    // Drop content-less noise: an owner-side bulk import lands rows with no
+    // body, no timestamp and kind='other'/'system' (WhatsApp control events).
+    // They aren't "messages" a human would read, and without a filter they're
+    // the only thing that surfaces once the real chat traffic ages out — a
+    // panel full of blank rows reads as "broken", not "quiet". Keep a row only
+    // if it has body text OR is a real content/call kind.
+    const MEANINGFUL_KINDS = ['image', 'video', 'audio', 'ptt', 'document', 'media', 'call'];
     const msgs = await query(
       `SELECT msg_id, chat_id, sent_at, from_me, sender, kind, body, ingested_at
          FROM wa_messages
-        WHERE (sent_at IS NULL AND ingested_at >= $1::timestamptz)
-           OR sent_at >= $1::timestamptz
+        WHERE ((sent_at IS NULL AND ingested_at >= $1::timestamptz)
+           OR sent_at >= $1::timestamptz)
+          AND ((body IS NOT NULL AND body <> '') OR kind = ANY($3::text[]))
         ORDER BY sent_at DESC NULLS LAST, ingested_at DESC
         LIMIT $2`,
-      [cutoff, limit]
+      [cutoff, limit, MEANINGFUL_KINDS]
+    );
+
+    // Newest row overall (not window-bounded) so the UI can say "nothing new
+    // since <date>" instead of a bare "nothing", which can't be told apart
+    // from a broken feed. Cheap: both are single-row MAX over an indexed col.
+    const newestMsg = await query(`SELECT max(sent_at) AS ts FROM wa_messages`);
+    const newestAtt = await query(
+      `SELECT max(COALESCE(sent_at, ingested_at)) AS ts FROM wa_attachments`
     );
 
     return res.status(200).json({
       ok: true,
       generated_at: new Date().toISOString(),
       window_days: days,
+      newest_message_at: newestMsg.rows[0] ? newestMsg.rows[0].ts : null,
+      newest_attachment_at: newestAtt.rows[0] ? newestAtt.rows[0].ts : null,
       attachments: att.rows.map((a) => ({
         att_id: a.att_id,
         chat_id: a.chat_id,
