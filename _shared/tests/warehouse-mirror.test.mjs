@@ -87,6 +87,44 @@ for (const [pageUrl, fallback, want, why] of [
 }
 
 {
+  // Both trackers feed one table. jp-tracker says `pageview`, the warehouse's
+  // 347 existing rows and db-api's Page views card say `page_view`; the stray
+  // spelling made a property report 0 page views against its own pageviews.
+  const { db, calls } = recorder();
+  await insertEvent({ ...ITEM, eventType: 'pageview' }, { site: 'x.test', sourceSystem: 'site-api', db });
+  check('the pageview/page_view dialect is folded in at ingestion',
+    calls[0].params[2] === 'page_view', `event_type param was ${calls[0].params[2]}`);
+}
+
+{
+  const { db, calls } = recorder();
+  await insertEvent({ ...ITEM, eventType: 'device_probe' }, { site: 'x.test', sourceSystem: 'site-api', db });
+  check('an event type with no alias is left exactly as sent',
+    calls[0].params[2] === 'device_probe', `event_type param was ${calls[0].params[2]}`);
+}
+
+// `screen` is read back with ->>, so a non-JSON value does not cost one label:
+// Postgres aborts the statement, and Overview returns 500 with every card on it.
+for (const [input, want, why] of [
+  ['1280x720 (DPR:1.5)', { width: 1280, height: 720, dpr: 1.5, raw: '1280x720 (DPR:1.5)' }, 'jp-tracker\'s WxH string is parsed into the column\'s JSON dialect'],
+  ['1920x1080', { width: 1920, height: 1080, raw: '1920x1080' }, 'the DPR suffix is optional'],
+  ['{"width": 1280, "height": 720}', null, 'a value that is already JSON is passed through untouched'],
+]) {
+  const { db, calls } = recorder();
+  await insertEvent({ ...ITEM, screen: input }, { site: 'x.test', sourceSystem: 'site-api', db });
+  const got = calls[0].params[20];
+  const ok = want ? JSON.stringify(want) === got : got === input;
+  check(`screen: ${why}`, ok, `stored ${got}`);
+}
+
+{
+  const { db, calls } = recorder();
+  await insertEvent({ ...ITEM, screen: { width: 800, height: 600 } }, { site: 'x.test', sourceSystem: 'site-api', db });
+  check('screen: an object is serialised, as before',
+    calls[0].params[20] === '{"width":800,"height":600}', `stored ${calls[0].params[20]}`);
+}
+
+{
   const { db, calls } = recorder();
   const wrote = await insertEvent({ ...ITEM, timestamp: null, epoch: null }, { site: 'x.test', sourceSystem: 'site-api', db });
   check('an event with no usable timestamp is skipped without touching the database',
@@ -161,6 +199,20 @@ check('db-push no longer stamps every row with one hardcoded site',
 check('both feeds insert through the same module',
   /lib\/warehouse\.js/.test(pushSrc) && /lib\/warehouse\.js/.test(trackSrc),
   'one of the two feeds has its own copy of the INSERT');
+
+// The read side has to survive a value the write side never saw. Normalising
+// at ingestion fixes every future row; it cannot fix a row already in the
+// table, and one of those is enough to 500 the whole Overview view.
+const apiSrc = readFileSync(join(BACKEND, 'db-api.js'), 'utf8')
+  // Comments explain the guard and name the cast; counting them as casts makes
+  // the check fail on its own documentation.
+  .replace(/^\s*\/\/.*$/gm, ' ')
+  .replace(/\s+/g, ' ');
+const casts = (apiSrc.match(/screen::jsonb/g) || []).length;
+const guarded = (apiSrc.match(/CASE WHEN screen ~ [^ ]+ THEN screen::jsonb/g) || []).length;
+check('every screen::jsonb in db-api is behind a JSON-shape guard',
+  casts > 0 && casts === guarded,
+  `${casts} cast(s), ${guarded} guarded — an unguarded one aborts Overview for the whole property`);
 
 console.log(`\n${failures ? `${failures} check(s) failed` : 'all checks passed'}`);
 process.exitCode = failures ? 1 : 0;
