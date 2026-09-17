@@ -280,6 +280,16 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
 </script>
 <script defer src="/_vercel/insights/script.js"></script>
 <script defer src="/_vercel/speed-insights/script.js"></script>
+<!--
+  The first client this deployment has ever had for its own /api/jp-track.
+  jp-tracker.js was written to be embedded on jaytipargal.com and post here
+  cross-origin; no page served FROM jaytipargal.tech ever called it, which is
+  the last reason the warehouse held no rows for this domain even after the
+  ingest path started mirroring into Postgres. Same-origin, so sendBeacon
+  needs no preflight. Delete this one line to stop tracking the dashboard
+  itself; the mirror stays wired for every other client.
+-->
+<script defer src="/jp-tracker.js"></script>
 </head>
 <body>
 
