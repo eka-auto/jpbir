@@ -7,7 +7,7 @@
 # first run and the two values are filled in on the box, so no key ever passes
 # through a repo, a shell history, or an agent transcript:
 #
-#   ANTHROPIC_API_KEY   your Anthropic key
+#   ANTHROPIC_AUTH_TOKEN   your current Anthropic OAuth token
 #   JP_AGENT_TOKEN      generated on the droplet by this script if absent
 set -euo pipefail
 
@@ -18,7 +18,9 @@ SSH=(ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -i "$KEY" "root@$I
 echo "==> shipping service files"
 "${SSH[@]}" "install -d -o jpagent -g jpagent /opt/jp-agent"
 scp -o BatchMode=yes -o StrictHostKeyChecking=accept-new -i "$KEY" \
-  "$(dirname "$0")/server.mjs" "$(dirname "$0")/package.json" "root@$IP:/opt/jp-agent/"
+  "$(dirname "$0")/server.mjs" "$(dirname "$0")/s24-tools.mjs" \
+  "$(dirname "$0")/device-health.mjs" "$(dirname "$0")/sync-auth-token.py" \
+  "$(dirname "$0")/package.json" "root@$IP:/opt/jp-agent/"
 scp -o BatchMode=yes -o StrictHostKeyChecking=accept-new -i "$KEY" \
   "$(dirname "$0")/jp-agent.service" "root@$IP:/etc/systemd/system/jp-agent.service"
 scp -o BatchMode=yes -o StrictHostKeyChecking=accept-new -i "$KEY" \
@@ -31,6 +33,10 @@ chown -R jpagent:jpagent /opt/jp-agent
 echo "==> installing dependencies"
 cd /opt/jp-agent
 sudo -u jpagent npm install --omit=dev --no-audit --no-fund --silent
+# The privileged stdin receiver must not be writable by the agent service.
+chown root:root /opt/jp-agent /opt/jp-agent/sync-auth-token.py
+chmod 755 /opt/jp-agent
+chmod 644 /opt/jp-agent/sync-auth-token.py
 
 # Create the env file on first run only, so re-deploying never clobbers a key
 # that is already in place.
@@ -38,8 +44,8 @@ if [ ! -f /etc/jp-agent.env ]; then
   echo "==> creating /etc/jp-agent.env"
   TOKEN="$(openssl rand -hex 32)"
   cat > /etc/jp-agent.env <<ENV
-# Fill ANTHROPIC_API_KEY in, then: systemctl restart jp-agent
-ANTHROPIC_API_KEY=
+# Fill ANTHROPIC_AUTH_TOKEN securely, then: systemctl restart jp-agent
+ANTHROPIC_AUTH_TOKEN=
 JP_AGENT_TOKEN=$TOKEN
 JP_AGENT_WORKSPACE=/srv/workspace
 JP_AGENT_PORT=8790
@@ -69,7 +75,7 @@ nginx -t
 systemctl reload nginx
 
 systemctl daemon-reload
-systemctl enable --now jp-agent >/dev/null 2>&1 || true
+systemctl enable jp-agent >/dev/null
 systemctl restart jp-agent
 sleep 2
 systemctl is-active jp-agent && echo "==> jp-agent active"

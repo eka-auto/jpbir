@@ -39,21 +39,23 @@ compromising the dashboard key does not hand over the agent.
 ./deploy.sh <droplet-ip> [ssh-key-path]
 ```
 
-Idempotent. Ships `server.mjs`, the unit and the nginx config, installs
-dependencies, and restarts. It creates `/etc/jp-agent.env` on first run only, so
-re-running never clobbers a key already in place.
+Idempotent. Ships `server.mjs`, `s24-tools.mjs`, `device-health.mjs`,
+`sync-auth-token.py`, the unit and the nginx config, installs dependencies, and
+restarts. It creates `/etc/jp-agent.env` on first run only, so re-running never
+clobbers a key already in place.
 
 ## The two secrets
 
 Deliberately not in this repo, not in the deploy script, and not passed through
 any agent transcript.
 
-**On the droplet** — `ANTHROPIC_API_KEY` is generated blank and must be filled:
+**On the droplet** — `ANTHROPIC_AUTH_TOKEN` is generated blank and must be filled
+without leaving the value in shell history (pipe it over stdin, never as an
+argument):
 
 ```bash
 ssh root@<ip>
-nano /etc/jp-agent.env        # set ANTHROPIC_API_KEY=
-systemctl restart jp-agent
+printf '%s' "$TOKEN" | python3 /opt/jp-agent/sync-auth-token.py
 ```
 
 **On Vercel** — the droplet generates `JP_AGENT_TOKEN` itself. Read it on the
