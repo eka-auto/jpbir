@@ -136,6 +136,10 @@
     {
       "src": "Backend/jp-wa-messages.js",
       "use": "@vercel/node"
+    },
+    {
+      "src": "Backend/wa-media.js",
+      "use": "@vercel/node"
     }
   ],
   "routes": [
