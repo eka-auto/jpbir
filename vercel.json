@@ -1,5 +1,11 @@
 {
   "version": 2,
+  "crons": [
+    {
+      "path": "/api/db-push",
+      "schedule": "30 18 * * *"
+    }
+  ],
   "builds": [
     {
       "src": "Backend/broker-command-claim.js",
