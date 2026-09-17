@@ -144,6 +144,28 @@
   ],
   "routes": [
     {
+      "src": "/",
+      "has": [
+        {
+          "type": "host",
+          "value": "agent.jaytipargal.tech"
+        }
+      ],
+      "dest": "/Frontend/agent.html"
+    },
+    {
+      "src": "/agent",
+      "dest": "/Frontend/agent.html"
+    },
+    {
+      "src": "/agent/query",
+      "dest": "Backend/jp-live-agent.js"
+    },
+    {
+      "src": "/agent/health",
+      "dest": "Backend/jp-live-agent.js?op=health"
+    },
+    {
       "src": "/api/agent-run",
       "dest": "Backend/agent-run.js"
     },
