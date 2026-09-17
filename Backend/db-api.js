@@ -96,10 +96,18 @@ const VIEWS = {
       breakdown('timezone'),
       breakdown('page_domain'),
       // `screen` holds the raw screen_info JSON; the label a human wants is WxH.
-      query(`SELECT (screen::jsonb ->> 'width') || ' x ' || (screen::jsonb ->> 'height') AS label,
+      //
+      // Guarded, because the column is whatever a tracker put in it. jp-tracker
+      // sends the string "1280x720 (DPR:1.5)", and an unguarded screen::jsonb
+      // on one such row aborts the whole statement — taking Overview, every
+      // card on it, down with a 500 rather than dropping one Screens label.
+      // The CASE keeps the cast from being evaluated on a row the regex
+      // rejects; the matching WHERE clause keeps those rows out entirely.
+      query(`SELECT (CASE WHEN screen ~ '^\\s*\\{' THEN screen::jsonb END ->> 'width') || ' x ' ||
+                    (CASE WHEN screen ~ '^\\s*\\{' THEN screen::jsonb END ->> 'height') AS label,
                     COUNT(*)::int n, COUNT(DISTINCT visitor_id)::int visitors
                FROM events
-              WHERE site = $1 AND screen IS NOT NULL AND screen <> ''
+              WHERE site = $1 AND screen IS NOT NULL AND screen ~ '^\\s*\\{'
                 AND occurred_at > now() - ($2 || ' days')::interval ${noiseClause}
               GROUP BY 1 ORDER BY n DESC LIMIT 12`, params),
     ]);
