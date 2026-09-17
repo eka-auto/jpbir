@@ -23,7 +23,7 @@
     "inboundListener": false
   },
   "command": {
-    "allowlistedActions": ["status-only", "ping", "echo"],
+    "allowlistedActions": ["status-only", "ping", "echo", "wa-push", "sync-now"],
     "claimRequired": true,
     "completionRequired": true,
     "signedNonceAntiReplay": true

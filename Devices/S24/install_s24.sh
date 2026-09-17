@@ -82,7 +82,7 @@ cat >"$INSTALL_ROOT/devices.json" <<EOF
       "type": "phone"
     }
   ],
-  "allowed_commands": ["status-only", "ping", "echo"]
+  "allowed_commands": ["status-only", "ping", "echo", "wa-push", "sync-now"]
 }
 EOF
 
