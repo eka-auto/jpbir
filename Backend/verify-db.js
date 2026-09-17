@@ -17,6 +17,7 @@ import { DynamoDBDocumentClient, ScanCommand } from '@aws-sdk/lib-dynamodb';
 import crypto from 'crypto';
 import { requireKey } from './_auth.js';
 import { query, isConfigured } from '../Integrations/postgres.js';
+import { cronAuthorized } from './lib/cron-auth.js';
 
 const _env = (typeof process !== 'undefined' ? process : globalThis['proc' + 'ess']).env;
 const AWS_ACCESS_KEY_ID = _env['JP_AWS_' + 'ACCESS_KEY_ID'];
@@ -24,7 +25,6 @@ const AWS_SECRET_ACCESS_KEY = _env['JP_AWS_' + 'SECRET_ACCESS_KEY'];
 const AWS_REGION = _env['JP_AWS_' + 'REGION'] || 'us-west-2';
 const TABLE = _env['JP_TELEMETRY_' + 'TABLE'] || 'jaytipargal_telemetry';
 const FIREBASE_SA_JSON = _env['FIREBASE_' + 'SERVICE_ACCOUNT_JSON'];
-const CRON_SECRET = _env['CRON_' + 'SECRET'];
 
 // Every table a deployed read route actually queries, extracted from the SQL in
 // db-api.js (all 14 views), the four jp-wa-*/wa-* WhatsApp routes and the two
@@ -189,18 +189,6 @@ async function verifyFirestore() {
   } catch (error) {
     return { ok: false, error: error.message };
   }
-}
-
-const sha256 = v => crypto.createHash('sha256').update(String(v), 'utf8').digest();
-
-// Digest both sides before comparing. timingSafeEqual throws on a length
-// mismatch, so the previous raw-Buffer compare turned a wrong-length bearer
-// token into an unhandled 500 instead of a 401.
-function cronAuthorized(req) {
-  if (!CRON_SECRET) return false;
-  const auth = String(req.headers['authorization'] || '');
-  if (!auth.startsWith('Bearer ')) return false;
-  return crypto.timingSafeEqual(sha256(auth.slice(7)), sha256(CRON_SECRET));
 }
 
 export default async function handler(req, res) {
