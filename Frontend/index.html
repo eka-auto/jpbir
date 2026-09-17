@@ -897,6 +897,15 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
         return (n / (1024 * 1024)).toFixed(2) + ' MB';
     }
 
+    // Media now lives in PRIVATE Vercel Blob, so a raw blob_url 404s without a
+    // signature. Route every <img>/<video>/<audio>/download through the
+    // key-gated proxy, which redirects to a short-lived presigned URL. Fall
+    // back to blob_url only for legacy public rows that predate the proxy.
+    function waMediaSrc(a) {
+        if (a && a.att_id) return '/api/wa-media?att_id=' + encodeURIComponent(a.att_id) + '&key=' + encodeURIComponent(KEY);
+        return (a && a.blob_url) || '';
+    }
+
     function renderAttachmentCard(a) {
         var card = document.createElement('div');
         card.className = 'media-card';
@@ -916,7 +925,7 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
         card.appendChild(head);
 
         var body = document.createElement('div');
-        var url = a.blob_url || '';
+        var url = waMediaSrc(a);
         var mime = (a.mime || '').toLowerCase();
         var isImage = a.kind === 'image' || /^image\//.test(mime);
         var isVideo = a.kind === 'video' || /^video\//.test(mime);
@@ -2736,7 +2745,7 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
         });
     })();
     function waAttTile(a) {
-        var url = a.blob_url;
+        var url = waMediaSrc(a);
         var meta = (a.file_name ? esc(a.file_name) + ' · ' : '') + (a.size_bytes ? Math.round(a.size_bytes / 1024) + ' KB' : '');
         var when = a.sent_at ? new Date(a.sent_at).toISOString().slice(0, 10) : '';
         if (a.kind === 'image' || a.kind === 'sticker') {
