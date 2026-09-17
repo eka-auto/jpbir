@@ -154,6 +154,66 @@ def collect_local_status():
     }
 
 
+def _run_wa_push(payload, started):
+    """Run the on-device WhatsApp push wrapper once and return its outcome.
+
+    The queued command carries NO secret: WA_INGEST_KEY lives only in the
+    wrapper's env file on the phone (~/s24-agent/wa_push.env). A 'wa-push'
+    command therefore just asks the device to run its already-configured push,
+    which is what keeps this safe to expose over the outbound broker channel —
+    the dashboard can trigger a sync but can never inject a key or a command
+    line. stdout is tailed back so the dashboard sees the run_id / row count.
+    """
+    tick = os.path.expanduser(os.environ.get("WA_PUSH_TICK", "~/s24-agent/wa_push_tick.sh"))
+    if not os.path.exists(tick):
+        return {"status": "failed",
+                "result": {"error": f"wa_push wrapper not found at {tick}"},
+                "completed_at": datetime.now(timezone.utc).isoformat()}
+    timeout = int((payload or {}).get("timeout_seconds", 180))
+    try:
+        proc = subprocess.run(["sh", tick], capture_output=True, text=True, timeout=timeout, **_SW)
+    except subprocess.TimeoutExpired:
+        return {"status": "failed",
+                "result": {"error": f"wa_push timed out after {timeout}s"},
+                "completed_at": datetime.now(timezone.utc).isoformat()}
+    done = datetime.now(timezone.utc).isoformat()
+    result = {"exit": proc.returncode, "output": (proc.stdout or "")[-1500:]}
+    stderr = (proc.stderr or "")[-500:]
+    if stderr:
+        result["stderr"] = stderr
+    return {"status": "ok" if proc.returncode == 0 else "failed", "result": result, "completed_at": done}
+
+
+def _run_wa_media_push(payload, started):
+    """Run the on-device WhatsApp media/audio push wrapper once and return its outcome.
+
+    Same safety model as `_run_wa_push`: the queued command carries no secret —
+    WA_INGEST_KEY lives only in ~/s24-agent/wa_push.env on the phone. A
+    'wa-media-push' command just asks the device to run its already-configured
+    media tick script; the action name maps to one fixed local script, so the
+    dashboard can trigger a media sync but can never inject a key or a command
+    line. stdout is tailed back so the dashboard sees the upload count.
+    """
+    tick = os.path.expanduser(os.environ.get("WA_MEDIA_PUSH_TICK", "~/s24-agent/wa_media_tick.sh"))
+    if not os.path.exists(tick):
+        return {"status": "failed",
+                "result": {"error": f"wa_media_push wrapper not found at {tick}"},
+                "completed_at": datetime.now(timezone.utc).isoformat()}
+    timeout = int((payload or {}).get("timeout_seconds", 300))
+    try:
+        proc = subprocess.run(["sh", tick], capture_output=True, text=True, timeout=timeout, **_SW)
+    except subprocess.TimeoutExpired:
+        return {"status": "failed",
+                "result": {"error": f"wa_media_push timed out after {timeout}s"},
+                "completed_at": datetime.now(timezone.utc).isoformat()}
+    done = datetime.now(timezone.utc).isoformat()
+    result = {"exit": proc.returncode, "output": (proc.stdout or "")[-1500:]}
+    stderr = (proc.stderr or "")[-500:]
+    if stderr:
+        result["stderr"] = stderr
+    return {"status": "ok" if proc.returncode == 0 else "failed", "result": result, "completed_at": done}
+
+
 def handle_command(action, payload):
     started = datetime.now(timezone.utc).isoformat()
     try:
@@ -163,6 +223,14 @@ def handle_command(action, payload):
             return {"status": "ok", "result": {"pong": True, "ts": started}, "completed_at": started}
         if action == "echo":
             return {"status": "ok", "result": {"echoed": payload or {}, "ts": started}, "completed_at": started}
+        # 'wa-push' (alias 'sync-now') runs the device's own WhatsApp push wrapper.
+        # No arbitrary shell: the action name maps to one fixed local script.
+        if action in ("wa-push", "sync-now"):
+            return _run_wa_push(payload, started)
+        # 'wa-media-push' runs the device's own WhatsApp media/audio push wrapper.
+        # Same no-arbitrary-shell guarantee: fixed local script, no secret in payload.
+        if action == "wa-media-push":
+            return _run_wa_media_push(payload, started)
         return {"status": "rejected", "result": {"error": f"unknown action: {action}"}, "completed_at": started}
     except Exception as e:
         return {"status": "error", "result": {"error": str(e)}, "completed_at": started}
