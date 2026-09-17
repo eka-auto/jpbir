@@ -10,6 +10,7 @@ export const ALLOWED_ACTIONS = new Set([
   'sync-now',
   'wakeup',
   'status-only',
+  'wa-push',
 ]);
 
 function timingSafeEqualText(actual, expected) {
