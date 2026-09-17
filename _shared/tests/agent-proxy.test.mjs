@@ -1,7 +1,7 @@
 // The agent proxy spends Anthropic credits on every forwarded call, so pin down:
 // it refuses before touching the network, fails closed when unconfigured,
 // forwards an authorised query to <AGENT_API_URL>/query, and the routes that put
-// it on agent.jaytipargal.tech exist in vercel.json.
+// it on jaytipargal.tech/agent exist in vercel.json.
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -68,9 +68,9 @@ check('health → upstream /health', res.statusCode === 200 && calls.at(-1).url 
 const routes = vercel.routes;
 const idx = (pred) => routes.findIndex(pred);
 const catchAll = idx((r) => r.src === '/(.*)' && !r.has);
-const hostRoot = idx((r) => r.src === '/' && r.has?.some((h) => h.type === 'host' && h.value === 'agent.jaytipargal.tech'));
-check('agent.jaytipargal.tech / serves the chat page before the catch-all',
-  hostRoot !== -1 && hostRoot < catchAll && routes[hostRoot].dest === '/Frontend/agent.html', `index ${hostRoot} vs ${catchAll}`);
+const page = idx((r) => r.src === '/agent');
+check('/agent serves the chat page before the catch-all',
+  page !== -1 && page < catchAll && routes[page].dest === '/Frontend/agent.html', `index ${page} vs ${catchAll}`);
 for (const src of ['/agent/query', '/agent/health']) {
   const i = idx((r) => r.src === src);
   check(`${src} routes to jp-live-agent.js before the catch-all`,

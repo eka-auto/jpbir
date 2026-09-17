@@ -1,8 +1,9 @@
 // Server-side proxy from the dashboard to the EKA RAG agent (eka_agent_cloud.py
-// behind nginx on the VPS, e.g. https://agent.urgaa.in/agent).
+// behind nginx on the VPS: AGENT_API_URL=https://agent.jaytipargal.tech/agent).
 //
-// Served at /api/jp-live-agent, and at /agent/query + /agent/health so
-// agent.jaytipargal.tech exposes the agent under its own path. Every call spends
+// Served at /api/jp-live-agent, and at /agent/query + /agent/health for the
+// /agent chat page. nginx requires X-API-Key upstream, so AGENT_API_KEY holds
+// that key and never reaches the browser. Every call spends
 // Anthropic credits upstream, so it is gated on STATS_KEY like every other
 // privileged route here, and the guard runs before the config check so an
 // unauthenticated caller cannot learn whether this deployment is wired up.
@@ -33,8 +34,8 @@ export default async function handler(req, res) {
   if (!url) {
     return res.status(503).json({ success: false, error: 'Agent not configured', missing: ['AGENT_API_URL'] });
   }
-  // Only sent when set: eka_agent_cloud.py does not check it today, but an
-  // upstream that does can be enabled without a code change here.
+  // nginx on the VPS checks X-API-Key for /agent/*; sent only when configured so
+  // a keyless upstream (local dev) still works.
   const headers = { 'Content-Type': 'application/json', ...(key ? { 'X-API-Key': key } : {}) };
 
   const op = req.query?.op === 'health' || req.method === 'GET' ? 'health' : 'query';
