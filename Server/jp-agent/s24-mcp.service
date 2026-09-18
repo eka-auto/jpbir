@@ -1,0 +1,30 @@
+[Unit]
+Description=s24-mcp — streamable-HTTP MCP server for the Firestore device registry
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=jpagent
+Group=jpagent
+WorkingDirectory=/opt/s24-mcp
+# S24_MCP_TOKEN and the Firestore/service settings live here, root-owned 0600,
+# shared with jp-agent so both sides of the loopback call use one token.
+EnvironmentFile=/etc/jp-agent.env
+ExecStart=/usr/bin/node /opt/s24-mcp/server.mjs
+Restart=always
+RestartSec=3
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+RestrictSUIDSGID=true
+LockPersonality=true
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=s24-mcp
+
+[Install]
+WantedBy=multi-user.target
