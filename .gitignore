@@ -35,3 +35,4 @@ Devices/S24/keys/
 *.s24-sync.json
 *.s24-sync.jsonl
 *.s24-sync.jsonl.gz
+.neon
