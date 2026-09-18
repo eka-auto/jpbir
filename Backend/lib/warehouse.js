@@ -41,6 +41,23 @@ function normaliseHost(host) {
   return clean || null;
 }
 
+// Deployment hosts are not properties.
+//
+// Deriving `site` from the page URL is right for a deployment that serves
+// several domains, but Vercel also serves every build on a generated
+// *.vercel.app host, and the dashboard's tracker fires there too. Within hours
+// of the mirror going live the property selector had grown an entry for
+// `jayti-dashboard-a8ajkprgy-jayti.vercel.app` — a preview build someone opened
+// once — sitting beside the three real properties. Every future preview would
+// add another, and `SELECT DISTINCT site` is what fills that selector.
+//
+// A beacon from a vercel.app host records nothing: the mirror skips it, and
+// DynamoDB still journals the raw event, so nothing is destroyed — it simply
+// stops inventing a property per build. The custom domains are the properties.
+function isProperty(host) {
+  return Boolean(host) && !host.endsWith('.vercel.app');
+}
+
 /**
  * The property an event belongs to. Prefers the page's own URL — that is the
  * only field that survives a proxy, a beacon replayed from another origin, or
@@ -54,17 +71,19 @@ export function siteFor(pageUrl, fallback) {
   if (typeof pageUrl === 'string' && pageUrl) {
     try {
       const host = normaliseHost(new URL(pageUrl).hostname);
-      if (host) return host;
+      if (host) return isProperty(host) ? host : null;
     } catch {
       // Relative or malformed page_url; fall through to the request's own host.
     }
   }
   if (typeof fallback === 'string' && fallback) {
+    let host;
     try {
-      return normaliseHost(new URL(fallback).hostname);
+      host = normaliseHost(new URL(fallback).hostname);
     } catch {
-      return normaliseHost(fallback);
+      host = normaliseHost(fallback);
     }
+    return isProperty(host) ? host : null;
   }
   return null;
 }
