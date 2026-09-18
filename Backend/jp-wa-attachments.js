@@ -12,7 +12,6 @@
 //   GET /api/jp-wa-attachments?chat_id=<id>&kind=<kind>&limit=<n>&before=<iso>
 import { requireKey } from './_auth.js';
 import { query, isConfigured } from '../Integrations/postgres.js';
-import { requireKey } from './_auth.js';
 
 const KINDS = new Set(['image', 'video', 'audio', 'ptt', 'document', 'sticker', 'other']);
 
@@ -28,7 +27,6 @@ export default async function handler(req, res) {
     res.setHeader('Allow', 'GET, HEAD');
     return res.status(405).json({ ok: false, error: 'GET only' });
   }
-  if (!requireKey(req, res)) return;
 
   const chatId = String(req.query.chat_id || '').trim();
   if (!chatId) return res.status(400).json({ ok: false, error: 'chat_id required' });
