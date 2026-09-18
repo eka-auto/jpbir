@@ -70,6 +70,9 @@ export function buildAuthorizeParams(params, query) {
 }
 
 export default async function handler(req, res) {
+  // STATS_KEY and timingSafeEqual were referenced here without ever being
+  // declared, so every request threw a ReferenceError (500). Same gate as the
+  // other data routes.
   if (!requireKey(req, res)) return;
 
   const action = req.query.action || 'status';

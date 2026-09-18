@@ -19,7 +19,8 @@ function makePool(connectionString) {
     max: 3,
     idleTimeoutMillis: 10_000,
     connectionTimeoutMillis: 10_000,
-    ssl: { rejectUnauthorized: false },
+    // Neon serves a publicly trusted certificate; verify it.
+    ssl: { rejectUnauthorized: true },
   });
 }
 
@@ -31,11 +32,15 @@ export function pool() {
   return g.__jpPgPool;
 }
 
-/** Direct (non-pooled) connection — migrations only. */
+/**
+ * Direct (non-pooled) connection — migrations only. No fallback to the pooled
+ * URL: pgbouncer can't hold a migration's transaction, so running one through
+ * it half-applies instead of failing up front.
+ */
 export function directPool() {
   const url = process.env.DATABASE_URL_UNPOOLED || process.env.POSTGRES_URL_NON_POOLING;
   if (!url) {
-    throw new Error('No direct Postgres connection string set (DATABASE_URL_UNPOOLED / POSTGRES_URL_NON_POOLING). Pooled URLs cannot run migrations safely.');
+    throw new Error('No direct Postgres connection string set (DATABASE_URL_UNPOOLED / POSTGRES_URL_NON_POOLING)');
   }
   return makePool(url);
 }

@@ -723,6 +723,12 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
         } catch (e) { /* nothing else to do; the key is already stored */ }
     })();
     var SITE = sessionStorage.getItem('jbt_site') || 'jbt';
+    /* Every API call carries the key in a header, never the query string: a
+       URL credential lands in access logs, browser history and Referers. The
+       media proxy below is the one exception - <img>/<video> can't set headers. */
+    function authHeaders(extra) {
+        return Object.assign({ 'x-stats-key': KEY }, extra || {});
+    }
     var DATA = null;
     var REFRESH_MS = 10000;
     var refreshTimer = null;
@@ -823,7 +829,7 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
             // have no writers in the current pipeline; the real content lives
             // in Postgres wa_attachments/wa_messages, which the separate
             // /api/jp-live-content call renders below.
-            var res = await fetch('/api/jp-devices?' + new URLSearchParams({ key: KEY, full: '1' }).toString());
+            var res = await fetch('/api/jp-devices?full=1', { headers: authHeaders() });
             var j = await res.json();
             if (!res.ok || j.success === false) {
                 throw new Error(j.error || ('HTTP ' + res.status));
@@ -1010,7 +1016,7 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
         var msgsHead = $('firestoreMsgsHead');
         if (!grid || !msgList) return;
         try {
-            var r = await fetch('/api/jp-live-content?' + new URLSearchParams({ key: KEY, days: '7', limit: '40' }).toString());
+            var r = await fetch('/api/jp-live-content?days=7&limit=40', { headers: authHeaders() });
             var j = await r.json();
             if (!r.ok || j.ok === false) throw new Error(j.error || ('HTTP ' + r.status));
             grid.innerHTML = '';
@@ -1741,11 +1747,11 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
     function loadVisitor(params) {
         openDrawer();
         $('drawerBody').innerHTML = '<div class="state"><div class="spinner"></div>Loading visitor…</div>';
-        var qs = new URLSearchParams({ key: KEY, days: '30' });
+        var qs = new URLSearchParams({ days: '30' });
         if (params.visitor) qs.set('visitor', params.visitor);
         if (params.session) qs.set('session', params.session);
         var endpoint = SITE === 'jp' ? '/api/jp-visitor' : '/api/visitor';
-        fetch(endpoint + '?' + qs.toString())
+        fetch(endpoint + '?' + qs.toString(), { headers: authHeaders() })
             .then(function (r) { return r.json().then(function (j) { return { status: r.status, body: j }; }); })
             .then(function (res) {
                 /* Visitor detail is the gated pair - /api/visitor and, since the
@@ -1824,7 +1830,7 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
         var days = $('daysSel').value;
         var endpoint = SITE === 'jp' ? '/api/jp-stats' : '/api/stats';
         setStatus('Loading analytics…');
-        fetch(endpoint + '?' + new URLSearchParams({ key: KEY, days: days }).toString())
+        fetch(endpoint + '?' + new URLSearchParams({ days: days }).toString(), { headers: authHeaders() })
             .then(function (r) { return r.json().then(function (j) { return { status: r.status, body: j }; }); })
             .then(function (res) {
                 if (res.status === 401) {
@@ -2523,7 +2529,7 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
     function loadDeviceHistory() {
         /* open dashboard: no key required */
         $('deviceHint').textContent = 'Loading device history…';
-        fetch('/api/jp-device?' + new URLSearchParams({ key: KEY, days: 30 }).toString())
+        fetch('/api/jp-device?days=30', { headers: authHeaders() })
             .then(function (r) { return r.json().then(function (j) { return { status: r.status, body: j }; }); })
             .then(function (res) {
                 if (res.status === 401) { showGate(); return; }
@@ -2582,7 +2588,7 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
         $('deviceDetailTitle').textContent = 'All data — ' + device;
         $('deviceDetailHint').textContent = 'Loading…';
         $('deviceDetailPanel').style.display = 'block';
-        fetch('/api/jp-device?' + new URLSearchParams({ key: KEY, days: 30, device: device }).toString())
+        fetch('/api/jp-device?' + new URLSearchParams({ days: 30, device: device }).toString(), { headers: authHeaders() })
             .then(function (r) { return r.json().then(function (j) { return { status: r.status, body: j }; }); })
             .then(function (res) {
                 if (res.status === 401) { showGate(); return; }
@@ -3092,9 +3098,9 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
 
         var textNode = null;
         try {
-            var res = await fetch('/api/agent-run?' + new URLSearchParams({ key: KEY }).toString(), {
+            var res = await fetch('/api/agent-run', {
                 method: 'POST',
-                headers: { 'content-type': 'application/json' },
+                headers: authHeaders({ 'content-type': 'application/json' }),
                 body: JSON.stringify({ prompt: prompt, session_id: TERM_SESSION })
             });
 
@@ -3311,7 +3317,7 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
     function loadLiveDevices() {
         /* open dashboard: no key required */
         $('liveDevicesHint').textContent = 'Loading live device state…';
-        fetch('/api/jp-devices?' + new URLSearchParams({ key: KEY, full: '1' }).toString())
+        fetch('/api/jp-devices?full=1', { headers: authHeaders() })
             .then(function (r) { return r.json().then(function (j) { return { status: r.status, body: j }; }); })
             .then(function (res) {
                 if (res.status === 401) { showGate(); return; }
@@ -3446,9 +3452,9 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
         agentAdd('user', q);
         agentAdd('agent', 'Thinking…');
         var thinking = $('agentChat').lastElementChild;
-        fetch('/api/jp-agent?' + new URLSearchParams({ key: KEY }).toString(), {
+        fetch('/api/jp-agent', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: authHeaders({ 'Content-Type': 'application/json' }),
             body: JSON.stringify({ question: q })
         })
             .then(function (r) { return r.json().then(function (j) { return { status: r.status, body: j }; }); })
