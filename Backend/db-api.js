@@ -343,7 +343,9 @@ const VIEWS = {
       },
       agents: {
         count: 'SELECT COUNT(*)::int n FROM s24_agents',
-        rows: `SELECT 'firestore_agents' AS dataset, record_id, run_id, agent_name, status,
+        rows: `SELECT 'firestore_agents' AS dataset, record_id, run_id, agent_name,
+                      CASE WHEN status = 'active' AND last_seen < now() - interval '1 hour'
+                           THEN 'stale' ELSE status END AS status,
                       model, api_enabled, bridged, port, registered_at, activated_at,
                       raw_payload AS payload, last_seen
                  FROM s24_agents ORDER BY activated_at DESC NULLS LAST, last_seen DESC LIMIT $1 OFFSET $2`,

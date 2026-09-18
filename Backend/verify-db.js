@@ -39,7 +39,7 @@ const FIREBASE_SA_JSON = _env['FIREBASE_' + 'SERVICE_ACCOUNT_JSON'];
 // real, reportable state rather than an impossibility — a database can be
 // migrated by one project and not the other.
 export const REQUIRED_TABLES = [
-  'devices', 'email_opens', 'events', 'letters', 'sessions', 'video_events', 'visitors',
+  'devices', 'device_telemetry', 'email_opens', 'events', 'letters', 'sessions', 'video_events', 'visitors',
   's24_agents', 's24_calls', 's24_commands', 's24_device_snapshots', 's24_files',
   's24_ingest_seen', 's24_locations', 's24_queue_items', 's24_records', 's24_sms',
   's24_sync_datasets', 's24_sync_runs',
