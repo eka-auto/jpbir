@@ -2,6 +2,7 @@ import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, ScanCommand } from '@aws-sdk/lib-dynamodb';
 import { list } from '@vercel/blob';
 import { decodeGeo } from './lib/geo.js';
+import { requireKey } from './_auth.js';
 
 const _env = (typeof process !== 'undefined' ? process : globalThis['proc' + 'ess']).env;
 const AWS_ACCESS_KEY_ID = _env['JP_AWS_' + 'ACCESS_KEY_ID'];
@@ -144,6 +145,10 @@ export default async function handler(req, res) {
     res.setHeader('Allow', 'POST');
     return res.status(405).json({ success: false, error: 'Method not allowed' });
   }
+  // Every call spends Anthropic credit and returns device/IP telemetry, so it
+  // takes the same dashboard key as the other data routes. The page already
+  // sends ?key= (Frontend/index.html).
+  if (!requireKey(req, res)) return;
   if (!ANTHROPIC_KEY) {
     return res.status(500).json({ success: false, error: 'ANTHROPIC_API_KEY not configured' });
   }
