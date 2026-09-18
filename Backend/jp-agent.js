@@ -9,7 +9,6 @@ const AWS_ACCESS_KEY_ID = _env['JP_AWS_' + 'ACCESS_KEY_ID'];
 const AWS_SECRET_ACCESS_KEY = _env['JP_AWS_' + 'SECRET_ACCESS_KEY'];
 const AWS_REGION = _env['JP_AWS_' + 'REGION'] || 'us-west-2';
 const TABLE = _env['JP_TELEMETRY_' + 'TABLE'] || 'jaytipargal_telemetry';
-const GEMINI_KEY = _env['GEMINI_' + 'API_KEY'];
 const ANTHROPIC_KEY = _env['ANTHROPIC_' + 'API_KEY'];
 const BLOB_TOKEN = _env['BLOB_' + 'READ_WRITE_TOKEN'];
 
