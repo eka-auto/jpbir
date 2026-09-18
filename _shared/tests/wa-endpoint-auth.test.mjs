@@ -68,6 +68,11 @@ const ROUTES = [
   // database name and a live device count. Its CRON_SECRET branch only ran when
   // an Authorization header was present, so sending none skipped the check.
   { file: 'verify-db.js', method: 'GET', refuses: 401 },
+  // Spends Anthropic credit and answers with device/IP telemetry; was open, so
+  // adding ANTHROPIC_API_KEY would have published it.
+  { file: 'jp-agent.js', method: 'POST', refuses: 401, body: { question: 'x' } },
+  // Sends alert email and patches Firestore; its authorized() returned true.
+  { file: 'check-stale.js', method: 'GET', refuses: 401 },
 ];
 
 for (const route of ROUTES) {
