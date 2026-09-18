@@ -169,9 +169,8 @@ async function handleAsk(req, res, body) {
           if (block.type === 'text') {
             emit('text', { text: block.text });
           } else if (block.type === 'tool_use') {
-            // Name and a short argument preview only — full arguments can carry
-            // file contents and secrets, and this stream reaches a browser.
-            emit('tool', { name: block.name, preview: JSON.stringify(block.input).slice(0, 200) });
+            // Even a short argument preview can expose a token or credential.
+            emit('tool', { name: block.name });
           }
         }
       } else if (msg.type === 'result') {

@@ -1,0 +1,23 @@
+# What a CLI deploy must never upload.
+#
+# `npm run deploy` is `vercel --prod`, which uploads the working directory —
+# tracked or not. Without this file that included the 83 untracked files under
+# app/, among them a live GCP service-account private key
+# (firebase-adminsdk-fbsvc-intrep@intrepid-stage-495117-q1) and app/shared/.env.local.
+# Git-driven deploys were never affected; only a deploy run from a laptop.
+#
+# Keep this list ahead of the app/ tree being tidied, not behind it: the guard
+# should hold even if someone re-creates one of these directories later.
+app/
+archive/
+.vercel/
+_shared/reports/
+Devices/
+Server/
+Database/backups/
+*.log
+
+# Local env files, wherever they turn up.
+.env
+.env.*
+!.env.example

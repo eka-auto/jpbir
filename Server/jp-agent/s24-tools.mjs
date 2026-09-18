@@ -8,10 +8,11 @@
 // shape, field-mask escaping for hyphenated ids) so the two servers stay
 // interchangeable from the model's point of view.
 
-import { createHash, createSign, randomUUID } from 'node:crypto';
+import { createSign, randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { z } from 'zod';
 import { tool, createSdkMcpServer } from '@anthropic-ai/claude-agent-sdk';
+import { deviceHealth, commandItem } from './device-health.mjs';
 
 const PROJECT_ID = process.env.S24_PROJECT_ID || 'intrepid-stage-495117-q1';
 const DATABASE = process.env.S24_FIRESTORE_DB || 'eka-agent';
@@ -21,7 +22,6 @@ const KEY_FILE = process.env.S24_SERVICE_ACCOUNT_KEY || '/etc/jp-agent-firestore
 const FS_BASE = `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/${DATABASE}/documents`;
 const TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const SCOPE = 'https://www.googleapis.com/auth/datastore';
-const REQUESTED_BY = 'jp-agent-s24-tools';
 
 const DEVICE_ID_RE = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
 const SIMPLE_SEGMENT_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
@@ -54,6 +54,7 @@ async function getToken() {
   const assertion = `${signingInput}.${signature}`;
 
   const res = await fetch(TOKEN_URL, {
+    signal: AbortSignal.timeout(20000),
     method: 'POST',
     headers: { 'content-type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
@@ -71,6 +72,7 @@ async function getToken() {
 async function fsRequest(method, path, body) {
   const token = await getToken();
   const res = await fetch(`${FS_BASE}/${path}`, {
+    signal: AbortSignal.timeout(20000),
     method,
     headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
     body: body !== undefined ? JSON.stringify(body) : undefined,
@@ -156,7 +158,7 @@ async function patchDoc(deviceId, fields) {
   const mask = Object.keys(fields)
     .map((k) => `updateMask.fieldPaths=${encodeURIComponent(maskPath(k))}`)
     .join('&');
-  return fsRequest('PATCH', `devices/${deviceId}?${mask}`, { fields: fsFields });
+  return fsRequest('PATCH', `devices/${deviceId}?${mask}&currentDocument.exists=true`, { fields: fsFields });
 }
 
 function ageSeconds(ts) {
@@ -185,15 +187,22 @@ const listDevices = tool(
   'List every device registered in the global devices/ collection, with online status and how fresh each check-in is.',
   {},
   async () => {
-    const res = await fsRequest('GET', 'devices?pageSize=100');
-    if (res.__error__) return { content: [{ type: 'text', text: errText(res) }] };
-    const rows = (res.documents || []).map((raw) => {
+    const documents = [];
+    let pageToken;
+    do {
+      const res = await fsRequest('GET', 'devices?pageSize=100'
+        + (pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ''));
+      if (res.__error__) return { content: [{ type: 'text', text: errText(res) }] };
+      documents.push(...(res.documents || []));
+      pageToken = res.nextPageToken;
+    } while (pageToken);
+    const rows = documents.map((raw) => {
       const deviceId = raw.name.split('/').pop();
       const d = parseDoc(raw);
       return {
         device_id: deviceId,
         display_name: d.deviceDisplayName || deviceId,
-        stored_online: Boolean(d.online || d.effectiveOnline),
+        ...deviceHealth(deviceId, d),
         status: d.status || 'unknown',
         ...heartbeatFields(d),
       };
@@ -221,9 +230,7 @@ const devicePing = tool(
           device_id,
           project: PROJECT_ID,
           database: DATABASE,
-          stored_online: Boolean(doc.online || doc.effectiveOnline),
-          last_command_ack_at: doc.lastCommandAckAt ?? null,
-          last_command_ack_age_seconds: ageSeconds(doc.lastCommandAckAt),
+          ...deviceHealth(device_id, doc),
           status: doc.status || 'unknown',
           battery: doc.battery ?? null,
           ...hb,
@@ -257,7 +264,7 @@ const deviceWake = tool(
 
 const deviceSend = tool(
   'device_send',
-  "Queue a command for a device and wake it so it runs promptly (e.g. action='sync-now', 'collect-sms', 'start-ssh'). Returns a command id; poll with device_result.",
+  "Queue a supported command (e.g. 'sync-now', 'status-only', 'start-ssh'). Queued is not executed. Check device_ping and device_result; do not infer supported actions from historical examples.",
   {
     action: z.string().describe("Command name the device's daemon understands, e.g. 'sync-now'."),
     device_id: z.string().default(DEFAULT_DEVICE),
@@ -269,8 +276,8 @@ const deviceSend = tool(
     if (bad) return { content: [{ type: 'text', text: bad }] };
     const at = new Date().toISOString();
     const actionSlug = action.replace(/[^A-Za-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'cmd';
-    const cmdId = `jpagent_${Date.now()}_${actionSlug}`;
-    const item = { action, status: 'pending', priority, requestedAt: at, requestedBy: REQUESTED_BY, source: 'commandQueue', ...params };
+    const cmdId = `jpagent_${Date.now()}_${actionSlug}_${randomUUID()}`;
+    const item = commandItem(action, priority, params, at);
     const res = await patchDoc(device_id, {
       [`commandQueue.${cmdId}`]: item,
       forceWakeup: true,
