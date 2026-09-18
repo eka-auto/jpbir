@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import nodemailer from 'nodemailer';
 import { evaluate } from './lib/stale.js';
+import { query as pgQuery, isConfigured as pgIsConfigured } from '../Integrations/postgres.js';
 import { requireKey } from './_auth.js';
 import { cronAuthorized } from './lib/cron-auth.js';
 
@@ -190,7 +191,30 @@ export default async function handler(req, res) {
       }
     }
 
-    return res.status(200).json({ success: true, checked, transitions, thresholdSeconds: STALE_ALERT_SECONDS, at: nowIso });
+    // ── Neon staleness sweep ────────────────────────────────────────────
+    // Downgrade s24_agents that have been silent for >1h and expire
+    // s24_queue_items that have been pending for >24h without pickup.
+    let neonSweep = null;
+    if (pgIsConfigured()) {
+      try {
+        const [agentResult, queueResult] = await Promise.all([
+          pgQuery(
+            `UPDATE s24_agents SET status = 'stale'
+             WHERE status = 'active' AND last_seen < now() - interval '1 hour'`
+          ),
+          pgQuery(
+            `UPDATE s24_queue_items SET status = 'expired-stale-check'
+             WHERE status IN ('pending', 'queued') AND created_at < now() - interval '24 hours'`
+          ),
+        ]);
+        neonSweep = {
+          agentsStaled: agentResult.rowCount,
+          queueExpired: queueResult.rowCount,
+        };
+      } catch { neonSweep = { error: 'neon sweep failed' }; }
+    }
+
+    return res.status(200).json({ success: true, checked, transitions, neonSweep, thresholdSeconds: STALE_ALERT_SECONDS, at: nowIso });
   } catch (err) {
     return res.status(500).json({ success: false, error: err.message || 'check-stale failed' });
   }

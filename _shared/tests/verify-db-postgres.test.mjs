@@ -106,6 +106,9 @@ const NOT_A_TABLE = new Set([
   's24_sync_batches', 'schema_migrations',
   // `ON CONFLICT ... DO UPDATE SET` puts a keyword where a table name goes
   'set',
+  // false positive: "Update" in email addresses (analytics@jaytibirthday.in)
+  // triggers the SQL keyword check, then "update the secret" captures "the"
+  'the',
 ]);
 
 // Only string literals that are SQL. Scanning whole files matched the prose in

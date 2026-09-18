@@ -16,6 +16,7 @@
 
 import { createServer } from 'node:http';
 import { createHash, timingSafeEqual, randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import { s24DeviceTools } from './s24-tools.mjs';
 
@@ -32,6 +33,32 @@ const MODEL = process.env.JP_AGENT_MODEL || 'claude-sonnet-5';
 // Note the practical ceiling for the dashboard path is wall-clock, not this:
 // Backend/agent-run.js aborts at 780s. This cap is for long CLI-side runs.
 const MAX_TURNS = Number(process.env.JP_AGENT_MAX_TURNS || 150);
+
+// MCP tool wiring is config-driven: /etc/jp-agent-mcp.json lists servers as
+// { name, type, url, headers } entries (SDK McpHttpServerConfig shape, with
+// `${VAR}` interpolation resolved from this process's environment). If the
+// file is missing, empty, or has no usable entries, fall back to the
+// in-process s24 tools so the device plane never silently disappears.
+function loadMcpServers() {
+  const fallback = { fallback: true, servers: { 's24-connect': s24DeviceTools } };
+  let cfg;
+  try {
+    cfg = JSON.parse(readFileSync(process.env.JP_AGENT_MCP_CONFIG || '/etc/jp-agent-mcp.json', 'utf8'));
+  } catch {
+    return fallback;
+  }
+  const servers = {};
+  for (const s of cfg.servers || []) {
+    if (!s || !s.name || !s.url) continue;
+    const headers = {};
+    for (const [k, v] of Object.entries(s.headers || {})) {
+      headers[k] = String(v).replace(/\$\{(\w+)\}/g, (_, n) => process.env[n] ?? '');
+    }
+    servers[s.name] = { type: s.type || 'http', url: s.url, headers };
+  }
+  return Object.keys(servers).length ? { fallback: false, servers } : fallback;
+}
+const MCP = loadMcpServers();
 
 if (!TOKEN) {
   console.error('JP_AGENT_TOKEN is unset — refusing to start rather than serve unauthenticated.');
@@ -152,7 +179,7 @@ async function handleAsk(req, res, body) {
         maxTurns: MAX_TURNS,
         permissionMode: 'bypassPermissions',
         resume: session.sdkSessionId,
-        mcpServers: { 's24-connect': s24DeviceTools },
+        mcpServers: MCP.servers,
       },
     })) {
       // Nobody is reading any more. Breaking ends the SDK iterator, which stops
@@ -205,7 +232,7 @@ const server = createServer(async (req, res) => {
   // Unauthenticated, deliberately: nginx and uptime checks need it, and it
   // discloses nothing beyond the fact that a service is running.
   if (url.pathname === '/health') {
-    return send(res, 200, { ok: true, service: 'jp-agent', sessions: sessions.size, uptime_s: Math.round(process.uptime()) });
+    return send(res, 200, { ok: true, service: 'jp-agent', sessions: sessions.size, uptime_s: Math.round(process.uptime()), mcp: MCP.fallback ? 'in-process' : 'config' });
   }
 
   if (!authorized(req)) {
