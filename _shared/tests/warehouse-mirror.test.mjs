@@ -62,6 +62,16 @@ for (const [pageUrl, fallback, want, why] of [
   [null, 'jaytipargal.tech', 'jaytipargal.tech', 'a bare Host header works as the fallback'],
   ['https://JAYTIPARGAL.TECH:443/x', null, 'jaytipargal.tech', 'case and port are normalised'],
   [null, null, null, 'nothing to derive from is null, not a guess'],
+  // Found in production: a preview build someone opened once had already added
+  // `jayti-dashboard-a8ajkprgy-jayti.vercel.app` to the property selector.
+  ['https://jayti-dashboard-a8ajkprgy-jayti.vercel.app/db', null, null,
+    'a generated preview host is not a property'],
+  ['https://jayti-dashboard.vercel.app/', null, null,
+    'the stable .vercel.app alias is not one either — the custom domains are'],
+  [null, 'https://jpbirrestructured.vercel.app', null,
+    'a deployment host is rejected as a fallback too, not just as a page URL'],
+  ['https://jaytipargal.tech/db', 'https://x-abc-jayti.vercel.app', 'jaytipargal.tech',
+    'a real page URL still wins over a deployment-host fallback'],
 ]) {
   const got = siteFor(pageUrl, fallback);
   check(`siteFor: ${why}`, got === want, `siteFor(${JSON.stringify(pageUrl)}, ${JSON.stringify(fallback)}) = ${JSON.stringify(got)}, wanted ${JSON.stringify(want)}`);
