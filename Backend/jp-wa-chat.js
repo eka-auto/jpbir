@@ -14,7 +14,6 @@
 // export ingest); attachments land here later (path 3, Vercel Blob).
 import { requireKey } from './_auth.js';
 import { query, isConfigured } from '../Integrations/postgres.js';
-import { requireKey } from './_auth.js';
 
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'private, no-store');
@@ -28,7 +27,6 @@ export default async function handler(req, res) {
     res.setHeader('Allow', 'GET, HEAD');
     return res.status(405).json({ ok: false, error: 'GET only' });
   }
-  if (!requireKey(req, res)) return;
 
   const chatId = String(req.query.chat_id || '').trim();
   if (!chatId) return res.status(400).json({ ok: false, error: 'chat_id required' });
