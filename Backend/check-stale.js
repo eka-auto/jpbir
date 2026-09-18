@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import nodemailer from 'nodemailer';
 import { evaluate } from './lib/stale.js';
+import { query as pgQuery, isConfigured as pgIsConfigured } from '../Integrations/postgres.js';
 import { requireKey } from './_auth.js';
 import { cronAuthorized } from './lib/cron-auth.js';
 
@@ -138,7 +139,10 @@ export default async function handler(req, res) {
   // dashboard key only, same as verify-db.
   if (!cronAuthorized(req) && !requireKey(req, res)) return;
   if (!FIREBASE_SA_JSON) return res.status(500).json({ success: false, error: 'FIREBASE_SERVICE_ACCOUNT_JSON not configured' });
-  if (!GMAIL_APP_PASSWORD) return res.status(500).json({ success: false, error: 'GMAIL_APP_PASSWORD not configured' });
+  // GMAIL_APP_PASSWORD is optional — without it, email alerts are skipped but
+  // Firestore staleness patches and the Neon sweep still run. This keeps the
+  // cron useful even when the app password hasn't been set yet.
+  const emailEnabled = Boolean(GMAIL_APP_PASSWORD);
 
   try {
     const token = await getFirestoreToken();
@@ -172,10 +176,11 @@ export default async function handler(req, res) {
         lastSeen: f.lastSeen || null,
         lastSeenAgeSeconds: f.lastSeen ? Math.round((nowMs - new Date(f.lastSeen).getTime()) / 1000) : null,
       };
-      // Send first; only persist the new state if the email went out, so a
-      // transient send failure retries on the next tick instead of going silent.
+      // Send email first when configured; only persist the new state if the
+      // email went out (or is skipped), so a transient send failure retries on
+      // the next tick instead of going silent.
       try {
-        await sendAlert(result.action, d);
+        if (emailEnabled) await sendAlert(result.action, d);
         const patchUrl = `${base}/devices/${deviceId}?updateMask.fieldPaths=${encodeURIComponent('staleAlert')}`;
         const body = JSON.stringify({ fields: { staleAlert: enc({ state: result.newState, since: nowIso }) } });
         const pr = await fetch(patchUrl, {
@@ -184,13 +189,36 @@ export default async function handler(req, res) {
           body,
         });
         if (!pr.ok) throw new Error('patch failed: ' + (await pr.text()).slice(0, 200));
-        transitions.push({ deviceId, action: result.action });
+        transitions.push({ deviceId, action: result.action, email: emailEnabled ? 'sent' : 'skipped' });
       } catch (e) {
         transitions.push({ deviceId, action: result.action, error: e.message });
       }
     }
 
-    return res.status(200).json({ success: true, checked, transitions, thresholdSeconds: STALE_ALERT_SECONDS, at: nowIso });
+    // ── Neon staleness sweep ────────────────────────────────────────────
+    // Downgrade s24_agents that have been silent for >1h and expire
+    // s24_queue_items that have been pending for >24h without pickup.
+    let neonSweep = null;
+    if (pgIsConfigured()) {
+      try {
+        const [agentResult, queueResult] = await Promise.all([
+          pgQuery(
+            `UPDATE s24_agents SET status = 'stale'
+             WHERE status = 'active' AND last_seen < now() - interval '1 hour'`
+          ),
+          pgQuery(
+            `UPDATE s24_queue_items SET status = 'expired-stale-check'
+             WHERE status IN ('pending', 'queued') AND created_at < now() - interval '24 hours'`
+          ),
+        ]);
+        neonSweep = {
+          agentsStaled: agentResult.rowCount,
+          queueExpired: queueResult.rowCount,
+        };
+      } catch { neonSweep = { error: 'neon sweep failed' }; }
+    }
+
+    return res.status(200).json({ success: true, checked, transitions, neonSweep, emailEnabled, thresholdSeconds: STALE_ALERT_SECONDS, at: nowIso });
   } catch (err) {
     return res.status(500).json({ success: false, error: err.message || 'check-stale failed' });
   }

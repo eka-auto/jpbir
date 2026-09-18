@@ -17,7 +17,7 @@ import { DynamoDBDocumentClient, ScanCommand } from '@aws-sdk/lib-dynamodb';
 import crypto from 'crypto';
 import { requireKey } from './_auth.js';
 import { query, isConfigured } from '../Integrations/postgres.js';
-import { cronAuthorized } from './lib/cron-auth.js';
+import { cronAuthorized, secretEquals } from './lib/cron-auth.js';
 
 const _env = (typeof process !== 'undefined' ? process : globalThis['proc' + 'ess']).env;
 const AWS_ACCESS_KEY_ID = _env['JP_AWS_' + 'ACCESS_KEY_ID'];
@@ -39,7 +39,7 @@ const FIREBASE_SA_JSON = _env['FIREBASE_' + 'SERVICE_ACCOUNT_JSON'];
 // real, reportable state rather than an impossibility — a database can be
 // migrated by one project and not the other.
 export const REQUIRED_TABLES = [
-  'devices', 'email_opens', 'events', 'letters', 'sessions', 'video_events', 'visitors',
+  'devices', 'device_telemetry', 'email_opens', 'events', 'letters', 'sessions', 'video_events', 'visitors',
   's24_agents', 's24_calls', 's24_commands', 's24_device_snapshots', 's24_files',
   's24_ingest_seen', 's24_locations', 's24_queue_items', 's24_records', 's24_sms',
   's24_sync_datasets', 's24_sync_runs',
@@ -203,6 +203,17 @@ export default async function handler(req, res) {
   //
   // Either credential now gets in, nothing else does: the dashboard key that
   // gates every other read route, or a CRON_SECRET bearer for scheduled checks.
+  //
+  // CI's health probe gets a third, narrower key: HEALTH_CHECK_KEY can only ask
+  // whether Neon answers with the full schema. No table names, row counts or
+  // other store detail, so the dashboard key never has to live in CI.
+  if (secretEquals(req.headers['x-health-key'], _env['HEALTH_' + 'CHECK_KEY'])) {
+    const pg = await verifyPostgres();
+    return res.status(pg.ok ? 200 : 503).json({
+      success: pg.ok,
+      postgres: { ok: pg.ok, tables_present: pg.tables_present ?? null, tables_expected: pg.tables_expected ?? null },
+    });
+  }
   if (!cronAuthorized(req) && !requireKey(req, res)) return;
 
   const [postgresResult, dynamoResult, firestoreResult] = await Promise.all([

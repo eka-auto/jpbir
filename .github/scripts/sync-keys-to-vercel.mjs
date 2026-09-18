@@ -1,11 +1,10 @@
 // Add-only key sync: GitHub Actions secrets -> Vercel production.
 //
-// Every name in SYNC_KEYS that is set as a GitHub secret but absent from the
-// Vercel project in every environment is created there as a sensitive
-// Production variable. Nothing is updated or removed, and a key Vercel already
-// holds keeps the environments it has: several are Production-only on purpose,
-// and sensitive values can't be read back to tell a stale GitHub copy from a
-// rotated Vercel one.
+// Every name in SYNC_KEYS that is set as a GitHub secret but missing from
+// Vercel Production is created there as a sensitive Production variable.
+// Nothing is updated or removed, and nothing is added to Preview or
+// Development: several keys are Production-only on purpose, and sensitive
+// values can't be read back to tell a stale GitHub copy from a rotated one.
 //
 // Env vars bind at build time, so the live production deployment is rebuilt
 // whenever a SYNC_KEYS production variable is newer than it - whether this run
@@ -38,12 +37,14 @@ const [{ envs }, { deployments: [live] }] = await Promise.all([
   vercel(`/v9/projects/${VERCEL_PROJECT_ID}/env`),
   vercel(`/v6/deployments?projectId=${VERCEL_PROJECT_ID}&target=production&state=READY&limit=1`),
 ]);
-const present = new Set(envs.map(e => e.key));
+// Only a Production record counts: a Preview- or Development-only copy is no
+// reason to leave Production without the key.
+const inProduction = new Set(envs.filter(e => e.target.includes('production')).map(e => e.key));
 
 const batch = [];
 for (const key of keys) {
   const value = secrets[key]?.trim();
-  if (!value || present.has(key)) continue;
+  if (!value || inProduction.has(key)) continue;
   // A zero-width space spliced into a key has broken auth here before, and a
   // sensitive value can't be inspected once stored. Refuse it; never print it.
   if (/[^\x20-\x7e\t\r\n]/.test(value)) {
