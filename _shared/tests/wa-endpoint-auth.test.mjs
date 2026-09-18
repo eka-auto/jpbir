@@ -73,6 +73,9 @@ const ROUTES = [
   { file: 'jp-agent.js', method: 'POST', refuses: 401, body: { question: 'x' } },
   // Sends alert email and patches Firestore; its authorized() returned true.
   { file: 'check-stale.js', method: 'GET', refuses: 401 },
+  // Referenced an undeclared STATS_KEY, so it 500'd for everyone - including
+  // the owner - instead of refusing.
+  { file: 'connect.js', method: 'GET', refuses: 401 },
 ];
 
 for (const route of ROUTES) {
