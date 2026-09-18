@@ -33,12 +33,11 @@ export function pool() {
 
 /** Direct (non-pooled) connection — migrations only. */
 export function directPool() {
-  return makePool(
-    process.env.DATABASE_URL_UNPOOLED ||
-    process.env.POSTGRES_URL_NON_POOLING ||
-    process.env.DATABASE_URL ||
-    process.env.POSTGRES_URL
-  );
+  const url = process.env.DATABASE_URL_UNPOOLED || process.env.POSTGRES_URL_NON_POOLING;
+  if (!url) {
+    throw new Error('No direct Postgres connection string set (DATABASE_URL_UNPOOLED / POSTGRES_URL_NON_POOLING). Pooled URLs cannot run migrations safely.');
+  }
+  return makePool(url);
 }
 
 export async function query(text, params) {

@@ -63,10 +63,12 @@ jobs:
           fi
       
       - name: Test Database Verification
+        env:
+          STATS_KEY: ${{ secrets.STATS_KEY }}
         run: |
-          RESPONSE=$(curl -sL -o /dev/null -w "%{http_code}" https://jaytipargal.tech/api/verify-db)
-          if [ "$RESPONSE" -eq 200 ] || [ "$RESPONSE" -eq 401 ]; then
-            echo "✅ Database Verification OK (HTTP $RESPONSE)"
+          RESPONSE=$(curl -sL -o /dev/null -w "%{http_code}" -H "x-stats-key: $STATS_KEY" https://jaytipargal.tech/api/verify-db)
+          if [ "$RESPONSE" -eq 200 ]; then
+            echo "✅ Database Verification OK"
           else
             echo "❌ Database Verification failed with status $RESPONSE"
             exit 1
