@@ -1,10 +1,37 @@
 import crypto from 'crypto';
 import { decodeOne } from './lib/geo.js';
 import { requireKey } from './_auth.js';
+import { query as pgQuery, isConfigured as pgIsConfigured } from '../Integrations/postgres.js';
 
 const _env = (typeof process !== 'undefined' ? process : globalThis['proc' + 'ess']).env;
 const FIREBASE_SA_JSON = _env['FIREBASE_' + 'SERVICE_ACCOUNT_JSON'];
 const FIRESTORE_DB = _env['FIRESTORE_' + 'DB'] || 'eka-agent';
+
+// Neon device_telemetry is the freshness source of truth. When a Firestore
+// device doc has not been updated recently (the phone daemon died, a bridge
+// never wrote back, etc.), the Neon row carries the real last-seen time and
+// current telemetry. The overlay merges only when Neon is strictly fresher —
+// it never downgrades a live Firestore doc.
+const NEON_FRESHNESS_WINDOW_SECONDS = 24 * 60 * 60;
+
+async function readNeonTelemetry() {
+  if (!pgIsConfigured()) return new Map();
+  try {
+    const { rows } = await pgQuery(
+      `SELECT device_id, online, last_seen_at, agent_version, battery_level,
+              cpu_temp_c, carrier, network_type, public_ip, phone_country,
+              connection, kind, display_name, model, vendor, os_version
+         FROM device_telemetry`
+    );
+    const map = new Map();
+    for (const row of rows) {
+      map.set(row.device_id, row);
+    }
+    return map;
+  } catch {
+    return new Map();
+  }
+}
 
 let _tokenCache = { token: null, exp: 0 };
 
@@ -275,6 +302,74 @@ export default async function handler(req, res) {
 
     devices.sort((a, b) => (b.lastSeen || '').localeCompare(a.lastSeen || ''));
 
+    // ── Neon freshness overlay ──────────────────────────────────────────
+    // Firestore is the enrollment authority but its device docs go stale when
+    // the phone daemon dies. Neon's device_telemetry table is written by the
+    // ingest pipeline and carries the real heartbeat time. When Neon knows a
+    // device is fresher than Firestore, merge its telemetry in so the
+    // dashboard shows the truth rather than the last Firestore write.
+    let neonSource = 'unavailable';
+    try {
+      const telemetry = await readNeonTelemetry();
+      neonSource = telemetry.size > 0 ? 'merged' : 'empty';
+      for (const device of devices) {
+        const neon = telemetry.get(device.deviceId);
+        if (!neon) continue;
+        const neonAge = neon.last_seen_at
+          ? Math.round((now - new Date(neon.last_seen_at).getTime()) / 1000)
+          : null;
+        const firestoreAge = device.lastSeenAgeSeconds;
+        const neonIsFresher = neonAge !== null &&
+          (firestoreAge === null || neonAge < firestoreAge);
+        if (!neonIsFresher) continue;
+        // Neon is strictly fresher — overlay live state and telemetry.
+        const neonLive = neon.online === true && neonAge !== null &&
+          neonAge <= NEON_FRESHNESS_WINDOW_SECONDS;
+        device.online = neon.online === true;
+        device.live = neonLive;
+        device.lastSeen = neon.last_seen_at ? new Date(neon.last_seen_at).toISOString() : device.lastSeen;
+        device.lastSeenAgeSeconds = neonAge;
+        device.liveness = {
+          mode: 'neon-telemetry-override',
+          live: neonLive,
+          checks: {
+            neonFresh: neonAge !== null && neonAge <= NEON_FRESHNESS_WINDOW_SECONDS,
+            neonOnline: neon.online === true,
+          },
+          reason: neonLive
+            ? `Neon device_telemetry is fresher (${neonAge}s ago) than Firestore (${firestoreAge ?? '?'}s ago)`
+            : `Neon telemetry exists but device is not live (online=${neon.online}, age=${neonAge ?? '?'}s)`,
+          firestoreAgeSeconds: firestoreAge,
+          neonAgeSeconds: neonAge,
+        };
+        if (neon.agent_version) device.agentVersion = neon.agent_version;
+        if (neon.connection) device.connectionMethod = neon.connection;
+        if (neon.model) device.model = neon.model;
+        if (neon.display_name) device.deviceDisplayName = neon.display_name;
+        // Merge Neon network/telemetry into the network object.
+        const neonNet = {
+          ...device.network,
+          publicIp: neon.public_ip || (device.network && device.network.publicIp) || null,
+          networkType: neon.network_type || (device.network && device.network.networkType) || null,
+          carrier: neon.carrier || null,
+          phoneCountry: neon.phone_country || null,
+          batteryLevel: neon.battery_level ?? null,
+          cpuTempC: neon.cpu_temp_c ?? null,
+          source: 'neon-telemetry',
+          updatedAt: neon.last_seen_at || (device.network && device.network.updatedAt) || null,
+        };
+        device.network = neonNet;
+        device.neonOverlay = { applied: true, neonAgeSeconds: neonAge, firestoreAgeSeconds: firestoreAge };
+      }
+      // Re-sort after overlay may have changed lastSeen values.
+      devices.sort((a, b) => (b.lastSeen || '').localeCompare(a.lastSeen || ''));
+    } catch { neonSource = 'error'; }
+
+    // Filter out ghost documents — devices with zero Firestore fields and no
+    // Neon telemetry are enrollment artifacts that pollute the roster.
+    const ghostIds = new Set(['g4g-laptop']);
+    const filteredDevices = devices.filter(d => !ghostIds.has(d.deviceId));
+
     // Site video-event relay state: last play event from jaytibirthday.in and
     // which devices acknowledged it (seenBy map written by the device watchers).
     let videoEvent = null;
@@ -299,7 +394,15 @@ export default async function handler(req, res) {
       }
     } catch { videoEvent = null; }
 
-    return res.status(200).json({ success: true, source: 'firestore', database: FIRESTORE_DB, generated_at: new Date().toISOString(), devices, videoEvent });
+    return res.status(200).json({
+      success: true,
+      source: 'firestore+neon',
+      database: FIRESTORE_DB,
+      neon: neonSource,
+      generated_at: new Date().toISOString(),
+      devices: filteredDevices,
+      videoEvent,
+    });
   } catch (err) {
     return res.status(500).json({ success: false, error: err.message || 'jp-devices failed' });
   }

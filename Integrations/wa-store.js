@@ -119,6 +119,9 @@ export function normalizeMessage(rec, chatId) {
   const when = ts == null ? null : new Date(typeof ts === 'number' && ts < 1e12 ? ts * 1000 : ts);
   const body = rec.body ?? rec.text ?? null;
   const fromMe = rec.from_me ?? rec.fromMe;
+  const encrypted = rec.encrypted != null || rec.sealed != null
+    ? flag(rec.encrypted ?? rec.sealed)
+    : body == null;
   return {
     msg_id: `${chat}:${key}`,
     chat_id: chat,
@@ -126,8 +129,14 @@ export function normalizeMessage(rec, chatId) {
     from_me: fromMe == null ? null : flag(fromMe),
     sender: str(rec.sender ?? rec.from) || null,
     kind: MSG_KINDS.has(kind) ? kind : 'other',
-    encrypted: rec.encrypted != null || rec.sealed != null ? flag(rec.encrypted ?? rec.sealed) : body == null,
-    body: body == null ? null : String(body),
+    encrypted,
+    // Encrypted recovery-dump records that carry no body get a placeholder so
+    // the dashboard does not render empty message bubbles. When the export
+    // parser later runs with actual chat .txt files, it overwrites these via
+    // the ON CONFLICT clause (or by matching sent_at+sender+direction).
+    body: body == null
+      ? (encrypted ? '[Encrypted — export chat to read]' : null)
+      : String(body),
   };
 }
 
