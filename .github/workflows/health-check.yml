@@ -28,7 +28,7 @@ jobs:
       
       - name: Test Homepage
         run: |
-          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" https://jpbirrestructured.vercel.app/)
+          RESPONSE=$(curl -sL -o /dev/null -w "%{http_code}" https://jaytipargal.tech/)
           if [ "$RESPONSE" -eq 200 ]; then
             echo "✅ Homepage OK"
           else
@@ -36,7 +36,7 @@ jobs:
             exit 1
           fi
       
-      # These two are key-gated, and this probe is unauthenticated on purpose —
+      # These API probes are key-gated, and this probe is unauthenticated on purpose —
       # putting the dashboard key in CI just to ping a route is a worse trade
       # than reading 401 for what it is. A 401 means the function ran, reached
       # the guard and refused, which is exactly healthy. A 503 means STATS_KEY
@@ -44,7 +44,7 @@ jobs:
       # both still fail the check.
       - name: Test Devices API
         run: |
-          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" https://jpbirrestructured.vercel.app/api/jp-devices)
+          RESPONSE=$(curl -sL -o /dev/null -w "%{http_code}" https://jaytipargal.tech/api/jp-devices)
           if [ "$RESPONSE" -eq 200 ] || [ "$RESPONSE" -eq 401 ]; then
             echo "✅ Devices API OK (HTTP $RESPONSE)"
           else
@@ -54,7 +54,7 @@ jobs:
 
       - name: Test Stats API
         run: |
-          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" https://jpbirrestructured.vercel.app/api/jp-stats)
+          RESPONSE=$(curl -sL -o /dev/null -w "%{http_code}" https://jaytipargal.tech/api/jp-stats)
           if [ "$RESPONSE" -eq 200 ] || [ "$RESPONSE" -eq 401 ]; then
             echo "✅ Stats API OK (HTTP $RESPONSE)"
           else
@@ -64,9 +64,9 @@ jobs:
       
       - name: Test Database Verification
         run: |
-          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" https://jpbirrestructured.vercel.app/api/verify-db)
-          if [ "$RESPONSE" -eq 200 ]; then
-            echo "✅ Database Verification OK"
+          RESPONSE=$(curl -sL -o /dev/null -w "%{http_code}" https://jaytipargal.tech/api/verify-db)
+          if [ "$RESPONSE" -eq 200 ] || [ "$RESPONSE" -eq 401 ]; then
+            echo "✅ Database Verification OK (HTTP $RESPONSE)"
           else
             echo "❌ Database Verification failed with status $RESPONSE"
             exit 1

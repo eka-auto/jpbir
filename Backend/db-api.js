@@ -96,10 +96,18 @@ const VIEWS = {
       breakdown('timezone'),
       breakdown('page_domain'),
       // `screen` holds the raw screen_info JSON; the label a human wants is WxH.
-      query(`SELECT (screen::jsonb ->> 'width') || ' x ' || (screen::jsonb ->> 'height') AS label,
+      //
+      // Guarded, because the column is whatever a tracker put in it. jp-tracker
+      // sends the string "1280x720 (DPR:1.5)", and an unguarded screen::jsonb
+      // on one such row aborts the whole statement — taking Overview, every
+      // card on it, down with a 500 rather than dropping one Screens label.
+      // The CASE keeps the cast from being evaluated on a row the regex
+      // rejects; the matching WHERE clause keeps those rows out entirely.
+      query(`SELECT (CASE WHEN screen ~ '^\\s*\\{' THEN screen::jsonb END ->> 'width') || ' x ' ||
+                    (CASE WHEN screen ~ '^\\s*\\{' THEN screen::jsonb END ->> 'height') AS label,
                     COUNT(*)::int n, COUNT(DISTINCT visitor_id)::int visitors
                FROM events
-              WHERE site = $1 AND screen IS NOT NULL AND screen <> ''
+              WHERE site = $1 AND screen IS NOT NULL AND screen ~ '^\\s*\\{'
                 AND occurred_at > now() - ($2 || ' days')::interval ${noiseClause}
               GROUP BY 1 ORDER BY n DESC LIMIT 12`, params),
     ]);
@@ -420,11 +428,66 @@ const VIEWS = {
   },
 
   // Every table, every column — the "is anything missing" panel.
+  // The WhatsApp store is the largest thing in this database — 862 chats and
+  // 110k messages — and it was the one part of it the explorer could not open.
+  // Health counted the rows, every other table had a page, this had none: the
+  // numbers were visible and the data behind them was not.
+  //
+  // Deliberately NOT site-scoped, like devices and s24: wa_* carries no `site`
+  // column because one phone's export is not a web property's traffic. The page
+  // says so, rather than leaving the property selector looking broken.
+  async whatsapp({ limit, offset, id }) {
+    if (id) {
+      const chat = (await query('SELECT * FROM wa_chats WHERE chat_id = $1', [id])).rows[0] || null;
+      if (!chat) throw new Error(`no such chat ${id}`);
+      const messages = (await query(
+        `SELECT msg_id, sent_at, from_me, sender, kind, encrypted, body
+           FROM wa_messages WHERE chat_id = $1
+          ORDER BY sent_at DESC NULLS LAST LIMIT 50`, [id])).rows;
+      const byKind = (await query(
+        `SELECT kind AS label, COUNT(*)::int n FROM wa_messages
+          WHERE chat_id = $1 GROUP BY 1 ORDER BY n DESC`, [id])).rows;
+      const attachments = (await query(
+        `SELECT kind AS label, COUNT(*)::int n, SUM(size_bytes)::bigint bytes
+           FROM wa_attachments WHERE chat_id = $1 GROUP BY 1 ORDER BY n DESC`, [id])).rows;
+      return { chat, messages, byKind, attachments };
+    }
+
+    const totals = (await query(
+      `SELECT (SELECT COUNT(*) FROM wa_chats)::int        AS chats,
+              (SELECT COUNT(*) FROM wa_messages)::int     AS messages,
+              (SELECT COUNT(*) FROM wa_attachments)::int  AS attachments,
+              (SELECT COUNT(*) FROM wa_sync_runs)::int    AS runs,
+              (SELECT COUNT(*) FROM wa_chats WHERE unresolved)::int AS unresolved,
+              (SELECT MIN(sent_at) FROM wa_messages)      AS oldest,
+              (SELECT MAX(sent_at) FROM wa_messages)      AS newest`)).rows[0];
+
+    // msg_count DESC, not last_at: the question this page answers first is
+    // "what is actually in here", and a dormant 20k-message thread matters
+    // more to that than yesterday's one-liner.
+    const rows = (await query(
+      `SELECT chat_id, name, kind, unresolved, msg_count, enc_count, media_count,
+              audio_count, call_count, member_count, first_at, last_at, updated_at
+         FROM wa_chats ORDER BY msg_count DESC, name ASC LIMIT $1 OFFSET $2`, [limit, offset])).rows;
+
+    const byKind = (await query(
+      `SELECT kind AS label, COUNT(*)::int n, SUM(msg_count)::int messages
+         FROM wa_chats GROUP BY 1 ORDER BY n DESC`)).rows;
+
+    const runs = (await query(
+      `SELECT run_id, device_id, started_at, finished_at, chats_seen, messages_seen, status, note
+         FROM wa_sync_runs ORDER BY started_at DESC LIMIT 10`)).rows;
+
+    return { total: totals.chats, limit, offset, rows, totals, byKind, runs };
+  },
+
   async health({ site }) {
     const tables = [
       'events', 'visitors', 'sessions', 'letters', 'email_opens', 'video_events', 'devices',
       // 004_whatsapp: shared with jaytibirthday-site's galaxy read path.
-      'wa_chats', 'wa_messages', 'wa_sync_runs',
+      // wa_attachments arrived in 005 and was never added here, so the one
+      // table Health could not see was the one the media panels read.
+      'wa_chats', 'wa_messages', 'wa_attachments', 'wa_sync_runs',
       's24_sync_runs', 's24_sync_datasets', 's24_sync_batches', 's24_records', 's24_ingest_seen',
       's24_device_snapshots', 's24_calls', 's24_sms', 's24_locations',
       's24_agents', 's24_commands', 's24_files', 's24_queue_items',

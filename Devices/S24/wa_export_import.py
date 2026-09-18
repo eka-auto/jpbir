@@ -52,10 +52,17 @@ import sys
 import time
 import urllib.error
 import urllib.request
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 DEFAULT_INGEST = "https://jaytipargal.tech/api/wa-ingest"
 DEFAULT_DIR = os.path.expanduser("~/wa-exports")
+# WhatsApp writes the exporting phone's LOCAL wall-clock time with no offset.
+# Stamping it as UTC shifted every imported message by the phone's offset —
+# +05:30 for the S24 — so 3:45 PM was stored as 15:45Z instead of 10:15Z, and
+# ordering disagreed with the msgstore ingest path. zoneinfo is not used: a
+# Termux install often has no tzdata, and a fixed offset is what an export
+# actually encodes.
+DEFAULT_TZ_OFFSET = os.environ.get("WA_TZ_OFFSET", "+05:30")
 CHUNK = 400  # matches CHUNK * 2 in wa-store.js so we stay under 10s server timeout
 
 # WhatsApp exports come in two shapes seen in the wild. The first is what
@@ -67,6 +74,26 @@ _LINE_MODERN = re.compile(
     r"(?P<time>\d{1,2}:\d{2}(?::\d{2})?\s*(?:AM|PM|am|pm)?)\]?\s*[-–]?\s*"
     r"(?P<sender>[^:]{1,120}?):\s*(?P<body>.*)$"
 )
+
+# Timestamped records with no "sender:" — "... - You created group \"X\"",
+# "Messages are end-to-end encrypted", joins and leaves. _LINE_MODERN requires
+# a sender, so these were being glued onto the previous message's body, or
+# dropped outright when one opened the file.
+_LINE_SYSTEM = re.compile(
+    r"^\[?(?P<date>\d{1,2}[/\-]\d{1,2}[/\-]\d{2,4}),\s*"
+    r"(?P<time>\d{1,2}:\d{2}(?::\d{2})?\s*(?:AM|PM|am|pm)?)\]?\s*[-–]?\s*"
+    r"(?P<body>.*)$"
+)
+
+
+def parse_tz_offset(text):
+    """'+05:30' -> a fixed-offset timezone."""
+    m = re.match(r"^([+-])(\d{1,2}):?(\d{2})$", (text or "").strip())
+    if not m:
+        raise ValueError(f"bad tz offset {text!r}; expected a form like +05:30")
+    sign = 1 if m.group(1) == "+" else -1
+    return timezone(sign * timedelta(hours=int(m.group(2)), minutes=int(m.group(3))))
+
 
 # In-body markers that WhatsApp writes for non-text messages when you
 # export "Without Media". Map them to wa_messages.kind.
@@ -86,8 +113,11 @@ _KIND_MARKERS = [
 ]
 
 
-def parse_date_time(date_s, time_s):
-    """Return an ISO 8601 UTC string, or None if the date/time can't be parsed."""
+def parse_date_time(date_s, time_s, tz=timezone.utc):
+    """Return an ISO 8601 UTC string, or None if the date/time can't be parsed.
+
+    `tz` is the zone the export's wall-clock times are written in.
+    """
     date_s = date_s.strip().replace("-", "/")
     time_s = time_s.strip().replace(" ", " ")
     m = re.match(r"^(\d{1,2})/(\d{1,2})/(\d{2,4})$", date_s)
@@ -110,10 +140,10 @@ def parse_date_time(date_s, time_s):
         elif ap == "AM" and hr == 12:
             hr = 0
     try:
-        dt = datetime(y, mo, d, hr, mi, se, tzinfo=timezone.utc)
+        dt = datetime(y, mo, d, hr, mi, se, tzinfo=tz)
     except ValueError:
         return None
-    return dt.isoformat()
+    return dt.astimezone(timezone.utc).isoformat()
 
 
 def guess_kind(body):
@@ -123,40 +153,59 @@ def guess_kind(body):
     return "text"
 
 
-def parse_export(path, me_aliases):
+def parse_export(path, me_aliases, tz=timezone.utc):
     """
     Yield {key, sent_at, sender, from_me, kind, body} for each message.
     Continuation lines (no timestamp at the start) attach to the previous
-    message's body; that is how WhatsApp writes multi-line messages.
+    message's body verbatim; that is how WhatsApp writes multi-line messages.
     """
     current = None
-    line_no = 0
+    seen = {}
+
+    def finalize(msg):
+        # The key is assigned once the body is complete, and from the CONTENT,
+        # never the file path. Hashing "{path}:{line_no}" made identity depend
+        # on how the file was invoked, so importing the same export by a
+        # relative path and by cron's absolute path produced different msg_ids,
+        # and the second run inserted duplicates instead of upserting. The
+        # counter keeps genuinely identical repeated lines distinct.
+        base = f"{msg['sent_at'] or ''}|{msg['sender'] or ''}|{msg['body']}"
+        n = seen.get(base, 0) + 1
+        seen[base] = n
+        msg["key"] = "exp:" + hashlib.sha1(f"{base}#{n}".encode("utf-8")).hexdigest()[:16]
+        return msg
+
     with open(path, "r", encoding="utf-8", errors="replace") as f:
         for raw in f:
-            line_no += 1
             line = raw.rstrip("\n").lstrip("﻿")
             m = _LINE_MODERN.match(line)
-            if m:
+            sysm = None if m else _LINE_SYSTEM.match(line)
+            if m or sysm:
                 if current is not None:
-                    yield current
-                sent_at = parse_date_time(m.group("date"), m.group("time"))
-                sender = m.group("sender").strip()
-                body = m.group("body")
-                kind = guess_kind(body)
-                key = "exp:" + hashlib.sha1(f"{path}:{line_no}".encode("utf-8")).hexdigest()[:16]
+                    yield finalize(current)
+                g = m or sysm
+                sent_at = parse_date_time(g.group("date"), g.group("time"), tz)
+                # A system record carries no "sender:". It is a record in its
+                # own right, not a continuation of whoever spoke last, so it is
+                # no longer glued onto the previous message or dropped.
+                sender = m.group("sender").strip() if m else None
+                body = g.group("body")
                 current = {
-                    "key": key,
+                    "key": None,
                     "sent_at": sent_at,
                     "sender": sender,
-                    "from_me": sender in me_aliases if me_aliases else None,
-                    "kind": kind,
+                    "from_me": (sender in me_aliases) if (m and me_aliases) else None,
+                    "kind": guess_kind(body) if m else "system",
                     "body": body,
                 }
             else:
-                if current is not None and line.strip():
-                    current["body"] = (current["body"] + "\n" + line).strip()
+                # Every continuation line is kept verbatim, blank ones included.
+                # Skipping empties and stripping the joined body silently
+                # reflowed multi-line messages on import.
+                if current is not None:
+                    current["body"] = current["body"] + "\n" + line
     if current is not None:
-        yield current
+        yield finalize(current)
 
 
 def post_messages(url, key, device, run_id, chat_id, messages, done=False):
@@ -181,8 +230,8 @@ def post_messages(url, key, device, run_id, chat_id, messages, done=False):
     return j
 
 
-def import_file(path, chat_id, me_aliases, url, key, device, run_id, dry_run=False):
-    messages = list(parse_export(path, me_aliases))
+def import_file(path, chat_id, me_aliases, url, key, device, run_id, dry_run=False, tz=timezone.utc):
+    messages = list(parse_export(path, me_aliases, tz))
     print(f"[wa_export_import] {os.path.basename(path)}: {len(messages)} messages for {chat_id}")
     if dry_run or not messages:
         return len(messages), 0
@@ -208,6 +257,8 @@ def main():
     ap.add_argument("--device", default=os.environ.get("WA_DEVICE_ID", "samsung-s24-ultra"))
     ap.add_argument("--me", default=os.environ.get("WA_ME_NAME", ""),
                     help="your display name(s) in exports, comma-separated, so from_me is set")
+    ap.add_argument("--tz-offset", default=DEFAULT_TZ_OFFSET,
+                    help="zone the export wall-clock times are written in (default %(default)s)")
     args = ap.parse_args()
 
     key = os.environ.get("WA_INGEST_KEY", "")
@@ -216,13 +267,18 @@ def main():
         return 2
 
     me_aliases = {n.strip() for n in (args.me or "").split(",") if n.strip()}
+    try:
+        tz = parse_tz_offset(args.tz_offset)
+    except ValueError as err:
+        print(f"[error] {err}", file=sys.stderr)
+        return 2
     run_id = f"export_{int(time.time())}"
 
     if args.file:
         if not args.chat_id:
             print("[error] --file needs --chat-id", file=sys.stderr)
             return 2
-        _, stored = import_file(args.file, args.chat_id, me_aliases, args.ingest_url, key, args.device, run_id, args.dry_run)
+        _, stored = import_file(args.file, args.chat_id, me_aliases, args.ingest_url, key, args.device, run_id, args.dry_run, tz)
         print(f"[wa_export_import] run {run_id}: stored {stored} messages")
         return 0
 
@@ -246,7 +302,7 @@ def main():
         if not os.path.exists(path):
             print(f"[skip] {fname}: not found in {args.dir}")
             continue
-        n, stored = import_file(path, chat_id, me_aliases, args.ingest_url, key, args.device, run_id, args.dry_run)
+        n, stored = import_file(path, chat_id, me_aliases, args.ingest_url, key, args.device, run_id, args.dry_run, tz)
         total_msgs += n
         total_stored += stored
     print(f"[wa_export_import] run {run_id}: parsed {total_msgs}, stored {total_stored}")

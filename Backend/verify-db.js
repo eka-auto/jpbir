@@ -2,17 +2,22 @@
  * Database Verification API Endpoint
  * 
  * GET /api/verify-db
- * 
- * Verifies production database connectivity:
- * 1. DynamoDB table access
- * 2. Firestore device read
- * 
+ *
+ * Verifies production database connectivity, one report per store:
+ * 1. Neon Postgres — reachable, every table the read routes query exists,
+ *    and how fresh the event stream is
+ * 2. DynamoDB table access
+ * 3. Firestore device read
+ *
  * Returns JSON with verification status
  */
 
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, ScanCommand } from '@aws-sdk/lib-dynamodb';
 import crypto from 'crypto';
+import { requireKey } from './_auth.js';
+import { query, isConfigured } from '../Integrations/postgres.js';
+import { cronAuthorized } from './lib/cron-auth.js';
 
 const _env = (typeof process !== 'undefined' ? process : globalThis['proc' + 'ess']).env;
 const AWS_ACCESS_KEY_ID = _env['JP_AWS_' + 'ACCESS_KEY_ID'];
@@ -20,7 +25,79 @@ const AWS_SECRET_ACCESS_KEY = _env['JP_AWS_' + 'SECRET_ACCESS_KEY'];
 const AWS_REGION = _env['JP_AWS_' + 'REGION'] || 'us-west-2';
 const TABLE = _env['JP_TELEMETRY_' + 'TABLE'] || 'jaytipargal_telemetry';
 const FIREBASE_SA_JSON = _env['FIREBASE_' + 'SERVICE_ACCOUNT_JSON'];
-const CRON_SECRET = _env['CRON_' + 'SECRET'];
+
+// Every table a deployed read route actually queries, extracted from the SQL in
+// db-api.js (all 14 views), the four jp-wa-*/wa-* WhatsApp routes and the two
+// ingest routes. Kept in sync by verify-db-postgres.test.mjs, which re-derives
+// this list from those files and fails when a route starts using a table the
+// health check does not know about.
+//
+// Ownership is split across two repos that share one Neon database: this one
+// ships Database/schema/004-006 (the wa_* and s24_* tables), and the sibling
+// jaytibirthday-site ships 001-003 (events, visitors, sessions, devices,
+// letters, email_opens, video_events). That is why a missing table here is a
+// real, reportable state rather than an impossibility — a database can be
+// migrated by one project and not the other.
+export const REQUIRED_TABLES = [
+  'devices', 'email_opens', 'events', 'letters', 'sessions', 'video_events', 'visitors',
+  's24_agents', 's24_calls', 's24_commands', 's24_device_snapshots', 's24_files',
+  's24_ingest_seen', 's24_locations', 's24_queue_items', 's24_records', 's24_sms',
+  's24_sync_datasets', 's24_sync_runs',
+  'wa_attachments', 'wa_chats', 'wa_messages', 'wa_sync_runs',
+];
+
+/**
+ * Verifies the Neon warehouse — the store the dashboard reads on every page
+ * load. It was absent from this endpoint, which checked only DynamoDB and
+ * Firestore: /api/verify-db could report `production_ready: true` while every
+ * db-api view returned 500 because DATABASE_URL was unset or the schema had
+ * never been migrated. That is exactly the failure jpbirrestructured.vercel.app
+ * has been sitting in.
+ *
+ * `q` and `configured` are injectable so the suite can exercise the missing-
+ * table and connection-failure branches without a database.
+ */
+export async function verifyPostgres(q = query, configured = isConfigured) {
+  if (!configured()) {
+    return { ok: false, error: 'DATABASE_URL not set on this deployment' };
+  }
+
+  try {
+    const present = new Set(
+      (await q(
+        `SELECT table_name FROM information_schema.tables
+          WHERE table_schema = 'public' AND table_name = ANY($1)`,
+        [REQUIRED_TABLES]
+      )).rows.map((r) => r.table_name)
+    );
+    const missing = REQUIRED_TABLES.filter((t) => !present.has(t));
+
+    // Reported even when a table is missing: "schema incomplete but the rows
+    // that exist are current" and "schema fine, ingestion stopped a week ago"
+    // are different incidents, and the caller cannot tell them apart from an
+    // ok/not-ok flag alone.
+    let freshness = null;
+    if (!missing.includes('events')) {
+      freshness = (await q(
+        `SELECT COUNT(*)::int AS events,
+                COUNT(DISTINCT site)::int AS sites,
+                MAX(occurred_at) AS newest_event_at,
+                MAX(ingested_at) AS last_write_at
+           FROM events`
+      )).rows[0];
+    }
+
+    return {
+      ok: missing.length === 0,
+      tables_expected: REQUIRED_TABLES.length,
+      tables_present: present.size,
+      missing,
+      ...(freshness || {}),
+    };
+  } catch (error) {
+    return { ok: false, error: error.message };
+  }
+}
 
 async function verifyDynamoDB() {
   if (!AWS_ACCESS_KEY_ID || !AWS_SECRET_ACCESS_KEY) {
@@ -118,24 +195,29 @@ export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
   res.setHeader('Content-Type', 'application/json');
 
-  // Open dashboard - no authentication required
-  // Optionally support CRON_SECRET for scheduled checks
-  const auth = String(req.headers['authorization'] || '');
-  if (CRON_SECRET && auth.startsWith('Bearer ') && !crypto.timingSafeEqual(Buffer.from(auth.slice(7)), Buffer.from(CRON_SECRET))) {
-    return res.status(401).json({ success: false, error: 'unauthorized' });
-  }
+  // Was "open dashboard - no authentication required". It answered 200 to
+  // anyone with the DynamoDB table name, the GCP project id, the Firestore
+  // database name and a live device count. The old CRON_SECRET check could not
+  // stop that: it only ran when an Authorization header was present, so sending
+  // no header at all skipped the branch entirely.
+  //
+  // Either credential now gets in, nothing else does: the dashboard key that
+  // gates every other read route, or a CRON_SECRET bearer for scheduled checks.
+  if (!cronAuthorized(req) && !requireKey(req, res)) return;
 
-  const [dynamoResult, firestoreResult] = await Promise.all([
+  const [postgresResult, dynamoResult, firestoreResult] = await Promise.all([
+    verifyPostgres(),
     verifyDynamoDB(),
     verifyFirestore(),
   ]);
 
-  const allOk = dynamoResult.ok && firestoreResult.ok;
+  const allOk = postgresResult.ok && dynamoResult.ok && firestoreResult.ok;
 
   res.status(allOk ? 200 : 500).json({
     success: allOk,
     verified_at: new Date().toISOString(),
     databases: {
+      postgres: postgresResult,
       dynamodb: dynamoResult,
       firestore: firestoreResult,
     },

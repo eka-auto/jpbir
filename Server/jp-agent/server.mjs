@@ -17,6 +17,7 @@
 import { createServer } from 'node:http';
 import { createHash, timingSafeEqual, randomUUID } from 'node:crypto';
 import { query } from '@anthropic-ai/claude-agent-sdk';
+import { s24DeviceTools } from './s24-tools.mjs';
 
 const PORT = Number(process.env.JP_AGENT_PORT || 8790);
 const HOST = '127.0.0.1';
@@ -151,6 +152,7 @@ async function handleAsk(req, res, body) {
         maxTurns: MAX_TURNS,
         permissionMode: 'bypassPermissions',
         resume: session.sdkSessionId,
+        mcpServers: { 's24-connect': s24DeviceTools },
       },
     })) {
       // Nobody is reading any more. Breaking ends the SDK iterator, which stops
@@ -167,9 +169,8 @@ async function handleAsk(req, res, body) {
           if (block.type === 'text') {
             emit('text', { text: block.text });
           } else if (block.type === 'tool_use') {
-            // Name and a short argument preview only — full arguments can carry
-            // file contents and secrets, and this stream reaches a browser.
-            emit('tool', { name: block.name, preview: JSON.stringify(block.input).slice(0, 200) });
+            // Even a short argument preview can expose a token or credential.
+            emit('tool', { name: block.name });
           }
         }
       } else if (msg.type === 'result') {

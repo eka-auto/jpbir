@@ -39,21 +39,23 @@ compromising the dashboard key does not hand over the agent.
 ./deploy.sh <droplet-ip> [ssh-key-path]
 ```
 
-Idempotent. Ships `server.mjs`, the unit and the nginx config, installs
-dependencies, and restarts. It creates `/etc/jp-agent.env` on first run only, so
-re-running never clobbers a key already in place.
+Idempotent. Ships `server.mjs`, `s24-tools.mjs`, `device-health.mjs`,
+`sync-auth-token.py`, the unit and the nginx config, installs dependencies, and
+restarts. It creates `/etc/jp-agent.env` on first run only, so re-running never
+clobbers a key already in place.
 
 ## The two secrets
 
 Deliberately not in this repo, not in the deploy script, and not passed through
 any agent transcript.
 
-**On the droplet** — `ANTHROPIC_API_KEY` is generated blank and must be filled:
+**On the droplet** — `ANTHROPIC_AUTH_TOKEN` is generated blank and must be filled
+without leaving the value in shell history (pipe it over stdin, never as an
+argument):
 
 ```bash
 ssh root@<ip>
-nano /etc/jp-agent.env        # set ANTHROPIC_API_KEY=
-systemctl restart jp-agent
+printf '%s' "$TOKEN" | python3 /opt/jp-agent/sync-auth-token.py
 ```
 
 **On Vercel** — the droplet generates `JP_AGENT_TOKEN` itself. Read it on the
@@ -80,9 +82,41 @@ No redeploy — `server.mjs` reads them at startup.
 | `JP_AGENT_WORKSPACE` | `/srv/workspace` | Must stay inside the unit's `ReadWritePaths`. |
 
 The turn cap is not what limits a dashboard question — `Backend/agent-run.js`
-aborts the proxy at 280s, so wall-clock binds first. Raise `maxTurns` for long
-runs driven from the droplet itself; for the dashboard, the 280s abort is the
-number to change.
+aborts the proxy at 780s (against an 800s `maxDuration`), so wall-clock binds
+first. Raise `maxTurns` for long runs driven from the droplet itself; for the
+dashboard, the 780s abort is the number to change.
+
+## Cloud CLIs
+
+The agent can drive DigitalOcean, GitHub and Vultr. All of it lives in the
+`jpagent` home, because the unit's `ProtectSystem=strict` makes everything else
+read-only:
+
+| | |
+|---|---|
+| Binaries | `~/bin/gh`, `~/bin/doctl`, `~/bin/vultr-cli` (official linux releases, no root) |
+| Credentials | `~/.config/jp-cloud/credentials.env`, `0600`: `DIGITALOCEAN_ACCESS_TOKEN`, `GH_TOKEN`, `VULTR_API_KEY` |
+| CLI config | `~/.config/doctl/config.yaml`, gh auth + `gh auth setup-git`, `~/.vultr-cli.yaml` (`0600`) |
+
+The unit loads that credentials file as an optional `EnvironmentFile` and puts
+`/home/jpagent/bin` first on `PATH`, so tools the agent runs find the CLIs
+without sourcing a shell profile — a service shell is non-login and
+non-interactive, and Ubuntu's `.bashrc` returns before any appended line runs.
+
+Credential scope:
+
+- **DigitalOcean / GitHub** — the operator's own tokens. Neither CLI can mint a
+  new token, so a compromise of this droplet means rotating both everywhere.
+- **Vultr** — a dedicated sub-user `jp-agent` limited to `subscriptions`,
+  `subscriptions_view`, `provisioning`, `dns`, `firewall` (no billing, no user
+  management). Vultr keeps a **per-user** API IP allowlist; this user's allows
+  only the droplet (`168.144.24.224/32`). Manage it with
+  `/v2/users/{id}/ip-whitelist`.
+
+Tokens are delivered out of band, never through a prompt, so they don't land in
+an agent transcript. Rotating one: replace the line in `credentials.env`, re-run
+`doctl auth init` / `gh auth login --with-token` / rewrite `~/.vultr-cli.yaml`,
+then `systemctl restart jp-agent` so the unit reloads the environment.
 
 Cost per turn is dominated by the SDK's system prompt and 18 tool definitions,
 so a short answer is not cheap: a one-word reply on a cold session bills ~$0.08,

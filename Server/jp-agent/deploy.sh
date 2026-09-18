@@ -7,8 +7,20 @@
 # first run and the two values are filled in on the box, so no key ever passes
 # through a repo, a shell history, or an agent transcript:
 #
-#   ANTHROPIC_API_KEY   your Anthropic key
+#   ANTHROPIC_AUTH_TOKEN   your current Anthropic OAuth token
 #   JP_AGENT_TOKEN      generated on the droplet by this script if absent
+#
+# The s24-connect MCP tools (s24-tools.mjs) need a Firestore-capable service
+# account key. Same rule as above — never in the repo or an agent transcript.
+# Provision it once, by hand, before or after the first deploy:
+#
+#   scp -i <ssh-key-path> <path-to-key.json> root@<ip>:/etc/jp-agent-firestore-key.json
+#   ssh -i <ssh-key-path> root@<ip> \
+#     'chown jpagent:jpagent /etc/jp-agent-firestore-key.json && chmod 600 /etc/jp-agent-firestore-key.json'
+#
+# This script wires the non-secret S24_* env vars (project, database, and the
+# key's path — not its contents) into /etc/jp-agent.env; without the key file
+# in place, jp-agent still starts, but every s24-connect tool call fails.
 set -euo pipefail
 
 IP="${1:?usage: deploy.sh <droplet-ip> [ssh-key-path]}"
@@ -18,7 +30,9 @@ SSH=(ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -i "$KEY" "root@$I
 echo "==> shipping service files"
 "${SSH[@]}" "install -d -o jpagent -g jpagent /opt/jp-agent"
 scp -o BatchMode=yes -o StrictHostKeyChecking=accept-new -i "$KEY" \
-  "$(dirname "$0")/server.mjs" "$(dirname "$0")/package.json" "root@$IP:/opt/jp-agent/"
+  "$(dirname "$0")/server.mjs" "$(dirname "$0")/s24-tools.mjs" \
+  "$(dirname "$0")/device-health.mjs" "$(dirname "$0")/sync-auth-token.py" \
+  "$(dirname "$0")/package.json" "root@$IP:/opt/jp-agent/"
 scp -o BatchMode=yes -o StrictHostKeyChecking=accept-new -i "$KEY" \
   "$(dirname "$0")/jp-agent.service" "root@$IP:/etc/systemd/system/jp-agent.service"
 scp -o BatchMode=yes -o StrictHostKeyChecking=accept-new -i "$KEY" \
@@ -31,6 +45,10 @@ chown -R jpagent:jpagent /opt/jp-agent
 echo "==> installing dependencies"
 cd /opt/jp-agent
 sudo -u jpagent npm install --omit=dev --no-audit --no-fund --silent
+# The privileged stdin receiver must not be writable by the agent service.
+chown root:root /opt/jp-agent /opt/jp-agent/sync-auth-token.py
+chmod 755 /opt/jp-agent
+chmod 644 /opt/jp-agent/sync-auth-token.py
 
 # Create the env file on first run only, so re-deploying never clobbers a key
 # that is already in place.
@@ -38,16 +56,32 @@ if [ ! -f /etc/jp-agent.env ]; then
   echo "==> creating /etc/jp-agent.env"
   TOKEN="$(openssl rand -hex 32)"
   cat > /etc/jp-agent.env <<ENV
-# Fill ANTHROPIC_API_KEY in, then: systemctl restart jp-agent
-ANTHROPIC_API_KEY=
+# Fill ANTHROPIC_AUTH_TOKEN securely, then: systemctl restart jp-agent
+ANTHROPIC_AUTH_TOKEN=
 JP_AGENT_TOKEN=$TOKEN
 JP_AGENT_WORKSPACE=/srv/workspace
 JP_AGENT_PORT=8790
+S24_SERVICE_ACCOUNT_KEY=/etc/jp-agent-firestore-key.json
+S24_PROJECT_ID=intrepid-stage-495117-q1
+S24_FIRESTORE_DB=eka-agent
 ENV
   chmod 600 /etc/jp-agent.env
   echo "    generated JP_AGENT_TOKEN (read it with: grep JP_AGENT_TOKEN /etc/jp-agent.env)"
 else
   echo "==> /etc/jp-agent.env already present, left untouched"
+  # Upgrade path for a box deployed before the s24-connect tools existed: add
+  # the (non-secret) S24_* vars if missing, without touching anything else.
+  grep -q "^S24_SERVICE_ACCOUNT_KEY=" /etc/jp-agent.env || cat >> /etc/jp-agent.env <<ENV
+S24_SERVICE_ACCOUNT_KEY=/etc/jp-agent-firestore-key.json
+S24_PROJECT_ID=intrepid-stage-495117-q1
+S24_FIRESTORE_DB=eka-agent
+ENV
+fi
+
+if [ ! -f /etc/jp-agent-firestore-key.json ]; then
+  echo "==> /etc/jp-agent-firestore-key.json is missing — s24-connect tool calls will fail until it's provisioned"
+  echo "    scp the Firestore service-account key there, then:"
+  echo "    chown jpagent:jpagent /etc/jp-agent-firestore-key.json && chmod 600 /etc/jp-agent-firestore-key.json"
 fi
 
 # Same rule as the env file above: never clobber what the box has customised.
@@ -69,7 +103,7 @@ nginx -t
 systemctl reload nginx
 
 systemctl daemon-reload
-systemctl enable --now jp-agent >/dev/null 2>&1 || true
+systemctl enable jp-agent >/dev/null
 systemctl restart jp-agent
 sleep 2
 systemctl is-active jp-agent && echo "==> jp-agent active"

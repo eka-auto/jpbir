@@ -280,6 +280,16 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
 </script>
 <script defer src="/_vercel/insights/script.js"></script>
 <script defer src="/_vercel/speed-insights/script.js"></script>
+<!--
+  The first client this deployment has ever had for its own /api/jp-track.
+  jp-tracker.js was written to be embedded on jaytipargal.com and post here
+  cross-origin; no page served FROM jaytipargal.tech ever called it, which is
+  the last reason the warehouse held no rows for this domain even after the
+  ingest path started mirroring into Postgres. Same-origin, so sendBeacon
+  needs no preflight. Delete this one line to stop tracking the dashboard
+  itself; the mirror stays wired for every other client.
+-->
+<script defer src="/jp-tracker.js"></script>
 </head>
 <body>
 
@@ -325,6 +335,7 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
             <button class="nav-item" data-page="sessions"><span class="ico">≡</span> Sessions</button>
             <button class="nav-item" data-page="email"><span class="ico">✉</span> Email opens</button>
             <button class="nav-item" data-page="device"><span class="ico">📋</span> Device Dashboard</button>
+            <button class="nav-item" data-page="firestore"><span class="ico">🔥</span> Firestore</button>
             <button class="nav-item" data-page="terminal"><span class="ico">▮</span> Terminal</button>
             <button class="nav-item" data-page="vercel"><span class="ico">▲</span> Vercel</button>
             <button class="nav-item" data-page="agent"><span class="ico">🤖</span> Ask agent</button>
@@ -424,16 +435,20 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
                 <div class="panel">
                     <div class="panel-head"><div><h2>Sessions</h2><div class="hint" id="sessionsHint"></div></div>
                         <div class="tools">
-                            <input id="sessionSearch" type="text" placeholder="Search IP / session ID…">
+                            <input id="sessionSearch" type="text" placeholder="Search IP / session / visitor / city / country / UA…">
                             <button id="exportCsvBtn">Export CSV</button>
                         </div></div>
                     <div class="table-wrap">
                         <table id="sessionsTable">
                             <thead><tr>
                                 <th data-key="id">Session <span class="arrow"></span></th>
+                                <th data-key="visitor_id">Visitor <span class="arrow"></span></th>
                                 <th data-key="ip">IP <span class="arrow"></span></th>
+                                <th data-key="city">City <span class="arrow"></span></th>
+                                <th data-key="country">Country <span class="arrow"></span></th>
                                 <th data-key="count">Events <span class="arrow"></span></th>
                                 <th>Types</th>
+                                <th>User agent</th>
                                 <th data-key="first">First seen <span class="arrow"></span></th>
                                 <th data-key="last">Last seen <span class="arrow"></span></th>
                                 <th data-key="durationSec">Duration <span class="arrow"></span></th>
@@ -538,6 +553,56 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
                 </div>
             </section>
 
+            <!-- FIRESTORE -->
+            <!-- Live view of every document in the eka-agent Firestore database.
+                 Polls /api/jp-devices?full=1 every 10 seconds and replaces the
+                 rendered contents in place, so no stale document lingers: what
+                 Firestore currently has is what shows. Same STATS_KEY gate. -->
+            <section class="page" id="page-firestore">
+                <div class="panel">
+                    <div class="panel-head">
+                        <div>
+                            <h2>Firestore documents</h2>
+                            <div class="hint" id="firestoreHead">Live sync of every document in the eka-agent database. Poll interval 10 s.</div>
+                        </div>
+                        <div class="tools">
+                            <span id="firestoreDot" class="live-dot"></span>
+                            <button id="firestoreRefreshBtn">Refresh now</button>
+                        </div>
+                    </div>
+                    <div id="firestoreSummary" class="hint" style="margin-bottom:8px"></div>
+                    <div class="table-wrap">
+                        <table id="firestoreTable">
+                            <thead><tr>
+                                <th>Document</th>
+                                <th>Type / model</th>
+                                <th>Status</th>
+                                <th>Last seen</th>
+                                <th>Fields</th>
+                            </tr></thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="panel">
+                    <div class="panel-head"><div><h2>Complete Firestore payloads</h2><div class="hint">Raw decoded documents from the <code>devices</code> collection. Replaces on each poll — no cluttered history.</div></div></div>
+                    <div id="firestorePayloadList" class="payload-list"></div>
+                </div>
+                <div class="panel">
+                    <div class="panel-head">
+                        <div>
+                            <h2>Live content — recent media, images &amp; documents</h2>
+                            <div class="hint" id="firestoreContentHead">Latest attachments across every chat, last 7 days. Images render inline; documents (including zips) get a download link.</div>
+                        </div>
+                    </div>
+                    <div id="firestoreMediaGrid" class="media-grid"></div>
+                </div>
+                <div class="panel">
+                    <div class="panel-head"><div><h2>Live messages</h2><div class="hint" id="firestoreMsgsHead">Latest WhatsApp messages across every chat, last 7 days.</div></div></div>
+                    <div id="firestoreMsgList"></div>
+                </div>
+            </section>
+
             <!-- AGENT -->
             <!-- WHATSAPP -->
             <section class="page" id="page-whatsapp">
@@ -596,6 +661,7 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
                         </div>
                         <div id="waAttGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;margin-top:12px"></div>
                         <div id="waAttEmpty" class="hint" style="margin-top:10px;display:none"></div>
+                        <div style="margin-top:10px"><button id="waAttMore" style="display:none">Load more</button></div>
                     </div>
                     <div class="panel" style="margin-top:14px">
                         <div class="panel-head">
@@ -727,8 +793,271 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
             btn.classList.add('active');
             document.querySelectorAll('.page').forEach(function (p) { p.classList.remove('active'); });
             $('page-' + btn.getAttribute('data-page')).classList.add('active');
+            // Firestore page: only poll while it's the active view. Starting a
+            // 10 s interval while the user is on Overview would waste requests
+            // and burn the STATS_KEY-gated Firestore read quota.
+            var pageName = btn.getAttribute('data-page');
+            if (pageName === 'firestore') startFirestorePolling();
+            else stopFirestorePolling();
         });
     });
+
+    /* ===== FIRESTORE (live sync) ===== */
+    // Fetches every document in the devices collection and re-renders in
+    // place. Because Firestore stores one document per device (identified by
+    // deviceId) and the daemon updates it in place rather than appending, a
+    // "replace on poll" render naturally implements "old data removed when new
+    // data syncs" — the page never accumulates history, only the current
+    // snapshot lives on screen.
+    var _fsTimer = null;
+
+    async function refreshFirestorePage() {
+        var summary = $('firestoreSummary');
+        var head = $('firestoreHead');
+        var tbody = document.querySelector('#firestoreTable tbody');
+        var payload = $('firestorePayloadList');
+        var dot = $('firestoreDot');
+        if (!tbody || !payload) return;
+        try {
+            // subcollections=0 — those Firestore subcollections turned out to
+            // have no writers in the current pipeline; the real content lives
+            // in Postgres wa_attachments/wa_messages, which the separate
+            // /api/jp-live-content call renders below.
+            var res = await fetch('/api/jp-devices?' + new URLSearchParams({ key: KEY, full: '1' }).toString());
+            var j = await res.json();
+            if (!res.ok || j.success === false) {
+                throw new Error(j.error || ('HTTP ' + res.status));
+            }
+            var devices = j.devices || [];
+            var when = j.generated_at ? new Date(j.generated_at) : new Date();
+
+            tbody.innerHTML = devices.map(function (d) {
+                var full = d.full_payload || {};
+                var fields = Object.keys(full).length;
+                var pill = d.live
+                    ? '<span class="pill" style="background:rgba(62,142,78,.2);color:#A8D8B0">live</span>'
+                    : '<span class="pill">offline</span>';
+                return '<tr>' +
+                    '<td class="mono">' + esc(d.deviceId || '–') + '</td>' +
+                    '<td>' + esc((d.deviceType || '–') + ' · ' + (d.model || '')) + '</td>' +
+                    '<td>' + pill + '</td>' +
+                    '<td>' + esc(d.lastSeen || '–') + '</td>' +
+                    '<td>' + fields + ' field(s)</td>' +
+                    '</tr>';
+            }).join('') || '<tr><td colspan="5" class="hint">no documents in Firestore</td></tr>';
+
+            // Reuse renderLiveDevicePayload — the same formatter page-device
+            // uses for its "Complete daemon payloads". Every Firestore field
+            // renders as labeled stats / grids / tree rows, not a raw JSON
+            // dump. Because we clear the container before each poll, old
+            // sections disappear as new ones replace them.
+            payload.innerHTML = '';
+            if (!devices.length) {
+                payload.innerHTML = '<div class="hint">no documents in Firestore</div>';
+            } else {
+                var rendered = 0;
+                devices.forEach(function (d, i) {
+                    if (!d.full_payload) return;
+                    payload.appendChild(renderLiveDevicePayload(d, rendered));
+                    rendered++;
+                });
+                if (!rendered) {
+                    payload.innerHTML = '<div class="hint">devices returned but no full_payload — endpoint called without ?full=1</div>';
+                }
+            }
+
+            // Media, docs and messages don't live in the Firestore devices
+            // doc — they live in Postgres wa_attachments / wa_messages, with
+            // media bytes in Vercel Blob. Separate poll to
+            // /api/jp-live-content pulls the last 7 days newest-first, so no
+            // 2-month-old row can crowd the panel.
+            refreshFirestoreContent();
+
+            summary.textContent = devices.length + ' document(s) · database ' + (j.database || '?') + ' · synced at ' + when.toLocaleTimeString();
+            head.textContent = 'Live sync of every document in the ' + (j.database || 'eka-agent') + ' database. Poll interval 10 s. Old data is replaced on every sync, so nothing clutters the view.';
+            if (dot) dot.className = 'live-dot';
+        } catch (err) {
+            summary.textContent = 'error: ' + (err && err.message ? err.message : String(err));
+            if (dot) dot.className = 'live-dot off';
+        }
+    }
+
+    function startFirestorePolling() {
+        if (_fsTimer) return;
+        refreshFirestorePage();
+        _fsTimer = setInterval(refreshFirestorePage, 10000);
+    }
+    function stopFirestorePolling() {
+        if (_fsTimer) { clearInterval(_fsTimer); _fsTimer = null; }
+    }
+
+    var _fsRefreshBtn = document.getElementById('firestoreRefreshBtn');
+    if (_fsRefreshBtn) _fsRefreshBtn.addEventListener('click', refreshFirestorePage);
+
+    // Live content — recent media / attachments / messages. Pulls from
+    // /api/jp-live-content (7-day rolling window, newest-first) and re-renders
+    // in place. Media types render as they should: image → <img>, video →
+    // <video controls>, audio → <audio controls>, document (incl. zip) → a
+    // download link that carries file name / size / mime. Everything else
+    // shows filename + kind.
+    function fmtBytes(n) {
+        if (!Number.isFinite(n)) return '';
+        if (n < 1024) return n + ' B';
+        if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+        return (n / (1024 * 1024)).toFixed(2) + ' MB';
+    }
+
+    // Media now lives in PRIVATE Vercel Blob, so a raw blob_url 404s without a
+    // signature. Route every <img>/<video>/<audio>/download through the
+    // key-gated proxy, which redirects to a short-lived presigned URL. Fall
+    // back to blob_url only for legacy public rows that predate the proxy.
+    function waMediaSrc(a) {
+        if (a && a.att_id) return '/api/wa-media?att_id=' + encodeURIComponent(a.att_id) + '&key=' + encodeURIComponent(KEY);
+        return (a && a.blob_url) || '';
+    }
+
+    function renderAttachmentCard(a) {
+        var card = document.createElement('div');
+        card.className = 'media-card';
+        card.style.cssText = 'background:#1a1a1a;border:1px solid #333;border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:6px;';
+
+        var head = document.createElement('div');
+        head.style.cssText = 'display:flex;justify-content:space-between;align-items:baseline;gap:6px;';
+        var kind = document.createElement('span');
+        kind.className = 'pill';
+        kind.textContent = a.kind || '?';
+        var when = document.createElement('span');
+        when.className = 'hint';
+        when.style.fontSize = '10.5px';
+        when.textContent = a.sent_at ? new Date(a.sent_at).toLocaleString() : (a.ingested_at ? new Date(a.ingested_at).toLocaleString() : '–');
+        head.appendChild(kind);
+        head.appendChild(when);
+        card.appendChild(head);
+
+        var body = document.createElement('div');
+        var url = waMediaSrc(a);
+        var mime = (a.mime || '').toLowerCase();
+        var isImage = a.kind === 'image' || /^image\//.test(mime);
+        var isVideo = a.kind === 'video' || /^video\//.test(mime);
+        var isAudio = a.kind === 'audio' || a.kind === 'ptt' || /^audio\//.test(mime);
+        var isZip = /zip|compressed|application\/x-7z|application\/x-tar|application\/x-rar/.test(mime) || /\.(zip|7z|tar|gz|rar)$/i.test(a.file_name || '');
+
+        if (isImage && url) {
+            var img = document.createElement('img');
+            img.src = url;
+            img.loading = 'lazy';
+            img.style.cssText = 'width:100%;height:140px;object-fit:cover;border-radius:8px;background:rgba(200,122,30,.08);';
+            img.alt = a.file_name || 'image';
+            body.appendChild(img);
+        } else if (isVideo && url) {
+            var vid = document.createElement('video');
+            vid.src = url;
+            vid.controls = true;
+            vid.style.cssText = 'width:100%;max-height:180px;border-radius:8px;background:#000;';
+            body.appendChild(vid);
+        } else if (isAudio && url) {
+            var aud = document.createElement('audio');
+            aud.src = url;
+            aud.controls = true;
+            aud.style.cssText = 'width:100%;';
+            body.appendChild(aud);
+        } else if (url) {
+            // Documents, zips, everything else — inline preview isn't safe or
+            // useful, so a labeled download link stands in.
+            var doc = document.createElement('a');
+            doc.href = url;
+            doc.target = '_blank';
+            doc.rel = 'noopener';
+            doc.style.cssText = 'display:block;padding:14px;border:1px dashed #444;border-radius:8px;text-decoration:none;color:#F4E9DC;';
+            var icon = isZip ? '🗜️' : '📄';
+            doc.innerHTML = '<div style="font-size:22px">' + icon + '</div>' +
+                '<div style="margin-top:4px">' + esc(a.file_name || '(unnamed)') + '</div>' +
+                '<div class="hint" style="font-size:10.5px;margin-top:2px">' + esc(mime || 'unknown mime') + ' · ' + esc(fmtBytes(a.size_bytes)) + '</div>' +
+                '<div class="hint" style="font-size:10.5px;margin-top:6px;color:#F0B968">Open / download →</div>';
+            body.appendChild(doc);
+        } else {
+            body.textContent = a.file_name || '(no blob_url)';
+        }
+        card.appendChild(body);
+
+        var foot = document.createElement('div');
+        foot.className = 'hint';
+        foot.style.cssText = 'font-size:10.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+        var fname = a.file_name || '(unnamed)';
+        foot.textContent = fname + (a.size_bytes ? ' · ' + fmtBytes(a.size_bytes) : '') + (a.chat_id ? ' · ' + a.chat_id.slice(-14) : '');
+        card.appendChild(foot);
+        return card;
+    }
+
+    // Empty-window copy that distinguishes "quiet feed" from "broken feed":
+    // when nothing landed in the window, say so AND when the last item overall
+    // arrived, so a blank panel reads as "no new WhatsApp <kind> — latest was
+    // <date>" rather than an ambiguous "none". `newest` is an ISO string or
+    // null (never any data).
+    function emptyLine(kind, days, newest) {
+        var base = 'No new ' + kind + ' in the last ' + days + ' day(s).';
+        if (!newest) return base + ' Nothing has ever synced — check the S24 pusher.';
+        var d = new Date(newest);
+        var ago = Math.floor((Date.now() - d.getTime()) / 86400000);
+        return base + ' Latest ' + kind + ': ' + d.toLocaleString() +
+            (ago >= 1 ? ' (' + ago + ' day' + (ago === 1 ? '' : 's') + ' ago)' : '') + '.';
+    }
+
+    async function refreshFirestoreContent() {
+        var grid = $('firestoreMediaGrid');
+        var msgList = $('firestoreMsgList');
+        var mediaHead = $('firestoreContentHead');
+        var msgsHead = $('firestoreMsgsHead');
+        if (!grid || !msgList) return;
+        try {
+            var r = await fetch('/api/jp-live-content?' + new URLSearchParams({ key: KEY, days: '7', limit: '40' }).toString());
+            var j = await r.json();
+            if (!r.ok || j.ok === false) throw new Error(j.error || ('HTTP ' + r.status));
+            grid.innerHTML = '';
+            grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;';
+            (j.attachments || []).forEach(function (a) {
+                grid.appendChild(renderAttachmentCard(a));
+            });
+            if (!(j.attachments || []).length) {
+                grid.innerHTML = '<div class="hint">' + emptyLine('media', j.window_days || 7, j.newest_attachment_at) + '</div>';
+            }
+            mediaHead.textContent = (j.attachments || []).length + ' attachment(s) in the last ' + (j.window_days || 7) + ' day(s) · Postgres wa_attachments, blob bytes in Vercel Blob · replaces on every 10 s sync';
+
+            msgList.innerHTML = '';
+            var msgs = (j.messages || []).slice(0, 30);
+            if (!msgs.length) {
+                msgList.innerHTML = '<div class="hint">' + emptyLine('messages', j.window_days || 7, j.newest_message_at) + '</div>';
+            } else {
+                var ul = document.createElement('div');
+                ul.style.cssText = 'display:flex;flex-direction:column;gap:6px;max-height:420px;overflow-y:auto;';
+                msgs.forEach(function (m) {
+                    var row = document.createElement('div');
+                    row.style.cssText = 'padding:8px 10px;border:1px solid #333;border-radius:8px;background:#111;';
+                    var top = document.createElement('div');
+                    top.style.cssText = 'display:flex;justify-content:space-between;gap:6px;font-size:11px;';
+                    var who = document.createElement('span');
+                    who.className = 'mono';
+                    who.textContent = (m.from_me ? '→ ' : '') + (m.sender || m.chat_id || '?');
+                    var ts = document.createElement('span');
+                    ts.className = 'hint';
+                    ts.textContent = m.sent_at ? new Date(m.sent_at).toLocaleString() : '–';
+                    top.appendChild(who);
+                    top.appendChild(ts);
+                    row.appendChild(top);
+                    var body = document.createElement('div');
+                    body.style.cssText = 'margin-top:4px;font-size:13px;white-space:pre-wrap;word-break:break-word;';
+                    body.textContent = m.body || '(' + (m.kind || 'message') + ')';
+                    row.appendChild(body);
+                    ul.appendChild(row);
+                });
+                msgList.appendChild(ul);
+            }
+            msgsHead.textContent = msgs.length + ' message(s) in the last ' + (j.window_days || 7) + ' day(s) · replaces on every 10 s sync';
+        } catch (err) {
+            grid.innerHTML = '<div class="hint">could not load live content — ' + esc(err.message || String(err)) + '</div>';
+            msgList.innerHTML = '';
+        }
+    }
 
     /* ===== STATUS ===== */
     function setStatus(msg, type) {
@@ -845,7 +1174,12 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
         var q = sessionState.search.toLowerCase();
         if (q) {
             list = list.filter(function (s) {
-                return (s.id || '').toLowerCase().indexOf(q) >= 0 || (s.ip || '').toLowerCase().indexOf(q) >= 0;
+                return (s.id || '').toLowerCase().indexOf(q) >= 0
+                    || (s.ip || '').toLowerCase().indexOf(q) >= 0
+                    || (s.visitor_id || '').toLowerCase().indexOf(q) >= 0
+                    || (s.city || '').toLowerCase().indexOf(q) >= 0
+                    || (s.country || '').toLowerCase().indexOf(q) >= 0
+                    || (s.userAgent || '').toLowerCase().indexOf(q) >= 0;
             });
         }
         var key = sessionState.sortKey, dir = sessionState.sortDir;
@@ -865,10 +1199,21 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
             var types = Object.entries(s.types || {}).map(function (kv) {
                 return '<span class="pill">' + esc(kv[0]) + ' ' + kv[1] + '</span>';
             }).join('');
+            var ua = s.userAgent || '';
+            var uaShort = ua.length > 48 ? ua.slice(0, 45) + '…' : ua;
+            var vid = s.visitor_id || '';
+            var vidCell = vid
+                ? '<span class="mono clickable" data-visitor="' + esc(vid) + '">' + esc(deviceLabel(vid) || vid) + '</span>'
+                : '–';
             return '<tr><td class="mono"><span class="clickable" data-session="' + esc(s.id) + '">' + esc(s.id) + '</span></td>' +
-                '<td class="mono">' + esc(s.ip || '–') + '</td><td>' + s.count + '</td><td>' + types + '</td>' +
+                '<td>' + vidCell + '</td>' +
+                '<td class="mono">' + esc(s.ip || '–') + '</td>' +
+                '<td>' + esc(s.city || '–') + '</td>' +
+                '<td>' + esc(s.country || '–') + '</td>' +
+                '<td>' + s.count + '</td><td>' + types + '</td>' +
+                '<td class="hint" title="' + esc(ua) + '" style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc(uaShort || '–') + '</td>' +
                 '<td>' + fmtTime(s.first) + '</td><td>' + fmtTime(s.last) + '</td><td>' + fmtDur(s.durationSec * 1000) + '</td></tr>';
-        }).join('') || '<tr><td colspan="7" class="hint">no sessions match</td></tr>';
+        }).join('') || '<tr><td colspan="11" class="hint">no sessions match</td></tr>';
 
         $('pageInfo').textContent = total + ' sessions · page ' + (sessionState.page + 1) + ' / ' + pages;
         $('prevPageBtn').disabled = sessionState.page === 0;
@@ -882,10 +1227,22 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
 
     function exportCsv() {
         var list = (DATA && DATA.sessions) || [];
-        var rows = [['session_id', 'ip', 'events', 'first_seen', 'last_seen', 'duration_sec', 'types']];
+        var rows = [[
+            'session_id', 'visitor_id', 'ip', 'ips', 'city', 'cities', 'country', 'timezone',
+            'user_agent', 'user_agents', 'referrer', 'fingerprint', 'page_url',
+            'events', 'first_seen', 'last_seen', 'duration_sec', 'types'
+        ]];
         list.forEach(function (s) {
-            rows.push([s.id, s.ip || '', s.count, s.first || '', s.last || '', s.durationSec,
-                Object.entries(s.types || {}).map(function (kv) { return kv[0] + ':' + kv[1]; }).join('|')]);
+            rows.push([
+                s.id, s.visitor_id || '', s.ip || '',
+                (s.ips || []).join('|'),
+                s.city || '', (s.cities || []).join('|'),
+                s.country || '', s.timezone || '',
+                s.userAgent || '', (s.user_agents || []).join('|'),
+                s.referrer || '', s.fingerprint || '', s.page_url || '',
+                s.count, s.first || '', s.last || '', s.durationSec,
+                Object.entries(s.types || {}).map(function (kv) { return kv[0] + ':' + kv[1]; }).join('|')
+            ]);
         });
         var csv = rows.map(function (r) { return r.map(function (c) { return '"' + String(c).replace(/"/g, '""') + '"'; }).join(','); }).join('\n');
         var blob = new Blob([csv], { type: 'text/csv' });
@@ -2402,9 +2759,17 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
             + '<div style="width:' + pct + '%;height:100%;background:linear-gradient(90deg,var(--amber-glow),var(--amber))"></div></div>'
             + '<div style="width:64px;text-align:right;font-variant-numeric:tabular-nums">' + fmt(n) + '</div></div>';
     }
-    var waAttState = { chatId: null, kind: '' };
+    var waAttState = { chatId: null, kind: '', before: null, shown: 0, total: 0, loading: false };
+    (function wireAttMore() {
+        var more = $('waAttMore');
+        if (!more) return;
+        more.addEventListener('click', function () {
+            if (waAttState.loading || !waAttState.before || !waAttState.chatId) return;
+            loadAttachments(waAttState.chatId, waAttState.kind, true);
+        });
+    })();
     function waAttTile(a) {
-        var url = a.blob_url;
+        var url = waMediaSrc(a);
         var meta = (a.file_name ? esc(a.file_name) + ' · ' : '') + (a.size_bytes ? Math.round(a.size_bytes / 1024) + ' KB' : '');
         var when = a.sent_at ? new Date(a.sent_at).toISOString().slice(0, 10) : '';
         if (a.kind === 'image' || a.kind === 'sticker') {
@@ -2441,24 +2806,60 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
         var total = Object.values(byKind).reduce(function (a, b) { return a + (b | 0); }, 0);
         host.innerHTML = pill('', total, !current) + kinds.map(function (k) { return pill(k, byKind[k], current === k); }).join('');
     }
-    function loadAttachments(chatId, kind) {
-        waAttState.chatId = chatId; waAttState.kind = kind || '';
-        var grid = $('waAttGrid'); var empty = $('waAttEmpty');
-        grid.innerHTML = ''; empty.style.display = 'none';
+    function loadAttachments(chatId, kind, append) {
+        kind = kind || '';
+        if (!append) {
+            waAttState.chatId = chatId; waAttState.kind = kind;
+            waAttState.before = null; waAttState.shown = 0; waAttState.total = 0;
+        }
+        var grid = $('waAttGrid'); var empty = $('waAttEmpty'); var more = $('waAttMore');
+        if (!append) { grid.innerHTML = ''; empty.style.display = 'none'; }
+        if (more) more.style.display = 'none';
+        waAttState.loading = true;
         var params = { chat_id: chatId, limit: 60 };
         if (kind) params.kind = kind;
-        fetch('/api/jp-wa-attachments?' + new URLSearchParams(params).toString(), { cache: 'no-store' })
-            .then(function (r) { return r.json(); })
-            .then(function (j) {
-                if (waAttState.chatId !== chatId) return;
+        if (append && waAttState.before) params.before = waAttState.before;
+        /* Blob URLs for private media: key in the header, never the query. */
+        fetch('/api/jp-wa-attachments?' + new URLSearchParams(params).toString(),
+            { cache: 'no-store', headers: { 'x-stats-key': KEY } })
+            .then(function (r) { return r.json().then(function (b) { return { status: r.status, body: b }; }); })
+            .then(function (res) {
+                waAttState.loading = false;
+                /* Chat AND kind must both still be selected: checking the chat
+                   alone let a slower answer repaint under the wrong pill. */
+                if (waAttState.chatId !== chatId || waAttState.kind !== kind) return;
+                if (res.status === 401) {
+                    sessionStorage.removeItem(KEY_STORAGE); KEY = '';
+                    $('waAttHint').textContent = '';
+                    $('gateMsg').textContent = 'Invalid key.';
+                    showGate();
+                    return;
+                }
+                var j = res.body;
                 if (!j.ok) { $('waAttHint').textContent = 'Load failed: ' + (j.error || 'unknown'); return; }
                 if (j.migrated === false) { $('waAttHint').textContent = j.note || 'attachments table not migrated'; empty.textContent = 'Run npm run db:migrate on Neon.'; empty.style.display = 'block'; return; }
+                var batch = j.attachments || [];
                 renderAttKinds(j.by_kind || {}, kind);
-                $('waAttHint').textContent = 'Showing ' + fmt((j.attachments || []).length) + ' of ' + fmt(j.total | 0) + ' attachments' + (kind ? ' · ' + kind : '') + '. Files stored in Vercel Blob.';
-                if (!(j.attachments || []).length) { empty.textContent = kind ? 'No ' + kind + ' attachments uploaded for this chat.' : 'No attachments uploaded for this chat yet. Run wa_media_push.py on the S24.'; empty.style.display = 'block'; return; }
-                grid.innerHTML = j.attachments.map(waAttTile).join('');
+                waAttState.shown += batch.length;
+                waAttState.total = j.total | 0;
+                waAttState.before = j.next_before || null;
+                if (!waAttState.shown) {
+                    $('waAttHint').textContent = 'No attachments' + (kind ? ' · ' + kind : '') + '.';
+                    empty.textContent = kind ? 'No ' + kind + ' attachments uploaded for this chat.' : 'No attachments uploaded for this chat yet. Run wa_media_push.py on the S24.';
+                    empty.style.display = 'block';
+                    return;
+                }
+                grid.insertAdjacentHTML('beforeend', batch.map(waAttTile).join(''));
+                $('waAttHint').textContent = 'Showing ' + fmt(waAttState.shown) + ' of ' + fmt(waAttState.total) + ' attachments' + (kind ? ' · ' + kind : '') + '. Files stored in Vercel Blob.';
+                /* Older attachments were unreachable: the cursor came back on
+                   every full page and nothing ever consumed it. */
+                if (more) more.style.display = waAttState.before ? '' : 'none';
             })
-            .catch(function (e) { if (waAttState.chatId !== chatId) return; $('waAttHint').textContent = 'Load failed: ' + e.message; });
+            .catch(function (e) {
+                waAttState.loading = false;
+                if (waAttState.chatId !== chatId || waAttState.kind !== kind) return;
+                $('waAttHint').textContent = 'Load failed: ' + e.message;
+            });
     }
     var waMsgState = { chatId: null, q: '', reqId: 0 };
     function waMsgRow(m) {
@@ -2484,10 +2885,21 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
         list.innerHTML = '<div class="hint">Loading…</div>'; empty.style.display = 'none';
         var params = { chat_id: chatId, limit: 200 };
         if (q) params.q = q;
-        fetch('/api/jp-wa-messages?' + new URLSearchParams(params).toString(), { cache: 'no-store' })
-            .then(function (r) { return r.json(); })
-            .then(function (j) {
+        /* Message bodies are the most sensitive thing on this page: key in the
+           header, never the query string. */
+        fetch('/api/jp-wa-messages?' + new URLSearchParams(params).toString(),
+            { cache: 'no-store', headers: { 'x-stats-key': KEY } })
+            .then(function (r) { return r.json().then(function (b) { return { status: r.status, body: b }; }); })
+            .then(function (res) {
                 if (waMsgState.reqId !== token || waMsgState.chatId !== chatId) return;
+                if (res.status === 401) {
+                    sessionStorage.removeItem(KEY_STORAGE); KEY = '';
+                    list.innerHTML = ''; $('waMsgHint').textContent = '';
+                    $('gateMsg').textContent = 'Invalid key.';
+                    showGate();
+                    return;
+                }
+                var j = res.body;
                 list.innerHTML = '';
                 if (!j.ok) { $('waMsgHint').textContent = 'Load failed: ' + (j.error || 'unknown'); return; }
                 if (j.migrated === false) { $('waMsgHint').textContent = 'wa_messages table not migrated yet.'; empty.textContent = 'Run npm run db:migrate.'; empty.style.display = 'block'; return; }
@@ -2515,10 +2927,21 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
         try { d.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (e) { /* no-op */ }
         loadAttachments(chatId, '');
         loadMessages(chatId, '');
-        fetch('/api/jp-wa-chat?' + new URLSearchParams({ chat_id: chatId }).toString(), { cache: 'no-store' })
-            .then(function (r) { return r.json(); })
-            .then(function (j) {
+        /* Key in the header, never the query string. */
+        fetch('/api/jp-wa-chat?' + new URLSearchParams({ chat_id: chatId }).toString(),
+            { cache: 'no-store', headers: { 'x-stats-key': KEY } })
+            .then(function (r) { return r.json().then(function (b) { return { status: r.status, body: b }; }); })
+            .then(function (res) {
                 if (token !== waDetailReq) return;
+                if (res.status === 401) {
+                    sessionStorage.removeItem(KEY_STORAGE); KEY = '';
+                    $('waDetailName').textContent = 'Chat';
+                    $('waDetailHint').textContent = '';
+                    $('gateMsg').textContent = 'Invalid key.';
+                    showGate();
+                    return;
+                }
+                var j = res.body;
                 if (!j.ok) { $('waDetailName').textContent = 'Chat'; $('waDetailHint').textContent = j.error || 'Could not load that chat.'; return; }
                 if (j.empty) { $('waDetailName').textContent = 'Chat'; $('waDetailHint').textContent = j.reason || 'Nothing stored yet.'; return; }
                 var c = j.chat, x = j.detail, b = j.bodies || {};
@@ -2580,7 +3003,11 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
             if (!waMsgState.chatId) return;
             if (msgDebounce) clearTimeout(msgDebounce);
             var val = msgSearch.value;
-            msgDebounce = setTimeout(function () { loadMessages(waMsgState.chatId, val); }, 220);
+            /* Capture the chat at schedule time. Reading waMsgState.chatId when
+               the timer fires applied the previous chat's query to whichever
+               chat was selected 220ms later. */
+            var forChat = waMsgState.chatId;
+            msgDebounce = setTimeout(function () { loadMessages(forChat, val); }, 220);
         });
     })();
     function loadWhatsApp(force) {

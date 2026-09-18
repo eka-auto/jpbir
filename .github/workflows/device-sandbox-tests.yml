@@ -1,0 +1,45 @@
+name: Device Sandbox Tests
+
+# The channel-sandbox suite validates the device-agent stack that ships to the
+# physical fleet: broker client, signer, enrollment minting, and — critically —
+# that every device kit (S24, Lenovo, Vivobook) bundles a byte-identical copy of
+# the canonical agent (tests/test_deploy_kits.py). That drift check runs on no
+# other workflow, so a kit falling out of sync with Devices/sandbox reaches a
+# device unnoticed. This gate fails the build instead.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'Devices/**'
+      - '.github/workflows/device-sandbox-tests.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'Devices/**'
+      - '.github/workflows/device-sandbox-tests.yml'
+
+jobs:
+  sandbox-tests:
+    name: channel-sandbox suite
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+
+      - name: Install dependencies
+        working-directory: Devices/sandbox
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-broker.txt pytest
+
+      - name: Run channel-sandbox tests
+        working-directory: Devices/sandbox
+        env:
+          PYTHONPATH: .
+        run: python -m pytest tests/ -q

@@ -1,6 +1,8 @@
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, BatchWriteCommand, PutCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
 import { decodeOne } from './lib/geo.js';
+import { siteFor, recordEvent } from './lib/warehouse.js';
+import { isConfigured } from '../Integrations/postgres.js';
 
 const _env = (typeof process !== 'undefined' ? process : globalThis['proc' + 'ess']).env;
 const AWS_ACCESS_KEY_ID = _env['JP_WRITE_AWS_' + 'ACCESS_KEY_ID'];
@@ -12,6 +14,13 @@ const ALLOWED_ORIGINS = new Set([
   'https://jaytipargal.com',
   'https://www.jaytipargal.com',
   'https://dfa5i945koq3k.cloudfront.net',
+  // This deployment's own domains. They were missing, so a page served from
+  // jaytipargal.tech got 'https://jaytipargal.com' echoed back in
+  // Access-Control-Allow-Origin and its beacons were dropped by the browser -
+  // one reason the warehouse holds no .tech rows at all.
+  'https://jaytipargal.tech',
+  'https://www.jaytipargal.tech',
+  'https://agent.jaytipargal.tech',
 ]);
 
 function getClientIP(req) {
@@ -148,11 +157,41 @@ export default async function handler(req, res) {
       rawPayload: typeof event === 'object' && event.raw ? event.raw : null,
     };
 
+    // Derived once and stored on the row. db-push re-imports these same items
+    // later and has to arrive at the same site - and therefore the same row id
+    // - as the live mirror did, or one visit lands in the warehouse twice under
+    // two names. Null rather than undefined: the document client rejects
+    // undefined values unless removeUndefinedValues is set.
+    item.site = siteFor(item.pageUrl, req.headers.origin || req.headers.referer || req.headers.host) || null;
+
     const client = DynamoDBDocumentClient.from(new DynamoDBClient({
       region: AWS_REGION,
       credentials: { accessKeyId: AWS_ACCESS_KEY_ID, secretAccessKey: AWS_SECRET_ACCESS_KEY }
     }));
     await client.send(new PutCommand({ TableName: TABLE, Item: item }));
+
+    // The warehouse is the store the dashboard reads; DynamoDB is the raw
+    // journal db-push replays from. Mirroring here is what makes a visit
+    // visible on /db without waiting for someone to run that migration by
+    // hand - it had not been run since 2026-09-13.
+    //
+    // Never fatal. Telemetry that cannot reach Postgres is still telemetry: the
+    // DynamoDB write above has already succeeded, so a warehouse outage must
+    // not turn a tracked pageview into a 500 the visitor's browser retries.
+    let warehouse;
+    if (!item.site) {
+      warehouse = { mirrored: false, reason: 'no site could be derived from page_url or origin' };
+    } else if (!isConfigured()) {
+      warehouse = { mirrored: false, reason: 'DATABASE_URL not set on this deployment' };
+    } else {
+      try {
+        const { inserted } = await recordEvent(item, { site: item.site, sourceSystem: 'site-api' });
+        warehouse = { mirrored: true, site: item.site, inserted };
+      } catch (mirrorError) {
+        console.error('[jp-track] warehouse mirror failed:', mirrorError);
+        warehouse = { mirrored: false, site: item.site, reason: mirrorError.message };
+      }
+    }
 
     let prunedHistory = 0;
     let retentionWarning = null;
@@ -169,6 +208,7 @@ export default async function handler(req, res) {
       success: true,
       id,
       persisted: true,
+      warehouse,
       retention: {
         mode: SNAPSHOT_EVENT_TYPES.has(item.eventType) ? 'latest-history-snapshot-per-device' : 'analytics-events-unchanged',
         prunedHistory,
