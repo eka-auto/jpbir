@@ -1,47 +1,63 @@
-import { list, get, put } from '@vercel/blob';
+// One visitor's or session's full trail, served from the Neon warehouse.
+//
+// This route used to answer by brute force: list every object under
+// analytics/ in Vercel Blob, fetch each one over HTTP inside a 15-second
+// budget, and keep the ones whose visitor_id matched. Finding one visitor cost
+// a read of every event ever recorded, so a per-visitor index was written into
+// Blob to dodge the scan, and that index then needed its own backfill path,
+// its own truncation caps and its own staleness story.
+//
+// Postgres indexes (site, visitor_id, occurred_at) and (site, session_id,
+// occurred_at). The scan, the index, the budgets and the backfill are all one
+// query now.
+//
+// What made this possible — and what made it look impossible at first — is
+// that `raw_payload` archives the whole original event, in two shapes:
+//
+//   vercel-blob rows: the tracker's payload sits at the top level
+//   site-api rows:    the same payload nested under `event`
+//
+// A first pass at this looked only at top-level keys on the newest rows (all
+// site-api) and concluded the rich telemetry — web vitals, screen_info,
+// network_info, battery_info, the utm_* set — had been dropped by the mirror.
+// It had not; it was one level down. asEvent() below reads either shape, which
+// is why projectEvent and summarize could be kept exactly as they were.
 import { requireKey } from './_auth.js';
 import { decodeGeo } from './lib/geo.js';
+import { query, isConfigured } from '../Integrations/postgres.js';
 
-const _env = (typeof process !== 'undefined' ? process : globalThis['proc' + 'ess']).env;
-const TOKEN = _env['BLOB_' + 'READ_WRITE_TOKEN'];
-const RECENT_EVENTS_CAP = 200;
-// How many addresses (and user agents) the index blob keeps. Named because the
-// drawer needs to know when this cut something, and a bare literal gave it
-// nothing to key off but the list's own length.
-const IP_LIST_CAP = 25;
-const SCAN_BUDGET_MS = 15000;
-const INDEX_BUDGET_MS = 12000;
+// The property this dossier covers, matching /api/stats.
+const SITE = process.env.STATS_SITE || 'jaytibirthday.in';
 
-async function listAll(prefix) {
-  let cursor;
-  const out = [];
-  let page = 0;
-  do {
-    const opts = { token: TOKEN, limit: 1000, prefix };
-    if (cursor) opts.cursor = cursor;
-    const res = await list(opts);
-    out.push(...res.blobs);
-    cursor = res.cursor;
-    if (++page > 200) break;
-  } while (cursor);
-  return out;
-}
+// Rebuilds the event exactly as the blob scan used to hand it over. The
+// archived payload wins; the indexed columns fill anything it lacks, which
+// matters for rows written by feeds that never carried the full object.
+function asEvent(row) {
+  const archived = row.raw_payload || {};
+  const base = archived.event && typeof archived.event === 'object' ? archived.event : archived;
+  const at = row.occurred_at instanceof Date ? row.occurred_at.toISOString() : row.occurred_at;
 
-/* ===== per-visitor index (written by track.js at ingest time) ===== */
-
-function indexPathForVisitor(visitorId) {
-  return `index/visitor/${encodeURIComponent(visitorId)}.json`;
-}
-
-function indexPathForSession(sessionId) {
-  return `index/session/${encodeURIComponent(sessionId)}.json`;
-}
-
-async function fetchJsonBlob(pathname) {
-  const r = await get(pathname, { access: 'private', token: TOKEN });
-  if (!r) return null;
-  const text = await new Response(r.stream).text();
-  try { return JSON.parse(text); } catch { return null; }
+  return {
+    ...base,
+    event_type: base.event_type ?? row.event_type,
+    session_id: base.session_id ?? row.session_id,
+    visitor_id: base.visitor_id ?? row.visitor_id,
+    page_url: base.page_url ?? row.page_url,
+    referrer: base.referrer ?? row.referrer,
+    time_on_page: base.time_on_page ?? (typeof row.time_on_page === 'number' ? row.time_on_page : undefined),
+    scroll_percent: base.scroll_percent ?? (typeof row.scroll_percent === 'number' ? row.scroll_percent : undefined),
+    device_fingerprint: base.device_fingerprint ?? row.fingerprint,
+    timestamp: base.timestamp ?? at,
+    // summarize() and the drawer both order on receivedAt; occurred_at is the
+    // column that ordering is indexed on, so they agree by construction.
+    receivedAt: at,
+    server_location: archived.server_location ?? base.server_location ?? {
+      ip: row.ip, country: row.country, region: row.region, city: row.city, timezone: row.timezone,
+    },
+    server_request_meta: archived.server_request_meta ?? base.server_request_meta ?? {
+      userAgent: row.user_agent, referer: row.referrer,
+    },
+  };
 }
 
 function projectEvent(d) {
@@ -139,128 +155,6 @@ function summarize(events, fallbackVisitor) {
   };
 }
 
-function summaryFromIndex(idx) {
-  return {
-    visitor_id: idx.visitor_id,
-    device_fingerprints: idx.fingerprints || [],
-    sessions: idx.sessions || [],
-    ips: idx.ips || [],
-    // Blobs written before this field existed have no flag; fall back to the
-    // length test rather than silently claiming the list is complete.
-    ips_truncated: idx.ips_truncated === undefined
-      ? (idx.ips || []).length >= IP_LIST_CAP
-      : !!idx.ips_truncated,
-    countries: Object.entries(idx.countries || {}).sort((a, b) => b[1] - a[1]),
-    user_agents: idx.user_agents || [],
-    pages: Object.keys(idx.pages || {}),
-    first_seen: idx.first_seen || null,
-    last_seen: idx.last_seen || null,
-    total_events: idx.total_events || 0,
-    max_time_on_page: idx.max_time_on_page || 0,
-    // The index fast path is the default drawer route, and every blob written
-    // before this change holds an encoded network, so decode on the way out
-    // rather than needing a backfill.
-    network: decodeGeo(idx.network) || null,
-  };
-}
-
-async function downloadByPathname(refs, budgetMs) {
-  const events = [];
-  const start = Date.now();
-  let i = 0;
-  let timedOut = false;
-  async function run() {
-    while (i < refs.length) {
-      if (Date.now() - start > budgetMs) { timedOut = true; return; }
-      const idx = i++;
-      try {
-        const d = await fetchJsonBlob(refs[idx].pathname);
-        if (d) events.push(d);
-      } catch {}
-    }
-  }
-  await Promise.all(Array.from({ length: Math.min(40, refs.length) }, run));
-  return { events, timedOut };
-}
-
-async function loadViaIndex({ visitor, session, cutoffIso }) {
-  let visitorId = visitor || null;
-  let sessionScoped = false;
-  if (!visitorId) {
-    const pointer = await fetchJsonBlob(indexPathForSession(session)).catch(() => null);
-    if (!pointer || !pointer.visitor_id) return null;
-    visitorId = pointer.visitor_id;
-    sessionScoped = true;
-  }
-  const idx = await fetchJsonBlob(indexPathForVisitor(visitorId)).catch(() => null);
-  if (!idx || idx.visitor_id !== visitorId || !Array.isArray(idx.recent_events)) return null;
-
-  let refs = idx.recent_events.filter(r => r && r.pathname && (!r.receivedAt || r.receivedAt >= cutoffIso));
-  if (session) refs = refs.filter(r => r.session_id === session);
-  const capped = refs.length >= RECENT_EVENTS_CAP;
-
-  const { events, timedOut } = await downloadByPathname(refs, INDEX_BUDGET_MS);
-  events.sort((a, b) => (a.receivedAt || '').localeCompare(b.receivedAt || ''));
-
-  return {
-    success: true,
-    partial: timedOut || capped,
-    source: 'index',
-    query: { visitor, session },
-    summary: sessionScoped || session ? summarize(events, visitorId) : summaryFromIndex(idx),
-    events: events.map(projectEvent),
-  };
-}
-
-async function writeIndexFromEvents(visitorId, events) {
-  const s = summarize(events, visitorId);
-  const idx = {
-    visitor_id: visitorId,
-    first_seen: s.first_seen,
-    last_seen: s.last_seen,
-    total_events: s.total_events,
-    ips: s.ips.slice(0, IP_LIST_CAP),
-    // Record that the list was cut, so a reader never has to infer truncation
-    // from its length. The drawer states an IP and network count; inferring it
-    // client-side from `length >= 25` was wrong for /api/jp-visitor, which
-    // does not slice at all, and silently wrong here the day this cap changes.
-    ips_truncated: s.ips.length > IP_LIST_CAP,
-    countries: Object.fromEntries(s.countries),
-    sessions: s.sessions.slice(0, 50),
-    fingerprints: s.device_fingerprints.slice(0, 10),
-    user_agents: s.user_agents.slice(0, IP_LIST_CAP),
-    pages: Object.fromEntries(s.pages.slice(0, 100).map(p => [p, 1])),
-    max_time_on_page: s.max_time_on_page,
-    network: s.network,
-    recent_events: events.slice(-RECENT_EVENTS_CAP).map(d => ({
-      pathname: `analytics/${d.event_type || 'event'}/${d.eventId}.json`,
-      event_type: d.event_type,
-      page_url: d.page_url,
-      timestamp: d.timestamp,
-      receivedAt: d.receivedAt,
-      time_on_page: d.time_on_page,
-      session_id: d.session_id,
-    })),
-    updated_at: new Date().toISOString(),
-  };
-  await put(indexPathForVisitor(visitorId), JSON.stringify(idx), {
-    access: 'private',
-    contentType: 'application/json',
-    token: TOKEN,
-    addRandomSuffix: false,
-    allowOverwrite: true,
-  });
-  for (const sid of s.sessions.slice(0, 50)) {
-    await put(indexPathForSession(sid), JSON.stringify({ visitor_id: visitorId }), {
-      access: 'private',
-      contentType: 'application/json',
-      token: TOKEN,
-      addRandomSuffix: false,
-      allowOverwrite: true,
-    });
-  }
-}
-
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
   if (!requireKey(req, res)) return;
@@ -270,56 +164,34 @@ export default async function handler(req, res) {
     return res.status(400).json({ success: false, error: 'visitor or session required' });
   }
 
+  if (!isConfigured()) {
+    return res.status(500).json({ success: false, error: 'DATABASE_URL not set on this deployment' });
+  }
+
   const days = Math.min(Math.max(parseInt(req.query.days) || 30, 1), 90);
-  const cutoff = Date.now() - days * 86400000;
-  const cutoffIso = new Date(cutoff).toISOString();
 
   try {
-    const indexed = await loadViaIndex({ visitor, session, cutoffIso });
-    if (indexed) {
-      return res.status(200).json(indexed);
-    }
+    // One indexed lookup. The old path read every event in the window to find
+    // these, which is why it needed a budget and reported `partial`.
+    const rows = (await query(
+      `SELECT raw_payload, occurred_at, event_type, session_id, visitor_id, page_url,
+              referrer, ip, country, region, city, timezone, user_agent,
+              time_on_page, scroll_percent, fingerprint
+         FROM events
+        WHERE site = $1
+          AND ${visitor ? 'visitor_id' : 'session_id'} = $2
+          AND occurred_at > now() - ($3 || ' days')::interval
+        ORDER BY occurred_at ASC`,
+      [SITE, visitor || session, days]
+    )).rows;
 
-    const blobs = await listAll('analytics/');
-    const inWindow = blobs
-      .filter(b => b.uploadedAt && b.uploadedAt.getTime() >= cutoff)
-      .sort((a, b) => b.uploadedAt.getTime() - a.uploadedAt.getTime());
-
-    const events = [];
-    const start = Date.now();
-    let i = 0;
-    let timedOut = false;
-    async function run() {
-      while (i < inWindow.length) {
-        if (Date.now() - start > SCAN_BUDGET_MS) { timedOut = true; return; }
-        const idx = i++;
-        try {
-          const r = await fetch(inWindow[idx].url, { headers: { authorization: `Bearer ${TOKEN}` } });
-          if (!r.ok) continue;
-          const d = await r.json();
-          if ((visitor && d.visitor_id === visitor) || (session && d.session_id === session)) {
-            events.push(d);
-          }
-        } catch {}
-      }
-    }
-    await Promise.all(Array.from({ length: Math.min(40, inWindow.length) }, run));
-
-    events.sort((a, b) => (a.receivedAt || '').localeCompare(b.receivedAt || ''));
-
-    // Backfill the per-visitor index so the next lookup takes the fast path.
-    if (!timedOut && events.length) {
-      const vid = visitor || events[0].visitor_id;
-      if (vid) {
-        await writeIndexFromEvents(vid, events)
-          .catch(err => console.error('[visitor] index backfill failed:', err));
-      }
-    }
+    const events = rows.map(asEvent);
 
     return res.status(200).json({
       success: true,
-      partial: timedOut,
-      source: 'scan',
+      // Nothing is sampled now, so nothing can be missing.
+      partial: false,
+      source: 'postgres',
       query: { visitor, session },
       summary: summarize(events, visitor),
       events: events.map(projectEvent),

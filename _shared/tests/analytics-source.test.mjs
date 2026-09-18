@@ -50,25 +50,36 @@ for (const counter of [
 // Blob is still the right store for media and for the ingest journal itself.
 // This is about the analytics READ paths only.
 const MEDIA_ROUTES = new Set(['wa-blob-upload.js', 'wa-media.js', 'jp-agent.js']);
-const blobReaders = readFileSync
-  ? (await import('node:fs')).readdirSync(BACKEND)
-      .filter((f) => f.endsWith('.js') && !MEDIA_ROUTES.has(f))
-      .filter((f) => readFileSync(join(BACKEND, f), 'utf8').includes('@vercel/blob'))
-  : [];
-check('no analytics route reads the blob journal',
-  blobReaders.every((f) => f === 'visitor.js'),
-  `unexpected blob readers: ${blobReaders.filter((f) => f !== 'visitor.js').join(', ')}`);
+const { readdirSync } = await import('node:fs');
+const blobReaders = readdirSync(BACKEND)
+  .filter((f) => f.endsWith('.js') && !MEDIA_ROUTES.has(f))
+  .filter((f) => readFileSync(join(BACKEND, f), 'utf8').includes('@vercel/blob'));
+check('no analytics route reads the blob journal', blobReaders.length === 0,
+  `blob readers: ${blobReaders.join(', ')}`);
 
-// visitor.js is deliberately still on Blob: the warehouse does not preserve
-// the payload it serves. The blob rows carry 12 fields; projectEvent reads
-// ~37 — web vitals (lcp/cls/inp/ttfb), screen_info, network_info,
-// ua_client_hints, pwa_state, battery_info, memory_info and the utm_* set are
-// absent from raw_payload entirely. Migrating that read path today would blank
-// most of the visitor dossier. It moves once ingestion archives the whole
-// event, not before.
-check('visitor.js is documented as the remaining blob reader',
-  readFileSync(join(BACKEND, 'visitor.js'), 'utf8').includes('@vercel/blob'),
-  'visitor.js changed store — check the payload actually survives the move');
+// visitor.js moved too, and the move was worth more than speed. The blob path
+// answered from a per-visitor index capped at 200 events; for the visitor this
+// was verified against it returned 25 of a 2,476-event trail spanning 34
+// sessions and 7 addresses. The dossier was not slow, it was wrong.
+const visitor = readFileSync(join(BACKEND, 'visitor.js'), 'utf8');
+check('visitor reads the warehouse', /Integrations\/postgres\.js/.test(visitor), 'no postgres import');
+check('visitor looks the trail up by key rather than scanning',
+  /WHERE site = \$1/.test(visitor), 'no indexed lookup');
+check('the per-visitor index machinery is gone',
+  !/writeIndexFromEvents|loadViaIndex|SCAN_BUDGET_MS/.test(visitor),
+  'index or scan-budget code survives — it has nothing left to accelerate');
+
+// raw_payload archives the original event in two shapes: at the top level for
+// rows imported from Blob, nested under `event` for the live feed. A reader
+// that handles only the first silently drops every rich field on current
+// traffic — the mistake that made this migration look impossible at first.
+check('visitor reads both archive shapes',
+  /archived\.event && typeof archived\.event === 'object'/.test(visitor),
+  'only one raw_payload shape is handled');
+
+for (const rich of ['web_vitals', 'screen_info', 'network_info', 'battery_info', 'ua_client_hints']) {
+  check(`the dossier still projects \`${rich}\``, new RegExp(`\\b${rich}:`).test(visitor), 'field dropped');
+}
 
 console.log(`\n${failures ? `${failures} check(s) failed` : 'all checks passed'}`);
 process.exitCode = failures ? 1 : 0;
