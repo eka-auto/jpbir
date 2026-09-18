@@ -12,12 +12,17 @@
 //   GET /api/jp-wa-attachments?chat_id=<id>&kind=<kind>&limit=<n>&before=<iso>
 import { requireKey } from './_auth.js';
 import { query, isConfigured } from '../Integrations/postgres.js';
+import { requireKey } from './_auth.js';
 
 const KINDS = new Set(['image', 'video', 'audio', 'ptt', 'document', 'sticker', 'other']);
 
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'private, no-store');
   res.setHeader('Content-Type', 'application/json');
+
+  // Blob URLs and filenames are private; fail closed before any route or store
+  // detail is exposed.
+  if (!requireKey(req, res)) return;
 
   if (req.method !== 'GET' && req.method !== 'HEAD') {
     res.setHeader('Allow', 'GET, HEAD');

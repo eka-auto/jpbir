@@ -216,9 +216,9 @@
     sessionStorage.removeItem('s24DashboardKey');
   }
   var state = { site: 'jaytibirthday.in', days: 30, noise: false, page: 'overview',
-                offsets: { visitors: 0, sessions: 0, events: 0, video: 0, emails: 0, s24: 0, whatsapp: 0 },
+                offsets: { visitors: 0, sessions: 0, events: 0, video: 0, emails: 0, s24: 0 },
                 type: '', s24Dataset: '', s24Section: 'overview',
-                s24Key: storedDashboardKey, counts: {} };
+                s24Key: sessionStorage.getItem('s24DashboardKey') || '', counts: {} };
 
   var PAGES = [
     ['overview',  'Overview',  null],
