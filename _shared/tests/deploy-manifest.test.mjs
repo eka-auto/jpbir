@@ -18,6 +18,7 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const manifest = JSON.parse(readFileSync(join(ROOT, 'vercel.json'), 'utf8'));
+const vercelIgnore = readFileSync(join(ROOT, '.vercelignore'), 'utf8');
 
 let failures = 0;
 const check = (label, ok, detail) => {
@@ -108,6 +109,13 @@ const ROUTED = [
 const built = new Set(builds.map((b) => b.src));
 for (const file of ROUTED) {
   check(`explicitly routed and built: ${file}`, built.has(file), 'route exists but no builds entry');
+}
+
+// 5. A CLI deploy uploads the working directory rather than the Git tree.
+//    These local trees total tens of gigabytes and once kept production deploys
+//    stuck before Vercel could even create a deployment.
+for (const dir of ['runs/', '.venv/', 'venv/', 'vscode-office/', 'node_modules/']) {
+  check(`CLI deploy ignores ${dir}`, vercelIgnore.split(/\r?\n/).includes(dir), `${dir} is missing from .vercelignore`);
 }
 
 console.log(failures ? `\n${failures} check(s) failed` : '\nall checks passed');

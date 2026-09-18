@@ -109,3 +109,11 @@ test('owner dashboard uses the authenticated S24 command endpoint and public dev
   strictEqual(vivobook.includes("fetch('/api/jp-device', {\n            method: 'POST'"), false);
   strictEqual(index.includes("e.event_type === 'pageview'"), true);
 });
+
+test('dashboard key persists and WhatsApp prompts clearly when it is missing', async () => {
+  const index = await readFile(new URL('../../Frontend/index.html', import.meta.url), 'utf8');
+  strictEqual(index.includes('localStorage.getItem(KEY_STORAGE) || sessionStorage.getItem(KEY_STORAGE)'), true);
+  strictEqual(index.includes('localStorage.setItem(KEY_STORAGE, v)'), true);
+  strictEqual(index.includes('localStorage.removeItem(KEY_STORAGE)'), true);
+  strictEqual(index.includes('Dashboard key required — enter it to load WhatsApp.'), true);
+});

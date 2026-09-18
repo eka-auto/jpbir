@@ -21,3 +21,53 @@ Database/backups/
 .env
 .env.*
 !.env.example
+
+# Heavy local-only trees. A CLI deploy from the laptop must never upload these;
+# Git-driven deploys already skip them via .gitignore, but .vercelignore
+# overrides .gitignore for `vercel --prod`, so without this the upload tries to
+# push ~28 GB (runs/ alone is 26 GB) and hangs indefinitely.
+runs/
+.venv/
+venv/
+vscode-office/
+node_modules/
+.deepsec/
+scratch/
+personal_folder_agent/
+permanent_agent/
+jpbir/
+.firebase/
+.pytest_cache/
+.hypothesis/
+.qwen/
+.kiro/
+.agents/
+.claude/
+
+# Untracked workspace-only files and directories at the repository root.
+# In particular, never send service-account JSON or one-off Firestore tools.
+.firebaserc
+Sandbox/
+chrome_extraction/
+dashboard/
+dataconnect/
+eka-runner-private/
+eka-runner/
+jayti/
+_tmp_*
+intrepid-stage-*.json
+firestore-queue-cleanup-*.json
+hash_output.txt
+STATUS_SUMMARY.txt
+stale_db_inventory.md
+stale_db_refs.txt
+*_REPORT.md
+*_SUMMARY.md
+*_COMPLETE.md
+*_GUIDE.md
+*_PLAN.md
+*_PROGRESS.md
+WORKSPACE_DIRECTORY_MAP.md
+REMAINING_REFS_ANALYSIS.md
+SAFE_TO_DELETE_FILES.md
+yarn.lock
