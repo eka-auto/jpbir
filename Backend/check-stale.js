@@ -139,7 +139,10 @@ export default async function handler(req, res) {
   // dashboard key only, same as verify-db.
   if (!cronAuthorized(req) && !requireKey(req, res)) return;
   if (!FIREBASE_SA_JSON) return res.status(500).json({ success: false, error: 'FIREBASE_SERVICE_ACCOUNT_JSON not configured' });
-  if (!GMAIL_APP_PASSWORD) return res.status(500).json({ success: false, error: 'GMAIL_APP_PASSWORD not configured' });
+  // GMAIL_APP_PASSWORD is optional — without it, email alerts are skipped but
+  // Firestore staleness patches and the Neon sweep still run. This keeps the
+  // cron useful even when the app password hasn't been set yet.
+  const emailEnabled = Boolean(GMAIL_APP_PASSWORD);
 
   try {
     const token = await getFirestoreToken();
@@ -173,10 +176,11 @@ export default async function handler(req, res) {
         lastSeen: f.lastSeen || null,
         lastSeenAgeSeconds: f.lastSeen ? Math.round((nowMs - new Date(f.lastSeen).getTime()) / 1000) : null,
       };
-      // Send first; only persist the new state if the email went out, so a
-      // transient send failure retries on the next tick instead of going silent.
+      // Send email first when configured; only persist the new state if the
+      // email went out (or is skipped), so a transient send failure retries on
+      // the next tick instead of going silent.
       try {
-        await sendAlert(result.action, d);
+        if (emailEnabled) await sendAlert(result.action, d);
         const patchUrl = `${base}/devices/${deviceId}?updateMask.fieldPaths=${encodeURIComponent('staleAlert')}`;
         const body = JSON.stringify({ fields: { staleAlert: enc({ state: result.newState, since: nowIso }) } });
         const pr = await fetch(patchUrl, {
@@ -185,7 +189,7 @@ export default async function handler(req, res) {
           body,
         });
         if (!pr.ok) throw new Error('patch failed: ' + (await pr.text()).slice(0, 200));
-        transitions.push({ deviceId, action: result.action });
+        transitions.push({ deviceId, action: result.action, email: emailEnabled ? 'sent' : 'skipped' });
       } catch (e) {
         transitions.push({ deviceId, action: result.action, error: e.message });
       }
@@ -214,7 +218,7 @@ export default async function handler(req, res) {
       } catch { neonSweep = { error: 'neon sweep failed' }; }
     }
 
-    return res.status(200).json({ success: true, checked, transitions, neonSweep, thresholdSeconds: STALE_ALERT_SECONDS, at: nowIso });
+    return res.status(200).json({ success: true, checked, transitions, neonSweep, emailEnabled, thresholdSeconds: STALE_ALERT_SECONDS, at: nowIso });
   } catch (err) {
     return res.status(500).json({ success: false, error: err.message || 'check-stale failed' });
   }
