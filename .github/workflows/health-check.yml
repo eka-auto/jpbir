@@ -62,18 +62,27 @@ jobs:
             exit 1
           fi
       
-      - name: Test Database Verification
+      # The one authenticated probe. HEALTH_CHECK_KEY can only ask verify-db
+      # whether Neon answers with the full schema, so CI proves the database
+      # works without holding the dashboard key. A 401 here is a failure.
+      - name: Test Database Verification (Neon query)
         env:
-          STATS_KEY: ${{ secrets.STATS_KEY }}
+          HEALTH_CHECK_KEY: ${{ secrets.HEALTH_CHECK_KEY }}
         run: |
-          RESPONSE=$(curl -sL -o /dev/null -w "%{http_code}" -H "x-stats-key: $STATS_KEY" https://jaytipargal.tech/api/verify-db)
-          if [ "$RESPONSE" -eq 200 ]; then
-            echo "✅ Database Verification OK"
-          else
-            echo "❌ Database Verification failed with status $RESPONSE"
+          if [ -z "$HEALTH_CHECK_KEY" ]; then
+            echo "❌ The HEALTH_CHECK_KEY secret is not set"
             exit 1
           fi
-      
+          BODY=$(curl -sS -H "x-health-key: $HEALTH_CHECK_KEY" -w '\n%{http_code}' https://jaytipargal.tech/api/verify-db)
+          CODE=$(echo "$BODY" | tail -n 1)
+          JSON=$(echo "$BODY" | sed '$d')
+          if [ "$CODE" -eq 200 ] && echo "$JSON" | jq -e '.postgres.ok == true' >/dev/null; then
+            echo "✅ Neon answered with the full schema ($(echo "$JSON" | jq -r '.postgres.tables_present') tables)"
+          else
+            echo "❌ Database verification failed (HTTP $CODE): $JSON"
+            exit 1
+          fi
+
       - name: Report Status
         run: |
           echo "## ✅ All Endpoints Healthy" >> $GITHUB_STEP_SUMMARY
@@ -83,4 +92,4 @@ jobs:
           echo "| Homepage | ✅ OK |" >> $GITHUB_STEP_SUMMARY
           echo "| Devices API | ✅ OK |" >> $GITHUB_STEP_SUMMARY
           echo "| Stats API | ✅ OK |" >> $GITHUB_STEP_SUMMARY
-          echo "| Database Verification | ✅ OK |" >> $GITHUB_STEP_SUMMARY
+          echo "| Database (Neon query) | ✅ OK |" >> $GITHUB_STEP_SUMMARY
