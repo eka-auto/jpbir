@@ -38,7 +38,7 @@ const [{ envs }, { deployments: [live] }] = await Promise.all([
   vercel(`/v9/projects/${VERCEL_PROJECT_ID}/env`),
   vercel(`/v6/deployments?projectId=${VERCEL_PROJECT_ID}&target=production&state=READY&limit=1`),
 ]);
-const present = new Set(envs.map(e => e.key));
+const present = new Set(envs.filter(e => e.target.includes('production')).map(e => e.key));
 
 const batch = [];
 for (const key of keys) {

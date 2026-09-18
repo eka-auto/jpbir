@@ -6,6 +6,7 @@ import {
   revokeToken,
   startAuthorization,
 } from '@vercel/connect';
+import { requireKey } from './_auth.js';
 
 const _env = (typeof process !== 'undefined' ? process : globalThis['proc' + 'ess']).env;
 const CONNECTOR_UID = _env['CONNECT_' + 'CONNECTOR_UID'] || 'vercel/red-marble';
@@ -69,10 +70,7 @@ export function buildAuthorizeParams(params, query) {
 }
 
 export default async function handler(req, res) {
-  const presented = req.query.key || req.headers['x-stats-key'] || '';
-  if (!STATS_KEY || !timingSafeEqual(presented, STATS_KEY)) {
-    return sendError(res, 401, 'unauthorized', 'unauthorized');
-  }
+  if (!requireKey(req, res)) return;
 
   const action = req.query.action || 'status';
   const params = buildParams(req.query);
