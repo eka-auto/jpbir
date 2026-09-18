@@ -2,11 +2,12 @@ import crypto from 'crypto';
 import nodemailer from 'nodemailer';
 import { evaluate } from './lib/stale.js';
 import { query as pgQuery, isConfigured as pgIsConfigured } from '../Integrations/postgres.js';
+import { requireKey } from './_auth.js';
+import { cronAuthorized } from './lib/cron-auth.js';
 
 const _env = (typeof process !== 'undefined' ? process : globalThis['proc' + 'ess']).env;
 const FIREBASE_SA_JSON = _env['FIREBASE_' + 'SERVICE_ACCOUNT_JSON'];
 const FIRESTORE_DB = _env['FIRESTORE_' + 'DB'] || 'eka-agent';
-const CRON_SECRET = _env['CRON_' + 'SECRET'];
 const GMAIL_APP_PASSWORD = _env['GMAIL_APP_' + 'PASSWORD'];
 const STALE_ALERT_SECONDS = Number(_env['STALE_ALERT_SECONDS']) || 600;
 
@@ -22,18 +23,6 @@ const MAIL = {
   from: 'Jayati Device Monitor <analytics@jaytibirthday.in>',
   replyTo: 'ekaaiurgaa@gmail.com',
 };
-
-function timingSafeEqual(a, b) {
-  if (typeof a !== 'string' || typeof b !== 'string') return false;
-  const max = Math.max(a.length, b.length);
-  let diff = a.length === b.length ? 0 : 1;
-  for (let i = 0; i < max; i++) {
-    const ca = i < a.length ? a.charCodeAt(i) : 0;
-    const cb = i < b.length ? b.charCodeAt(i) : 0;
-    diff |= ca ^ cb;
-  }
-  return diff === 0;
-}
 
 let _tokenCache = { token: null, exp: 0 };
 
@@ -144,18 +133,11 @@ async function sendAlert(action, d) {
   });
 }
 
-function authorized(req) {
-  // Vercel Cron sends `Authorization: Bearer <CRON_SECRET>`.
-  const auth = String(req.headers['authorization'] || '');
-  if (CRON_SECRET && auth.startsWith('Bearer ') && timingSafeEqual(auth.slice(7), CRON_SECRET)) return true;
-  // Open dashboard - allow unauthenticated access for testing
-  // In production, you may want to require CRON_SECRET for scheduled jobs
-  return true;
-}
-
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
-  if (!authorized(req)) return res.status(401).json({ success: false, error: 'unauthorized' });
+  // Sends alert email and patches Firestore: Vercel Cron (CRON_SECRET) or the
+  // dashboard key only, same as verify-db.
+  if (!cronAuthorized(req) && !requireKey(req, res)) return;
   if (!FIREBASE_SA_JSON) return res.status(500).json({ success: false, error: 'FIREBASE_SERVICE_ACCOUNT_JSON not configured' });
   if (!GMAIL_APP_PASSWORD) return res.status(500).json({ success: false, error: 'GMAIL_APP_PASSWORD not configured' });
 

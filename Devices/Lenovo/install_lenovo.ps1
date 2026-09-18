@@ -16,7 +16,7 @@ $PinnedCommit = '183e600d0acd7e6171e35be904c657e7fe967384'
 $Here = Split-Path -Parent $MyInvocation.MyCommand.Path
 
 $Artifacts = @(
-    [pscustomobject]@{ Name = 'device_agent.py'; Hash = '70A74469A2E004F671897B30F85A8759F684ACA4CE1F5860BF39C7E12396D2F7' },
+    [pscustomobject]@{ Name = 'device_agent.py'; Hash = 'BE75C4D8E8817BB45B8DFF32AD5D1C642DB7808EA1EE4A89C7B0DCF058B9296B' },
     [pscustomobject]@{ Name = 'broker_client.py'; Hash = 'E380867C5843E49C21D7E46704DB20607389A9F1FAAD4B3CF61F9B4EAB173BB1' },
     [pscustomobject]@{ Name = 'signer.py'; Hash = '8AABF8E5FFF25A067B02901EF4798D061A9C2B3D5844D72E59DB1419112632F7' },
     [pscustomobject]@{ Name = 'single_instance.py'; Hash = '1A572F39DC96599E8DF55DEBE9CCD9BD8232CFFECAC08BBC898FF5FFF4F9EF46' },

@@ -30,31 +30,25 @@ jobs:
       - name: Run tests
         run: npm test --if-present
 
-  deploy-production:
-    name: Deploy to Vercel Production
-    runs-on: ubuntu-latest
-    needs: lint-and-test
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '24.x'
-          cache: 'npm'
-      
-      - name: Install Vercel CLI
-        run: npm install -g vercel@latest
-      
-      - name: Pull Vercel environment
-        run: vercel link --yes --project jpbir_restructured
-        env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-      
-      - name: Deploy to Production
-        run: vercel deploy --prod --yes
-        env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+  # A second deploy path was removed here on 2026-09-18.
+  #
+  # This job ran `vercel link --yes --project jpbir_restructured` and then
+  # `vercel deploy --prod` on every push to main. Three problems, in order of
+  # how much they cost:
+  #
+  #   1. jpbir_restructured is not production. It has no custom domain and one
+  #      env var (STATS_KEY), so every data route on it answers 500 while the
+  #      check beside it reported "Deploy to Production" in green. Real
+  #      production - jaytipargal.tech, project jayti-dashboard - is deployed
+  #      by Vercel's Git integration, which needs no workflow.
+  #   2. `vercel link --yes --project <name>` CREATES the project when it is
+  #      absent. The original jpbir_restructured was deleted once; this job
+  #      recreated it on the next push, empty, and it accumulated 89
+  #      deployments. Deleting the project without deleting this job just
+  #      starts that over.
+  #   3. A CLI deploy uploads the working directory, not the committed tree.
+  #      That is why .vercelignore exists - to keep an untracked app/ holding
+  #      a live service-account key out of a deployment. The ignore file is
+  #      still worth having; needing it here was the symptom.
+  #
+  # Deploys come from the Git integration. This workflow lints and tests.

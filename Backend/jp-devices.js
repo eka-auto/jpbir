@@ -182,6 +182,11 @@ export default async function handler(req, res) {
 
   try {
     const includeFullPayload = String(req.query.full || '') === '1';
+    // Opt-in fetch of per-device data subcollections (whatsappMedia, callLogs,
+    // sms, contacts). Off by default because each device costs 4 extra list
+    // reads; on when the dashboard's Firestore section asks for it.
+    const includeSubcollections = String(req.query.subcollections || '') === '1';
+    const subLimit = Math.max(1, Math.min(parseInt(req.query.sub_limit) || 20, 50));
     const token = await getFirestoreToken();
     const base = `https://firestore.googleapis.com/v1/projects/${JSON.parse(FIREBASE_SA_JSON).project_id}/databases/${FIRESTORE_DB}/documents`;
     const r = await fetch(`${base}/devices`, { headers: { Authorization: `Bearer ${token}` } });
@@ -393,6 +398,35 @@ export default async function handler(req, res) {
         };
       }
     } catch { videoEvent = null; }
+
+    // Subcollections — one Firestore list per (device, subcollection). Runs
+    // in parallel across devices so the overall wall-clock stays close to the
+    // slowest single subcollection read, not the sum. Failures on one device
+    // don't take down the whole response; that device just gets an empty map.
+    if (includeSubcollections) {
+      const SUBS = ['whatsappMedia', 'callLogs', 'sms', 'contacts'];
+      await Promise.all(filteredDevices.map(async (d) => {
+        const perDevice = {};
+        await Promise.all(SUBS.map(async (name) => {
+          try {
+            const sr = await fetch(
+              `${base}/devices/${encodeURIComponent(d.deviceId)}/${encodeURIComponent(name)}?pageSize=${subLimit}`,
+              { headers: { Authorization: `Bearer ${token}` } }
+            );
+            if (!sr.ok) { perDevice[name] = []; return; }
+            const sd = await sr.json();
+            perDevice[name] = (sd.documents || []).map((doc) => {
+              const out = { id: (doc.name || '').split('/').pop() };
+              for (const [k, v] of Object.entries(doc.fields || {})) out[k] = dec(v);
+              return out;
+            });
+          } catch (_) {
+            perDevice[name] = [];
+          }
+        }));
+        d.subcollections = perDevice;
+      }));
+    }
 
     return res.status(200).json({
       success: true,
