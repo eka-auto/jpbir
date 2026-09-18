@@ -19,11 +19,14 @@ export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'private, no-store');
   res.setHeader('Content-Type', 'application/json');
 
+  // Blob URLs and filenames are private; fail closed before any route or store
+  // detail is exposed.
+  if (!requireKey(req, res)) return;
+
   if (req.method !== 'GET' && req.method !== 'HEAD') {
     res.setHeader('Allow', 'GET, HEAD');
     return res.status(405).json({ ok: false, error: 'GET only' });
   }
-  if (!requireKey(req, res)) return;
 
   const chatId = String(req.query.chat_id || '').trim();
   if (!chatId) return res.status(400).json({ ok: false, error: 'chat_id required' });

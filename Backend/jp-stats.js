@@ -124,10 +124,42 @@ export default async function handler(req, res) {
       }
 
       const sid = d.sessionId || 'no-session';
-      if (!sessions.has(sid)) sessions.set(sid, { first: d.timestamp, last: d.timestamp, count: 0, ip, types: {} });
+      if (!sessions.has(sid)) sessions.set(sid, {
+        first: d.timestamp, last: d.timestamp, count: 0, ip, types: {},
+        // PII fields carried per session so the dashboard's sessions table can
+        // render them alongside the id/ip/count columns without a second RTT
+        // per row into /api/jp-visitor. Same auth gate (STATS_KEY via
+        // requireKey above), same DynamoDB row that was already being read.
+        visitor_id: d.visitorId,
+        city: geoCity && geoCity !== 'Unknown' ? geoCity : null,
+        country: geoCountry && geoCountry !== 'Unknown' ? geoCountry : null,
+        timezone: geoTimezone && geoTimezone !== 'Unknown' ? geoTimezone : null,
+        userAgent: d.userAgent,
+        referrer: ref && ref !== 'Direct' ? ref : null,
+        fingerprint: d.fingerprint,
+        page_url: d.pageUrl,
+        ips: new Set(ip && ip !== 'unknown' ? [ip] : []),
+        user_agents: new Set(d.userAgent ? [d.userAgent] : []),
+        cities: new Set(geoCity && geoCity !== 'Unknown' ? [geoCity] : []),
+      });
       const s = sessions.get(sid);
       s.count++;
       s.types[type] = (s.types[type] || 0) + 1;
+      // Fold subsequent events' PII into the session so a visitor whose IP
+      // rotates or whose city is only decoded on a later row still shows the
+      // full set. First-write-wins for the singular fields (they already
+      // captured the first sighting); accumulate the *_s Sets for the drawer.
+      if (ip && ip !== 'unknown') s.ips.add(ip);
+      if (d.userAgent) s.user_agents.add(d.userAgent);
+      if (geoCity && geoCity !== 'Unknown') s.cities.add(geoCity);
+      if (!s.visitor_id && d.visitorId) s.visitor_id = d.visitorId;
+      if (!s.city && geoCity && geoCity !== 'Unknown') s.city = geoCity;
+      if (!s.country && geoCountry && geoCountry !== 'Unknown') s.country = geoCountry;
+      if (!s.timezone && geoTimezone && geoTimezone !== 'Unknown') s.timezone = geoTimezone;
+      if (!s.userAgent && d.userAgent) s.userAgent = d.userAgent;
+      if (!s.referrer && ref && ref !== 'Direct') s.referrer = ref;
+      if (!s.fingerprint && d.fingerprint) s.fingerprint = d.fingerprint;
+      if (!s.page_url && d.pageUrl) s.page_url = d.pageUrl;
       if (d.timestamp) {
         if (!s.first || d.timestamp < s.first) s.first = d.timestamp;
         if (!s.last || d.timestamp > s.last) s.last = d.timestamp;
@@ -183,6 +215,18 @@ export default async function handler(req, res) {
       .map(([id, s]) => ({
         id, ip: s.ip, count: s.count, types: s.types, first: s.first, last: s.last,
         durationSec: s.first && s.last ? Math.round((new Date(s.last) - new Date(s.first)) / 1000) : 0,
+        // PII fields (STATS_KEY gate applies to the whole endpoint).
+        visitor_id: s.visitor_id || null,
+        city: s.city || null,
+        country: s.country || null,
+        timezone: s.timezone || null,
+        userAgent: s.userAgent || null,
+        referrer: s.referrer || null,
+        fingerprint: s.fingerprint || null,
+        page_url: s.page_url || null,
+        ips: [...s.ips],
+        user_agents: [...s.user_agents],
+        cities: [...s.cities],
       }))
       .sort((a, b) => (b.last || '').localeCompare(a.last || ''));
 

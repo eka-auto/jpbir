@@ -49,6 +49,8 @@ const ROUTES = [
   { file: 'jp-wa-chat.js', method: 'GET', refuses: 401, query: { chat_id: '1@c.us' } },
   { file: 'jp-wa-attachments.js', method: 'GET', refuses: 401, query: { chat_id: '1@c.us' } },
   { file: 'jp-wa-messages.js', method: 'GET', refuses: 401, query: { chat_id: '1@c.us' } },
+  // Private-blob media proxy: gated on STATS_KEY before it ever looks up a row.
+  { file: 'wa-media.js', method: 'GET', refuses: 401, query: { att_id: 'x' } },
   // Write side: its own key, and 404 so a scanner cannot confirm it exists.
   { file: 'wa-blob-upload.js', method: 'POST', refuses: 404, body: {} },
   // The analytics reads. These were open too — the same defect, a wider blast
@@ -66,6 +68,14 @@ const ROUTES = [
   // database name and a live device count. Its CRON_SECRET branch only ran when
   // an Authorization header was present, so sending none skipped the check.
   { file: 'verify-db.js', method: 'GET', refuses: 401 },
+  // Spends Anthropic credit and answers with device/IP telemetry; was open, so
+  // adding ANTHROPIC_API_KEY would have published it.
+  { file: 'jp-agent.js', method: 'POST', refuses: 401, body: { question: 'x' } },
+  // Sends alert email and patches Firestore; its authorized() returned true.
+  { file: 'check-stale.js', method: 'GET', refuses: 401 },
+  // Referenced an undeclared STATS_KEY, so it 500'd for everyone - including
+  // the owner - instead of refusing.
+  { file: 'connect.js', method: 'GET', refuses: 401 },
 ];
 
 for (const route of ROUTES) {

@@ -1,5 +1,11 @@
 {
   "version": 2,
+  "crons": [
+    {
+      "path": "/api/db-push",
+      "schedule": "30 18 * * *"
+    }
+  ],
   "builds": [
     {
       "src": "Backend/broker-command-claim.js",
@@ -51,6 +57,10 @@
     },
     {
       "src": "Backend/jp-live-agent.js",
+      "use": "@vercel/node"
+    },
+    {
+      "src": "Backend/jp-live-content.js",
       "use": "@vercel/node"
     },
     {
@@ -132,9 +142,25 @@
     {
       "src": "Backend/jp-wa-messages.js",
       "use": "@vercel/node"
+    },
+    {
+      "src": "Backend/wa-media.js",
+      "use": "@vercel/node"
     }
   ],
   "routes": [
+    {
+      "src": "/agent",
+      "dest": "/Frontend/agent.html"
+    },
+    {
+      "src": "/agent/query",
+      "dest": "Backend/jp-live-agent.js"
+    },
+    {
+      "src": "/agent/health",
+      "dest": "Backend/jp-live-agent.js?op=health"
+    },
     {
       "src": "/api/agent-run",
       "dest": "Backend/agent-run.js"
@@ -178,6 +204,10 @@
     {
       "src": "/vivobook",
       "dest": "/Frontend/vivobook.html"
+    },
+    {
+      "src": "/jteka",
+      "dest": "/Frontend/jteka.html"
     },
     {
       "src": "/(.*)",

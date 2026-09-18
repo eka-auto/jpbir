@@ -1,0 +1,56 @@
+name: Sync keys to Vercel
+
+# Configure a key in GitHub and Vercel production, then redeploy:
+#   gh secret set NAME -R jaytipargal/jpbir
+#   gh workflow run sync-keys-to-vercel.yml -R jaytipargal/jpbir
+# Also rebuilds production after a manual `vercel env add`. Rules: .github/scripts/sync-keys-to-vercel.mjs
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Report what would change without writing
+        type: boolean
+        default: false
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/sync-keys-to-vercel.yml
+      - .github/scripts/sync-keys-to-vercel.mjs
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sync-keys-to-vercel
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/scripts
+
+      - name: Add missing keys to jayti-dashboard
+        run: node .github/scripts/sync-keys-to-vercel.mjs
+        env:
+          # Pushes only report; a dispatch writes unless dry_run is ticked.
+          DRY_RUN: ${{ (github.event_name != 'workflow_dispatch' || inputs.dry_run) && '1' || '' }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_TEAM_ID: team_pbbZItTCyIkGsw6LeGrcWx0c
+          VERCEL_PROJECT_ID: prj_ert0BAxafhopYg8tjtbOMcfjDI9r
+          SECRETS_JSON: ${{ toJSON(secrets) }}
+          # Every key the deployed code (Backend/, Integrations/) reads.
+          SYNC_KEYS: >-
+            AGENT_API_KEY AGENT_API_URL ANTHROPIC_API_KEY BLOB_READ_WRITE_TOKEN
+            CONNECT_CLIENT_ID CONNECT_CONNECTOR_UID CRON_SECRET
+            DATABASE_URL DATABASE_URL_UNPOOLED POSTGRES_URL POSTGRES_URL_NON_POOLING
+            DB_ADMIN_KEY FIREBASE_SERVICE_ACCOUNT_JSON FIRESTORE_DB GEMINI_API_KEY
+            GMAIL_APP_PASSWORD HEALTH_CHECK_KEY JP_AGENT_TOKEN JP_AGENT_URL
+            JP_AWS_ACCESS_KEY_ID JP_AWS_SECRET_ACCESS_KEY JP_AWS_REGION JP_TELEMETRY_TABLE
+            JP_WRITE_AWS_ACCESS_KEY_ID JP_WRITE_AWS_SECRET_ACCESS_KEY
+            S24_SYNC_PUBLIC_KEYS STALE_ALERT_SECONDS STATS_KEY STATS_SITE
+            VERCEL_ANALYTICS_PROJECT_ID VERCEL_API_TOKEN VERCEL_TEAM_ID WA_INGEST_KEY

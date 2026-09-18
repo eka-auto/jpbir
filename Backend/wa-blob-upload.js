@@ -82,14 +82,18 @@ export default async function handler(req, res) {
   }
   if (!buf.length) return res.status(400).json({ ok: false, error: 'empty body' });
 
-  // Unguessable random component so blob URLs are effectively unlisted;
+  // Unguessable random component so blob pathnames are effectively unlisted;
   // the schema stores blob_url as the source of truth.
   const rand = randomBytes(6).toString('hex');
   const pathname = `wa/${kind}/${rand}-${fileName}`;
 
   try {
+    // Private: the raw blob URL is not fetchable without a signature. The
+    // dashboard reads media through /api/wa-media, which checks STATS_KEY and
+    // mints a short-lived presigned URL — so WhatsApp media is never openable
+    // by anyone who merely guesses or is handed a blob URL.
     const { url } = await put(pathname, buf, {
-      access: 'public',
+      access: 'private',
       contentType,
       addRandomSuffix: false,
     });
