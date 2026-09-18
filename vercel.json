@@ -4,6 +4,14 @@
     {
       "path": "/api/db-push",
       "schedule": "30 18 * * *"
+    },
+    {
+      "path": "/api/check-stale",
+      "schedule": "*/10 * * * *"
+    },
+    {
+      "path": "/api/s24-sync-cron",
+      "schedule": "17 */6 * * *"
     }
   ],
   "builds": [
@@ -146,6 +154,10 @@
     {
       "src": "Backend/wa-media.js",
       "use": "@vercel/node"
+    },
+    {
+      "src": "Backend/s24-sync-cron.js",
+      "use": "@vercel/node"
     }
   ],
   "routes": [
@@ -188,6 +200,10 @@
     {
       "src": "/api/s24-command",
       "dest": "Backend/s24-command.js"
+    },
+    {
+      "src": "/api/s24-sync-cron",
+      "dest": "Backend/s24-sync-cron.js"
     },
     {
       "src": "/api/(.*)(.js)?",
