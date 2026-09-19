@@ -15,8 +15,9 @@ _shared/reports/
 # Devices/ holds per-device installer bundles, which are not part of the dashboard.
 # The one exception is Devices/sandbox/: it is the Root Directory of the separate
 # `channel-sandbox` Vercel project, and Vercel applies THIS repo-root file to that
-# project's Git builds too. A bare `Devices/` stripped all 26 of its files before
-# the build ran, so every channel-sandbox deploy came up empty and served
+# project's Git builds too. Three rules each stripped its files before the build
+# ran: this `Devices/` (bare, as it used to be), and the unanchored `Sandbox/` and
+# `dashboard/` further down. Every channel-sandbox deploy came up empty and served
 # NOT_FOUND. It has to be `Devices/*` plus a re-include: git-style ignore cannot
 # re-include a child of a directory that is itself excluded. jayti-dashboard
 # never builds or serves these files (its vercel.json builds only Backend/ and
@@ -58,7 +59,11 @@ jpbir/
 # Untracked workspace-only files and directories at the repository root.
 # In particular, never send service-account JSON or one-off Firestore tools.
 .firebaserc
-Sandbox/
+# Anchored: Vercel matches this file CASE-INSENSITIVELY (node-ignore defaults to
+# ignorecase), so an unanchored `Sandbox/` also stripped Devices/sandbox/, which
+# is channel-sandbox's whole Root Directory. Git on Linux is case-sensitive and
+# never showed it.
+/Sandbox/
 chrome_extraction/
 # Anchored: an unanchored `dashboard/` also matched Devices/sandbox/dashboard/,
 # which is channel-sandbox's UI (its vercel.json builds dashboard/index.html).

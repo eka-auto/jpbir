@@ -121,14 +121,18 @@ for (const dir of ['runs/', '.venv/', 'venv/', 'vscode-office/', 'node_modules/'
 
 // 6. The repo-root .vercelignore also applies to the Git builds of
 //    `channel-sandbox`, the Vercel project whose Root Directory is
-//    Devices/sandbox. A bare `Devices/` line, and an unanchored `dashboard/`
-//    that also matched Devices/sandbox/dashboard/, stripped its files before
-//    the build ran. The deploy then went green with no output and served
-//    NOT_FOUND on every path. Git applies the same ignore rules, so it answers
-//    "would Vercel strip this?" for every tracked file under the directory.
+//    Devices/sandbox. Three rules stripped its files before the build ran: a
+//    bare `Devices/`, an unanchored `dashboard/`, and an unanchored `Sandbox/`.
+//    The deploy went green with no output and served NOT_FOUND on every path.
+//    Git applies the same gitignore rules, so it answers "would Vercel strip
+//    this?" for every tracked file under the directory, with one catch:
+//    Vercel's matcher (node-ignore) is CASE-INSENSITIVE by default, and
+//    `Sandbox/` matching `sandbox/` is exactly the rule a case-sensitive git
+//    missed. Hence core.ignorecase=true. It reproduced Vercel's real build
+//    counts (244 stripped on main@87ba028) against node-ignore 5, 6 and 7.
 const strippedSandbox = execFileSync(
   'git',
-  ['ls-files', '--cached', '--ignored', '--exclude-from=.vercelignore', '--', 'Devices/sandbox'],
+  ['-c', 'core.ignorecase=true', 'ls-files', '--cached', '--ignored', '--exclude-from=.vercelignore', '--', 'Devices/sandbox'],
   { cwd: ROOT, encoding: 'utf8' },
 ).split('\n').filter(Boolean);
 check(
