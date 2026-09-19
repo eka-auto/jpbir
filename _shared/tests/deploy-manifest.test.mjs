@@ -11,7 +11,8 @@
 // starts throwing at cold start, and the manifest still looks perfectly valid.
 // _auth.js is the one that matters most: it is the gate on every read route.
 //
-// Four checks, cheapest first.
+// Six checks, cheapest first.
+import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, resolve, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -117,6 +118,28 @@ for (const file of ROUTED) {
 for (const dir of ['runs/', '.venv/', 'venv/', 'vscode-office/', 'node_modules/']) {
   check(`CLI deploy ignores ${dir}`, vercelIgnore.split(/\r?\n/).includes(dir), `${dir} is missing from .vercelignore`);
 }
+
+// 6. The repo-root .vercelignore also applies to the Git builds of
+//    `channel-sandbox`, the Vercel project whose Root Directory is
+//    Devices/sandbox. Three rules stripped its files before the build ran: a
+//    bare `Devices/`, an unanchored `dashboard/`, and an unanchored `Sandbox/`.
+//    The deploy went green with no output and served NOT_FOUND on every path.
+//    Git applies the same gitignore rules, so it answers "would Vercel strip
+//    this?" for every tracked file under the directory, with one catch:
+//    Vercel's matcher (node-ignore) is CASE-INSENSITIVE by default, and
+//    `Sandbox/` matching `sandbox/` is exactly the rule a case-sensitive git
+//    missed. Hence core.ignorecase=true. It reproduced Vercel's real build
+//    counts (244 stripped on main@87ba028) against node-ignore 5, 6 and 7.
+const strippedSandbox = execFileSync(
+  'git',
+  ['-c', 'core.ignorecase=true', 'ls-files', '--cached', '--ignored', '--exclude-from=.vercelignore', '--', 'Devices/sandbox'],
+  { cwd: ROOT, encoding: 'utf8' },
+).split('\n').filter(Boolean);
+check(
+  '.vercelignore keeps every tracked file under Devices/sandbox (channel-sandbox Root Directory)',
+  strippedSandbox.length === 0,
+  `stripped before the channel-sandbox build: ${strippedSandbox.join(', ')}`,
+);
 
 console.log(failures ? `\n${failures} check(s) failed` : '\nall checks passed');
 process.exitCode = failures ? 1 : 0;
