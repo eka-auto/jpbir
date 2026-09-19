@@ -22054,8 +22054,8 @@
     "Backend/service/markdown-it-front-matter.js: '../yamlProperties' -> './yamlProperties' (pre-existing break).",
     "_shared/tests/*.mjs: '../Backend/' -> '../../Backend/', vercel.json path and build-frontend.mjs import repointed (pre-existing breaks)."
   ],
-  "resume_point": "verify_channel_sandbox_after_merge",
-  "resume_detail": "The restructure itself is complete and verified on main@87ba028: the layout is intact, all 84 post-restructure additions are correctly layered, and npm test passes. The one live follow-up is deploy-side: the `channel-sandbox` Vercel project serving Devices/sandbox/ was found deleted and was re-created on 2026-09-19 (prj_hRRe8dOt2F3mYU721Qk9lFAG9V92, https://channel-sandbox.vercel.app). The .vercelignore fix it needs ships in the same change as this refresh. Next action: once that change is on main, check the channel-sandbox production build log for a Python function and that /api/status returns 200. After that, the owner sets the three env vars listed in Devices/sandbox/README.md. Details: open_questions entry 'vercel.json (Vercel project settings)'.",
+  "resume_point": "set_channel_sandbox_env_vars",
+  "resume_detail": "The restructure is complete and verified (main@87ba028 refresh). channel-sandbox was re-created and its .vercelignore fix merged in PR #80 (d4be247). The production build was verified live on 2026-09-19: /api/status 200, dashboard page served, Root Directory applied. Next action (owner only, needs secrets): set STATS_KEY, SANDBOX_CONFIG_JSON and FIREBASE_SERVICE_ACCOUNT_JSON on the channel-sandbox Vercel project per Devices/sandbox/README.md, redeploy, and confirm https://channel-sandbox.vercel.app/api/diag reports ok:true. Then set resume_point back to `none`. The other open_questions entries are pre-existing and non-blocking.",
   "open_questions": [
     {
       "file": "(31 duplicate groups / 46 redundant files)",
@@ -22092,12 +22092,13 @@
     {
       "file": "vercel.json (Vercel project settings)",
       "reason": "No .vercel/project.json in the repo, so the dashboard's Root Directory could not be confirmed at restructure time. Verified live 2026-09-14 (see resolution).",
-      "status": "in_progress_2026-09-19",
+      "status": "env_vars_pending_2026-09-19",
       "resolution": "channel-sandbox Root Directory is now `Devices/sandbox`; the project serves HTTP 200 on https://channel-sandbox-one.vercel.app/ and its production build resolves the Python lambda in `Devices/sandbox/`. See `resume_point_history`.",
       "update_2026-09-19": "Checked live 2026-09-19 via the Vercel API and HTTP. Team `jayti` (team_pbbZItTCyIkGsw6LeGrcWx0c) has only `jayti-dashboard` (prj_ert0BAxafhopYg8tjtbOMcfjDI9r, production on jaytipargal.tech, the only project Git-linked to this repo) and the unrelated `jaytibirthday-site`. `jpbir_restructured` has been deleted: CI stopped deploying to it in 44db844, and its URL returns DEPLOYMENT_NOT_FOUND. No action is needed for it. `channel-sandbox` (prj_egCfC2qbHotOiMVAjDRaaTWyI0Zh) has ALSO been deleted: the API returns 404 'Project not found' and https://channel-sandbox-one.vercel.app/ returns DEPLOYMENT_NOT_FOUND. Git records no reason, and Devices/sandbox/README.md still documents the URL. No device code calls the URL, so only the operator dashboard is offline.",
       "owner_decision_2026-09-19": "Owner chose: bring channel-sandbox back.",
       "action_2026-09-19": "Re-created as `channel-sandbox` (prj_hRRe8dOt2F3mYU721Qk9lFAG9V92), Git-linked to jaytipargal/jpbir with production branch main and Root Directory `Devices/sandbox`. Production alias: https://channel-sandbox.vercel.app (was channel-sandbox-one.vercel.app). Its builds went READY with EMPTY output and served NOT_FOUND. Two builds on main@87ba028 (dpl_9HWF7aHT3CQJTv887DexbJv18hb8, dpl_XNF3ETWaQFt5j7sittYBHkm3MxLa) did so, and so did the first fix attempt (dpl_HXmxkRkwHkMZqvhE7ViXvYtwjzkQ). Root cause: the repo-root .vercelignore, which Vercel applies to this project's Git builds, stripped all 26 tracked Devices/sandbox files through three rules: the bare `Devices/` (from 34b7f3e), an unanchored `dashboard/`, and an unanchored `Sandbox/`. `Sandbox/` matched because Vercel's matcher is node-ignore, which is case-insensitive by default; git on Linux is not, so git-based checks missed it. Reproduced locally with node-ignore 5.3.2/6.0.2/7.0.5, which match the real build counts exactly (244 on main, 245 on the first attempt). Fix: `Devices/*` + `!Devices/sandbox/`, `/dashboard/` and `/Sandbox/` anchored. That strips 219 files with 0 sandbox files, and exactly those 26 change status. Guarded by deploy-manifest.test.mjs check 6 (`git -c core.ignorecase=true`), which fails against both main's file and the first attempt.",
-      "remaining": "(1) After this change reaches main, confirm the channel-sandbox production build produces a Python function and https://channel-sandbox.vercel.app/api/status returns 200. (2) Owner sets STATS_KEY, SANDBOX_CONFIG_JSON and FIREBASE_SERVICE_ACCOUNT_JSON on the project (see Devices/sandbox/README.md), then redeploys and checks /api/diag for ok:true."
+      "remaining": "Owner sets STATS_KEY, SANDBOX_CONFIG_JSON and FIREBASE_SERVICE_ACCOUNT_JSON on the channel-sandbox project, redeploys, and checks /api/diag for ok:true.",
+      "verified_2026-09-19": "Post-merge production build verified live; details in resume_point_history[-1].verification."
     },
     {
       "file": "/api/stats returned 500 on `jpbir_restructured`",
@@ -22155,6 +22156,25 @@
       "opened": "2026-09-14",
       "closed": "2026-09-19",
       "closed_by": "live check found the channel-sandbox Vercel project deleted; re-created, resume point moved to verify_channel_sandbox_after_merge"
+    },
+    {
+      "value": "verify_channel_sandbox_after_merge",
+      "opened": "2026-09-19",
+      "closed": "2026-09-19",
+      "closed_by": "post-merge live check of the channel-sandbox production build",
+      "verification": {
+        "checked": "2026-09-19",
+        "merge": "PR #80, d4be247",
+        "channel_sandbox_deployment": "dpl_5sd3WdLkg7FnyYRjPEWYbxTFwRER (production, READY)",
+        "build_log": "Removed 219 ignored files; venv at /vercel/path0/Devices/sandbox/.vercel/python/.venv; installed Devices/sandbox/requirements.txt. The Root Directory is applied; the log's `entrypoint: \".\"` label is misleading.",
+        "live": {
+          "GET /api/status": "200 {\"status\":\"ok\"}",
+          "GET /": "200 text/html, 'Channel Sandbox — Device Dashboard'",
+          "GET /api/diag": "200, commit_sha d4be2478a54c, every env var set:false, ok:false (expected until env vars are set)",
+          "GET /api/devices": "503 'server not configured' (refuses to run without env vars, as designed)"
+        },
+        "jayti_dashboard": "dpl_5WYYBHAqwMaetG51rZ3e2FgRQYyf (production, READY on the same merge); jaytipargal.tech 200, keyed routes 401 without a key"
+      }
     }
   ]
 }
