@@ -96,3 +96,6 @@ WORKSPACE_DIRECTORY_MAP.md
 REMAINING_REFS_ANALYSIS.md
 SAFE_TO_DELETE_FILES.md
 yarn.lock
+
+# Isolated device clone test-lab — local-only, must never reach a deploy.
+clone-lab/

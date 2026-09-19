@@ -36,3 +36,9 @@ Devices/S24/keys/
 *.s24-sync.jsonl
 *.s24-sync.jsonl.gz
 .neon
+
+# Personal Claude Code settings (auto-mode rules); never commit
+.claude/settings.local.json
+
+# Isolated device clone test-lab — local-only, never committed or deployed.
+clone-lab/
