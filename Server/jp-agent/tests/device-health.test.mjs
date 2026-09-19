@@ -5,6 +5,7 @@ import { deviceHealth, commandItem } from '../device-health.mjs';
 const now = Date.parse('2026-09-18T00:00:00Z');
 const at = new Date(now - 10000).toISOString();
 const valid = () => ({ online: true, lastSeen: at, agentVersion: 's24-termux-test',
+  runtimeIsAndroid: true,
   connectionMethod: 'termux-direct-cloud', heartbeatAuth: 'termux-phone',
   samsungS24DirectSync: { liveDeviceVerified: true, heartbeatAuth: 'termux-phone', sourceType: 'live_termux' },
   lastCommandAckAt: at, lastCommandAckId: 'test', lastCommandAckStatus: 'completed',
@@ -35,6 +36,29 @@ test('reject stale, future, laptop-origin and unauthenticated heartbeat', () => 
     { heartbeatAuth: 'laptop' }, { samsungS24DirectSync: {} }, { online: false }]) {
     assert.equal(health({ ...valid(), ...change }).device_online, false);
   }
+});
+test('an off-device bridge asserting every other field is still not the phone', () => {
+  // runtimeIsAndroid is the one field the collector derives from the platform it is
+  // actually executing on, which is why it is the control that caught a real Windows
+  // bridge asserting heartbeatAuth, sourceType and liveDeviceVerified about itself.
+  // Everything else in this document is attacker-writable; this is not.
+  //
+  // Absent must fail as well as false — an older build that never set the field has to
+  // fail closed rather than pass by omission, which is what `=== true` buys. A truthy
+  // non-boolean must fail too, so the check cannot be satisfied by 'true' or 1.
+  for (const runtimeIsAndroid of [false, null, 'true', 1, 'yes']) {
+    const result = health({ ...valid(), runtimeIsAndroid });
+    assert.equal(result.device_online, false, `runtimeIsAndroid=${String(runtimeIsAndroid)}`);
+    assert.equal(result.heartbeat_authenticated, false, `runtimeIsAndroid=${String(runtimeIsAndroid)}`);
+    // The stored flag is still reported as-is, so a caller can see the disagreement
+    // between what the document claims and what was attested.
+    assert.equal(result.stored_online, true);
+  }
+
+  const absent = valid();
+  delete absent.runtimeIsAndroid;
+  assert.equal(health(absent).device_online, false, 'an absent field must not pass');
+  assert.equal(health(valid()).device_online, true, 'and a genuine true still must');
 });
 test('queue deletion and mismatched acknowledgement do not prove online', () => {
   assert.equal(health({ ...valid(), commandQueue: {} }).device_online, false);
