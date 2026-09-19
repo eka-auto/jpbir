@@ -55,6 +55,16 @@ jpbir/
 .kiro/
 .agents/
 .claude/
+.vscode/
+skills-lock.json
+
+# .gitignore already covers these, but .vercelignore overrides it for `vercel --prod`, so a
+# laptop deploy would upload them. Database/wa-*.json is the built WhatsApp inventory —
+# real contact names from the recovery dump — and nothing deployed reads it. No tracked
+# file matches any of the three, so Git-driven builds of either project are unaffected.
+__pycache__/
+*.pyc
+Database/wa-*.json
 
 # Untracked workspace-only files and directories at the repository root.
 # In particular, never send service-account JSON or one-off Firestore tools.
