@@ -15,11 +15,21 @@ $LogPath = Join-Path $Target "logs\$DeviceId.log"
 $PinnedCommit = '183e600d0acd7e6171e35be904c657e7fe967384'
 $Here = Split-Path -Parent $MyInvocation.MyCommand.Path
 
+# Hash is the SHA-256 of the bundled file's BYTES - 64 hex characters, exactly what
+# (Get-FileHash -Algorithm SHA256).Hash returns below. It is NOT a git object id.
+# This table carried `git hash-object` output for single_instance.py: a 40-character
+# SHA-1 blob id, which can never equal a 64-character digest, so the integrity check
+# threw for every possible file content and the install aborted before the venv,
+# enrollment and scheduled task were ever reached. That is consistent with this device
+# having never written a single telemetry field. The Lenovo twin had the same table
+# with a well-formed but stale-generation SHA-256, and failed identically.
+# _shared/tests/installer-pins.test.mjs re-hashes every pin against the kit bytes and
+# fails on a wrong length, so neither mistake can recur silently.
 $Artifacts = @(
     [pscustomobject]@{ Name = 'device_agent.py'; Hash = 'BE75C4D8E8817BB45B8DFF32AD5D1C642DB7808EA1EE4A89C7B0DCF058B9296B' },
     [pscustomobject]@{ Name = 'broker_client.py'; Hash = 'E380867C5843E49C21D7E46704DB20607389A9F1FAAD4B3CF61F9B4EAB173BB1' },
     [pscustomobject]@{ Name = 'signer.py'; Hash = '8AABF8E5FFF25A067B02901EF4798D061A9C2B3D5844D72E59DB1419112632F7' },
-    [pscustomobject]@{ Name = 'single_instance.py'; Hash = '334F103E2D7175A340D65E95011D59531E1940E5' },
+    [pscustomobject]@{ Name = 'single_instance.py'; Hash = '287FE1C114488E847F0252C89170067E6FE5B33650780C72E8A8F00F7B63843A' },
     [pscustomobject]@{ Name = 'requirements-broker.txt'; Hash = '37B13C7D746D596E7DA6E73098DFBA792EAB1A49C8ACC7E0A5AB287B56B107D5' }
 )
 
