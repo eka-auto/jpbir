@@ -1,21 +1,23 @@
-// Keep S24 liveness consistent with the tracked Python MCP server at
-// Integrations/s24-connect-mcp/server.py and Devices/S24/pull_direct_cloud.py.
-// Both accepted prefixes still require the full Android/Termux attestation,
-// connection method, heartbeat auth and live-device verification below.
-const S24_AGENT_VERSION_PREFIXES = ['s24-termux-', 's24-direct-cloud-'];
-
-// runtimeIsAndroid is written by the collector from the platform it is actually
-// executing on, and it is the one field in this chain an off-device process cannot
-// honestly produce. A Windows bridge was caught in production asserting
-// heartbeatAuth='termux-phone', sourceType='live_termux' and liveDeviceVerified=true
-// about itself — all of which it controls — and a version prefix is one edit from
-// matching too. Backend/jp-devices.js:154,179 requires this field strictly true for
-// exactly that reason; this module did not, so device_ping and list_devices reported
-// such a bridge as BOTH device_online and heartbeat_authenticated while the dashboard
-// correctly refused the same document. Read top-level to match jp-devices.js, and
-// require strictly true so an absent field — an older build, or anything that simply
-// does not set it — fails closed rather than passing by omission.
-const S24_RUNTIME_EVIDENCE = 'runtimeIsAndroid';
+// Attestation policy is shared with Backend/jp-devices.js. ./s24-attestation.js is a
+// byte-identical copy of Backend/lib/s24-attestation.js — deploy.sh ships files flat into
+// /opt/jp-agent, and .vercelignore excludes Server/, so neither side can import the other's
+// path directly. Edit the Backend/lib original, re-copy, and let
+// _shared/tests/s24-attestation.test.mjs fail if the two diverge.
+//
+// That module's header records why this was extracted: the two implementations drifted
+// twice in one day, first on the agentVersion prefix and then on runtimeIsAndroid, which
+// this file did not check at all — so device_ping reported an off-device Windows bridge as
+// both device_online and heartbeat_authenticated while the dashboard correctly refused it.
+// The Python implementations (Integrations/s24-connect-mcp/server.py and
+// Devices/S24/pull_direct_cloud.py) are kept in step by s24-source-mirrors.test.mjs.
+import {
+  S24_DEVICE_ID,
+  S24_CONNECTION_METHODS,
+  S24_HEARTBEAT_AUTH,
+  S24_ACK_MAX_AGE_SECONDS,
+  S24_RUNTIME_EVIDENCE,
+  s24AttestationChecks,
+} from './s24-attestation.js';
 
 export function deviceHealth(deviceId, doc, now = Date.now()) {
   const age = value => {
@@ -25,28 +27,46 @@ export function deviceHealth(deviceId, doc, now = Date.now()) {
   };
   const lastSeenAge = age(doc.lastSeen);
   const ackAge = age(doc.lastCommandAckAt);
-  const fresh = value => value !== null && value >= 0 && value <= 300;
+  const fresh = value => value !== null && value >= 0 && value <= S24_ACK_MAX_AGE_SECONDS;
   const sync = doc.samsungS24DirectSync || {};
   const ack = doc.commandQueue?.[doc.lastCommandAckId];
-  const agentVersion = String(doc.agentVersion || '');
-  const authenticated = doc.online === true && fresh(lastSeenAge)
-    && S24_AGENT_VERSION_PREFIXES.some(p => agentVersion.startsWith(p))
-    && doc[S24_RUNTIME_EVIDENCE] === true
-    && ['termux-direct-cloud', 'direct-daemon'].includes(doc.connectionMethod)
-    && doc.heartbeatAuth === 'termux-phone'
-    && sync.liveDeviceVerified === true && sync.heartbeatAuth === 'termux-phone'
-    && ['live_termux', 'live_daemon'].includes(sync.sourceType)
-    && ((doc.lastCommandAckStatus === 'completed' && ack?.status === 'completed'
-      && ack.completedAt === doc.lastCommandAckAt && fresh(ackAge))
-      || ackAge === null);
+
+  // Deliberate divergences from the dashboard, stated here rather than left implicit:
+  // liveDeviceVerified and sourceType come from the nested samsungS24DirectSync sub-map
+  // (jp-devices.js reads them top-level), and allowBootGrace lets a freshly rebooted phone
+  // pass before its first command acknowledgement. jp-devices.js grants no such grace.
+  // Neither difference is drift, and neither should be "unified" without first deciding
+  // which behaviour is correct — that is a policy call, not a refactor.
+  const checks = s24AttestationChecks({
+    agentVersion: doc.agentVersion,
+    heartbeatAuth: doc.heartbeatAuth,
+    liveDeviceVerified: sync.liveDeviceVerified,
+    sourceType: sync.sourceType,
+    runtimeIsAndroid: doc[S24_RUNTIME_EVIDENCE],
+    heartbeatAgeSeconds: lastSeenAge,
+    ackAgeSeconds: ackAge,
+    allowBootGrace: true,
+  });
+
+  // Conditions this caller adds on top of the shared set. The stored online flag and the
+  // connection method are extra evidence the dashboard does not require; sync.heartbeatAuth
+  // and the ack triple are the droplet's stricter proof that a recorded acknowledgement
+  // really belongs to the command it claims to complete.
+  const ackConsistent = doc.lastCommandAckStatus === 'completed' && ack?.status === 'completed'
+    && ack.completedAt === doc.lastCommandAckAt;
+  const authenticated = Object.values(checks).every(Boolean)
+    && doc.online === true
+    && S24_CONNECTION_METHODS.includes(doc.connectionMethod)
+    && sync.heartbeatAuth === S24_HEARTBEAT_AUTH
+    && (ackConsistent || ackAge === null);
   return {
-    device_online: deviceId === 'samsung-s24-ultra' ? authenticated
+    device_online: deviceId === S24_DEVICE_ID ? authenticated
       : Boolean(doc.online || doc.effectiveOnline) && fresh(lastSeenAge),
-    heartbeat_authenticated: deviceId === 'samsung-s24-ultra' ? authenticated : false,
+    heartbeat_authenticated: deviceId === S24_DEVICE_ID ? authenticated : false,
     stored_online: Boolean(doc.online || doc.effectiveOnline),
     last_command_ack_at: doc.lastCommandAckAt ?? null,
     last_command_ack_age_seconds: ackAge,
-    freshness_window_seconds: 300,
+    freshness_window_seconds: S24_ACK_MAX_AGE_SECONDS,
   };
 }
 
