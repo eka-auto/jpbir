@@ -11,7 +11,8 @@
 // starts throwing at cold start, and the manifest still looks perfectly valid.
 // _auth.js is the one that matters most: it is the gate on every read route.
 //
-// Four checks, cheapest first.
+// Six checks, cheapest first.
+import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, resolve, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -117,6 +118,24 @@ for (const file of ROUTED) {
 for (const dir of ['runs/', '.venv/', 'venv/', 'vscode-office/', 'node_modules/']) {
   check(`CLI deploy ignores ${dir}`, vercelIgnore.split(/\r?\n/).includes(dir), `${dir} is missing from .vercelignore`);
 }
+
+// 6. The repo-root .vercelignore also applies to the Git builds of
+//    `channel-sandbox`, the Vercel project whose Root Directory is
+//    Devices/sandbox. A bare `Devices/` line, and an unanchored `dashboard/`
+//    that also matched Devices/sandbox/dashboard/, stripped its files before
+//    the build ran. The deploy then went green with no output and served
+//    NOT_FOUND on every path. Git applies the same ignore rules, so it answers
+//    "would Vercel strip this?" for every tracked file under the directory.
+const strippedSandbox = execFileSync(
+  'git',
+  ['ls-files', '--cached', '--ignored', '--exclude-from=.vercelignore', '--', 'Devices/sandbox'],
+  { cwd: ROOT, encoding: 'utf8' },
+).split('\n').filter(Boolean);
+check(
+  '.vercelignore keeps every tracked file under Devices/sandbox (channel-sandbox Root Directory)',
+  strippedSandbox.length === 0,
+  `stripped before the channel-sandbox build: ${strippedSandbox.join(', ')}`,
+);
 
 console.log(failures ? `\n${failures} check(s) failed` : '\nall checks passed');
 process.exitCode = failures ? 1 : 0;
