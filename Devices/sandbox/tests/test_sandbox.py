@@ -159,6 +159,61 @@ class FirestoreClientTests(unittest.TestCase):
         self.assertEqual(client._request.call_args.args, ("POST", ":commit"))
 
 
+class MakeClientConfigTests(unittest.TestCase):
+    """``make_client`` must forward ``allow_production_devices`` to the client.
+
+    It did not. ``FirestoreClient`` defaults the flag to False, so the
+    real-mode/``devices`` guard fired unconditionally and
+    ``SANDBOX_CONFIG_JSON``'s ``allow_production_devices`` was dead config on
+    the HTTP path: the deployed dashboard reported ``firestore unavailable``
+    even with the flag set to true, while ``device_agent.py`` - which does
+    forward it - disagreed about what was permitted.
+    """
+
+    CFG = {
+        "project": "test-project",
+        "database": "eka-agent",
+        "collection": "devices",
+        "firestore_scope": "https://www.googleapis.com/auth/datastore",
+        "mode": "real",
+    }
+
+    def forwarded(self, extra):
+        cfg = dict(self.CFG, **extra)
+        with patch.object(dashboard_api, "FirestoreClient") as fake:
+            dashboard_api.make_client(cfg)
+        return fake.call_args.kwargs["allow_production_devices"]
+
+    def test_configured_true_reaches_the_client(self):
+        self.assertIs(self.forwarded({"allow_production_devices": True}), True)
+
+    def test_absent_flag_defaults_false_so_it_still_fails_closed(self):
+        self.assertIs(self.forwarded({}), False)
+
+    def test_explicit_false_is_not_silently_upgraded(self):
+        self.assertIs(self.forwarded({"allow_production_devices": False}), False)
+
+    def test_real_devices_collection_is_reachable_once_the_flag_is_set(self):
+        guard = "without allow_production_devices=True"
+        kwargs = dict(
+            project="p",
+            database="d",
+            service_account_key="does-not-exist.json",
+            scope="s",
+            mode="real",
+            collection="devices",
+        )
+
+        with self.assertRaises(ValueError) as blocked:
+            FirestoreClient(**kwargs)
+        self.assertIn(guard, str(blocked.exception))
+
+        # Past the guard it reaches credential loading, which fails on the
+        # missing key file - a different error, proving the guard was passed.
+        with self.assertRaises(FileNotFoundError):
+            FirestoreClient(**kwargs, allow_production_devices=True)
+
+
 class DashboardTests(unittest.TestCase):
     def setUp(self):
         dashboard_api.app.config["TESTING"] = True

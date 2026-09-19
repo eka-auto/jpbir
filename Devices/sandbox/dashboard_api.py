@@ -69,6 +69,13 @@ def make_client(cfg):
         mode=cfg.get("mode", "emulator"),
         collection=cfg["collection"],
         emulator_host=cfg.get("emulator_host"),
+        # Must be forwarded explicitly. FirestoreClient defaults it to False, so
+        # leaving it out made SANDBOX_CONFIG_JSON's allow_production_devices dead
+        # config on the HTTP path: the real-mode/"devices" guard fired no matter
+        # what the environment said, and the deployed dashboard could never reach
+        # Firestore. device_agent.py forwards the same key - the two paths have to
+        # agree, or the agent and the API disagree about what is permitted.
+        allow_production_devices=cfg.get("allow_production_devices", False),
     )
 
 
