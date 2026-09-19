@@ -79,6 +79,13 @@ hash_output.txt
 STATUS_SUMMARY.txt
 stale_db_inventory.md
 stale_db_refs.txt
+# Stray agent-prompt file accidentally written to a literal Windows path in the
+# repo root. It is untracked and describes live production infrastructure, and
+# `vercel --prod` uploads the working directory rather than the committed tree.
+# Matched with wildcards rather than spelled out: gitignore treats `\` as an
+# escape character, so the real backslashes would need doubling and the pattern
+# would silently stop matching the moment anyone re-saved it differently.
+*Act as an autonomous DevSecOps agen.txt*
 *_REPORT.md
 *_SUMMARY.md
 *_COMPLETE.md
