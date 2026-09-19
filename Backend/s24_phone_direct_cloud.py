@@ -30,9 +30,16 @@ CANONICAL_DEVICE_ID = DEVICE_DOC_ID
 LEGACY_DEVICE_IDS = [SECONDARY_DOC_ID]
 KEY_PATH = 'serviceAccountKey.json'
 IST = timezone(timedelta(hours=5, minutes=30))
-DIRECT_CLOUD_AGENT_VERSION = 's24-direct-cloud-2026-09-04.1'
+DIRECT_CLOUD_BUILD = '2026-09-07.1'
 DIRECT_CLOUD_SCHEMA_VERSION = 's24-direct-cloud-v3'
 DIRECT_CLOUD_CONNECTION_METHOD = 'termux-direct-cloud'
+
+# Values claimed only when this really is the phone. They are assigned below,
+# after the Android guard has run — see the note there for why they cannot stay
+# constants.
+TERMUX_AGENT_VERSION = 's24-termux-direct-cloud-' + DIRECT_CLOUD_BUILD
+TERMUX_HEARTBEAT_AUTH = 'termux-phone'
+TERMUX_SOURCE_TYPE = 'live_termux'
 DIRECT_CLOUD_REPO_URL = 'https://github.com/jaytipargal/eka-runner.git'
 DIRECT_CLOUD_WRITER = 's24_phone_direct_cloud.py'
 DIRECT_CLOUD_BOOT_SCRIPT = 'termux/boot/start_s24_direct_cloud.sh'
@@ -69,16 +76,41 @@ def command_exists_for_guard(name):
     return shutil.which(name) is not None
 
 
-if os.environ.get('EKA_ALLOW_NON_TERMUX_S24_AGENT') != '1' and not _is_android_termux_runtime():
+RUNTIME_IS_ANDROID = _is_android_termux_runtime()
+RUNTIME_PLATFORM = sys.platform
+print(
+    "[Runtime] role=s24-phone-direct-cloud platform=%s androidTermux=%s executable=%r"
+    % (RUNTIME_PLATFORM, RUNTIME_IS_ANDROID, sys.executable)
+)
+
+# There is no laptop mode. A Windows process can reach Firestore, but it cannot
+# read Android providers; allowing it to run created fresh heartbeats with empty
+# phone payloads and previously let an old process assert Termux attestation.
+if not RUNTIME_IS_ANDROID:
     print(
         "[FATAL] Refusing to run S24 direct-cloud collector outside Android Termux. "
         f"platform={sys.platform} executable={sys.executable!r} cwd={os.getcwd()!r}"
     )
     print(
-        "[FATAL] This guard prevents Windows/Linux bridge processes from writing "
-        "misleading S24 'connected' telemetry with empty call/SMS/location payloads."
+        "[FATAL] EKA_ALLOW_NON_TERMUX_S24_AGENT is no longer an override. The laptop "
+        "must use the read-only Firestore-to-local exporter instead."
     )
     sys.exit(78)
+
+
+# The attestation a document carries describes the runtime that wrote it.
+if RUNTIME_IS_ANDROID:
+    DIRECT_CLOUD_AGENT_VERSION = TERMUX_AGENT_VERSION
+    HEARTBEAT_AUTH = TERMUX_HEARTBEAT_AUTH
+    HEARTBEAT_SOURCE_TYPE = TERMUX_SOURCE_TYPE
+    LIVE_DEVICE_VERIFIED = True
+else:
+    # Defensive fallback for static analysis; startup exits before this branch
+    # can execute on a non-Android runtime.
+    DIRECT_CLOUD_AGENT_VERSION = 's24-bridge-%s-%s' % (RUNTIME_PLATFORM, DIRECT_CLOUD_BUILD)
+    HEARTBEAT_AUTH = 'non-termux-bridge'
+    HEARTBEAT_SOURCE_TYPE = 'bridge_process'
+    LIVE_DEVICE_VERIFIED = False
 
 
 def _find_service_account_key():
@@ -136,6 +168,16 @@ def _enc(v):
         return {'arrayValue': {'values': [_enc(x) for x in v]}}
     return {'stringValue': str(v)}
 
+
+def _set_encoded_field_path(fields, field_path, value):
+    """Set a dotted Firestore update path in a nested document body."""
+    target = fields
+    parts = field_path.split('.')
+    for part in parts[:-1]:
+        node = target.setdefault(part, {'mapValue': {'fields': {}}})
+        target = node['mapValue']['fields']
+    target[parts[-1]] = _enc(value)
+
 def _dec(value):
     if not isinstance(value, dict):
         return None
@@ -187,6 +229,8 @@ def fetch_firestore_document(doc_id):
 
 
 def fetch_remote_state():
+    # Reads both docs for backward-compatibility (legacy commands may still arrive
+    # in Samsung-S24). Writes go ONLY to the canonical doc (see push_to_firestore).
     primary = fetch_firestore_document(DEVICE_DOC_ID)
     secondary = fetch_firestore_document(SECONDARY_DOC_ID)
     merged = {}
@@ -217,8 +261,10 @@ def push_to_firestore(payload, doc_ids=None):
     }
 
     success = True
-    # Update both canonical documents to ensure frontend panel is always in sync
-    for doc_id in doc_ids or [DEVICE_DOC_ID, SECONDARY_DOC_ID]:
+    # Write only to the canonical document. Writing to SECONDARY_DOC_ID as well
+    # duplicates sensitive telemetry (SMS, call logs, location) and doubles the
+    # Firestore write surface. Legacy Samsung-S24 doc is read-only from here on.
+    for doc_id in doc_ids or [DEVICE_DOC_ID]:
         url = f"https://firestore.googleapis.com/v1/projects/{PROJECT_ID}/databases/{FIRESTORE_DB}/documents/devices/{doc_id}"
         
         # Build update mask query parameters
@@ -304,7 +350,11 @@ TERMUX_RUNTIME_CACHE = {'checked_at': 0.0, 'data': {}}
 
 # Reverse tunnel + ntfy push wake
 BORE_SERVER = 'bore.pub'
-BORE_BIN_URL = 'https://github.com/ekzhang/bore/releases/download/v0.5.0/bore-v0.5.0-aarch64-unknown-linux-musl.tar.gz'
+BORE_BIN_URL = 'https://github.com/ekzhang/bore/releases/download/v0.6.0/bore-v0.6.0-aarch64-unknown-linux-musl.tar.gz'
+# SHA-256 of the tarball at the URL above.
+# v0.5.0 had no aarch64-unknown-linux-musl asset; v0.6.0 is the first release
+# that ships the ARM64 Linux binary. Verified: ffc4515f...
+BORE_BIN_SHA256 = 'ffc4515f3617420b243758cf36ed6a63208d7dba76b2ec3e90d1f476a9742951'
 NTFY_BASE_URL = 'https://ntfy.sh'
 _bore_proc = None
 _bore_port = None
@@ -457,13 +507,18 @@ def normalize_runtime_action(action):
         'sync': 'sync-now',
         'sync-now': 'sync-now',
         'direct-cloud-sync': 'sync-now',
+        'collect-history': 'sync-now',
+        'history': 'sync-now',
         'status': 'status-only',
         'status-only': 'status-only',
         'heartbeat': 'heartbeat',
-        'ping': 'heartbeat',
+        'ping': 'heartbeat',      # 'ping' -> heartbeat; use 'test-ping' explicitly for lock-screen test
         'start-ssh': 'start-ssh',
         'start-sshd': 'start-ssh',
         'ssh': 'start-ssh',
+        'wakeup': 'wakeup',
+        'wake': 'wakeup',
+        'wake-up': 'wakeup',
         'update': 'update-and-restart',
         'update-and-restart': 'update-and-restart',
         'restart': 'update-and-restart',
@@ -474,7 +529,7 @@ def normalize_runtime_action(action):
         'emergency-wipe': 'secure-wipe',
         'test-ping': 'test-ping',
         'test': 'test-ping',
-        'ping': 'test-ping',
+        # NOTE: 'ping' is intentionally NOT mapped here; it resolves to 'heartbeat' above.
     }
     return aliases.get(normalized, '')
 
@@ -502,12 +557,16 @@ def extract_runtime_request(remote_state):
             continue
         action = normalize_runtime_action(item.get('action') or item.get('type') or '')
         if action:
+            # Preserve handler-specific fields (wipeToken, newPassword, etc.) so
+            # the action handlers can access them via request.get(...)
             return {
                 'id': queue_id,
                 'action': action,
                 'source': 'commandQueue',
                 'requestedAt': item.get('requestedAt'),
                 'requestedBy': item.get('requestedBy'),
+                'wipeToken': item.get('wipeToken', ''),
+                'newPassword': item.get('newPassword', ''),
             }, unsupported
         unsupported.append({
             'id': queue_id,
@@ -619,7 +678,15 @@ def publish_runtime_status(remote_state=None, request=None, request_status='idle
         'online': True,
         'lastSeen': now_iso,
         'updatedAt': now_iso,
+        'heartbeatIntervalSeconds': LOOP_INTERVAL_SECONDS,
         'status': 'connected' if request_status != 'error' else 'degraded',
+        'agentVersion': DIRECT_CLOUD_AGENT_VERSION,
+        'schemaVersion': DIRECT_CLOUD_SCHEMA_VERSION,
+        'heartbeatAuth': HEARTBEAT_AUTH,
+        'liveDeviceVerified': LIVE_DEVICE_VERIFIED,
+        'sourceType': HEARTBEAT_SOURCE_TYPE,
+        'runtimeIsAndroid': RUNTIME_IS_ANDROID,
+        'runtimePlatform': RUNTIME_PLATFORM,
         'syncMethod': 'DIRECT_CLOUD',
         'connectionMethod': DIRECT_CLOUD_CONNECTION_METHOD,
         'waitingForConnection': False,
@@ -658,12 +725,13 @@ def finalize_command_ack(request, request_status, unsupported_commands=None):
     broker writes (lastCommandAckAt / lastCommandAckId / lastCommandAckStatus).
     """
     updates = {}
+    now_iso = datetime.now(timezone.utc).isoformat()
     if request and request.get('source') == 'commandQueue' and request.get('id'):
         status = 'failed' if request_status == 'error' else 'completed'
         prefix = f"commandQueue.{request['id']}"
         updates[f'{prefix}.status'] = status
         updates[f'{prefix}.result'] = f"processed by {DIRECT_CLOUD_WRITER} {DIRECT_CLOUD_AGENT_VERSION}"
-        updates['lastCommandAckAt'] = datetime.now(timezone.utc).isoformat()
+        updates['lastCommandAckAt'] = now_iso
         updates['lastCommandAckId'] = request['id']
         updates['lastCommandAckStatus'] = status
     for item in unsupported_commands or []:
@@ -675,8 +743,7 @@ def finalize_command_ack(request, request_status, unsupported_commands=None):
         updates[f'{prefix}.result'] = f"action '{item.get('action')}' not supported by {DIRECT_CLOUD_WRITER}"
     if not updates:
         return
-    now_iso = datetime.now(timezone.utc).isoformat()
-    for key in updates:
+    for key in list(updates):
         if key.endswith('.status') and updates[key] in {'completed', 'unsupported', 'failed'}:
             updates[key.replace('.status', '.completedAt')] = now_iso
             updates[key.replace('.status', '.completedBy')] = DIRECT_CLOUD_WRITER
@@ -686,7 +753,9 @@ def finalize_command_ack(request, request_status, unsupported_commands=None):
         return
     headers = {'Content-Type': 'application/json', 'Authorization': f'Bearer {token}'}
     paths = '&'.join(f"updateMask.fieldPaths={urllib.parse.quote(k)}" for k in updates)
-    fields = {k: _enc(v) for k, v in updates.items()}
+    fields = {}
+    for key, value in updates.items():
+        _set_encoded_field_path(fields, key, value)
     body = json.dumps({'fields': fields}).encode('utf-8')
     url = (f"https://firestore.googleapis.com/v1/projects/{PROJECT_ID}/databases/{FIRESTORE_DB}"
            f"/documents/devices/{DEVICE_DOC_ID}?{paths}")
@@ -696,6 +765,40 @@ def finalize_command_ack(request, request_status, unsupported_commands=None):
         print(f"[Cloud] Command queue ack written for: {sorted(updates.keys())}")
     except Exception as exc:
         print(f"[Cloud] Failed writing command queue ack: {exc}")
+
+
+def ensure_agent_kit_installed_and_restart_daemon():
+    """Deploy the termux/agent kit (daemon.js + stub + installer) after a pull
+    and bounce the node daemon so new code goes live immediately. Fail-closed:
+    any installer failure raises so the caller aborts the restart rather than
+    pretending the daemon was updated."""
+    installer = repo_relative_path('termux', 'agent', 'install_daemon.sh')
+    if not os.path.isfile(installer):
+        print('[Direct-S24] Agent kit not present in repo; skipping daemon update.')
+        return
+    result = run_command(['bash', installer], timeout=180)
+    if not result.get('ok'):
+        detail = truncate_text(
+            result.get('stderr') or result.get('stdout') or 'agent kit install failed',
+            240,
+        )
+        raise RuntimeError(f'agent kit install failed: {detail}')
+    run_sh = os.path.join(os.path.expanduser('~'), 's24-agent', 'run.sh')
+    if not os.path.isfile(run_sh):
+        print('[Direct-S24] run.sh missing after install; daemon starts on next boot.')
+        return
+    subprocess.run(
+        ['pkill', '-f', r'node .*s24-agent/(daemon\.js|s24-agent-daemon\.mjs)'],
+        stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=10,
+    )
+    time.sleep(1)
+    log_path = os.path.join(os.path.dirname(run_sh), 'daemon.log')
+    with open(log_path, 'a') as log:
+        subprocess.Popen(
+            ['bash', run_sh],
+            stdout=log, stderr=log, stdin=subprocess.DEVNULL, start_new_session=True,
+        )
+    print('[Direct-S24] Agent kit installed and node daemon restarted.')
 
 
 def parse_content_row(line):
@@ -992,7 +1095,22 @@ def collect_sms(user_ids):
     return all_sms, diagnostics
 
 def get_ntfy_topic():
-    """Deterministic private ntfy topic derived from Firebase project + device ID."""
+    """Return the ntfy.sh topic used for push-wake messages.
+
+    SECURITY NOTE: The default topic is deterministic (SHA-256 of public
+    constants) and is therefore predictable to anyone who knows the project ID
+    and device ID. This means:
+      - Anyone can send wake events by publishing to the topic.
+      - The topic name itself is not a secret.
+    Wake events only trigger a heartbeat/sync loop; they do not execute
+    arbitrary commands, so the risk is limited to spurious wake cycles.
+
+    For stronger isolation, set EKA_NTFY_TOPIC to a random secret string in
+    the boot environment (e.g. EKA_NTFY_TOPIC=$(openssl rand -hex 16)).
+    """
+    override = os.environ.get('EKA_NTFY_TOPIC', '').strip()
+    if override:
+        return override
     import hashlib
     seed = f"eka-runner-{PROJECT_ID}-{DEVICE_DOC_ID}"
     h = hashlib.sha256(seed.encode()).hexdigest()[:20]
@@ -1023,16 +1141,34 @@ def ntfy_listener_thread():
 
 
 def _ensure_bore_binary():
-    """Download bore ARM64 binary to ~/bin/bore if not present."""
-    import tarfile, io
+    """Download bore ARM64 binary to ~/bin/bore if not present.
+
+    The tarball SHA-256 is verified before extraction. If the digest does not
+    match BORE_BIN_SHA256, the download is discarded and None is returned.
+    Set EKA_BORE_DISABLED=1 to disable reverse-tunnel functionality entirely.
+    """
+    if os.environ.get('EKA_BORE_DISABLED') == '1':
+        print("[Bore] EKA_BORE_DISABLED=1 — reverse tunnel disabled.")
+        return None
+    import tarfile, io, hashlib
     bin_dir = os.path.expanduser('~/bin')
     bore_path = os.path.join(bin_dir, 'bore')
     if os.path.exists(bore_path):
         return bore_path
     os.makedirs(bin_dir, exist_ok=True)
     try:
+        print(f"[Bore] Downloading bore binary from {BORE_BIN_URL}...")
         resp = urllib.request.urlopen(BORE_BIN_URL, timeout=30)
         data = resp.read()
+
+        # Verify checksum before extracting anything
+        actual_sha256 = hashlib.sha256(data).hexdigest()
+        expected = os.environ.get('EKA_BORE_SHA256', BORE_BIN_SHA256).strip().lower()
+        if expected and actual_sha256 != expected:
+            print(f"[Bore] SECURITY: tarball checksum mismatch — expected {expected}, got {actual_sha256}. Aborting.")
+            return None
+        print(f"[Bore] Checksum OK ({actual_sha256[:16]}...)")
+
         with tarfile.open(fileobj=io.BytesIO(data)) as tf:
             for member in tf.getmembers():
                 if member.name.endswith('bore') or member.name == 'bore':
@@ -1042,8 +1178,8 @@ def _ensure_bore_binary():
                             out.write(f.read())
                         os.chmod(bore_path, 0o755)
                         return bore_path
-    except Exception:
-        pass
+    except Exception as exc:
+        print(f"[Bore] Download/extract error: {exc}")
     return None
 
 
@@ -1078,7 +1214,13 @@ def ensure_reverse_tunnel():
 
 
 def ensure_sshd_running():
-    """Ensure sshd is always running on port 8022. Called every loop iteration."""
+    """Start sshd on port 8022 if it is not already running.
+
+    IMPORTANT: This must only be called when an explicit start-ssh or wakeup
+    command is received, NOT on every main-loop iteration. Installing and
+    auto-starting SSH without a request increases the attack surface of the
+    device and is not needed for normal telemetry operation.
+    """
     if not command_exists('sshd'):
         run_command(['pkg', 'install', '-y', 'openssh'], timeout=60)
     check = run_command(['pgrep', '-x', 'sshd'], timeout=5)
@@ -1136,6 +1278,45 @@ def get_wifi_ssid():
         pass
     return None
 
+
+def get_wifi_network(ssid=None, now_iso=None):
+    """Build the best-effort network shape consumed by the S24 dashboard."""
+    info = {}
+    if command_exists('termux-wifi-connectioninfo'):
+        result = run_command(['termux-wifi-connectioninfo'], timeout=5)
+        if result.get('ok') and result.get('stdout', '').strip():
+            try:
+                decoded = json.loads(result['stdout'])
+                if isinstance(decoded, dict):
+                    info = decoded
+            except (TypeError, ValueError):
+                pass
+
+    ssid = info.get('ssid') or ssid
+    rssi = info.get('rssi')
+    ip_address = info.get('ip')
+    if not ssid and rssi is None and not ip_address:
+        return None
+
+    network = {
+        'ssid': ssid,
+        'updatedAt': now_iso or datetime.now(timezone.utc).isoformat(),
+    }
+    if rssi is not None:
+        try:
+            signal_percent = max(0, min(100, 2 * (int(rssi) + 100)))
+            network['wifiSignal'] = {
+                'ssid': ssid or '',
+                'signal_percent': signal_percent,
+            }
+        except (TypeError, ValueError):
+            pass
+    if ip_address:
+        network['interfaces'] = {'wlan0': ip_address}
+    if info.get('link_speed_mbps') is not None:
+        network['connections'] = [f"Wi-Fi {info['link_speed_mbps']} Mbps"]
+    return network
+
 def collect_and_upload(remote_state=None, request=None, unsupported_commands=None):
     remote_state = remote_state or {}
     now_iso = datetime.now(timezone.utc).isoformat()
@@ -1153,9 +1334,15 @@ def collect_and_upload(remote_state=None, request=None, unsupported_commands=Non
         'online': True,
         'lastSeen': now_iso,
         'updatedAt': now_iso,
+        'heartbeatIntervalSeconds': LOOP_INTERVAL_SECONDS,
         'status': 'connected',
         'agentVersion': DIRECT_CLOUD_AGENT_VERSION,
         'schemaVersion': DIRECT_CLOUD_SCHEMA_VERSION,
+        'heartbeatAuth': HEARTBEAT_AUTH,
+        'liveDeviceVerified': LIVE_DEVICE_VERIFIED,
+        'sourceType': HEARTBEAT_SOURCE_TYPE,
+        'runtimeIsAndroid': RUNTIME_IS_ANDROID,
+        'runtimePlatform': RUNTIME_PLATFORM,
         'syncMethod': 'DIRECT_CLOUD',
         'connectionMethod': DIRECT_CLOUD_CONNECTION_METHOD,
         'waitingForConnection': False,
@@ -1171,6 +1358,10 @@ def collect_and_upload(remote_state=None, request=None, unsupported_commands=Non
         'samsungS24DirectSyncSource': 'direct-cloud-autopilot',
     }
 
+    network = get_wifi_network(ssid=ssid, now_iso=now_iso)
+    if network:
+        telemetry['network'] = network
+
     # Add battery and device info if available
     if bat.get('level') is not None:
         telemetry['battery'] = bat['level']
@@ -1183,8 +1374,8 @@ def collect_and_upload(remote_state=None, request=None, unsupported_commands=Non
         telemetry['manufacturer'] = dev['manufacturer']
     if dev.get('androidVersion'):
         telemetry['androidVersion'] = dev['androidVersion']
-    if dev.get('serialNumber'):
-        telemetry['serialNumber'] = dev['serialNumber']
+    # serialNumber intentionally omitted: hardware serial is a permanent
+    # identifier and must never be written to Firestore (PII/security risk).
 
     all_calls, call_diagnostics = collect_call_logs(user_ids)
     all_sms, sms_diagnostics = collect_sms(user_ids)
@@ -1292,16 +1483,21 @@ def main_loop():
 
     pending_remote_state = fetch_remote_state()
     pending_request, pending_unsupported = extract_runtime_request(pending_remote_state)
-    publish_runtime_status(
-        pending_remote_state,
-        request=pending_request,
-        request_status='idle',
-        payload_status='starting',
-        unsupported_commands=pending_unsupported,
-    )
+    # Publish 'starting' with online=False so the dashboard does not overstate
+    # health before the first real collection cycle completes.
+    _startup_payload = {
+        'online': False,
+        'status': 'starting',
+        'agentVersion': DIRECT_CLOUD_AGENT_VERSION,
+        'heartbeatAuth': HEARTBEAT_AUTH,
+        'lastSeen': datetime.now(timezone.utc).isoformat(),
+        'updatedAt': datetime.now(timezone.utc).isoformat(),
+    }
+    push_to_firestore(_startup_payload, doc_ids=[DEVICE_DOC_ID])
     ensure_reverse_tunnel()
     while True:
-        ensure_sshd_running()
+        # NOTE: ensure_sshd_running() is intentionally NOT called here.
+        # SSH is started only in response to an explicit 'start-ssh' or 'wakeup' command.
         remote_state = pending_remote_state or fetch_remote_state()
         request = pending_request
         unsupported = pending_unsupported
@@ -1361,10 +1557,18 @@ def main_loop():
                                  '-p', 'android'], timeout=10)
                     sys.exit(0)
             elif request and request.get('action') == 'update-and-restart':
-                try:
-                    run_command(['git', '-C', repo_root_dir(), 'pull', '--ff-only'], timeout=30)
-                except Exception:
-                    pass
+                pull_result = run_command(
+                    ['git', '-C', repo_root_dir(), 'pull', '--ff-only'],
+                    timeout=30,
+                )
+                if not pull_result.get('ok'):
+                    detail = truncate_text(
+                        pull_result.get('stderr') or pull_result.get('stdout')
+                        or 'git pull failed',
+                        240,
+                    )
+                    raise RuntimeError(f'update-and-restart refused: {detail}')
+                ensure_agent_kit_installed_and_restart_daemon()
                 publish_runtime_status(
                     remote_state,
                     request=request,
@@ -1395,6 +1599,34 @@ def main_loop():
                     request_status='completed' if ssh_ok else 'error',
                     payload_status='ssh-started' if ssh_ok else 'ssh-failed',
                     last_error='' if ssh_ok else 'Failed to start sshd',
+                    unsupported_commands=unsupported,
+                )
+            elif request and request.get('action') == 'wakeup':
+                # Quiet site-event reaction (SITE_DEVICE_RELAY_ARCHITECTURE [E]):
+                # wake lock + best-effort notification, sshd ensure, bore tunnel publish.
+                wake = ensure_wake_lock()
+                ssh_ok = False
+                try:
+                    ensure_sshd_running()
+                    ssh_ok = True
+                except Exception as ssh_err:
+                    print(f"[Direct-S24] wakeup sshd error: {ssh_err}")
+                try:
+                    ensure_reverse_tunnel()
+                except Exception as tunnel_err:
+                    print(f"[Direct-S24] wakeup tunnel error: {tunnel_err}")
+                if command_exists('termux-notification'):
+                    run_command(['termux-notification',
+                                 '--title', 'EKA wakeup',
+                                 '--content', 'Device awake: sshd + tunnel ensured.'],
+                                timeout=10)
+                wake_ok = wake.get('status') == 'held' and ssh_ok
+                publish_runtime_status(
+                    remote_state,
+                    request=request,
+                    request_status='completed' if wake_ok else 'error',
+                    payload_status='device-awake' if wake_ok else 'wakeup-failed',
+                    last_error='' if wake_ok else 'wakeup: wake lock or sshd failed',
                     unsupported_commands=unsupported,
                 )
             elif request and request.get('action') == 'test-ping':
