@@ -13,6 +13,21 @@
 //   GET /api/jp-wa-messages?chat_id=<id>&limit=<n>&before=<cursor>&q=<text>
 import { requireKey } from './_auth.js';
 import { query, isConfigured } from '../Integrations/postgres.js';
+import { displayMessageBody, messageSenderLabel, normalizeSender } from '../Integrations/wa-store.js';
+
+export function presentMessageRow(m) {
+  return {
+    msg_id: m.msg_id,
+    sent_at: m.sent_at ? new Date(m.sent_at).toISOString() : null,
+    from_me: m.from_me,
+    sender: normalizeSender(m.sender),
+    sender_label: messageSenderLabel(m),
+    kind: m.kind,
+    encrypted: m.encrypted === true,
+    body: m.body,
+    display_body: displayMessageBody(m),
+  };
+}
 
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'private, no-store');
@@ -41,7 +56,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const conds = ['chat_id = $1', 'body IS NOT NULL', "body <> ''"];
+    const conds = ['m.chat_id = $1', 'm.body IS NOT NULL', "m.body <> ''"];
     const params = [chatId];
     // Keyset pagination over the whole ordering key (sent_at DESC NULLS LAST,
     // msg_id DESC). A cursor of sent_at alone skipped every row sharing the
@@ -55,36 +70,31 @@ export default async function handler(req, res) {
       if (!curId) {
         // A cursor issued before this change: a bare timestamp. Honour it.
         params.push(curSent);
-        conds.push(`(sent_at IS NULL OR sent_at < $${params.length}::timestamptz)`);
+        conds.push(`(m.sent_at IS NULL OR m.sent_at < $${params.length}::timestamptz)`);
       } else if (curSent) {
         params.push(curSent); const sIdx = params.length;
         params.push(curId); const tIdx = params.length;
-        conds.push(`((sent_at IS NOT NULL AND (sent_at, msg_id) < ($${sIdx}::timestamptz, $${tIdx})) OR sent_at IS NULL)`);
+        conds.push(`((m.sent_at IS NOT NULL AND (m.sent_at, m.msg_id) < ($${sIdx}::timestamptz, $${tIdx})) OR m.sent_at IS NULL)`);
       } else {
         params.push(curId);
-        conds.push(`(sent_at IS NULL AND msg_id < $${params.length})`);
+        conds.push(`(m.sent_at IS NULL AND m.msg_id < $${params.length})`);
       }
     }
-    if (q) { params.push(`%${q}%`); conds.push(`body ILIKE $${params.length}`); }
+    if (q) { params.push(`%${q}%`); conds.push(`m.body ILIKE $${params.length}`); }
     params.push(limit);
 
     const r = await query(
-      `SELECT msg_id, sent_at, from_me, sender, kind, body, ingested_at
-         FROM wa_messages
+      `SELECT m.msg_id, m.sent_at, m.from_me, m.sender, m.kind, m.encrypted, m.body,
+              m.ingested_at, c.name AS chat_name, c.kind AS chat_kind
+         FROM wa_messages m
+         JOIN wa_chats c ON c.chat_id = m.chat_id
         WHERE ${conds.join(' AND ')}
-        ORDER BY sent_at DESC NULLS LAST, msg_id DESC
+        ORDER BY m.sent_at DESC NULLS LAST, m.msg_id DESC
         LIMIT $${params.length}`,
       params
     );
 
-    const rows = r.rows.map((m) => ({
-      msg_id: m.msg_id,
-      sent_at: m.sent_at ? new Date(m.sent_at).toISOString() : null,
-      from_me: m.from_me,
-      sender: m.sender,
-      kind: m.kind,
-      body: m.body,
-    }));
+    const rows = r.rows.map(presentMessageRow);
 
     // The composite cursor the parser above expects. Emitting sent_at alone
     // would leave the fix unreachable, since no client would ever send one.
@@ -93,6 +103,8 @@ export default async function handler(req, res) {
 
     return res.status(200).json({
       ok: true, chat_id: chatId, count: rows.length, next_before: cursor, q: q || null,
+      readable_count: rows.filter((m) => !m.encrypted).length,
+      encrypted_count: rows.filter((m) => m.encrypted).length,
       messages: rows,
     });
   } catch (err) {

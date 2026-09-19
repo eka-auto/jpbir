@@ -3,7 +3,8 @@
 // SQL), the galaxy payload in both name modes, and the read handler's guards.
 // Run: node _shared/tests/wa-store.test.mjs
 import {
-  normalizeChat, normalizeMessage, chatIdFor, assignChatIds, idlessChats, upsertChats, upsertMessages, ingestBatch,
+  normalizeChat, normalizeMessage, normalizeSender, whatsappAddress, messageSenderLabel, displayMessageBody,
+  chatIdFor, assignChatIds, idlessChats, upsertChats, upsertMessages, ingestBatch,
   galaxyPayload, redactChats, toCompact, CHUNK,
 } from '../../Integrations/wa-store.js';
 
@@ -55,6 +56,20 @@ check('message normalises with epoch seconds', m1 && m1.msg_id === 'g1@g.us:ABC'
 const m2 = normalizeMessage({ chat: 'c9', key: 'K', timestamp: '2026-01-02T03:04:05Z', kind: 'voice' });
 check('message without body is sealed, unknown kind -> other', m2 && m2.encrypted === true && m2.kind === 'other' && m2.chat_id === 'c9', JSON.stringify(m2));
 check('message without key is dropped', normalizeMessage({ chat: 'c9', text: 'x' }) === null, 'expected null');
+check('WhatsApp id objects become stable addresses', whatsappAddress({ user: '919999', server: 'c.us' }) === '919999@c.us'
+  && whatsappAddress({ _serialized: '123@g.us' }) === '123@g.us', 'address object was not normalized');
+check('object senders keep names or ids instead of JavaScript coercion', normalizeSender({ pushName: 'Alice', _serialized: '1@c.us' }) === 'Alice'
+  && normalizeSender({ id: { user: '2', server: 'c.us' } }) === '2@c.us', 'sender object was not normalized');
+check('legacy sender sentinels become null', ['[object Object]', '<Undefined>', 'undefined', 'null'].every((v) => normalizeSender(v) === null), 'sentinel leaked');
+const m3 = normalizeMessage({ chat: 'c9', key: 'O', sender: { _serialized: '3@c.us' } }, 'c9');
+check('message normalisation never stores object Object', m3 && m3.sender === '3@c.us', JSON.stringify(m3));
+check('sender labels recover from direction and chat metadata', messageSenderLabel({ from_me: true }) === 'You'
+  && messageSenderLabel({ kind: 'system' }) === 'System'
+  && messageSenderLabel({ sender: '<Undefined>', chat_kind: 'direct', chat_name: 'Alice' }) === 'Alice'
+  && messageSenderLabel({ sender: '[object Object]', chat_kind: 'group' }) === 'Unknown participant', 'bad sender label');
+check('body display preserves real text and explains sealed metadata', displayMessageBody({ body: 'hello', encrypted: true }) === 'hello'
+  && displayMessageBody({ body: '[Encrypted — export chat to read]', encrypted: true }).startsWith('Encrypted message')
+  && displayMessageBody({ body: '[System message]', kind: 'system', encrypted: true }).startsWith('System event'), 'bad body display');
 
 /* ---------- upserts against a recording stub ---------- */
 // rowCount mimics pg: every chat row is written; message rows can be filtered by the chat guard

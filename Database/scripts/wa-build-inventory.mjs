@@ -21,6 +21,7 @@
 import fs from 'node:fs';
 import rl from 'node:readline';
 import { join } from 'node:path';
+import { normalizeSender, whatsappAddress } from '../../Integrations/wa-store.js';
 
 const args = process.argv.slice(2);
 const opt = (name, dflt = null) => { const i = args.indexOf(name); return i !== -1 ? args[i + 1] : dflt; };
@@ -101,19 +102,23 @@ const contacts = new Map();   // jid or phone -> saved name
 console.log(`reading ${dir}`);
 await readJsonl('chat', (o) => {
   const v = o.value || {};
-  if (v.id) chatMeta.set(v.id, v.name || null);
+  const id = whatsappAddress(v.id);
+  if (id) chatMeta.set(id, v.name || null);
 });
 await readJsonl('group-metadata', (o) => {
   const v = o.value || {};
-  if (v.id) groups.set(v.id, { subject: v.subject || null, size: v.size ?? null });
+  const id = whatsappAddress(v.id);
+  if (id) groups.set(id, { subject: v.subject || null, size: v.size ?? null });
 });
 await readJsonl('contact', (o) => {
   const v = o.value || {};
   const name = v.name || v.pushname || v.shortName || null;
   if (!name) return;
-  if (v.id) contacts.set(v.id, name);
+  const id = whatsappAddress(v.id);
+  if (id) contacts.set(id, name);
   // the address book keys on the phone jid, the chat may key on the @lid alias
-  if (v.phoneNumber) contacts.set(v.phoneNumber, name);
+  const phone = whatsappAddress(v.phoneNumber);
+  if (phone) contacts.set(phone, name);
 });
 
 const tally = new Map();
@@ -121,7 +126,7 @@ const messages = [];
 let keyed = 0, unkeyable = 0, fellBack = 0;
 await readJsonl('message', (o) => {
   const v = o.value || {};
-  const id = String(v.id || '');
+  const id = whatsappAddress(v.id) || '';
   let jid = id.split('_')[1] || '';
   if (!jid.includes('@')) {
     // Torn id: fall back to the envelope. Direction decides which end is the
@@ -129,10 +134,11 @@ await readJsonl('message', (o) => {
     // the peer in `to`, so taking `from` here would file it under the owner
     // and corrupt that chat's counts. These records carry no `fromMe` field;
     // the direction is the id's own `true_`/`false_` prefix.
-    const to = v.to && typeof v.to === 'object' ? v.to._serialized : v.to;
+    const to = whatsappAddress(v.to);
+    const from = whatsappAddress(v.from);
     const outgoing = id.startsWith('true_') || v.fromMe === true;
-    jid = String((outgoing ? to : v.from) || '');
-    if (!jid.includes('@')) jid = String((outgoing ? v.from : to) || '');
+    jid = String((outgoing ? to : from) || '');
+    if (!jid.includes('@')) jid = String((outgoing ? from : to) || '');
     fellBack++;
   }
   if (!jid.includes('@')) { unkeyable++; return; }
@@ -154,12 +160,17 @@ await readJsonl('message', (o) => {
 
   // The id already proved unique across the dump, so it keys the row; the
   // store prefixes it with the chat to build msg_id.
+  const outgoing = id.startsWith('true_') || v.fromMe === true;
+  const senderId = outgoing ? null : (normalizeSender(v.author) || normalizeSender(v.from));
+  const sender = senderId
+    ? (contacts.get(senderId) || contacts.get(senderId.split('@')[0]) || senderId)
+    : null;
   messages.push({
     chat_id: jid,
     id,
     ts: t,
-    from_me: id.startsWith('true_'),
-    sender: String(v.author || v.from || '') || null,
+    from_me: outgoing,
+    sender,
     kind: kindOf(type),
     encrypted: true,
   });

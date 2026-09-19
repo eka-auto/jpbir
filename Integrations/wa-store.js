@@ -24,6 +24,75 @@ export const CHUNK = 200;
 const str = (v) => (v == null ? '' : String(v)).trim();
 const int = (v) => { const n = Number(v); return Number.isFinite(n) ? Math.max(0, Math.trunc(n)) : 0; };
 const intOrNull = (v) => (v == null || v === '' ? null : int(v));
+const BAD_SENDERS = new Set([
+  '[object object]', '<undefined>', 'undefined', '[undefined]',
+  '<null>', 'null', '[null]',
+]);
+
+const cleanSenderText = (value) => {
+  const text = str(value);
+  return text && !BAD_SENDERS.has(text.toLowerCase()) ? text : null;
+};
+
+/** A stable WhatsApp address from either a string jid or WhatsApp's id object. */
+export function whatsappAddress(value, depth = 0) {
+  if (value == null || depth > 4) return null;
+  if (typeof value === 'string' || typeof value === 'number') return cleanSenderText(value);
+  if (typeof value !== 'object') return null;
+
+  for (const candidate of [value._serialized, value.jid, value.wid, value.id]) {
+    if (candidate === value) continue;
+    const address = whatsappAddress(candidate, depth + 1);
+    if (address) return address;
+  }
+  const user = cleanSenderText(value.user);
+  const server = cleanSenderText(value.server);
+  return user ? (server ? `${user}@${server}` : user) : null;
+}
+
+/** A displayable sender, never JavaScript's object/undefined sentinel strings. */
+export function normalizeSender(value) {
+  if (value == null) return null;
+  if (typeof value === 'object') {
+    for (const candidate of [
+      value.name, value.pushname, value.pushName, value.shortName,
+      value.formattedName, value.notifyName, value.notify_name,
+    ]) {
+      const name = cleanSenderText(candidate);
+      if (name) return name;
+    }
+    return whatsappAddress(value);
+  }
+  const text = cleanSenderText(value);
+  if (!text || (!text.startsWith('{') && !text.startsWith('['))) return text;
+  try { return normalizeSender(JSON.parse(text)); } catch { return text; }
+}
+
+/** Human label for legacy and current WhatsApp message rows. */
+export function messageSenderLabel(message = {}) {
+  if (message.kind === 'system') return 'System';
+  if (message.from_me === true) return 'You';
+  const sender = normalizeSender(message.sender);
+  if (sender) return sender;
+  const chatName = normalizeSender(message.chat_name);
+  if (message.chat_kind === 'direct' && chatName) return chatName;
+  return message.chat_kind === 'group' ? 'Unknown participant' : 'Unknown sender';
+}
+
+/** Explain sealed recovery rows honestly while preserving real imported text. */
+export function displayMessageBody(message = {}) {
+  const body = typeof message.body === 'string' ? message.body.trim() : '';
+  const placeholders = new Set([
+    '[Encrypted — export chat to read]', '[System message]', '[Media — image/video]',
+  ]);
+  if (body && !placeholders.has(body)) return body;
+  if (message.kind === 'system') return 'System event — details were not present in the recovery metadata.';
+  if (message.kind === 'media') return 'Media metadata only — attachment content was not present in the recovery dump.';
+  if (message.kind === 'audio') return 'Audio metadata only — audio content was not present in the recovery dump.';
+  if (message.kind === 'call') return 'Call metadata only — call details were not present in the recovery dump.';
+  if (message.encrypted === true || body) return 'Encrypted message — text was not present in the recovery dump.';
+  return '(message content unavailable)';
+}
 // A calendar-invalid date (2024-02-31) would make Postgres reject the whole
 // chunk it rides in, so only a value that survives a UTC round trip counts.
 const dateOrNull = (v) => {
@@ -127,7 +196,7 @@ export function normalizeMessage(rec, chatId) {
     chat_id: chat,
     sent_at: when && !Number.isNaN(when.getTime()) ? when.toISOString() : null,
     from_me: fromMe == null ? null : flag(fromMe),
-    sender: str(rec.sender ?? rec.from) || null,
+    sender: normalizeSender(rec.sender) || normalizeSender(rec.author) || normalizeSender(rec.from),
     kind: MSG_KINDS.has(kind) ? kind : 'other',
     encrypted,
     // Encrypted recovery-dump records that carry no body get a placeholder so

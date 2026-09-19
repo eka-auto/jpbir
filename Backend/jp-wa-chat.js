@@ -68,16 +68,17 @@ export default async function handler(req, res) {
         [chatId]
       ),
       query(
-        `SELECT count(*) FILTER (WHERE body IS NOT NULL AND body <> '') ::int AS with_body,
-                count(*)::int AS total
-           FROM wa_messages WHERE chat_id = $1`,
+        `SELECT count(*) FILTER (WHERE encrypted IS FALSE AND body IS NOT NULL AND body <> '') ::int AS readable,
+                count(*) FILTER (WHERE encrypted IS TRUE)::int AS encrypted,
+                 count(*)::int AS total
+            FROM wa_messages WHERE chat_id = $1`,
         [chatId]
       ),
     ]);
 
     const sent = direction.rows.find((d) => d.from_me === true);
     const received = direction.rows.find((d) => d.from_me === false);
-    const bs = bodyStats.rows[0] || { with_body: 0, total: 0 };
+    const bs = bodyStats.rows[0] || { readable: 0, encrypted: 0, total: 0 };
 
     return res.status(200).json({
       ok: true,
@@ -111,10 +112,11 @@ export default async function handler(req, res) {
         months: months.rows,
       },
       bodies: {
-        with_body: bs.with_body | 0,
+        with_body: bs.readable | 0,
+        encrypted: bs.encrypted | 0,
         total: bs.total | 0,
-        available: (bs.with_body | 0) > 0,
-        reason: (bs.with_body | 0) > 0 ? null : 'no chat-export ingest yet for this chat',
+        available: (bs.readable | 0) > 0,
+        reason: (bs.readable | 0) > 0 ? null : 'message text is not present in the recovery metadata; import a WhatsApp Chat Export',
       },
     });
   } catch (err) {
