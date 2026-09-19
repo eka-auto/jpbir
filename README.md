@@ -91,32 +91,83 @@ npm run dev      # vercel dev — local frontend + serverless functions
 |--------|---------|--------------|
 | `npm run dev` | `vercel dev` | Run the app locally |
 | `npm run build` | — | No-op; frontend is served statically |
-| `npm run deploy` | `vercel --prod` | Deploy to production |
+| `npm run deploy` | `vercel --prod` | Deploy to production (prefer the Git integration; this uploads the working directory, not the committed tree) |
+| `npm test` | `node _shared/tests/run-all.mjs` | Run every `*.test.mjs` suite, each in its own child process |
+| `npm run db:migrate` | `node Database/scripts/migrate.mjs` | Apply Postgres schema migrations |
+| `npm run wa:build` | `node Database/scripts/wa-build-inventory.mjs` | Build the WhatsApp inventory |
+| `npm run wa:import` | `node Database/scripts/wa-import.mjs` | Import it |
 
-> `npm test` is not yet wired up. Test files live under
-> [`_shared/tests/`](./_shared/tests/).
+Tests live in [`_shared/tests/`](./_shared/tests/), not beside the code they cover,
+and are plain ESM scripts rather than `node:test` files — `node --test` will not
+drive them. Drop a `<name>.test.mjs` in that directory to add a suite; no
+registration is needed. There is no root `lint` script: CI runs
+`npm run lint --if-present`, which silently no-ops.
+
+The Python suite for the device sandbox is separate and is not run by `npm test`:
+
+```bash
+cd Devices/sandbox && python -m pytest tests/ -q
+```
+
+`Devices/sandbox/.python-version` pins the interpreter, and CI reads that same
+file, so the suite runs on the version channel-sandbox actually deploys.
 
 ### Configuration
 
 Runtime configuration comes from environment variables (set in the Vercel
-project and, for the agent, in `/etc/jp-agent.env` on the droplet). Confirmed
+project and, for the agent, in `/etc/jp-agent.env` on the droplet). Common
 variables include:
 
 - `FIREBASE_SERVICE_ACCOUNT_JSON` — service-account JSON for Firestore access
 - `FIRESTORE_DB` — Firestore database id (defaults to `eka-agent`)
 - `JP_AGENT_TOKEN` — bearer token for the `/api/agent-run` proxy
 
+The authoritative inventory of what is actually set on each Vercel project —
+name, type, which environments, and whether Vercel flags it as a readable secret
+— is [`_shared/config/vercel-env.manifest.json`](./_shared/config/vercel-env.manifest.json).
+It holds **no secret values**: `type: encrypted` variables are still readable in
+plaintext by anyone with project access, so copying one here would commit a
+credential. Only a small allowlist of non-credential identifiers carries a
+`sha256_12` fingerprint, which is enough to detect a BOM, a truncation or a
+re-save without disclosing anything.
+
+Regenerate it after changing any environment variable (needs `vercel` auth):
+
+```bash
+node _shared/tools/generate-env-manifest.mjs
+```
+
+`_shared/tests/env-manifest.test.mjs` then checks it offline — no network, no
+credentials — and fails if a secret shape reaches the file, if a variable name
+embeds a token, or if the set of variables nothing reads changes without being
+explained.
+
 See `_shared/docs/` (for example `ADD_FIREBASE_SECRET_TO_GITHUB.md`,
-`GITHUB_ACTIONS_SETUP.md`) and `Server/jp-agent/README.md` for the full set and
-setup instructions.
+`GITHUB_ACTIONS_SETUP.md`) and `Server/jp-agent/README.md` for setup
+instructions.
 
 ## CI
 
-Three GitHub Actions workflows run from [`.github/workflows/`](./.github/workflows/):
+Five GitHub Actions workflows run from [`.github/workflows/`](./.github/workflows/):
 
-- **CI/CD Pipeline** (`ci-cd.yml`)
+- **CI/CD Pipeline** (`ci-cd.yml`) — lint and test only; it does not deploy.
+  Production deploys come from Vercel's Git integration.
 - **Code Quality Checks** (`code-quality.yml`)
-- **Endpoint Health Check** (`health-check.yml`)
+- **Endpoint Health Check** (`health-check.yml`) — every 15 minutes and on each
+  deployment
+- **Device Sandbox Tests** (`device-sandbox-tests.yml`) — the channel-sandbox
+  pytest suite, including the check that every device kit bundles a
+  byte-identical copy of the canonical agent
+- **Sync keys to Vercel** (`sync-keys-to-vercel.yml`) — dispatch-only; add-only
+  across the keys the deployed code reads, then rebuilds production
+
+A sixth file, `endform-e2e.yml`, sits at
+`.github/workflows/.github/workflows/` — a doubled path, so GitHub never loads it
+and no end-to-end coverage exists. It is unmodified vendor boilerplate and would
+not run if moved: `project-name` is still the literal `your-vercel-project-name`,
+it installs with **pnpm** while this repo uses npm and has no `pnpm-lock.yaml`,
+and it pins a third-party action to the mutable `@main` ref while requesting
+`id-token: write`. Fix or delete it deliberately; do not just relocate it.
 
 ## License
 
