@@ -765,6 +765,20 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
         if (h < 24) return h + 'h ago';
         return Math.floor(h / 24) + 'd ago';
     }
+    // generated_at is stamped by the API when it answers a poll, so it resets
+    // every 10 s and says nothing about the phone. A real "synced" figure has
+    // to come from the device's own lastSeen.
+    function newestLastSeen(devices) {
+        var newest = null, newestMs = -Infinity, now = Date.now();
+        (devices || []).forEach(function (d) {
+            var ms = d && d.lastSeen ? Date.parse(d.lastSeen) : NaN;
+            // Same rule as the backend's nonFutureAgeSeconds: an unparseable or
+            // future stamp says nothing trustworthy about when a device synced.
+            if (!isFinite(ms) || ms > now) return;
+            if (ms > newestMs) { newestMs = ms; newest = d.lastSeen; }
+        });
+        return newest;
+    }
     function fmtDur(ms) {
         if (ms == null) return '–';
         var s = Math.round(ms / 1000);
@@ -880,7 +894,10 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
             // 2-month-old row can crowd the panel.
             refreshFirestoreContent();
 
-            summary.textContent = devices.length + ' document(s) · database ' + (j.database || '?') + ' · synced at ' + when.toLocaleTimeString();
+            var fsSync = newestLastSeen(devices);
+            summary.textContent = devices.length + ' document(s) · database ' + (j.database || '?') +
+                ' · fetched at ' + when.toLocaleTimeString() +
+                ' · newest device sync ' + (fsSync ? fmtTime(fsSync) + ' (' + fmtAgo(fsSync) + ')' : 'never');
             head.textContent = 'Live sync of every document in the ' + (j.database || 'eka-agent') + ' database. Poll interval 10 s. Old data is replaced on every sync, so nothing clutters the view.';
             if (dot) dot.className = 'live-dot';
         } catch (err) {
@@ -2553,7 +2570,7 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
                         tbody.appendChild(tr);
                     });
                 }
-                $('deviceHint').textContent = res.body.total_entries + ' entries · ' + res.body.total_events + ' sync events · synced ' + fmtTime(res.body.generated_at);
+                $('deviceHint').textContent = res.body.total_entries + ' entries · ' + res.body.total_events + ' sync events · fetched ' + fmtTime(res.body.generated_at);
 
                 var dtbody = $('devicesTable').querySelector('tbody');
                 dtbody.innerHTML = '';
@@ -3370,7 +3387,11 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
                     });
                     $('livePayloadHint').textContent = payloadDevices.length + ' complete daemon documents · open a device to view its readable details';
                 }
-                $('liveDevicesHint').textContent = devices.length + ' devices · ' + res.body.database + ' · synced ' + fmtTime(res.body.generated_at) + ' · liveness = lastSeen < 3×heartbeat';
+                var liveSync = newestLastSeen(devices);
+                $('liveDevicesHint').textContent = devices.length + ' devices · ' + res.body.database +
+                    ' · fetched ' + fmtTime(res.body.generated_at) +
+                    ' · newest device sync ' + (liveSync ? fmtTime(liveSync) + ' (' + fmtAgo(liveSync) + ')' : 'never') +
+                    ' · liveness = lastSeen < 3×heartbeat';
                 /* site video-event relay banner: connection built when a visitor plays the closing clip */
                 try {
                     var ve = res.body.videoEvent;
