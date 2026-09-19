@@ -32,7 +32,8 @@ echo "==> shipping service files"
 scp -o BatchMode=yes -o StrictHostKeyChecking=accept-new -i "$KEY" \
   "$(dirname "$0")/server.mjs" "$(dirname "$0")/s24-tools.mjs" \
   "$(dirname "$0")/device-health.mjs" "$(dirname "$0")/sync-auth-token.py" \
-  "$(dirname "$0")/package.json" "root@$IP:/opt/jp-agent/"
+  "$(dirname "$0")/package.json" "$(dirname "$0")/package-lock.json" \
+  "root@$IP:/opt/jp-agent/"
 scp -o BatchMode=yes -o StrictHostKeyChecking=accept-new -i "$KEY" \
   "$(dirname "$0")/jp-agent.service" "root@$IP:/etc/systemd/system/jp-agent.service"
 scp -o BatchMode=yes -o StrictHostKeyChecking=accept-new -i "$KEY" \
@@ -44,7 +45,12 @@ chown -R jpagent:jpagent /opt/jp-agent
 
 echo "==> installing dependencies"
 cd /opt/jp-agent
-sudo -u jpagent npm install --omit=dev --no-audit --no-fund --silent
+# `npm ci`, not `npm install`: the droplet installs exactly the versions in the
+# committed package-lock.json. `npm install` re-resolves the `^` ranges in
+# package.json on every deploy, so the box could run a claude-agent-sdk release
+# nobody tested. `npm ci` also fails loudly if the lockfile and package.json
+# disagree, instead of quietly rewriting the lockfile on the server.
+sudo -u jpagent npm ci --omit=dev --no-audit --no-fund --silent
 # The privileged stdin receiver must not be writable by the agent service.
 chown root:root /opt/jp-agent /opt/jp-agent/sync-auth-token.py
 chmod 755 /opt/jp-agent
