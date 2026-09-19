@@ -12,7 +12,18 @@ app/
 archive/
 .vercel/
 _shared/reports/
-Devices/
+# Devices/ holds per-device installer bundles, which are not part of the dashboard.
+# The one exception is Devices/sandbox/: it is the Root Directory of the separate
+# `channel-sandbox` Vercel project, and Vercel applies THIS repo-root file to that
+# project's Git builds too. A bare `Devices/` stripped all 26 of its files before
+# the build ran, so every channel-sandbox deploy came up empty and served
+# NOT_FOUND. It has to be `Devices/*` plus a re-include: git-style ignore cannot
+# re-include a child of a directory that is itself excluded. jayti-dashboard
+# never builds or serves these files (its vercel.json builds only Backend/ and
+# Frontend/), so the re-include only makes its upload bigger. .env*
+# and intrepid-stage-*.json below are still excluded inside Devices/sandbox/.
+Devices/*
+!Devices/sandbox/
 Server/
 Database/backups/
 *.log
@@ -49,7 +60,9 @@ jpbir/
 .firebaserc
 Sandbox/
 chrome_extraction/
-dashboard/
+# Anchored: an unanchored `dashboard/` also matched Devices/sandbox/dashboard/,
+# which is channel-sandbox's UI (its vercel.json builds dashboard/index.html).
+/dashboard/
 dataconnect/
 eka-runner-private/
 eka-runner/

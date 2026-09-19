@@ -5,7 +5,7 @@ fleet. It deploys to Vercel as the `channel-sandbox` project with **Root
 Directory** `Devices/sandbox`.
 
 Once configured, it runs at
-[`https://channel-sandbox-one.vercel.app`](https://channel-sandbox-one.vercel.app).
+[`https://channel-sandbox.vercel.app`](https://channel-sandbox.vercel.app).
 Load the dashboard with `?key=<STATS_KEY>` in the URL; the key persists in
 `sessionStorage` for the tab.
 
@@ -16,13 +16,22 @@ Load the dashboard with `?key=<STATS_KEY>` in the URL; the key persists in
    To use a different one, change the values in `SANDBOX_CONFIG_JSON` (below).
 2. **A Google service account** with `roles/datastore.user` on that database.
    Download its JSON key from GCP Console → IAM & Admin → Service Accounts.
-3. **The Vercel `channel-sandbox` project already linked** to this repo with
-   Root Directory `Devices/sandbox` (already done — see `RESTRUCTURE_STATE.json`).
+3. **The Vercel `channel-sandbox` project linked** to this repo with Root
+   Directory `Devices/sandbox`. The original project was deleted at some point
+   before 2026-09-19. It was re-created that day under the same name in team
+   `jayti` (`prj_hRRe8dOt2F3mYU721Qk9lFAG9V92`), which is why the URL changed
+   from `channel-sandbox-one.vercel.app`. The re-created project has **no env
+   vars**, so step 2 is required.
+4. **The repo-root `.vercelignore` must not strip this directory.** Vercel
+   applies that file to this project's builds too. If it ignores
+   `Devices/sandbox/` or anything inside it, the build "succeeds" with no
+   output and every path returns `NOT_FOUND`.
+   `_shared/tests/deploy-manifest.test.mjs` checks this.
 
 ## Step-by-step deploy
 
 1. **Verify what's currently missing.** Visit
-   [`https://channel-sandbox-one.vercel.app/api/diag`](https://channel-sandbox-one.vercel.app/api/diag)
+   [`https://channel-sandbox.vercel.app/api/diag`](https://channel-sandbox.vercel.app/api/diag)
    (public, no key needed). The response names every env var this service
    needs and reports whether it's set, whether it parses, and — for the
    service account — the public `client_email` and `project_id` so you can
@@ -59,7 +68,7 @@ Load the dashboard with `?key=<STATS_KEY>` in the URL; the key persists in
    `mode:real` unless `--allow-production` is passed.
 
 5. **Verify end-to-end.** Visit
-   `https://channel-sandbox-one.vercel.app/?key=<STATS_KEY>`. The two
+   `https://channel-sandbox.vercel.app/?key=<STATS_KEY>`. The two
    device cards should populate. If a card stays "Connecting…", check
    `/api/diag` — it points at the exact failure without leaking secrets.
 
