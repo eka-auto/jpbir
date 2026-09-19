@@ -18,5 +18,9 @@ around MCP tools. `device_ping` is read-only; command/wake tools write directly
 to the Firestore command queue, so do not expose this process as an unauthenticated
 network service.
 
+The MCP and `Devices/S24/pull_direct_cloud.py` accept both known phone build
+families (`s24-termux-` and `s24-direct-cloud-`) only when the remaining
+Android/Termux attestation fields pass.
+
 The tracked phone counterpart is `Backend/s24_phone_direct_cloud.py`. It is
 phone-only and fails closed with exit code 78 outside Android Termux.

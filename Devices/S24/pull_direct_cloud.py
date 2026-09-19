@@ -73,7 +73,7 @@ def json_safe(value):
 def phone_attestation(fields: dict) -> tuple[bool, str]:
     checks = {
         "runtimeIsAndroid": fields.get("runtimeIsAndroid") is True,
-        "agentVersion": str(fields.get("agentVersion") or "").startswith("s24-termux-"),
+        "agentVersion": str(fields.get("agentVersion") or "").startswith(("s24-termux-", "s24-direct-cloud-")),
         "heartbeatAuth": fields.get("heartbeatAuth") == "termux-phone",
         "sourceType": fields.get("sourceType") == "live_termux",
         "liveDeviceVerified": fields.get("liveDeviceVerified") is True,
