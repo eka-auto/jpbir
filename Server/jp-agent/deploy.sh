@@ -31,7 +31,8 @@ echo "==> shipping service files"
 "${SSH[@]}" "install -d -o jpagent -g jpagent /opt/jp-agent"
 scp -o BatchMode=yes -o StrictHostKeyChecking=accept-new -i "$KEY" \
   "$(dirname "$0")/server.mjs" "$(dirname "$0")/s24-tools.mjs" \
-  "$(dirname "$0")/device-health.mjs" "$(dirname "$0")/sync-auth-token.py" \
+  "$(dirname "$0")/device-health.mjs" "$(dirname "$0")/s24-attestation.js" \
+  "$(dirname "$0")/sync-auth-token.py" \
   "$(dirname "$0")/package.json" "$(dirname "$0")/package-lock.json" \
   "root@$IP:/opt/jp-agent/"
 scp -o BatchMode=yes -o StrictHostKeyChecking=accept-new -i "$KEY" \

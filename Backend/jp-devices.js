@@ -2,6 +2,16 @@ import crypto from 'crypto';
 import { decodeOne } from './lib/geo.js';
 import { requireKey } from './_auth.js';
 import { query as pgQuery, isConfigured as pgIsConfigured } from '../Integrations/postgres.js';
+// Attestation policy is shared with Server/jp-agent/device-health.mjs so the dashboard and
+// the droplet's device_ping cannot disagree about what counts as the phone. That module's
+// header records the two drifts this extraction exists to prevent.
+import {
+  S24_DEVICE_ID,
+  S24_ACK_MAX_AGE_SECONDS,
+  S24_RUNTIME_EVIDENCE,
+  s24AttestationChecks,
+  firstFailedCheck,
+} from './lib/s24-attestation.js';
 
 const _env = (typeof process !== 'undefined' ? process : globalThis['proc' + 'ess']).env;
 const FIREBASE_SA_JSON = _env['FIREBASE_' + 'SERVICE_ACCOUNT_JSON'];
@@ -106,7 +116,11 @@ export function normalizeCommandQueue(queue) {
     .sort((a, b) => (b.queuedAt || '').localeCompare(a.queuedAt || ''));
 }
 
-const S24_DEVICE_ID = 'samsung-s24-ultra';
+// S24_DEVICE_ID, S24_ACK_MAX_AGE_SECONDS, the accepted agentVersion prefixes, the
+// runtime-evidence field name, the source types and the connection methods all live in
+// ./lib/s24-attestation.js and are imported above. They used to be declared here and,
+// independently, in Server/jp-agent/device-health.mjs; the two copies drifted twice in one
+// day. The rationale for each value is in that module — do not re-declare any of it here.
 
 // The same phone is written to more than one document: devices/Samsung-S24 is
 // a legacy alias carrying canonicalDeviceId='samsung-s24-ultra', and the
@@ -120,38 +134,6 @@ function isS24Document(deviceId, fields) {
     (Array.isArray(fields.legacyDeviceIds) && fields.legacyDeviceIds.includes(deviceId) &&
       fields.canonicalDeviceId === S24_DEVICE_ID);
 }
-const S24_ACK_MAX_AGE_SECONDS = 300;
-const S24_SOURCE_TYPES = new Set(['live_termux', 'live_daemon']);
-
-// Both of these prefixes name the S24's own agent. The collector that actually
-// ships to the phone writes s24-direct-cloud-<date>.<n> — its own
-// currentDirectCloudRuntime.expectedAgentVersion says so — but this check only
-// ever accepted s24-termux-, a prefix no real writer produced. So
-// authenticatedAgent could never pass and the S24 stayed offline on the
-// dashboard however fresh its heartbeat was, while the regression tests stayed
-// green because their fixture asserted against the same fictional string.
-//
-// Widening costs little. The comment below already records that a version string
-// is one edit away from matching, and runtimeIsAndroid — written by the
-// collector from the platform it is actually executing on — is the control that
-// caught the off-device Windows bridge. A bridge copying either prefix still
-// fails androidRuntime, which device-liveness.test.mjs now asserts against the
-// real production version string rather than an invented one.
-const S24_AGENT_VERSION_PREFIXES = ['s24-termux-', 's24-direct-cloud-'];
-
-// Every other field this check reads is written by whatever process owns the
-// document, so a bridge running off-device could assert all of them about
-// itself — and one did: a Windows process writing heartbeatAuth='termux-phone',
-// sourceType='live_termux' and liveDeviceVerified=true for the S24. The agent
-// version prefix was the only thing standing in its way, and a version string
-// is one edit away from matching.
-//
-// runtimeIsAndroid is set by the collector from the platform it is actually
-// executing on, and the collector now reports false off Termux rather than
-// omitting the field. Requiring it strictly true means an absent field — an
-// older build that predates this, or anything that simply does not set it —
-// fails closed, which is the behaviour we want while the fleet catches up.
-const S24_RUNTIME_EVIDENCE = 'runtimeIsAndroid';
 
 function nonFutureAgeSeconds(value, now) {
   if (!value) return null;
@@ -169,22 +151,26 @@ function commandAckTimestamp(fields) {
 }
 
 export function strictS24Liveness(fields, heartbeatAgeSeconds, ackAgeSeconds) {
-  const checks = {
-    heartbeatFresh: heartbeatAgeSeconds !== null && heartbeatAgeSeconds <= S24_ACK_MAX_AGE_SECONDS,
-    authenticatedAgent: typeof fields.agentVersion === 'string' &&
-      S24_AGENT_VERSION_PREFIXES.some(p => fields.agentVersion.startsWith(p)),
-    heartbeatAuth: fields.heartbeatAuth === 'termux-phone',
-    liveDeviceVerified: fields.liveDeviceVerified === true,
-    liveSource: S24_SOURCE_TYPES.has(fields.sourceType),
-    androidRuntime: fields[S24_RUNTIME_EVIDENCE] === true,
-    commandAckFresh: ackAgeSeconds !== null && ackAgeSeconds <= S24_ACK_MAX_AGE_SECONDS,
-  };
-  const failed = Object.entries(checks).find(([, passed]) => !passed);
+  // Every field is read top-level here. Server/jp-agent/device-health.mjs reads
+  // liveDeviceVerified and sourceType from the nested samsungS24DirectSync sub-map, and
+  // grants a boot grace this dashboard does not. Those are deliberate per-caller policy
+  // differences passed explicitly at the call site — not drift, and not to be "unified"
+  // without deciding which behaviour is correct first. allowBootGrace defaults to false.
+  const checks = s24AttestationChecks({
+    agentVersion: fields.agentVersion,
+    heartbeatAuth: fields.heartbeatAuth,
+    liveDeviceVerified: fields.liveDeviceVerified,
+    sourceType: fields.sourceType,
+    runtimeIsAndroid: fields[S24_RUNTIME_EVIDENCE],
+    heartbeatAgeSeconds,
+    ackAgeSeconds,
+  });
+  const failed = firstFailedCheck(checks);
   return {
     mode: 'strict-s24-attestation',
     live: !failed,
     checks,
-    reason: failed ? `${failed[0]} is missing or stale` : 'authenticated heartbeat and command acknowledgement are fresh',
+    reason: failed ? `${failed} is missing or stale` : 'authenticated heartbeat and command acknowledgement are fresh',
   };
 }
 
