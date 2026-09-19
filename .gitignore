@@ -42,3 +42,14 @@ Devices/S24/keys/
 
 # Isolated device clone test-lab — local-only, never committed or deployed.
 clone-lab/
+
+# Per-machine agent and editor tooling. None of it is part of the app, and all of it was
+# untracked AND unignored, so a single `git add -A` would have committed it — 84 files on
+# 2026-09-19. .agents/ holds third-party skills installed by `npx skills` (3.7 MB, recorded
+# in skills-lock.json); .qwen/ is Qwen Code's settings, symlinks into .agents/ and its
+# session scratch; .vscode/ is personal editor and MCP config. Tracked agent skills that
+# belong to the project live under .claude/skills/ instead.
+.agents/
+.qwen/
+.vscode/
+skills-lock.json
