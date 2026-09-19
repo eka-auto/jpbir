@@ -665,7 +665,7 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
                     </div>
                     <div class="panel" style="margin-top:14px">
                         <div class="panel-head">
-                            <div><h2>Messages</h2><div class="hint" id="waMsgHint">Bodies imported from WhatsApp Chat Export .txt files.</div></div>
+                            <div><h2>Messages</h2><div class="hint" id="waMsgHint">Recovery metadata timeline. Readable text appears after a WhatsApp Chat Export import.</div></div>
                             <div class="tools">
                                 <input id="waMsgSearch" type="text" placeholder="Search body…" style="padding:6px 10px;border:1px solid var(--border);border-radius:9px;background:var(--panel2);color:var(--ink);font-family:var(--sans);font-size:12px;outline:none;width:180px">
                             </div>
@@ -1061,7 +1061,7 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
                     top.style.cssText = 'display:flex;justify-content:space-between;gap:6px;font-size:11px;';
                     var who = document.createElement('span');
                     who.className = 'mono';
-                    who.textContent = (m.from_me ? '→ ' : '') + (m.sender || m.chat_id || '?');
+                    who.textContent = (m.from_me ? '→ ' : '') + (m.sender_label || m.sender || 'Unknown sender');
                     var ts = document.createElement('span');
                     ts.className = 'hint';
                     ts.textContent = m.sent_at ? new Date(m.sent_at).toLocaleString() : '–';
@@ -1070,7 +1070,7 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
                     row.appendChild(top);
                     var body = document.createElement('div');
                     body.style.cssText = 'margin-top:4px;font-size:13px;white-space:pre-wrap;word-break:break-word;';
-                    body.textContent = m.body || '(' + (m.kind || 'message') + ')';
+                    body.textContent = m.display_body || m.body || '(' + (m.kind || 'message') + ')';
                     row.appendChild(body);
                     ul.appendChild(row);
                 });
@@ -2891,10 +2891,10 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
         var align = mine ? 'flex-end' : 'flex-start';
         var bg = mine ? 'rgba(240,185,104,.16)' : 'rgba(255,248,238,.05)';
         var border = mine ? 'rgba(240,185,104,.35)' : 'rgba(255,248,238,.12)';
-        var head = (m.sender ? '<span style="font-weight:600">' + esc(m.sender) + '</span> · ' : '')
+        var head = '<span style="font-weight:600">' + esc(m.sender_label || m.sender || 'Unknown sender') + '</span> · '
             + '<span>' + esc(when) + '</span>'
             + (m.kind && m.kind !== 'text' ? ' · <span style="color:var(--warn)">' + esc(m.kind) + '</span>' : '');
-        var body = esc(m.body || '').replace(/\n/g, '<br>');
+        var body = esc(m.display_body || m.body || '(message content unavailable)').replace(/\n/g, '<br>');
         return '<div style="display:flex;justify-content:' + align + '">'
             + '<div style="max-width:80%;padding:8px 12px;border-radius:10px;background:' + bg + ';border:1px solid ' + border + '">'
             + '<div style="font-size:10.5px;color:var(--ink-muted);margin-bottom:4px">' + head + '</div>'
@@ -2932,7 +2932,8 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
                     empty.style.display = empty.textContent ? 'block' : 'none';
                     return;
                 }
-                $('waMsgHint').textContent = fmt(j.count) + ' messages' + (q ? ' matching "' + esc(q) + '"' : '') + ', newest first.';
+                $('waMsgHint').textContent = fmt(j.count) + ' records · ' + fmt(j.readable_count || 0) + ' readable · '
+                    + fmt(j.encrypted_count || 0) + ' encrypted metadata' + (q ? ' matching "' + esc(q) + '"' : '') + ', newest first.';
                 list.innerHTML = j.messages.map(waMsgRow).join('');
             })
             .catch(function (e) { if (waMsgState.reqId !== token) return; list.innerHTML = ''; $('waMsgHint').textContent = 'Load failed: ' + e.message; });

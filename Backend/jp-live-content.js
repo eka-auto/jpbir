@@ -15,6 +15,7 @@
 
 import { requireKey } from './_auth.js';
 import { query, isConfigured } from '../Integrations/postgres.js';
+import { displayMessageBody, messageSenderLabel, normalizeSender } from '../Integrations/wa-store.js';
 
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'private, no-store');
@@ -67,12 +68,14 @@ export default async function handler(req, res) {
     // if it has body text OR is a real content/call kind.
     const MEANINGFUL_KINDS = ['image', 'video', 'audio', 'ptt', 'document', 'media', 'call'];
     const msgs = await query(
-      `SELECT msg_id, chat_id, sent_at, from_me, sender, kind, body, ingested_at
-         FROM wa_messages
-        WHERE ((sent_at IS NULL AND ingested_at >= $1::timestamptz)
-           OR sent_at >= $1::timestamptz)
-          AND ((body IS NOT NULL AND body <> '') OR kind = ANY($3::text[]))
-        ORDER BY sent_at DESC NULLS LAST, ingested_at DESC
+      `SELECT m.msg_id, m.chat_id, m.sent_at, m.from_me, m.sender, m.kind, m.encrypted,
+              m.body, m.ingested_at, c.name AS chat_name, c.kind AS chat_kind
+         FROM wa_messages m
+         JOIN wa_chats c ON c.chat_id = m.chat_id
+        WHERE ((m.sent_at IS NULL AND m.ingested_at >= $1::timestamptz)
+           OR m.sent_at >= $1::timestamptz)
+          AND ((m.body IS NOT NULL AND m.body <> '') OR m.kind = ANY($3::text[]))
+        ORDER BY m.sent_at DESC NULLS LAST, m.ingested_at DESC
         LIMIT $2`,
       [cutoff, limit, MEANINGFUL_KINDS]
     );
@@ -112,9 +115,12 @@ export default async function handler(req, res) {
         chat_id: m.chat_id,
         sent_at: m.sent_at,
         from_me: m.from_me,
-        sender: m.sender,
+        sender: normalizeSender(m.sender),
+        sender_label: messageSenderLabel(m),
         kind: m.kind,
+        encrypted: m.encrypted === true,
         body: m.body,
+        display_body: displayMessageBody(m),
         ingested_at: m.ingested_at,
       })),
     });
