@@ -4,6 +4,19 @@
 // connection method, heartbeat auth and live-device verification below.
 const S24_AGENT_VERSION_PREFIXES = ['s24-termux-', 's24-direct-cloud-'];
 
+// runtimeIsAndroid is written by the collector from the platform it is actually
+// executing on, and it is the one field in this chain an off-device process cannot
+// honestly produce. A Windows bridge was caught in production asserting
+// heartbeatAuth='termux-phone', sourceType='live_termux' and liveDeviceVerified=true
+// about itself — all of which it controls — and a version prefix is one edit from
+// matching too. Backend/jp-devices.js:154,179 requires this field strictly true for
+// exactly that reason; this module did not, so device_ping and list_devices reported
+// such a bridge as BOTH device_online and heartbeat_authenticated while the dashboard
+// correctly refused the same document. Read top-level to match jp-devices.js, and
+// require strictly true so an absent field — an older build, or anything that simply
+// does not set it — fails closed rather than passing by omission.
+const S24_RUNTIME_EVIDENCE = 'runtimeIsAndroid';
+
 export function deviceHealth(deviceId, doc, now = Date.now()) {
   const age = value => {
     if (typeof value !== 'string') return null;
@@ -18,6 +31,7 @@ export function deviceHealth(deviceId, doc, now = Date.now()) {
   const agentVersion = String(doc.agentVersion || '');
   const authenticated = doc.online === true && fresh(lastSeenAge)
     && S24_AGENT_VERSION_PREFIXES.some(p => agentVersion.startsWith(p))
+    && doc[S24_RUNTIME_EVIDENCE] === true
     && ['termux-direct-cloud', 'direct-daemon'].includes(doc.connectionMethod)
     && doc.heartbeatAuth === 'termux-phone'
     && sync.liveDeviceVerified === true && sync.heartbeatAuth === 'termux-phone'
