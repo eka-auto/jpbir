@@ -30,7 +30,14 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.14'
+          # Read the same pin the Vercel @vercel/python builder reads, so this
+          # suite can never again validate on an interpreter production does not
+          # run. It was hardcoded '3.14' while channel-sandbox deployed on 3.12
+          # - the builder's DEFAULT_PYTHON_VERSION, because nothing under
+          # Devices/sandbox named a version. requirements.txt pins the five
+          # libraries but not the interpreter, so a 3.13/3.14-only feature would
+          # have passed here and broken the deployed lambda.
+          python-version-file: Devices/sandbox/.python-version
 
       - name: Install dependencies
         working-directory: Devices/sandbox
