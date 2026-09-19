@@ -116,7 +116,7 @@ _REQUESTED_BY = "s24-connect-mcp"
 _HTTP_TIMEOUT = 20
 S24_HEARTBEAT_FRESHNESS_SECONDS = 300
 S24_BOOT_GRACE_SECONDS = 600  # allow fresh heartbeat without ack during boot
-S24_PHONE_AGENT_PREFIX = "s24-termux-"
+S24_PHONE_AGENT_PREFIXES = ("s24-termux-", "s24-direct-cloud-")
 S24_PHONE_CONNECTION_METHODS = frozenset({"termux-direct-cloud", "direct-daemon"})
 S24_PHONE_SYNC_SOURCES = frozenset({"live_termux", "live_daemon"})
 
@@ -360,7 +360,7 @@ def _s24_phone_heartbeat_is_fresh(doc: dict[str, Any], age: int | None = None) -
     if doc.get("online") is not True:
         return False
     agent = str(doc.get("agentVersion") or "")
-    if not agent.startswith(S24_PHONE_AGENT_PREFIX):
+    if not agent.startswith(S24_PHONE_AGENT_PREFIXES):
         return False
     if doc.get("connectionMethod") not in S24_PHONE_CONNECTION_METHODS:
         return False

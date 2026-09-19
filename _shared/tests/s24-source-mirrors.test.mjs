@@ -13,11 +13,15 @@ assert.match(mcp, /S24_SERVICE_ACCOUNT_KEY/);
 assert.match(mcp, /DATABASE\s*=\s*os\.environ\.get\("S24_FIRESTORE_DB", "eka-agent"\)/);
 assert.match(mcp, /def device_ping\(/);
 assert.match(mcp, /def device_send\(/);
+assert.match(mcp, /S24_PHONE_AGENT_PREFIXES\s*=\s*\("s24-termux-", "s24-direct-cloud-"\)/);
 
 assert.match(daemon, /DEVICE_DOC_ID\s*=\s*'samsung-s24-ultra'/);
 assert.match(daemon, /FIRESTORE_DB\s*=\s*os\.environ\.get\('EKA_FIRESTORE_DB', 'eka-agent'\)/);
 assert.match(daemon, /if not RUNTIME_IS_ANDROID:/);
 assert.match(daemon, /sys\.exit\(78\)/);
 assert.match(daemon, /for doc_id in doc_ids or \[DEVICE_DOC_ID\]:/);
+
+const puller = await readFile(new URL('../../Devices/S24/pull_direct_cloud.py', import.meta.url), 'utf8');
+assert.match(puller, /\.startswith\(\("s24-termux-", "s24-direct-cloud-"\)\)/);
 
 console.log('S24 tracked source mirror tests passed');
