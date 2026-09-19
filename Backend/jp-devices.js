@@ -123,6 +123,22 @@ function isS24Document(deviceId, fields) {
 const S24_ACK_MAX_AGE_SECONDS = 300;
 const S24_SOURCE_TYPES = new Set(['live_termux', 'live_daemon']);
 
+// Both of these prefixes name the S24's own agent. The collector that actually
+// ships to the phone writes s24-direct-cloud-<date>.<n> — its own
+// currentDirectCloudRuntime.expectedAgentVersion says so — but this check only
+// ever accepted s24-termux-, a prefix no real writer produced. So
+// authenticatedAgent could never pass and the S24 stayed offline on the
+// dashboard however fresh its heartbeat was, while the regression tests stayed
+// green because their fixture asserted against the same fictional string.
+//
+// Widening costs little. The comment below already records that a version string
+// is one edit away from matching, and runtimeIsAndroid — written by the
+// collector from the platform it is actually executing on — is the control that
+// caught the off-device Windows bridge. A bridge copying either prefix still
+// fails androidRuntime, which device-liveness.test.mjs now asserts against the
+// real production version string rather than an invented one.
+const S24_AGENT_VERSION_PREFIXES = ['s24-termux-', 's24-direct-cloud-'];
+
 // Every other field this check reads is written by whatever process owns the
 // document, so a bridge running off-device could assert all of them about
 // itself — and one did: a Windows process writing heartbeatAuth='termux-phone',
@@ -156,7 +172,7 @@ export function strictS24Liveness(fields, heartbeatAgeSeconds, ackAgeSeconds) {
   const checks = {
     heartbeatFresh: heartbeatAgeSeconds !== null && heartbeatAgeSeconds <= S24_ACK_MAX_AGE_SECONDS,
     authenticatedAgent: typeof fields.agentVersion === 'string' &&
-      fields.agentVersion.startsWith('s24-termux-'),
+      S24_AGENT_VERSION_PREFIXES.some(p => fields.agentVersion.startsWith(p)),
     heartbeatAuth: fields.heartbeatAuth === 'termux-phone',
     liveDeviceVerified: fields.liveDeviceVerified === true,
     liveSource: S24_SOURCE_TYPES.has(fields.sourceType),
