@@ -1,0 +1,1550 @@
+{
+  "$comment": "Declarative inventory of every Vercel environment variable on both deployed\nprojects, so drift is detectable and a re-provision is verifiable against\nsomething instead of against tribal knowledge.\n\nNO SECRET VALUES ARE STORED HERE AND NONE MAY EVER BE ADDED. Vercel type\n\"encrypted\" is still READABLE IN PLAINTEXT by anyone with project access, so a\nvalue copied into this file would be a credential committed to the repo. Only an\nexplicit allowlist of non-credential identifiers carries length + sha256_12,\nwhich detects drift (a BOM, a truncation, a re-save) without disclosing anything.\n\nOne entry per KEY, not per record: Vercel stores a row per key per environment\ngroup, so 93 records are 73 keys on jayti-dashboard. Values legitimately differ\nper environment - production SANDBOX_CONFIG_JSON carries the device roster that\npreview and development do not - so each environment is listed separately and\nenvironments a key is deliberately absent from are recorded in \"absentFrom\".\n\nRegenerate: node _shared/tools/generate-env-manifest.mjs   (needs `vercel` auth)\nVerify offline: node _shared/tests/env-manifest.test.mjs",
+  "generatedAt": "2026-09-19T17:52:18Z",
+  "source": "GET /v9/projects/{projectId}/env  +  vercel env pull (fingerprints only)",
+  "team": {
+    "slug": "jayti",
+    "id": "team_pbbZItTCyIkGsw6LeGrcWx0c"
+  },
+  "fingerprintAllowlist": [
+    "VERCEL_PROJECT_ID",
+    "VERCEL_TEAM_ID",
+    "VERCEL_ANALYTICS_PROJECT_ID",
+    "FIRESTORE_DB",
+    "JP_AWS_REGION",
+    "JP_TELEMETRY_TABLE",
+    "STATS_SITE",
+    "STALE_ALERT_SECONDS",
+    "SANDBOX_CONFIG_JSON",
+    "SANDBOX_MODE"
+  ],
+  "projects": {
+    "jayti-dashboard": {
+      "projectId": "prj_ert0BAxafhopYg8tjtbOMcfjDI9r",
+      "recordCount": 93,
+      "uniqueKeyCount": 73,
+      "byType": {
+        "sensitive": 33,
+        "encrypted": 56,
+        "plain": 4
+      },
+      "readableSecrets": [
+        "BLOB_READ_WRITE_TOKEN",
+        "DATABASE_URL",
+        "DATABASE_URL_UNPOOLED",
+        "GATE_DATABASE_URL",
+        "GATE_DATABASE_URL_UNPOOLED",
+        "GATE_NEON_AUTH_BASE_URL",
+        "GATE_PGPASSWORD",
+        "GATE_POSTGRES_PASSWORD",
+        "GATE_POSTGRES_PRISMA_URL",
+        "GATE_POSTGRES_URL",
+        "GATE_POSTGRES_URL_NO_SSL",
+        "GATE_POSTGRES_URL_NON_POOLING",
+        "GATE_VITE_NEON_AUTH_URL",
+        "KV_REST_API_READ_ONLY_TOKEN",
+        "KV_REST_API_TOKEN",
+        "KV_URL",
+        "PGPASSWORD",
+        "POSTGRES_PASSWORD",
+        "POSTGRES_PRISMA_URL",
+        "POSTGRES_URL",
+        "POSTGRES_URL_NO_SSL",
+        "POSTGRES_URL_NON_POOLING",
+        "REDIS_URL",
+        "vercel_blob_rw_qSrfKqJxsxAzFjXc_<REDACTED>_READ_WRITE_TOKEN"
+      ],
+      "vars": [
+        {
+          "key": "AGENT_API_KEY",
+          "type": "sensitive",
+          "visibility": "secret",
+          "environments": {
+            "development": {
+              "updatedAt": "2026-09-18T14:57:05Z"
+            },
+            "preview": {
+              "updatedAt": "2026-09-18T14:57:05Z"
+            },
+            "production": {
+              "updatedAt": "2026-09-17T12:22:24Z"
+            }
+          },
+          "absentFrom": [],
+          "updatedAt": "2026-09-18T14:57:05Z"
+        },
+        {
+          "key": "AGENT_API_URL",
+          "type": "encrypted+sensitive",
+          "visibility": "config",
+          "environments": {
+            "development": {
+              "updatedAt": "2026-09-19T04:00:19Z"
+            },
+            "preview": {
+              "updatedAt": "2026-09-19T04:00:16Z"
+            },
+            "production": {
+              "updatedAt": "2026-09-17T11:20:05Z"
+            }
+          },
+          "absentFrom": [],
+          "updatedAt": "2026-09-19T04:00:19Z"
+        },
+        {
+          "key": "ANTHROPIC_API_KEY",
+          "type": "sensitive",
+          "visibility": "secret",
+          "environments": {
+            "development": {
+              "updatedAt": "2026-09-18T10:09:19Z"
+            },
+            "preview": {
+              "updatedAt": "2026-09-18T10:09:19Z"
+            },
+            "production": {
+              "updatedAt": "2026-09-18T10:09:19Z"
+            }
+          },
+          "absentFrom": [],
+          "updatedAt": "2026-09-18T10:09:19Z"
+        },
+        {
+          "key": "BLOB_READ_WRITE_TOKEN",
+          "type": "encrypted+sensitive",
+          "visibility": null,
+          "environments": {
+            "development": {
+              "updatedAt": "2026-09-18T14:51:59Z"
+            },
+            "preview": {
+              "updatedAt": "2026-09-18T14:51:59Z"
+            },
+            "production": {
+              "updatedAt": "2026-08-29T17:37:31Z"
+            }
+          },
+          "absentFrom": [],
+          "securityIssues": [
+            "readable-secret"
+          ],
+          "updatedAt": "2026-09-18T14:51:59Z"
+        },
+        {
+          "key": "BLOB_STORE_ID",
+          "type": "encrypted",
+          "visibility": "config",
+          "environments": {
+            "development": {
+              "updatedAt": "2026-09-18T14:58:29Z"
+            },
+            "preview": {
+              "updatedAt": "2026-09-18T14:58:29Z"
+            }
+          },
+          "absentFrom": [
+            "production"
+          ],
+          "updatedAt": "2026-09-18T14:58:29Z"
+        },
+        {
+          "key": "CONNECT_CLIENT_ID",
+          "type": "sensitive",
+          "visibility": "secret",
+          "environments": {
+            "production": {
+              "updatedAt": "2026-09-02T22:12:27Z"
+            }
+          },
+          "absentFrom": [
+            "preview",
+            "development"
+          ],
+          "updatedAt": "2026-09-02T22:12:27Z"
+        },
+        {
+          "key": "CONNECT_CONNECTOR_UID",
+          "type": "encrypted",
+          "visibility": "config",
+          "environments": {
+            "development": {
+              "updatedAt": "2026-09-18T14:49:11Z"
+            },
+            "preview": {
+              "updatedAt": "2026-09-18T14:49:11Z"
+            }
+          },
+          "absentFrom": [
+            "production"
+          ],
+          "updatedAt": "2026-09-18T14:49:11Z"
+        },
+        {
+          "key": "CRON_SECRET",
+          "type": "sensitive",
+          "visibility": "secret",
+          "environments": {
+            "development": {
+              "updatedAt": "2026-09-18T14:21:57Z"
+            },
+            "preview": {
+              "updatedAt": "2026-09-18T14:21:57Z"
+            },
+            "production": {
+              "updatedAt": "2026-09-08T17:18:50Z"
+            }
+          },
+          "absentFrom": [],
+          "updatedAt": "2026-09-18T14:21:57Z"
+        },
+        {
+          "key": "DATABASE_URL",
+          "type": "encrypted",
+          "visibility": null,
+          "environments": {
+            "development": {
+              "updatedAt": "2026-09-18T10:11:41Z"
+            },
+            "preview": {
+              "updatedAt": "2026-09-18T10:11:41Z"
+            },
+            "production": {
+              "updatedAt": "2026-09-18T10:11:41Z"
+            }
+          },
+          "absentFrom": [],
+          "securityIssues": [
+            "readable-secret"
+          ],
+          "updatedAt": "2026-09-18T10:11:41Z"
+        },
+        {
+          "key": "DATABASE_URL_UNPOOLED",
+          "type": "encrypted",
+          "visibility": null,
+          "environments": {
+            "development": {
+              "updatedAt": "2026-09-18T10:11:41Z"
+            },
+            "preview": {
+              "updatedAt": "2026-09-18T10:11:41Z"
+            },
+            "production": {
+              "updatedAt": "2026-09-18T10:11:41Z"
+            }
+          },
+          "absentFrom": [],
+          "securityIssues": [
+            "readable-secret"
+          ],
+          "updatedAt": "2026-09-18T10:11:41Z"
+        },
+        {
+          "key": "DB_ADMIN_KEY",
+          "type": "sensitive",
+          "visibility": "secret",
+          "environments": {
+            "development": {
+              "updatedAt": "2026-09-18T14:21:56Z"
+            },
+            "preview": {
+              "updatedAt": "2026-09-18T14:21:56Z"
+            },
+            "production": {
+              "updatedAt": "2026-09-14T14:23:56Z"
+            }
+          },
+          "absentFrom": [],
+          "updatedAt": "2026-09-18T14:21:56Z"
+        },
+        {
+          "key": "ENDFORM_API_KEY",
+          "type": "sensitive",
+          "visibility": "secret",
+          "environments": {
+            "development": {
+              "updatedAt": "2026-09-19T17:00:54Z"
+            },
+            "preview": {
+              "updatedAt": "2026-09-19T17:00:54Z"
+            },
+            "production": {
+              "updatedAt": "2026-09-19T17:00:54Z"
+            }
+          },
+          "absentFrom": [],
+          "updatedAt": "2026-09-19T17:00:54Z"
+        },
+        {
+          "key": "FIREBASE_SERVICE_ACCOUNT_JSON",
+          "type": "sensitive",
+          "visibility": "secret",
+          "environments": {
+            "development": {
+              "updatedAt": "2026-09-18T14:21:58Z"
+            },
+            "preview": {
+              "updatedAt": "2026-09-18T14:21:58Z"
+            },
+            "production": {
+              "updatedAt": "2026-09-13T09:54:01Z"
+            }
+          },
+          "absentFrom": [],
+          "updatedAt": "2026-09-18T14:21:58Z"
+        },
+        {
+          "key": "FIRESTORE_DB",
+          "type": "encrypted",
+          "visibility": "config",
+          "environments": {
+            "development": {
+              "length": 9,
+              "sha256_12": "d43ec10865b4",
+              "updatedAt": "2026-09-18T14:49:04Z"
+            },
+            "preview": {
+              "length": 9,
+              "sha256_12": "d43ec10865b4",
+              "updatedAt": "2026-09-18T14:49:04Z"
+            }
+          },
+          "absentFrom": [
+            "production"
+          ],
+          "updatedAt": "2026-09-18T14:49:04Z"
+        },
+        {
+          "key": "GATE_DATABASE_URL",
+          "type": "encrypted",
+          "visibility": null,
+          "environments": {
+            "development": {
+              "updatedAt": "2026-09-19T03:47:31Z"
+            },
+            "preview": {
+              "updatedAt": "2026-09-19T03:47:31Z"
+            },
+            "production": {
+              "updatedAt": "2026-09-19T03:47:31Z"
+            }
+          },
+          "absentFrom": [],
+          "securityIssues": [
+            "readable-secret"
+          ],
+          "updatedAt": "2026-09-19T03:47:31Z"
+        },
+        {
+          "key": "GATE_DATABASE_URL_UNPOOLED",
+          "type": "encrypted",
+          "visibility": null,
+          "environments": {
+            "development": {
+              "updatedAt": "2026-09-19T03:47:31Z"
+            },
+            "preview": {
+              "updatedAt": "2026-09-19T03:47:31Z"
+            },
+            "production": {
+              "updatedAt": "2026-09-19T03:47:31Z"
+            }
+          },
+          "absentFrom": [],
+          "securityIssues": [
+            "readable-secret"
+          ],
+          "updatedAt": "2026-09-19T03:47:31Z"
+        },
+        {
+          "key": "GATE_NEON_AUTH_BASE_URL",
+          "type": "encrypted",
+          "visibility": null,
+          "environments": {
+            "development": {
+              "updatedAt": "2026-09-19T03:47:31Z"
+            },
+            "preview": {
+              "updatedAt": "2026-09-19T03:47:31Z"
+            },
+            "production": {
+              "updatedAt": "2026-09-19T03:47:31Z"
+            }
+          },
+          "absentFrom": [],
+          "securityIssues": [
+            "readable-secret"
+          ],
+          "updatedAt": "2026-09-19T03:47:31Z"
+        },
+        {
+          "key": "GATE_NEON_PROJECT_ID",
+          "type": "encrypted",
+          "visibility": null,
+          "environments": {
+            "development": {
+              "updatedAt": "2026-09-19T03:47:31Z"
+            },
+            "preview": {
+              "updatedAt": "2026-09-19T03:47:31Z"
+            },
+            "production": {
+              "updatedAt": "2026-09-19T03:47:31Z"
+            }
+          },
+          "absentFrom": [],
+          "updatedAt": "2026-09-19T03:47:31Z"
+        },
+        {
+          "key": "GATE_PGDATABASE",
+          "type": "encrypted",
+          "visibility": null,
+          "environments": {
+            "development": {
+              "updatedAt": "2026-09-19T03:47:31Z"
+            },
+            "preview": {
+              "updatedAt": "2026-09-19T03:47:31Z"
+            },
+            "production": {
+              "updatedAt": "2026-09-19T03:47:31Z"
+            }
+          },
+          "absentFrom": [],
+          "updatedAt": "2026-09-19T03:47:31Z"
+        },
+        {
+          "key": "GATE_PGHOST",
+          "type": "encrypted",
+          "visibility": null,
+          "environments": {
+            "development": {
+              "updatedAt": "2026-09-19T03:47:31Z"
+            },
+            "preview": {
+              "updatedAt": "2026-09-19T03:47:31Z"
+            },
+            "production": {
+              "updatedAt": "2026-09-19T03:47:31Z"
+            }
+          },
+          "absentFrom": [],
+          "updatedAt": "2026-09-19T03:47:31Z"
+        },
+        {
+          "key": "GATE_PGHOST_UNPOOLED",
+          "type": "encrypted",
+          "visibility": null,
+          "environments": {
+            "development": {
+              "updatedAt": "2026-09-19T03:47:31Z"
+            },
+            "preview": {
+              "updatedAt": "2026-09-19T03:47:31Z"
+            },
+            "production": {
+              "updatedAt": "2026-09-19T03:47:31Z"
+            }
+          },
+          "absentFrom": [],
+          "updatedAt": "2026-09-19T03:47:31Z"
+        },
+        {
+          "key": "GATE_PGPASSWORD",
+          "type": "encrypted",
+          "visibility": null,
+          "environments": {
+            "development": {
+              "updatedAt": "2026-09-19T03:47:31Z"
+            },
+            "preview": {
+              "updatedAt": "2026-09-19T03:47:31Z"
+            },
+            "production": {
+              "updatedAt": "2026-09-19T03:47:31Z"
+            }
+          },
+          "absentFrom": [],
+          "securityIssues": [
+            "readable-secret"
+          ],
+          "updatedAt": "2026-09-19T03:47:31Z"
+        },
+        {
+          "key": "GATE_PGUSER",
+          "type": "encrypted",
+          "visibility": null,
+          "environments": {
+            "development": {
+              "updatedAt": "2026-09-19T03:47:31Z"
+            },
+            "preview": {
+              "updatedAt": "2026-09-19T03:47:31Z"
+            },
+            "production": {
+              "updatedAt": "2026-09-19T03:47:31Z"
+            }
+          },
+          "absentFrom": [],
+          "updatedAt": "2026-09-19T03:47:31Z"
+        },
+        {
+          "key": "GATE_POSTGRES_DATABASE",
+          "type": "encrypted",
+          "visibility": null,
+          "environments": {
+            "development": {
+              "updatedAt": "2026-09-19T03:47:31Z"
+            },
+            "preview": {
+              "updatedAt": "2026-09-19T03:47:31Z"
+            },
+            "production": {
+              "updatedAt": "2026-09-19T03:47:31Z"
+            }
+          },
+          "absentFrom": [],
+          "updatedAt": "2026-09-19T03:47:31Z"
+        },
+        {
+          "key": "GATE_POSTGRES_HOST",
+          "type": "encrypted",
+          "visibility": null,
+          "environments": {
+            "development": {
+              "updatedAt": "2026-09-19T03:47:31Z"
+            },
+            "preview": {
+              "updatedAt": "2026-09-19T03:47:31Z"
+            },
+            "production": {
+              "updatedAt": "2026-09-19T03:47:31Z"
+            }
+          },
+          "absentFrom": [],
+          "updatedAt": "2026-09-19T03:47:31Z"
+        },
+        {
+          "key": "GATE_POSTGRES_PASSWORD",
+          "type": "encrypted",
+          "visibility": null,
+          "environments": {
+            "development": {
+              "updatedAt": "2026-09-19T03:47:31Z"
+            },
+            "preview": {
+              "updatedAt": "2026-09-19T03:47:31Z"
+            },
+            "production": {
+              "updatedAt": "2026-09-19T03:47:31Z"
+            }
+          },
+          "absentFrom": [],
+          "securityIssues": [
+            "readable-secret"
+          ],
+          "updatedAt": "2026-09-19T03:47:31Z"
+        },
+        {
+          "key": "GATE_POSTGRES_PRISMA_URL",
+          "type": "encrypted",
+          "visibility": null,
+          "environments": {
+            "development": {
+              "updatedAt": "2026-09-19T03:47:31Z"
+            },
+            "preview": {
+              "updatedAt": "2026-09-19T03:47:31Z"
+            },
+            "production": {
+              "updatedAt": "2026-09-19T03:47:31Z"
+            }
+          },
+          "absentFrom": [],
+          "securityIssues": [
+            "readable-secret"
+          ],
+          "updatedAt": "2026-09-19T03:47:31Z"
+        },
+        {
+          "key": "GATE_POSTGRES_URL",
+          "type": "encrypted",
+          "visibility": null,
+          "environments": {
+            "development": {
+              "updatedAt": "2026-09-19T03:47:31Z"
+            },
+            "preview": {
+              "updatedAt": "2026-09-19T03:47:31Z"
+            },
+            "production": {
+              "updatedAt": "2026-09-19T03:47:31Z"
+            }
+          },
+          "absentFrom": [],
+          "securityIssues": [
+            "readable-secret"
+          ],
+          "updatedAt": "2026-09-19T03:47:31Z"
+        },
+        {
+          "key": "GATE_POSTGRES_URL_NO_SSL",
+          "type": "encrypted",
+          "visibility": null,
+          "environments": {
+            "development": {
+              "updatedAt": "2026-09-19T03:47:31Z"
+            },
+            "preview": {
+              "updatedAt": "2026-09-19T03:47:31Z"
+            },
+            "production": {
+              "updatedAt": "2026-09-19T03:47:31Z"
+            }
+          },
+          "absentFrom": [],
+          "securityIssues": [
+            "readable-secret"
+          ],
+          "updatedAt": "2026-09-19T03:47:31Z"
+        },
+        {
+          "key": "GATE_POSTGRES_URL_NON_POOLING",
+          "type": "encrypted",
+          "visibility": null,
+          "environments": {
+            "development": {
+              "updatedAt": "2026-09-19T03:47:31Z"
+            },
+            "preview": {
+              "updatedAt": "2026-09-19T03:47:31Z"
+            },
+            "production": {
+              "updatedAt": "2026-09-19T03:47:31Z"
+            }
+          },
+          "absentFrom": [],
+          "securityIssues": [
+            "readable-secret"
+          ],
+          "updatedAt": "2026-09-19T03:47:31Z"
+        },
+        {
+          "key": "GATE_POSTGRES_USER",
+          "type": "encrypted",
+          "visibility": null,
+          "environments": {
+            "development": {
+              "updatedAt": "2026-09-19T03:47:31Z"
+            },
+            "preview": {
+              "updatedAt": "2026-09-19T03:47:31Z"
+            },
+            "production": {
+              "updatedAt": "2026-09-19T03:47:31Z"
+            }
+          },
+          "absentFrom": [],
+          "updatedAt": "2026-09-19T03:47:31Z"
+        },
+        {
+          "key": "GATE_VITE_NEON_AUTH_URL",
+          "type": "encrypted",
+          "visibility": null,
+          "environments": {
+            "development": {
+              "updatedAt": "2026-09-19T03:47:31Z"
+            },
+            "preview": {
+              "updatedAt": "2026-09-19T03:47:31Z"
+            },
+            "production": {
+              "updatedAt": "2026-09-19T03:47:31Z"
+            }
+          },
+          "absentFrom": [],
+          "securityIssues": [
+            "readable-secret"
+          ],
+          "updatedAt": "2026-09-19T03:47:31Z"
+        },
+        {
+          "key": "HEALTH_CHECK_KEY",
+          "type": "sensitive",
+          "visibility": "secret",
+          "environments": {
+            "production": {
+              "updatedAt": "2026-09-18T12:21:14Z"
+            }
+          },
+          "absentFrom": [
+            "preview",
+            "development"
+          ],
+          "updatedAt": "2026-09-18T12:21:14Z"
+        },
+        {
+          "key": "JP_AGENT_TOKEN",
+          "type": "sensitive",
+          "visibility": "secret",
+          "environments": {
+            "development": {
+              "updatedAt": "2026-09-18T14:57:09Z"
+            },
+            "preview": {
+              "updatedAt": "2026-09-18T14:57:09Z"
+            },
+            "production": {
+              "updatedAt": "2026-09-12T02:59:36Z"
+            }
+          },
+          "absentFrom": [],
+          "updatedAt": "2026-09-18T14:57:09Z"
+        },
+        {
+          "key": "JP_AGENT_URL",
+          "type": "encrypted+sensitive",
+          "visibility": "config",
+          "environments": {
+            "development": {
+              "updatedAt": "2026-09-19T04:00:25Z"
+            },
+            "preview": {
+              "updatedAt": "2026-09-19T04:00:22Z"
+            },
+            "production": {
+              "updatedAt": "2026-09-12T02:59:32Z"
+            }
+          },
+          "absentFrom": [],
+          "updatedAt": "2026-09-19T04:00:25Z"
+        },
+        {
+          "key": "JP_AWS_ACCESS_KEY_ID",
+          "type": "sensitive",
+          "visibility": "secret",
+          "environments": {
+            "production": {
+              "updatedAt": "2026-08-29T17:48:41Z"
+            }
+          },
+          "absentFrom": [
+            "preview",
+            "development"
+          ],
+          "updatedAt": "2026-08-29T17:48:41Z"
+        },
+        {
+          "key": "JP_AWS_REGION",
+          "type": "encrypted+sensitive",
+          "visibility": "config",
+          "environments": {
+            "development": {
+              "length": 9,
+              "sha256_12": "d8c0d0637775",
+              "updatedAt": "2026-09-18T14:49:27Z"
+            },
+            "preview": {
+              "length": 9,
+              "sha256_12": "d8c0d0637775",
+              "updatedAt": "2026-09-18T14:49:27Z"
+            },
+            "production": {
+              "updatedAt": "2026-08-29T17:48:54Z"
+            }
+          },
+          "absentFrom": [],
+          "updatedAt": "2026-09-18T14:49:27Z"
+        },
+        {
+          "key": "JP_AWS_SECRET_ACCESS_KEY",
+          "type": "sensitive",
+          "visibility": "secret",
+          "environments": {
+            "production": {
+              "updatedAt": "2026-08-29T17:48:43Z"
+            }
+          },
+          "absentFrom": [
+            "preview",
+            "development"
+          ],
+          "updatedAt": "2026-08-29T17:48:43Z"
+        },
+        {
+          "key": "JP_TELEMETRY_TABLE",
+          "type": "encrypted",
+          "visibility": "config",
+          "environments": {
+            "development": {
+              "length": 21,
+              "sha256_12": "180e319067ac",
+              "updatedAt": "2026-09-18T14:49:20Z"
+            },
+            "preview": {
+              "length": 21,
+              "sha256_12": "180e319067ac",
+              "updatedAt": "2026-09-18T14:49:20Z"
+            }
+          },
+          "absentFrom": [
+            "production"
+          ],
+          "updatedAt": "2026-09-18T14:49:20Z"
+        },
+        {
+          "key": "JP_WRITE_AWS_ACCESS_KEY_ID",
+          "type": "sensitive",
+          "visibility": "secret",
+          "environments": {
+            "production": {
+              "updatedAt": "2026-08-29T17:48:46Z"
+            }
+          },
+          "absentFrom": [
+            "preview",
+            "development"
+          ],
+          "updatedAt": "2026-08-29T17:48:46Z"
+        },
+        {
+          "key": "JP_WRITE_AWS_SECRET_ACCESS_KEY",
+          "type": "sensitive",
+          "visibility": "secret",
+          "environments": {
+            "production": {
+              "updatedAt": "2026-08-29T17:48:48Z"
+            }
+          },
+          "absentFrom": [
+            "preview",
+            "development"
+          ],
+          "updatedAt": "2026-08-29T17:48:48Z"
+        },
+        {
+          "key": "KV_REST_API_READ_ONLY_TOKEN",
+          "type": "encrypted",
+          "visibility": null,
+          "environments": {
+            "development": {
+              "updatedAt": "2026-09-18T18:56:42Z"
+            },
+            "preview": {
+              "updatedAt": "2026-09-18T18:56:42Z"
+            },
+            "production": {
+              "updatedAt": "2026-09-18T18:56:42Z"
+            }
+          },
+          "absentFrom": [],
+          "securityIssues": [
+            "readable-secret"
+          ],
+          "updatedAt": "2026-09-18T18:56:42Z"
+        },
+        {
+          "key": "KV_REST_API_TOKEN",
+          "type": "encrypted",
+          "visibility": null,
+          "environments": {
+            "development": {
+              "updatedAt": "2026-09-18T18:56:42Z"
+            },
+            "preview": {
+              "updatedAt": "2026-09-18T18:56:42Z"
+            },
+            "production": {
+              "updatedAt": "2026-09-18T18:56:42Z"
+            }
+          },
+          "absentFrom": [],
+          "securityIssues": [
+            "readable-secret"
+          ],
+          "updatedAt": "2026-09-18T18:56:42Z"
+        },
+        {
+          "key": "KV_REST_API_URL",
+          "type": "encrypted",
+          "visibility": null,
+          "environments": {
+            "development": {
+              "updatedAt": "2026-09-18T18:56:42Z"
+            },
+            "preview": {
+              "updatedAt": "2026-09-18T18:56:42Z"
+            },
+            "production": {
+              "updatedAt": "2026-09-18T18:56:42Z"
+            }
+          },
+          "absentFrom": [],
+          "updatedAt": "2026-09-18T18:56:42Z"
+        },
+        {
+          "key": "KV_URL",
+          "type": "encrypted",
+          "visibility": null,
+          "environments": {
+            "development": {
+              "updatedAt": "2026-09-18T18:56:42Z"
+            },
+            "preview": {
+              "updatedAt": "2026-09-18T18:56:42Z"
+            },
+            "production": {
+              "updatedAt": "2026-09-18T18:56:42Z"
+            }
+          },
+          "absentFrom": [],
+          "securityIssues": [
+            "readable-secret"
+          ],
+          "updatedAt": "2026-09-18T18:56:42Z"
+        },
+        {
+          "key": "NEON_PROJECT_ID",
+          "type": "encrypted",
+          "visibility": null,
+          "environments": {
+            "development": {
+              "updatedAt": "2026-09-18T10:11:41Z"
+            },
+            "preview": {
+              "updatedAt": "2026-09-18T10:11:41Z"
+            },
+            "production": {
+              "updatedAt": "2026-09-18T10:11:41Z"
+            }
+          },
+          "absentFrom": [],
+          "updatedAt": "2026-09-18T10:11:41Z"
+        },
+        {
+          "key": "PGDATABASE",
+          "type": "encrypted",
+          "visibility": null,
+          "environments": {
+            "development": {
+              "updatedAt": "2026-09-18T10:11:41Z"
+            },
+            "preview": {
+              "updatedAt": "2026-09-18T10:11:41Z"
+            },
+            "production": {
+              "updatedAt": "2026-09-18T10:11:41Z"
+            }
+          },
+          "absentFrom": [],
+          "updatedAt": "2026-09-18T10:11:41Z"
+        },
+        {
+          "key": "PGHOST",
+          "type": "encrypted",
+          "visibility": null,
+          "environments": {
+            "development": {
+              "updatedAt": "2026-09-18T10:11:41Z"
+            },
+            "preview": {
+              "updatedAt": "2026-09-18T10:11:41Z"
+            },
+            "production": {
+              "updatedAt": "2026-09-18T10:11:41Z"
+            }
+          },
+          "absentFrom": [],
+          "updatedAt": "2026-09-18T10:11:41Z"
+        },
+        {
+          "key": "PGHOST_UNPOOLED",
+          "type": "encrypted",
+          "visibility": null,
+          "environments": {
+            "development": {
+              "updatedAt": "2026-09-18T10:11:41Z"
+            },
+            "preview": {
+              "updatedAt": "2026-09-18T10:11:41Z"
+            },
+            "production": {
+              "updatedAt": "2026-09-18T10:11:41Z"
+            }
+          },
+          "absentFrom": [],
+          "updatedAt": "2026-09-18T10:11:41Z"
+        },
+        {
+          "key": "PGPASSWORD",
+          "type": "encrypted",
+          "visibility": null,
+          "environments": {
+            "development": {
+              "updatedAt": "2026-09-18T10:11:41Z"
+            },
+            "preview": {
+              "updatedAt": "2026-09-18T10:11:41Z"
+            },
+            "production": {
+              "updatedAt": "2026-09-18T10:11:41Z"
+            }
+          },
+          "absentFrom": [],
+          "securityIssues": [
+            "readable-secret"
+          ],
+          "updatedAt": "2026-09-18T10:11:41Z"
+        },
+        {
+          "key": "PGUSER",
+          "type": "encrypted",
+          "visibility": null,
+          "environments": {
+            "development": {
+              "updatedAt": "2026-09-18T10:11:41Z"
+            },
+            "preview": {
+              "updatedAt": "2026-09-18T10:11:41Z"
+            },
+            "production": {
+              "updatedAt": "2026-09-18T10:11:41Z"
+            }
+          },
+          "absentFrom": [],
+          "updatedAt": "2026-09-18T10:11:41Z"
+        },
+        {
+          "key": "POSTGRES_DATABASE",
+          "type": "encrypted",
+          "visibility": null,
+          "environments": {
+            "development": {
+              "updatedAt": "2026-09-18T10:11:41Z"
+            },
+            "preview": {
+              "updatedAt": "2026-09-18T10:11:41Z"
+            },
+            "production": {
+              "updatedAt": "2026-09-18T10:11:41Z"
+            }
+          },
+          "absentFrom": [],
+          "updatedAt": "2026-09-18T10:11:41Z"
+        },
+        {
+          "key": "POSTGRES_HOST",
+          "type": "encrypted",
+          "visibility": null,
+          "environments": {
+            "development": {
+              "updatedAt": "2026-09-18T10:11:41Z"
+            },
+            "preview": {
+              "updatedAt": "2026-09-18T10:11:41Z"
+            },
+            "production": {
+              "updatedAt": "2026-09-18T10:11:41Z"
+            }
+          },
+          "absentFrom": [],
+          "updatedAt": "2026-09-18T10:11:41Z"
+        },
+        {
+          "key": "POSTGRES_PASSWORD",
+          "type": "encrypted",
+          "visibility": null,
+          "environments": {
+            "development": {
+              "updatedAt": "2026-09-18T10:11:41Z"
+            },
+            "preview": {
+              "updatedAt": "2026-09-18T10:11:41Z"
+            },
+            "production": {
+              "updatedAt": "2026-09-18T10:11:41Z"
+            }
+          },
+          "absentFrom": [],
+          "securityIssues": [
+            "readable-secret"
+          ],
+          "updatedAt": "2026-09-18T10:11:41Z"
+        },
+        {
+          "key": "POSTGRES_PRISMA_URL",
+          "type": "encrypted",
+          "visibility": null,
+          "environments": {
+            "development": {
+              "updatedAt": "2026-09-18T10:11:41Z"
+            },
+            "preview": {
+              "updatedAt": "2026-09-18T10:11:41Z"
+            },
+            "production": {
+              "updatedAt": "2026-09-18T10:11:41Z"
+            }
+          },
+          "absentFrom": [],
+          "securityIssues": [
+            "readable-secret"
+          ],
+          "updatedAt": "2026-09-18T10:11:41Z"
+        },
+        {
+          "key": "POSTGRES_URL",
+          "type": "encrypted",
+          "visibility": null,
+          "environments": {
+            "development": {
+              "updatedAt": "2026-09-18T10:11:41Z"
+            },
+            "preview": {
+              "updatedAt": "2026-09-18T10:11:41Z"
+            },
+            "production": {
+              "updatedAt": "2026-09-18T10:11:41Z"
+            }
+          },
+          "absentFrom": [],
+          "securityIssues": [
+            "readable-secret"
+          ],
+          "updatedAt": "2026-09-18T10:11:41Z"
+        },
+        {
+          "key": "POSTGRES_URL_NO_SSL",
+          "type": "encrypted",
+          "visibility": null,
+          "environments": {
+            "development": {
+              "updatedAt": "2026-09-18T10:11:41Z"
+            },
+            "preview": {
+              "updatedAt": "2026-09-18T10:11:41Z"
+            },
+            "production": {
+              "updatedAt": "2026-09-18T10:11:41Z"
+            }
+          },
+          "absentFrom": [],
+          "securityIssues": [
+            "readable-secret"
+          ],
+          "updatedAt": "2026-09-18T10:11:41Z"
+        },
+        {
+          "key": "POSTGRES_URL_NON_POOLING",
+          "type": "encrypted",
+          "visibility": null,
+          "environments": {
+            "development": {
+              "updatedAt": "2026-09-18T10:11:41Z"
+            },
+            "preview": {
+              "updatedAt": "2026-09-18T10:11:41Z"
+            },
+            "production": {
+              "updatedAt": "2026-09-18T10:11:41Z"
+            }
+          },
+          "absentFrom": [],
+          "securityIssues": [
+            "readable-secret"
+          ],
+          "updatedAt": "2026-09-18T10:11:41Z"
+        },
+        {
+          "key": "POSTGRES_USER",
+          "type": "encrypted",
+          "visibility": null,
+          "environments": {
+            "development": {
+              "updatedAt": "2026-09-18T10:11:41Z"
+            },
+            "preview": {
+              "updatedAt": "2026-09-18T10:11:41Z"
+            },
+            "production": {
+              "updatedAt": "2026-09-18T10:11:41Z"
+            }
+          },
+          "absentFrom": [],
+          "updatedAt": "2026-09-18T10:11:41Z"
+        },
+        {
+          "key": "REDIS_URL",
+          "type": "encrypted",
+          "visibility": null,
+          "environments": {
+            "development": {
+              "updatedAt": "2026-09-18T18:56:42Z"
+            },
+            "preview": {
+              "updatedAt": "2026-09-18T18:56:42Z"
+            },
+            "production": {
+              "updatedAt": "2026-09-18T18:56:42Z"
+            }
+          },
+          "absentFrom": [],
+          "securityIssues": [
+            "readable-secret"
+          ],
+          "updatedAt": "2026-09-18T18:56:42Z"
+        },
+        {
+          "key": "S24_SYNC_PUBLIC_KEYS",
+          "type": "sensitive",
+          "visibility": "secret",
+          "environments": {
+            "production": {
+              "updatedAt": "2026-09-14T03:44:58Z"
+            }
+          },
+          "absentFrom": [
+            "preview",
+            "development"
+          ],
+          "updatedAt": "2026-09-14T03:44:58Z"
+        },
+        {
+          "key": "STALE_ALERT_SECONDS",
+          "type": "encrypted",
+          "visibility": "config",
+          "environments": {
+            "development": {
+              "length": 3,
+              "sha256_12": "284b7e6d788f",
+              "updatedAt": "2026-09-18T14:49:14Z"
+            },
+            "preview": {
+              "length": 3,
+              "sha256_12": "284b7e6d788f",
+              "updatedAt": "2026-09-18T14:49:14Z"
+            }
+          },
+          "absentFrom": [
+            "production"
+          ],
+          "updatedAt": "2026-09-18T14:49:14Z"
+        },
+        {
+          "key": "STATS_KEY",
+          "type": "sensitive",
+          "visibility": "secret",
+          "environments": {
+            "development": {
+              "updatedAt": "2026-09-18T14:55:00Z"
+            },
+            "preview": {
+              "updatedAt": "2026-09-18T14:55:00Z"
+            },
+            "production": {
+              "updatedAt": "2026-09-14T09:38:21Z"
+            }
+          },
+          "absentFrom": [],
+          "updatedAt": "2026-09-18T14:55:00Z"
+        },
+        {
+          "key": "STATS_SITE",
+          "type": "encrypted",
+          "visibility": "config",
+          "environments": {
+            "development": {
+              "length": 16,
+              "sha256_12": "a2557849a554",
+              "updatedAt": "2026-09-18T14:49:24Z"
+            },
+            "preview": {
+              "length": 16,
+              "sha256_12": "a2557849a554",
+              "updatedAt": "2026-09-18T14:49:24Z"
+            }
+          },
+          "absentFrom": [
+            "production"
+          ],
+          "updatedAt": "2026-09-18T14:49:24Z"
+        },
+        {
+          "key": "VERCEL_API_TOKEN",
+          "type": "sensitive",
+          "visibility": "secret",
+          "environments": {
+            "development": {
+              "updatedAt": "2026-09-18T14:57:29Z"
+            },
+            "preview": {
+              "updatedAt": "2026-09-18T14:57:29Z"
+            },
+            "production": {
+              "updatedAt": "2026-09-12T03:40:40Z"
+            }
+          },
+          "absentFrom": [],
+          "updatedAt": "2026-09-18T14:57:29Z"
+        },
+        {
+          "key": "vercel_blob_rw_KydwgdJeIogU0Fw6_<REDACTED>_STORE_ID",
+          "type": "plain",
+          "visibility": null,
+          "environments": {
+            "development": {
+              "updatedAt": "2026-09-18T19:09:36Z"
+            },
+            "preview": {
+              "updatedAt": "2026-09-18T19:09:36Z"
+            },
+            "production": {
+              "updatedAt": "2026-09-18T19:09:36Z"
+            }
+          },
+          "absentFrom": [],
+          "keyRedacted": true,
+          "keySha256_12": "76a656a056f1",
+          "note": "the real variable name embeds a live read-write token; only its sha256 is recorded",
+          "updatedAt": "2026-09-18T19:09:36Z"
+        },
+        {
+          "key": "vercel_blob_rw_KydwgdJeIogU0Fw6_<REDACTED>_WEBHOOK_PUBLIC_KEY",
+          "type": "plain",
+          "visibility": null,
+          "environments": {
+            "development": {
+              "updatedAt": "2026-09-18T19:09:36Z"
+            },
+            "preview": {
+              "updatedAt": "2026-09-18T19:09:36Z"
+            },
+            "production": {
+              "updatedAt": "2026-09-18T19:09:36Z"
+            }
+          },
+          "absentFrom": [],
+          "keyRedacted": true,
+          "keySha256_12": "aca33fc60ede",
+          "note": "the real variable name embeds a live read-write token; only its sha256 is recorded",
+          "updatedAt": "2026-09-18T19:09:36Z"
+        },
+        {
+          "key": "vercel_blob_rw_qSrfKqJxsxAzFjXc_<REDACTED>_READ_WRITE_TOKEN",
+          "type": "encrypted",
+          "visibility": null,
+          "environments": {
+            "development": {
+              "updatedAt": "2026-09-18T18:56:15Z"
+            },
+            "preview": {
+              "updatedAt": "2026-09-18T18:56:15Z"
+            },
+            "production": {
+              "updatedAt": "2026-09-18T18:56:15Z"
+            }
+          },
+          "absentFrom": [],
+          "keyRedacted": true,
+          "keySha256_12": "ec09cbbd24f5",
+          "note": "the real variable name embeds a live read-write token; only its sha256 is recorded",
+          "securityIssues": [
+            "readable-secret"
+          ],
+          "updatedAt": "2026-09-18T18:56:15Z"
+        },
+        {
+          "key": "vercel_blob_rw_qSrfKqJxsxAzFjXc_<REDACTED>_STORE_ID",
+          "type": "plain",
+          "visibility": null,
+          "environments": {
+            "development": {
+              "updatedAt": "2026-09-18T18:56:15Z"
+            },
+            "preview": {
+              "updatedAt": "2026-09-18T18:56:15Z"
+            },
+            "production": {
+              "updatedAt": "2026-09-18T18:56:15Z"
+            }
+          },
+          "absentFrom": [],
+          "keyRedacted": true,
+          "keySha256_12": "a74456013a51",
+          "note": "the real variable name embeds a live read-write token; only its sha256 is recorded",
+          "updatedAt": "2026-09-18T18:56:15Z"
+        },
+        {
+          "key": "vercel_blob_rw_qSrfKqJxsxAzFjXc_<REDACTED>_WEBHOOK_PUBLIC_KEY",
+          "type": "plain",
+          "visibility": null,
+          "environments": {
+            "development": {
+              "updatedAt": "2026-09-18T18:56:15Z"
+            },
+            "preview": {
+              "updatedAt": "2026-09-18T18:56:15Z"
+            },
+            "production": {
+              "updatedAt": "2026-09-18T18:56:15Z"
+            }
+          },
+          "absentFrom": [],
+          "keyRedacted": true,
+          "keySha256_12": "8094d76a886a",
+          "note": "the real variable name embeds a live read-write token; only its sha256 is recorded",
+          "updatedAt": "2026-09-18T18:56:15Z"
+        },
+        {
+          "key": "VERCEL_PROJECT_ID",
+          "type": "encrypted",
+          "visibility": "config",
+          "environments": {
+            "development": {
+              "length": 32,
+              "sha256_12": "4b1a532e24c4",
+              "updatedAt": "2026-09-19T04:00:13Z"
+            },
+            "preview": {
+              "length": 32,
+              "sha256_12": "4b1a532e24c4",
+              "updatedAt": "2026-09-19T04:00:09Z"
+            },
+            "production": {
+              "length": 32,
+              "sha256_12": "4b1a532e24c4",
+              "updatedAt": "2026-09-19T08:23:34Z"
+            }
+          },
+          "absentFrom": [],
+          "updatedAt": "2026-09-19T08:23:34Z"
+        },
+        {
+          "key": "VERCEL_TEAM_ID",
+          "type": "encrypted",
+          "visibility": "config",
+          "environments": {
+            "development": {
+              "length": 5,
+              "sha256_12": "62e651467a6c",
+              "updatedAt": "2026-09-18T14:49:07Z"
+            },
+            "preview": {
+              "length": 5,
+              "sha256_12": "62e651467a6c",
+              "updatedAt": "2026-09-18T14:49:07Z"
+            }
+          },
+          "absentFrom": [
+            "production"
+          ],
+          "updatedAt": "2026-09-18T14:49:07Z"
+        },
+        {
+          "key": "WA_INGEST_KEY",
+          "type": "sensitive",
+          "visibility": "secret",
+          "environments": {
+            "development": {
+              "updatedAt": "2026-09-18T14:57:13Z"
+            },
+            "preview": {
+              "updatedAt": "2026-09-18T14:57:13Z"
+            },
+            "production": {
+              "updatedAt": "2026-09-17T08:11:06Z"
+            }
+          },
+          "absentFrom": [],
+          "updatedAt": "2026-09-18T14:57:13Z"
+        }
+      ]
+    },
+    "channel-sandbox": {
+      "projectId": "prj_hRRe8dOt2F3mYU721Qk9lFAG9V92",
+      "recordCount": 9,
+      "uniqueKeyCount": 4,
+      "byType": {
+        "sensitive": 6,
+        "encrypted": 3
+      },
+      "readableSecrets": [],
+      "vars": [
+        {
+          "key": "ENDFORM_API_KEY",
+          "type": "sensitive",
+          "visibility": "secret",
+          "environments": {
+            "development": {
+              "updatedAt": "2026-09-19T17:02:18Z"
+            },
+            "preview": {
+              "updatedAt": "2026-09-19T17:02:18Z"
+            },
+            "production": {
+              "updatedAt": "2026-09-19T17:02:18Z"
+            }
+          },
+          "absentFrom": [],
+          "updatedAt": "2026-09-19T17:02:18Z"
+        },
+        {
+          "key": "FIREBASE_SERVICE_ACCOUNT_JSON",
+          "type": "sensitive",
+          "visibility": "secret",
+          "environments": {
+            "production": {
+              "updatedAt": "2026-09-19T12:16:24Z"
+            }
+          },
+          "absentFrom": [
+            "preview",
+            "development"
+          ],
+          "updatedAt": "2026-09-19T12:16:24Z"
+        },
+        {
+          "key": "SANDBOX_CONFIG_JSON",
+          "type": "encrypted",
+          "visibility": "config",
+          "environments": {
+            "development": {
+              "length": 193,
+              "sha256_12": "7b5e1dd4a9ec",
+              "updatedAt": "2026-09-19T04:28:54Z"
+            },
+            "preview": {
+              "length": 193,
+              "sha256_12": "7b5e1dd4a9ec",
+              "updatedAt": "2026-09-19T04:28:51Z"
+            },
+            "production": {
+              "length": 675,
+              "sha256_12": "3a32b4623517",
+              "updatedAt": "2026-09-19T13:01:36Z"
+            }
+          },
+          "absentFrom": [],
+          "updatedAt": "2026-09-19T13:01:36Z"
+        },
+        {
+          "key": "STATS_KEY",
+          "type": "sensitive",
+          "visibility": "secret",
+          "environments": {
+            "preview": {
+              "updatedAt": "2026-09-19T12:47:51Z"
+            },
+            "production": {
+              "updatedAt": "2026-09-19T12:47:48Z"
+            }
+          },
+          "absentFrom": [
+            "development"
+          ],
+          "updatedAt": "2026-09-19T12:47:51Z"
+        }
+      ]
+    }
+  }
+}

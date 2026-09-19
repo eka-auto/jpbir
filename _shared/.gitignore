@@ -70,6 +70,12 @@ WORKSPACE_*.md
 *.json
 !package.json
 !package-lock.json
+# The Vercel env manifest is generated but MUST be tracked: it is the declarative
+# record both projects' environments are reconciled against, and
+# _shared/tests/env-manifest.test.mjs reads it. It carries no secret values -
+# generate-env-manifest.mjs aborts if one would be written, and redacts the token
+# segment of vercel_blob_rw_* variable names.
+!config/vercel-env.manifest.json
 *.py
 !*.ps1
 !*.sh
