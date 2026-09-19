@@ -214,6 +214,79 @@ class MakeClientConfigTests(unittest.TestCase):
             FirestoreClient(**kwargs, allow_production_devices=True)
 
 
+class MissingRosterTests(unittest.TestCase):
+    """A config with no device roster must answer JSON 503, never an HTML 500.
+
+    Every device route read ``cfg["devices"]`` directly, so a deployment whose
+    ``SANDBOX_CONFIG_JSON`` omitted the roster answered with a bare KeyError
+    that Flask rendered as an HTML 500. That reads like a crash and is not
+    parseable by the JS dashboard that consumes these routes. The roster is not
+    optional in a lambda - there is no ``devices.json`` there - so an absent one
+    is a deployment misconfiguration and has to say so.
+    """
+
+    ROUTES = [
+        ("get", "/api/devices"),
+        ("get", "/api/devices/known/status"),
+        ("get", "/api/data/calls"),
+        ("post", "/api/devices/known/commands"),
+    ]
+
+    def setUp(self):
+        dashboard_api.app.config["TESTING"] = True
+        # TESTING implies PROPAGATE_EXCEPTIONS, which re-raises past the error
+        # handler. Production runs with it off, so turn it off here to exercise
+        # the path the lambda actually takes.
+        dashboard_api.app.config["PROPAGATE_EXCEPTIONS"] = False
+        dashboard_api.app.config["SANDBOX_CFG"] = {
+            "collection": "sandbox_devices",
+            "allowed_commands": ["ping"],
+        }
+        dashboard_api.app.config["FIRESTORE"] = Mock()
+        dashboard_api.app.config["SANDBOX_AUTH_DISABLED"] = True
+        self.addCleanup(self._reset_app_config)
+        self.http = dashboard_api.app.test_client()
+
+    @staticmethod
+    def _reset_app_config():
+        for key in (
+            "SANDBOX_CFG",
+            "FIRESTORE",
+            "SANDBOX_AUTH_DISABLED",
+            "PROPAGATE_EXCEPTIONS",
+            "TESTING",
+        ):
+            dashboard_api.app.config.pop(key, None)
+
+    def test_every_device_route_reports_misconfiguration_as_json(self):
+        for method, path in self.ROUTES:
+            with self.subTest(route=f"{method.upper()} {path}"):
+                kwargs = {"json": {}} if method == "post" else {}
+                response = getattr(self.http, method)(path, **kwargs)
+                self.assertEqual(response.status_code, 503)
+                self.assertTrue(response.is_json, f"{path} answered HTML, not JSON")
+                body = response.get_json()
+                self.assertEqual(body["error"], "server not configured")
+                self.assertIn("devices", body["detail"])
+
+    def test_an_empty_roster_fails_the_same_way_as_a_missing_one(self):
+        dashboard_api.app.config["SANDBOX_CFG"]["devices"] = []
+        response = self.http.get("/api/devices")
+        self.assertEqual(response.status_code, 503)
+        self.assertIn("devices", response.get_json()["detail"])
+
+    def test_a_null_roster_fails_the_same_way_too(self):
+        dashboard_api.app.config["SANDBOX_CFG"]["devices"] = None
+        with self.assertRaises(dashboard_api.ConfigError):
+            dashboard_api.configured_devices(
+                dashboard_api.app.config["SANDBOX_CFG"]
+            )
+
+    def test_configured_devices_returns_the_roster_when_present(self):
+        roster = [{"id": "known", "display_name": "Known"}]
+        self.assertIs(dashboard_api.configured_devices({"devices": roster}), roster)
+
+
 class DashboardTests(unittest.TestCase):
     def setUp(self):
         dashboard_api.app.config["TESTING"] = True

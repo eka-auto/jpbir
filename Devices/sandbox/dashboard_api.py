@@ -44,6 +44,33 @@ class ConfigError(RuntimeError):
     """Raised when the sandbox config cannot be resolved at request time."""
 
 
+@app.errorhandler(ConfigError)
+def config_error_response(exc):
+    # Without this a ConfigError raised inside a route escapes as an unhandled
+    # exception and Flask renders an HTML 500 - indistinguishable from a crash,
+    # and unreadable by the JS dashboard that consumes these routes. The
+    # bootstrap guard already answers "this deployment is not configured" with
+    # this exact JSON shape, so every path now says it the same way.
+    return jsonify({"error": "server not configured", "detail": str(exc)}), 503
+
+
+def configured_devices(cfg):
+    """The device roster, or a ConfigError naming what is missing.
+
+    A lambda has no ``devices.json`` (see ``load_config_from_env``), so the
+    roster travels inside ``SANDBOX_CONFIG_JSON``. Every route that touches
+    devices must come through here: reading ``cfg["devices"]`` directly raises
+    a bare KeyError when the roster is absent, which is a deployment
+    misconfiguration being reported as a server crash.
+    """
+    devices = cfg.get("devices") or []
+    if not devices:
+        raise ConfigError(
+            "SANDBOX_CONFIG_JSON has no non-empty 'devices' roster"
+        )
+    return devices
+
+
 def parse_bool(value, default=True):
     if value is None:
         return default
@@ -334,7 +361,7 @@ def api_devices():
     client = app.config["FIRESTORE"]
     collection = cfg["collection"]
     out = []
-    for dev in cfg["devices"]:
+    for dev in configured_devices(cfg):
         doc = client.get_doc(collection, dev["id"])
         status = decode_fields(doc.get("fields", {})) if doc else None
         out.append({
@@ -350,7 +377,7 @@ def api_devices():
 def api_device_status(device_id):
     cfg = app.config["SANDBOX_CFG"]
     client = app.config["FIRESTORE"]
-    if device_id not in {d["id"] for d in cfg["devices"]}:
+    if device_id not in {d["id"] for d in configured_devices(cfg)}:
         return jsonify({"error": "unknown device", "deviceId": device_id}), 404
     doc = client.get_doc(cfg["collection"], device_id)
     if doc is None:
@@ -390,7 +417,7 @@ def api_data(kind):
     client = app.config["FIRESTORE"]
     collection = cfg["collection"]
     records = []
-    for dev in cfg["devices"]:
+    for dev in configured_devices(cfg):
         try:
             docs = client.list_docs(collection, dev["id"], subcollection, limit=limit)
         except Exception as exc:  # noqa: BLE001 - one device must not break the rest
@@ -411,7 +438,7 @@ def api_data(kind):
 def api_post_command(device_id):
     cfg = app.config["SANDBOX_CFG"]
     client = app.config["FIRESTORE"]
-    if device_id not in {d["id"] for d in cfg["devices"]}:
+    if device_id not in {d["id"] for d in configured_devices(cfg)}:
         return jsonify({"error": "unknown device", "deviceId": device_id}), 404
     body = request.get_json(silent=True) or {}
     action = body.get("action")
