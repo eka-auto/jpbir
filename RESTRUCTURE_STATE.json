@@ -2,9 +2,9 @@
   "schema_version": "1.0",
   "tool": "project-restructurer",
   "created": "2026-09-12T18:34:45",
-  "refreshed": "2026-09-14T17:31:11",
-  "refreshed_against": "main@b48e3a5",
-  "refreshed_with": "project-restructurer v2 — verify + refresh pass (no re-layering; the tree was already restructured at PRs #9/#10 and deploys from these paths)",
+  "refreshed": "2026-09-19T00:00:00",
+  "refreshed_against": "main@87ba028",
+  "refreshed_with": "project-restructurer v2 — verify + refresh pass (no re-layering; second refresh, 80 commits after the 2026-09-14 pass at b48e3a5)",
   "root": ".",
   "repo": "https://github.com/jaytipargal/jpbir",
   "layers": [
@@ -24,24 +24,26 @@
     ".gitignore",
     "package-lock.json",
     "package.json",
-    "vercel.json"
+    "vercel.json",
+    ".vercelignore"
   ],
   "current_inventory": {
-    "head": "b48e3a55ccdaaa02879da8e2baeda6777a06c5ae",
-    "tracked_files_total": 2478,
+    "head": "87ba028",
+    "tracked_files_total": 2520,
     "by_layer": {
-      "Frontend": 1974,
-      "Backend": 161,
-      "_shared": 129,
-      "Devices": 63,
+      "Frontend": 1976,
+      "Backend": 166,
+      "_shared": 137,
+      "Devices": 67,
+      "Server": 61,
       "archive": 57,
-      "Server": 54,
       "Database": 23,
       "Integrations": 7,
-      "(root file)": 7,
-      ".github": 3
+      "(root file)": 8,
+      ".claude": 12,
+      ".github": 6
     },
-    "note": "Actual tracked-file counts on current main. These differ from the historical per-layer counts derived from `moves` because ~40 files were added directly into the layers by PRs merged after the restructure (WhatsApp panels, S24 dashboards, jp-agent changes)."
+    "note": "Actual tracked-file counts on main@87ba028. 84 tracked files are not in `moves` (added by PRs after the restructure). The 42 added between b48e3a5 and 87ba028 include 12 under .claude/ (the restructurer skill itself), 3 under .github/, and the root .vercelignore."
   },
   "verification": {
     "tracked_files_before": 2438,
@@ -54,8 +56,9 @@
     "pre_existing_breaks_fixed": 10
   },
   "verification_current": {
-    "checked": "2026-09-14",
-    "method": "each moved `to` path checked against `git ls-files` on current main",
+    "checked": "2026-09-19",
+    "head": "main@87ba028",
+    "method": "each moved `to` path checked against `git ls-files`; post-restructure additions classified with `analyze.py --deep`; `vercel.json` route/build targets resolved on disk; `npm test`",
     "moves_recorded": 2438,
     "moves_still_present_on_main": 2436,
     "moves_absent_now": 2,
@@ -70,10 +73,31 @@
       }
     ],
     "data_loss": "none — the 2 absent files were intentionally deleted by later work, not lost by the restructure",
-    "duplicate_groups": 34,
-    "redundant_files": 49,
-    "reclaimable": "492.7 KiB",
-    "duplicates_note": "Unchanged from the original audit. The bulk are intentional per-device installer bundles (Devices/Lenovo|S24|Vivobook|sandbox) that installers SHA-256-pin, so the bytes must match — do NOT collapse them. See open_questions[0]."
+    "commits_since_previous_refresh": 80,
+    "files_added_since_previous_refresh": 42,
+    "files_deleted_or_renamed_since_previous_refresh": 0,
+    "post_restructure_additions_audited": 84,
+    "post_restructure_additions_layer_check": "65 audited in layers: 38 agree with the classifier; 27 disagree and all follow established conventions (Devices/* kept whole as per-device bundles; _shared/tests/* is the single test root wired via `npm test` -> _shared/tests/run-all.mjs). 0 misplaced. The other 19 are pinned or tooling paths (.claude/, .github/, root files) and were not classified.",
+    "vercel_json_targets_missing": 0,
+    "test_suite": "npm test: 21/21 suites passed",
+    "duplicate_groups": 31,
+    "redundant_files": 46,
+    "reclaimable": "479.5 KiB",
+    "duplicates_note": "Down from 34/49 at the 2026-09-14 refresh; nothing was collapsed by the restructurer. The previously-flagged Server/ installer copies, _shared/docs/DAEMON_ARCHITECTURE.md and Devices/S24/daemon/legacy/* are all still present. Per-device installer bundles are SHA-256-pinned — do NOT collapse them. See open_questions[0].",
+    "live_deploy_check": {
+      "checked": "2026-09-19",
+      "vercel_team": "jayti (team_pbbZItTCyIkGsw6LeGrcWx0c)",
+      "projects_in_team": [
+        "jayti-dashboard",
+        "jaytibirthday-site"
+      ],
+      "git_linked_to_repo": [
+        "jayti-dashboard"
+      ],
+      "jpbir_restructured": "deleted (URL: DEPLOYMENT_NOT_FOUND)",
+      "channel_sandbox": "deleted (API 404 'Project not found'; https://channel-sandbox-one.vercel.app/ -> DEPLOYMENT_NOT_FOUND)",
+      "production": "https://jaytipargal.tech/ -> 200; /api/stats -> 401 without a key"
+    }
   },
   "moves": [
     {
@@ -22030,12 +22054,12 @@
     "Backend/service/markdown-it-front-matter.js: '../yamlProperties' -> './yamlProperties' (pre-existing break).",
     "_shared/tests/*.mjs: '../Backend/' -> '../../Backend/', vercel.json path and build-frontend.mjs import repointed (pre-existing breaks)."
   ],
-  "resume_point": "none",
-  "resume_detail": "All restructure follow-up is resolved. The previously-outstanding `channel-sandbox` Vercel Root Directory (was `app/sandbox`, needed `Devices/sandbox`) is verified fixed as of 2026-09-14: GET https://channel-sandbox-one.vercel.app/ returns 200 with the Sandbox dashboard HTML (13045 bytes), and the latest production deployment on `main@b48e3a5` (`dpl_3k5VV8JLwd9DyeTpfoV2GxnxG9YJ`) reports a Python lambda in its build stats, proving Vercel now resolves `Devices/sandbox/dashboard_api.py` and `Devices/sandbox/vercel.json`. This was a Vercel dashboard-only setting change and is not preserved in git; re-verify against the live project rather than assuming from the repo. Pre-existing items in `open_questions` are unchanged and non-blocking.",
+  "resume_point": "verify_channel_sandbox_after_merge",
+  "resume_detail": "The restructure itself is complete and verified on main@87ba028: the layout is intact, all 84 post-restructure additions are correctly layered, and npm test passes. The one live follow-up is deploy-side: the `channel-sandbox` Vercel project serving Devices/sandbox/ was found deleted and was re-created on 2026-09-19 (prj_hRRe8dOt2F3mYU721Qk9lFAG9V92, https://channel-sandbox.vercel.app). The .vercelignore fix it needs ships in the same change as this refresh. Next action: once that change is on main, check the channel-sandbox production build log for a Python function and that /api/status returns 200. After that, the owner sets the three env vars listed in Devices/sandbox/README.md. Details: open_questions entry 'vercel.json (Vercel project settings)'.",
   "open_questions": [
     {
-      "file": "(34 duplicate groups / 49 redundant files)",
-      "reason": "Kept deliberately, none deleted. 39 are per-device installer copies whose installers SHA-256-pin them, so the bytes must match. Run scripts/verify.py --duplicates to list them. The 10 that look genuinely redundant are the app/server/ copies of install_lenovo.ps1, install_vivobook.ps1, install_s24.sh, setup_vivobook.ps1 (now Server/), the shared/docs copy of DAEMON_ARCHITECTURE.md, and Devices/S24/daemon/legacy/*."
+      "file": "(31 duplicate groups / 46 redundant files)",
+      "reason": "Kept deliberately, none deleted. Now 31 groups / 46 redundant files / 479.5 KiB (was 34/49 on 2026-09-14). Most are per-device installer copies whose installers SHA-256-pin them, so the bytes must match. Run scripts/verify.py --duplicates to list them. The ones that look genuinely redundant are the Server/ copies of install_lenovo.ps1, install_vivobook.ps1, install_s24.sh and setup_vivobook.ps1, the _shared/docs copy of DAEMON_ARCHITECTURE.md, and Devices/S24/daemon/legacy/* (all still present on 87ba028)."
     },
     {
       "file": "Backend/_mcp_connect.py, _mcp_full_connect.py, _mcp_sync.py",
@@ -22068,8 +22092,18 @@
     {
       "file": "vercel.json (Vercel project settings)",
       "reason": "No .vercel/project.json in the repo, so the dashboard's Root Directory could not be confirmed at restructure time. Verified live 2026-09-14 (see resolution).",
-      "status": "resolved_2026-09-14",
-      "resolution": "channel-sandbox Root Directory is now `Devices/sandbox`; the project serves HTTP 200 on https://channel-sandbox-one.vercel.app/ and its production build resolves the Python lambda in `Devices/sandbox/`. See `resume_point_history`."
+      "status": "in_progress_2026-09-19",
+      "resolution": "channel-sandbox Root Directory is now `Devices/sandbox`; the project serves HTTP 200 on https://channel-sandbox-one.vercel.app/ and its production build resolves the Python lambda in `Devices/sandbox/`. See `resume_point_history`.",
+      "update_2026-09-19": "Checked live 2026-09-19 via the Vercel API and HTTP. Team `jayti` (team_pbbZItTCyIkGsw6LeGrcWx0c) has only `jayti-dashboard` (prj_ert0BAxafhopYg8tjtbOMcfjDI9r, production on jaytipargal.tech, the only project Git-linked to this repo) and the unrelated `jaytibirthday-site`. `jpbir_restructured` has been deleted: CI stopped deploying to it in 44db844, and its URL returns DEPLOYMENT_NOT_FOUND. No action is needed for it. `channel-sandbox` (prj_egCfC2qbHotOiMVAjDRaaTWyI0Zh) has ALSO been deleted: the API returns 404 'Project not found' and https://channel-sandbox-one.vercel.app/ returns DEPLOYMENT_NOT_FOUND. Git records no reason, and Devices/sandbox/README.md still documents the URL. No device code calls the URL, so only the operator dashboard is offline.",
+      "owner_decision_2026-09-19": "Owner chose: bring channel-sandbox back.",
+      "action_2026-09-19": "Re-created as `channel-sandbox` (prj_hRRe8dOt2F3mYU721Qk9lFAG9V92), Git-linked to jaytipargal/jpbir with production branch main. Root Directory `Devices/sandbox` was requested at creation, then set again with update_project and in the deployment's projectSettings. Production alias: https://channel-sandbox.vercel.app (was channel-sandbox-one.vercel.app). The first two builds (dpl_9HWF7aHT3CQJTv887DexbJv18hb8, dpl_XNF3ETWaQFt5j7sittYBHkm3MxLa, both on main@87ba028) went READY with EMPTY output and served NOT_FOUND. Root cause: the repo-root .vercelignore, which Vercel applies to this project's Git builds, stripped all 26 tracked Devices/sandbox files. The bare `Devices/` came from 34b7f3e; an unanchored `dashboard/` also matched Devices/sandbox/dashboard/index.html. Fixed in the same change: `Devices/*` + `!Devices/sandbox/`, `/dashboard/` anchored, and a regression check added to _shared/tests/deploy-manifest.test.mjs (verified to FAIL against the old file). Exactly those 26 files changed ignore status; secret-shaped names (.env*, intrepid-stage-*.json) remain excluded inside Devices/sandbox. The build logs report `entrypoint: \".\"` and read the root package.json, so confirm on the first post-fix build that the Root Directory setting is really applied.",
+      "remaining": "(1) After this change reaches main, confirm the channel-sandbox production build produces a Python function and https://channel-sandbox.vercel.app/api/status returns 200. (2) Owner sets STATS_KEY, SANDBOX_CONFIG_JSON and FIREBASE_SERVICE_ACCOUNT_JSON on the project (see Devices/sandbox/README.md), then redeploys and checks /api/diag for ok:true."
+    },
+    {
+      "file": "/api/stats returned 500 on `jpbir_restructured`",
+      "reason": "Listed in INTEGRATION.md at the 2026-09-14 refresh: `No blob credentials found`, because BLOB_READ_WRITE_TOKEN was unset on that project.",
+      "status": "superseded_2026-09-19",
+      "resolution": "Commit e61bfa9 moved /api/stats off the Vercel Blob journal. It is now served from the Neon warehouse (Backend/stats.js, Backend/lib/warehouse.js), so the missing BLOB_READ_WRITE_TOKEN no longer applies, and jpbir_restructured has been deleted. Live on 2026-09-19, https://jaytipargal.tech/api/stats returns 401 without a key (auth-gated) instead of 500. A keyed 200 response was not tested."
     },
     {
       "file": "archive/",
@@ -22078,7 +22112,21 @@
     {
       "file": "(~40 files added after the restructure)",
       "reason": "Files merged into the layers by post-restructure PRs (WhatsApp/S24/jp-agent work) were placed by their authoring PRs, not audited by the restructurer. They look correctly layered on inspection; a future `analyze.py --deep` pass could confirm their layer fit. Not blocking.",
-      "confidence": null
+      "confidence": null,
+      "status": "resolved_2026-09-19",
+      "resolution": "All 84 post-restructure additions audited with analyze.py --deep. None are misplaced; the 27 classifier disagreements are Devices/* bundles and _shared/tests/*, both established conventions. See verification_current."
+    },
+    {
+      "file": "QWEN.md (untracked, repo root)",
+      "reason": "Agent-context doc, not tracked by git. The repo root is the right place for it (like CLAUDE.md), so it stays where it is. Its layer table has stale counts (Backend 161, Server 54, _shared 129, Devices 63; current: 166, 61, 137, 67). Decide whether to commit it; refresh the counts from current_inventory if so. The restructurer did not edit it.",
+      "status": "resolved_2026-09-19",
+      "resolution": "Owner chose: commit it. Layer counts refreshed to main@87ba028, duplicate count updated to 31/46, and .vercelignore added to its pinned-roots list."
+    },
+    {
+      "file": "Server/jp-agent/package-lock.json (untracked)",
+      "reason": "Lockfile generated next to Server/jp-agent/package.json by a local `npm install` on 2026-09-18, neither committed nor ignored. Committing it alone changes nothing on the droplet: Server/jp-agent/deploy.sh copies only package.json and runs `npm install`. Decide: commit it AND make deploy.sh ship it and run `npm ci` for reproducible installs, or add it to .gitignore. The layout is correct either way.",
+      "status": "resolved_2026-09-19",
+      "resolution": "Owner chose: commit it and use `npm ci`. The lockfile is committed; Server/jp-agent/deploy.sh now copies package-lock.json to the droplet and runs `npm ci --omit=dev`. `npm ci --omit=dev` was verified to install cleanly from the lockfile (node 24 / npm 11). It takes effect on the next deploy.sh run."
     }
   ],
   "resume_point_history": [
@@ -22101,6 +22149,12 @@
         "code_diff_required": false,
         "note": "Dashboard-only setting; not tracked in the repo. Re-verify against the live project rather than assuming from git."
       }
+    },
+    {
+      "value": "none",
+      "opened": "2026-09-14",
+      "closed": "2026-09-19",
+      "closed_by": "live check found the channel-sandbox Vercel project deleted; re-created, resume point moved to verify_channel_sandbox_after_merge"
     }
   ]
 }
