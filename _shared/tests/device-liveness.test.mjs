@@ -2,8 +2,15 @@
 import assert from 'node:assert/strict';
 import { strictS24Liveness } from '../../Backend/jp-devices.js';
 
+// The version string the collector shipped to the phone actually writes —
+// Backend/s24_phone_direct_cloud.py's DIRECT_CLOUD_AGENT_VERSION, corroborated by
+// the device document's own currentDirectCloudRuntime.expectedAgentVersion. This
+// fixture used to read 's24-termux-direct-cloud-test', a string no writer ever
+// produced, which is exactly how authenticatedAgent stayed unsatisfiable in
+// production while every assertion below kept passing. Keep it real: a fixture
+// that encodes a fiction tests the fiction, not the fleet.
 const valid = {
-  agentVersion: 's24-termux-direct-cloud-test',
+  agentVersion: 's24-direct-cloud-2026-09-07.1',
   heartbeatAuth: 'termux-phone',
   liveDeviceVerified: true,
   sourceType: 'live_termux',
@@ -59,12 +66,33 @@ t('a bridge process acknowledging commands on time is still not the phone', () =
 t('renaming the agent version is not enough to pass', () => {
   // The version string was the only thing separating the bridge from the
   // phone, and a constant is one edit away from matching. Flipping it while
-  // still running off-device must not be sufficient.
-  const spoofed = { ...bridge, agentVersion: 's24-termux-direct-cloud-test' };
+  // still running off-device must not be sufficient. This copies the *real*
+  // production version string, so it stays honest now that two prefixes are
+  // accepted: a bridge that clones the collector's identity is still caught,
+  // by runtimeIsAndroid rather than by the version.
+  const spoofed = { ...bridge, agentVersion: valid.agentVersion };
   const result = strictS24Liveness(spoofed, 30, 30);
   assert.equal(result.live, false);
   assert.equal(result.checks.authenticatedAgent, true, 'version check passes, as it would');
   assert.equal(result.checks.androidRuntime, false, 'runtime evidence still fails');
+});
+
+t('the older s24-termux- prefix is still accepted after widening', () => {
+  // Widening must add a prefix, never drop one: an S24 still running the older
+  // Termux build has to keep being judged on its heartbeat, not on its version.
+  const result = strictS24Liveness(
+    { ...valid, agentVersion: 's24-termux-2026-08-01.1' }, 30, 30
+  );
+  assert.equal(result.checks.authenticatedAgent, true);
+  assert.equal(result.live, true);
+});
+
+t('a version string naming some other agent is still rejected', () => {
+  for (const agentVersion of ['laptop-keepalive-v1', 's24-bridge-win32-2026-09-07.1']) {
+    const result = strictS24Liveness({ ...valid, agentVersion }, 30, 30);
+    assert.equal(result.checks.authenticatedAgent, false, agentVersion + ' must not pass');
+    assert.equal(result.live, false);
+  }
 });
 
 t('an older build that never reports runtimeIsAndroid fails closed', () => {

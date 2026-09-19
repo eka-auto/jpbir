@@ -14,6 +14,21 @@ const health = doc => deviceHealth('samsung-s24-ultra', doc, now);
 test('accept authenticated heartbeat and matching completed acknowledgement', () => {
   assert.equal(health(valid()).device_online, true);
 });
+test('accept the version string the shipped collector actually writes', () => {
+  // The collector on the phone writes s24-direct-cloud-<date>.<n> — its own
+  // currentDirectCloudRuntime.expectedAgentVersion says so — not s24-termux-.
+  // Accepting only the latter made a genuinely live S24 read as unauthenticated
+  // here and on the dashboard. See S24_AGENT_VERSION_PREFIXES in
+  // Backend/jp-devices.js.
+  assert.equal(
+    health({ ...valid(), agentVersion: 's24-direct-cloud-2026-09-07.1' }).device_online,
+    true
+  );
+  // Widening adds a prefix; it must not turn the check into a loose match.
+  for (const agentVersion of ['not-s24-direct-cloud-2026-09-07.1', 's24-direct-cloud']) {
+    assert.equal(health({ ...valid(), agentVersion }).device_online, false, agentVersion);
+  }
+});
 test('reject stale, future, laptop-origin and unauthenticated heartbeat', () => {
   for (const change of [{ lastSeen: new Date(now - 301000).toISOString() },
     { lastSeen: new Date(now + 10000).toISOString() }, { agentVersion: 's24-laptop-keepalive' },
