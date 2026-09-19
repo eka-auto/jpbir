@@ -10,12 +10,32 @@ import pg from 'pg';
 
 const { Pool } = pg;
 
+// pg-connection-string treats 'prefer', 'require' and 'verify-ca' as aliases for
+// 'verify-full' today, and warns that pg v9 / pg-connection-string v3 will adopt
+// standard libpq semantics instead — where 'require' encrypts but does NOT check
+// the certificate's hostname. `package.json` pins `^8.23.0`, so nothing downgrades
+// automatically; this pins the intent so a future major bump cannot do it silently.
+//
+// verify-full is not a guess about Neon: measured against the live production
+// endpoints, sslmode=verify-full connects on both the pooled and the unpooled URL
+// with a TLS socket whose peer CN is *.c-10.us-east-1.aws.neon.tech, while
+// sslmode=disable is refused outright as "connection is insecure".
+//
+// Only the sslmode parameter is rewritten, so every other byte of the URL —
+// password included — survives untouched. Parsing and re-serialising with WHATWG
+// URL would risk re-encoding the credentials.
+const WEAKER_SSLMODE = /([?&]sslmode=)(?:prefer|require|verify-ca)(?=&|$)/;
+
+export function enforceVerifyFull(connectionString) {
+  return connectionString.replace(WEAKER_SSLMODE, '$1verify-full');
+}
+
 function makePool(connectionString) {
   if (!connectionString) {
     throw new Error('No Postgres connection string set (DATABASE_URL / POSTGRES_URL)');
   }
   return new Pool({
-    connectionString,
+    connectionString: enforceVerifyFull(connectionString),
     max: 3,
     idleTimeoutMillis: 10_000,
     connectionTimeoutMillis: 10_000,
