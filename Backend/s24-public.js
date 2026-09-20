@@ -218,6 +218,16 @@ export default async function handler(req, res) {
       device: publicS24View(fields, Date.now(), precise),
     });
   } catch (err) {
-    return res.status(500).json({ success: false, error: err.message || 's24-public failed' });
+    // Generic message, detail to the server log — the same split s24-ingest.js uses
+    // for its public surface. This catch was `err.message` verbatim at first
+    // (2026-09-20 audit), and that is not safe here: a set-but-broken
+    // FIREBASE_SERVICE_ACCOUNT_JSON makes broker.js rethrow 'firestore read failed:
+    // <first 300 chars of the REST error body>', which contains the GCP project id
+    // and the document path, and the token-exchange branch can echo Google's error
+    // payload. The gated jp-devices.js 500 only speaks to key-holders; this route
+    // answers strangers, so the doctrine the header records — every field here is
+    // a disclosure decision — has to cover error text as well as success text.
+    console.error('[s24-public] status read failed:', err && err.message ? String(err.message).slice(0, 300) : 'unknown');
+    return res.status(500).json({ success: false, error: 'device status unavailable' });
   }
 }

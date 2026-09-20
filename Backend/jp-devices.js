@@ -316,7 +316,12 @@ async function handleDevices(req, res) {
         heartbeatMaxAgeSeconds,
         liveness: strict,
         connectionMethod: f.connectionMethod || null,
-        heartbeatIntervalSeconds: interval,
+        // For S24 documents this comes from computeS24Liveness so the interval
+        // the dashboard displays and the one the public ./s24-public.js projection
+        // publishes are the same value by construction. The local `interval`
+        // remains for the non-S24 heartbeat window below — two live formulas for
+        // one constant is exactly the drift pattern this file's header documents.
+        heartbeatIntervalSeconds: s24 ? s24.heartbeatIntervalSeconds : interval,
         agentVersion: f.agentVersion || null,
         heartbeatAuth: f.heartbeatAuth || null,
         liveDeviceVerified: f.liveDeviceVerified === true,

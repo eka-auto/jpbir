@@ -314,6 +314,7 @@
         fetchJSON('/api/s24-public', AUTH)
             .then(function (res) {
                 if (res.status === 503) {
+                    $('liveHint').textContent = 'Not configured — server-side credentials missing (503).';
                     $('liveDetail').innerHTML = '<div class="state">Status API not configured.</div>';
                     $('liveDot').classList.add('off');
                     $('liveText').textContent = 'OFFLINE';
@@ -322,6 +323,7 @@
                     return;
                 }
                 if (res.status !== 200 || !res.body || !res.body.success) {
+                    $('liveHint').textContent = 'Unavailable — the status API answered HTTP ' + res.status + '.';
                     setLight(false, 'Device state unavailable (temporary)',
                         'The status API answered HTTP ' + res.status + ' instead of a device snapshot. This is retryable — the page re-polls every 30 s, or press Refresh.');
                     return;
@@ -329,6 +331,7 @@
                 var precise = res.body.precise === true;
                 var pub = res.body.device;
                 if (!pub) {
+                    $('liveHint').textContent = 'Firestore · ' + (res.body.database || 'eka-agent') + ' · no device document yet';
                     $('liveDetail').innerHTML = '<div class="state">Device not found in Firestore. Waiting for first heartbeat…</div>';
                     $('liveDot').classList.add('off');
                     $('liveText').textContent = 'OFFLINE';
