@@ -148,7 +148,12 @@
     el("gate").hidden = true; el("loading").hidden = true;
     el("meta").hidden = false; el("changeWrap").hidden = false;
     el("count").textContent = devices.length + " device" + (devices.length===1?"":"s");
-    el("gen").textContent = data.generated_at ? ("as of " + new Date(data.generated_at).toLocaleTimeString()) : "";
+    // "fetched", never "as of". generated_at is stamped by the API when it
+    // answers the poll, so on a page that refreshes it resets every time and
+    // says nothing whatsoever about the devices. "as of" read as device
+    // freshness, which is the one thing it is not. Each card already carries the
+    // real figure -- its own last check-in, from the device's lastSeen.
+    el("gen").textContent = data.generated_at ? ("fetched " + new Date(data.generated_at).toLocaleTimeString()) : "";
     var grid = el("grid");
     if (!devices.length){ grid.hidden = true; el("footErr").hidden = false; el("footErr").textContent = "No devices enrolled."; return; }
     el("footErr").hidden = true;

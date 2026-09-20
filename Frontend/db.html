@@ -252,7 +252,11 @@
     clearDashboardKey();
   }
   var state = { site: 'jaytibirthday.in', days: 30, noise: false, page: 'overview',
-                offsets: { visitors: 0, sessions: 0, events: 0, video: 0, emails: 0, s24: 0 },
+                // whatsapp was missing here while resetPaging() at the bottom of this
+                // file does include it, so before the first reset the WhatsApp page
+                // requested `offset=undefined` and its pager computed
+                // `undefined + step` = NaN.
+                offsets: { visitors: 0, sessions: 0, events: 0, video: 0, emails: 0, s24: 0, whatsapp: 0 },
                 type: '', s24Dataset: '', s24Section: 'overview',
                 s24Key: storedDashboardKey || '', counts: {} };
 
@@ -909,12 +913,43 @@
         card('Phone runtime evidence', devicePanel, device.status || 'stored snapshot', true) +
         card('Latest pull coverage', '<div class="bars">' + coverage + '</div>', 'no silent gaps', true) +
         card('Local sync runs', table([
-          { label: 'Started', render: function (r) { return when(r.started_at); } },
-          { label: 'Host', key: 'host' },
+          // finished_at was selected by db-api and rendered nowhere. Shown as the
+          // run's duration, which is its useful form: a run that never finished
+          // reads "running…" instead of silently looking like a completed one.
+          { label: 'Started', render: function (r) {
+              var base = when(r.started_at);
+              if (!r.finished_at) return base + ' <span class="muted">· running…</span>';
+              var secs = Math.round((new Date(r.finished_at) - new Date(r.started_at)) / 1000);
+              if (!isFinite(secs) || secs < 0) return base;
+              return base + ' <span class="muted">· ' + (secs < 90 ? secs + 's' : Math.round(secs / 60) + 'm') + '</span>';
+            } },
+          // adb_serial likewise: a debugging detail, so it rides in the title
+          // rather than earning a column of its own.
+          { label: 'Host', render: function (r) {
+              var h = r.host || '—';
+              return r.adb_serial
+                ? '<span title="adb serial: ' + esc(r.adb_serial) + '">' + esc(h) + '</span>'
+                : esc(h);
+            } },
           { label: 'Records', key: 'record_count', num: true },
           { label: 'Received', render: function (r) { return num(r.uploaded_records) + ' · ' + s24Status(r.upload_status); } },
           { label: 'Uploaded', render: function (r) { return ago(r.uploaded_at); } },
-          { label: 'Key', render: function (r) { return '<span class="mono">' + esc((r.key_id || '').slice(0, 10)) + '…</span>'; } }
+          { label: 'Key', render: function (r) { return '<span class="mono">' + esc((r.key_id || '').slice(0, 10)) + '…</span>'; } },
+          // notes carries the run-level ATTESTATION VERDICT. pull_direct_cloud.py
+          // writes "Latest phone attestation: ..." into the manifest, s24-store
+          // persists it, db-api selects it -- and it had no pixel anywhere. The one
+          // field saying whether the export trusted the phone travelled the entire
+          // signed pipeline into Neon to be discarded at the last step.
+          { label: 'Attestation', render: function (r) {
+              var n = r.notes || '';
+              if (!n) return '<span class="muted">—</span>';
+              var short = n.length > 64 ? n.slice(0, 63) + '…' : n;
+              return '<span title="' + esc(n) + '">' + esc(short) + '</span>';
+            } }
+        // Deliberately NOT { onRow: true }: wireRows binds every tr.clickable under
+        // the page root, and the s24 records table is already wired there, so a
+        // clickable run row would index its data-i into the records array and open
+        // the wrong record entirely.
         ], d.runs), null, true) +
         card('Database coverage', '<div class="bars">' + sections.slice(1, 8).map(function (item) {
           return '<div class="row"><div class="lbl">' + esc(item[1]) + '</div><div class="val">' + num(item[2] || 0) + '</div></div>';
@@ -933,7 +968,10 @@
           kpi('Messages', num(counts.sms), 'normalized records') +
           kpi('Commands', num(counts.commands), 'control history') +
           kpi('Datasets checked', num((d.datasets || []).length), 'including denied and empty') +
-          kpi('Sync runs', num((d.runs || []).length), latest.upload_status || 'none yet') +
+          // d.runs is capped at 25 by db-api; d.runsTotal is the real count. Showing
+          // the list length made this tile read "25" forever once 25 runs existed.
+          kpi('Sync runs', num(typeof d.runsTotal === 'number' ? d.runsTotal : (d.runs || []).length),
+              (latest.upload_status || 'none yet') + ((d.runsTotal || 0) > (d.runs || []).length ? ' · showing latest ' + (d.runs || []).length : '')) +
           kpi('Last local pull', latest.started_at ? ago(latest.started_at) : '—', when(latest.started_at)) +
           kpi('Phone model', latest.model || '—', latest.android_version ? 'Android ' + latest.android_version : 'not synced') +
           kpi('Signing key', latest.key_id ? latest.key_id.slice(0, 12) + '…' : '—', 'asymmetric upload identity') +
@@ -1176,7 +1214,7 @@
         var cap = Math.max(0, (Number(b.getAttribute('data-total')) || 0) - 1);
         // Clamp. Turning the noise filter back on shrinks the result set, and an
         // offset left past the new end printed ranges like "2,001-500 of 500".
-        state.offsets[k] = Math.min(cap, Math.max(0, state.offsets[k] + Number(b.getAttribute('data-dir')) * step));
+        state.offsets[k] = Math.min(cap, Math.max(0, (state.offsets[k] || 0) + Number(b.getAttribute('data-dir')) * step));
         draw();
       });
     });

@@ -1805,7 +1805,9 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
     function render(d) {
         DATA = d;
         var t = d.totals;
-        $('lastUpdated').textContent = 'updated ' + fmtTime(d.generated_at) + (d.cached ? ' (cached)' : '');
+        // "fetched", not "updated": generated_at is when the API answered this
+        // poll, not when the underlying analytics last changed.
+        $('lastUpdated').textContent = 'fetched ' + fmtTime(d.generated_at) + (d.cached ? ' (cached)' : '');
         $('dailyHint').textContent = 'Window: ' + d.window_days + ' days · peak hour ' + (t.peak_hour ? t.peak_hour.hour.slice(11) + ':00 (' + t.peak_hour.count + ' events)' : '–');
         $('liveHint').textContent = 'Auto-refreshes every ' + (REFRESH_MS / 1000) + 's · window ' + d.window_days + ' days';
         $('sessionsHint').textContent = t.unique_sessions + ' unique sessions · ' + t.unique_ips + ' unique IPs';
