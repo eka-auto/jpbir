@@ -22,7 +22,11 @@ const TABLE = _env['JP_TELEMETRY_' + 'TABLE'] || 'jaytipargal_telemetry';
 
 let _tokenCache = { token: null, exp: 0 };
 
-async function getFirestoreToken() {
+// Exported because `jp-stack.js` probes Firestore reachability for the Product
+// engineering panel and must exercise the *same* credential path this handler
+// uses — a second copy of the JWT exchange could pass while this one fails (or
+// the reverse) and the panel would report health this endpoint does not have.
+export async function getFirestoreToken() {
   if (_tokenCache.token && Date.now() < _tokenCache.exp - 60000) return _tokenCache.token;
   const sa = JSON.parse(FIREBASE_SA_JSON);
   const now = Math.floor(Date.now() / 1000);

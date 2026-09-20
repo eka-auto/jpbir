@@ -80,6 +80,44 @@
         box-shadow: 0 10px 30px -12px rgba(0,0,0,.4); }
     .panel h2 { font-family: var(--serif); font-weight: 600; font-size: 17px; color: var(--ink); margin-bottom: 2px; }
     .panel .hint { font-size: 12px; color: var(--ink-muted); margin-bottom: 14px; }
+
+    /* ---- Product engineering panel ----
+       Two lights per file: green = the subsystem that file configures answered
+       a live probe; red = it did not, and the one-line reason sits beside it.
+       Grey is deliberate and load-bearing: it means "not provable from a
+       serverless function", and painting it green would be the same class of
+       lie that strictS24Liveness exists to reject. */
+    .lamp { display: inline-block; width: 9px; height: 9px; border-radius: 50%; flex: 0 0 9px; }
+    .lamp-ok { background: var(--good); box-shadow: 0 0 0 2px rgba(62,142,78,.18); }
+    .lamp-fail { background: var(--bad); box-shadow: 0 0 0 2px rgba(192,57,43,.18); animation: lampPulse 1.6s ease-in-out infinite; }
+    .lamp-warn { background: var(--warn); box-shadow: 0 0 0 2px rgba(185,119,14,.18); }
+    .lamp-unknown { background: #B7ABA0; }
+    .lamp-off { background: transparent; border: 1px solid var(--border); }
+    @keyframes lampPulse { 0%,100% { opacity: 1 } 50% { opacity: .35 } }
+    @media (prefers-reduced-motion: reduce) { .lamp-fail { animation: none } }
+
+    .stack-flow { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; }
+    .stack-card { background: var(--panel2); border: 1px solid var(--border); border-radius: 12px;
+        padding: 12px 14px; cursor: pointer; text-align: left; width: 100%; font: inherit; color: inherit;
+        transition: border-color .15s, transform .15s; }
+    .stack-card:hover { transform: translateY(-1px); }
+    .stack-card[aria-expanded="true"] { border-color: var(--ink); }
+    .stack-card.s-fail { border-color: var(--bad); }
+    .stack-card.s-warn { border-color: var(--warn); }
+    .stack-card .sc-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+    .stack-card .sc-title { font-weight: 650; font-size: 14px; }
+    .stack-card .sc-sub { font-size: 12px; color: var(--ink-muted); }
+    .stack-card .sc-count { margin-left: auto; font-size: 11px; color: var(--ink-muted); font-variant-numeric: tabular-nums; }
+
+    .stack-files { margin-top: 10px; border-top: 1px solid var(--border-light); padding-top: 10px; }
+    .stack-file { display: flex; align-items: flex-start; gap: 8px; padding: 5px 0; font-size: 12.5px; }
+    .stack-file .sf-lamps { display: flex; gap: 4px; padding-top: 5px; }
+    .stack-file .sf-path { font-family: var(--mono, ui-monospace, Menlo, monospace); word-break: break-all; }
+    .stack-file .sf-why { color: var(--ink-muted); font-size: 11.5px; }
+    .stack-file .sf-problem { color: var(--bad); font-size: 11.5px; margin-top: 2px; }
+    .stack-file .sf-problem.warn { color: var(--warn); }
+    .stack-note { background: rgba(185,119,14,.08); border-left: 3px solid var(--warn); padding: 8px 12px;
+        border-radius: 0 8px 8px 0; font-size: 12px; margin-top: 10px; }
     .panel-head { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
     .panel-head .tools { display: flex; gap: 8px; align-items: center; }
     .panel-head .tools button { font-size: 11.5px; padding: 5px 10px; border-radius: 8px; border: 1px solid var(--border);
@@ -269,6 +307,7 @@
         .sidebar { position: static; height: auto; display: flex; overflow-x: auto; border-right: none;
             border-bottom: 1px solid rgba(240,185,104,.12); padding: 8px 10px; }
         .sidebar .section-label { display: none; }
+        .stack-flow { grid-template-columns: 1fr !important; }
         .sidebar .nav-item { white-space: nowrap; width: auto; margin-bottom: 0; }
         .content { padding: 14px; }
     }
@@ -339,6 +378,7 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
             <button class="nav-item" data-page="terminal"><span class="ico">▮</span> Terminal</button>
             <button class="nav-item" data-page="vercel"><span class="ico">▲</span> Vercel</button>
             <button class="nav-item" data-page="agent"><span class="ico">🤖</span> Ask agent</button>
+            <button class="nav-item" data-page="stack"><span class="ico">⛓</span> Product engineering <span id="stackNavDot" class="lamp lamp-unknown" style="margin-left:6px"></span></button>
             <div class="section-label">Data</div>
             <button class="nav-item" data-page="whatsapp"><span class="ico">💬</span> WhatsApp</button>
         </nav>
@@ -596,6 +636,30 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
 
             <!-- AGENT -->
             <!-- WHATSAPP -->
+            <!-- PRODUCT ENGINEERING -->
+            <section class="page" id="page-stack">
+                <div class="panel">
+                    <div class="panel-head">
+                        <div>
+                            <h2>Product engineering</h2>
+                            <div class="hint" id="stackHint">Loading the stack…</div>
+                        </div>
+                        <button class="btn" id="stackRefreshBtn">Refresh</button>
+                    </div>
+                    <div class="hint" style="margin-bottom:12px">
+                        Tap each block to see the files behind it. Two lights per file —
+                        <span class="lamp lamp-ok"></span> the subsystem it configures answered a live probe,
+                        <span class="lamp lamp-fail"></span> it did not (reason shown).
+                        <span class="lamp lamp-unknown"></span> means not provable from a serverless function —
+                        never shown green, because a light that is always green tells you nothing.
+                    </div>
+                    <div class="stack-flow" id="stackFlow"></div>
+                    <div class="hint" style="margin:18px 0 8px; text-align:center">Also needed</div>
+                    <div class="stack-flow" id="stackSupport"></div>
+                    <div class="stack-note" id="stackDevicesNote" style="display:none"></div>
+                </div>
+            </section>
+
             <section class="page" id="page-whatsapp">
                 <div class="panel">
                     <div class="panel-head"><div><h2>WhatsApp</h2><div class="hint" id="waHint">Chats and message counts ingested into the Neon store from the S24 daemon or the owner's laptop.</div></div>
@@ -2723,6 +2787,7 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
             if (btn.getAttribute('data-page') === 'device') { loadDeviceHistory(); loadLiveDevices(); }
             if (btn.getAttribute('data-page') === 'vercel') { loadVercel(); }
             if (btn.getAttribute('data-page') === 'whatsapp') { loadWhatsApp(); }
+            if (btn.getAttribute('data-page') === 'stack') { loadStack(); }
         });
     });
 
@@ -3215,6 +3280,118 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
             if ($('termFoot').textContent === 'working…') $('termFoot').textContent = '';
         }
     }
+
+    /* ---------- Product engineering panel ----------
+       Polls /api/jp-stack on the dashboard's normal 10 s cadence. The timer runs
+       whether or not the section is on screen, so the sidebar lamp is a true
+       at-a-glance indicator rather than something that only updates once you go
+       looking — which is the point of a status panel.
+
+       Honest scope note, because "24x7" is easy to overclaim: this is live for
+       as long as a browser has the dashboard open. A closed tab polls nothing.
+       Unattended round-the-clock coverage is what the check-stale cron and
+       health-check.yml workflow are for; this panel is the operator-facing view
+       of the same truth, not a replacement for them. */
+    var STACK_POLL_MS = 10000;
+    var _stackTimer = null;
+    var _stackOpen = {};
+
+    function lamp(status, on) {
+        // Two lights per file, as specified: a green and a red, one lit.
+        var cls = on === 'ok' ? (status === 'ok' ? 'lamp-ok' : 'lamp-off')
+                              : (status === 'fail' ? 'lamp-fail' : status === 'warn' ? 'lamp-warn' : 'lamp-off');
+        return '<span class="lamp ' + cls + '"></span>';
+    }
+
+    function stackFileRow(f) {
+        var problem = '';
+        if (f.status !== 'ok' && f.problem) {
+            problem = '<div class="sf-problem' + (f.status === 'warn' ? ' warn' : '') + '">' + esc(f.problem) + '</div>';
+        }
+        return '<div class="stack-file">'
+            + '<span class="sf-lamps" title="' + esc(f.status) + '">' + lamp(f.status, 'ok') + lamp(f.status, 'bad') + '</span>'
+            + '<span><span class="sf-path">' + esc(f.path) + '</span>'
+            + (f.why ? ' <span class="sf-why">— ' + esc(f.why) + '</span>' : '')
+            + problem + '</span></div>';
+    }
+
+    function stackCard(layer) {
+        var open = !!_stackOpen[layer.id];
+        var bad = layer.files.filter(function (f) { return f.status === 'fail'; }).length;
+        var warn = layer.files.filter(function (f) { return f.status === 'warn'; }).length;
+        var count = bad ? bad + ' failing' : warn ? warn + ' warning' : layer.files.length + ' files';
+        return '<button class="stack-card s-' + esc(layer.status) + '" data-layer="' + esc(layer.id) + '" aria-expanded="' + open + '">'
+            + '<div class="sc-head">' + lamp(layer.status, 'ok') + lamp(layer.status, 'bad')
+            + '<span class="sc-title">' + esc(layer.title) + '</span>'
+            + '<span class="sc-count">' + esc(count) + '</span></div>'
+            + '<div class="sc-sub">' + esc(layer.subtitle) + '</div>'
+            + (open ? '<div class="stack-files">' + layer.files.map(stackFileRow).join('') + '</div>' : '')
+            + (open && layer.note ? '<div class="stack-note">' + esc(layer.note) + '</div>' : '')
+            + '</button>';
+    }
+
+    function renderStack(d) {
+        var flow = d.layers.filter(function (l) { return l.kind === 'flow'; });
+        var support = d.layers.filter(function (l) { return l.kind === 'support'; });
+        $('stackFlow').innerHTML = flow.map(stackCard).join('');
+        $('stackSupport').innerHTML = support.map(stackCard).join('');
+
+        var s = d.summary;
+        /* "fetched", never "synced": generated_at-style timestamps reset every
+           poll and say nothing about any device.
+
+           The cron line is the part that makes "24x7" checkable rather than
+           claimed. This browser polling proves nothing about the hours the tab
+           was closed; the last unattended run does. If that run is stale, the
+           scheduler is the thing that is broken, and saying so beats a panel
+           that looks healthy because nobody has asked it lately. */
+        var cronLine = '';
+        if (d.last_cron_run && d.last_cron_run.checked_at) {
+            var ageMin = Math.floor((Date.now() - new Date(d.last_cron_run.checked_at).getTime()) / 60000);
+            var stale = ageMin > 20; // cron is every 5 min; 4 missed ticks is a real gap
+            cronLine = '<br><span style="color:' + (stale ? 'var(--bad)' : 'var(--ink-muted)') + '">'
+                + (stale ? '⚠ unattended check last ran ' + ageMin + ' min ago — the 5-min cron looks stopped'
+                         : '24×7 cron ran ' + esc(fmtAgo(d.last_cron_run.checked_at)) + ' (' + esc(d.last_cron_run.overall) + ')')
+                + '</span>';
+        } else {
+            cronLine = '<br><span style="color:var(--warn)">No unattended run recorded yet — this panel is live only while open</span>';
+        }
+        $('stackHint').innerHTML = s.ok + ' ok · ' + s.fail + ' failing · ' + s.warn + ' warning · '
+            + s.unknown + ' unproven — fetched ' + esc(fmtAgo(d.fetched_at)) + cronLine;
+
+        var dot = $('stackNavDot');
+        if (dot) dot.className = 'lamp lamp-' + (s.fail ? 'fail' : s.warn ? 'warn' : s.ok ? 'ok' : 'unknown');
+
+        var note = $('stackDevicesNote');
+        if (note && d.devices_note) { note.style.display = ''; note.textContent = d.devices_note; }
+    }
+
+    async function loadStack() {
+        try {
+            var r = await fetch('/api/jp-stack', { headers: authHeaders() });
+            if (r.status === 401) { localStorage.removeItem(KEY_STORAGE); KEY = ''; showGate(); return; }
+            var d = await r.json();
+            if (!d.success) throw new Error(d.error || 'failed');
+            renderStack(d);
+        } catch (e) {
+            $('stackHint').textContent = 'Could not reach /api/jp-stack: ' + e.message;
+            var dot = $('stackNavDot');
+            if (dot) dot.className = 'lamp lamp-fail';
+        }
+    }
+
+    // Expand/collapse is delegated so it survives the 10 s re-render.
+    document.addEventListener('click', function (e) {
+        var card = e.target.closest ? e.target.closest('.stack-card') : null;
+        if (!card) return;
+        var id = card.getAttribute('data-layer');
+        _stackOpen[id] = !_stackOpen[id];
+        loadStack();
+    });
+
+    var _stackRefresh = $('stackRefreshBtn');
+    if (_stackRefresh) _stackRefresh.addEventListener('click', loadStack);
+    if (!_stackTimer) _stackTimer = setInterval(loadStack, STACK_POLL_MS);
 
     $('termSend').addEventListener('click', termSend);
     $('termNew').addEventListener('click', function () { termReset(); });
