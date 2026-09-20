@@ -290,6 +290,7 @@ export default async function handler(req, res) {
     // Site video-event relay state: last play event from jaytibirthday.in and
     // which devices acknowledged it (seenBy map written by the device watchers).
     let videoEvent = null;
+    let videoEventError = null;
     try {
       const vr = await fetch(`${base}/settings/siteVideoEvents`, { headers: { Authorization: `Bearer ${token}` } });
       if (vr.ok) {
@@ -309,7 +310,15 @@ export default async function handler(req, res) {
           seenBy: f.seenBy || {},
         };
       }
-    } catch { videoEvent = null; }
+    } catch (e) {
+      // Was `catch { videoEvent = null; }`, which made "the relay read failed"
+      // and "there is no relay event" the same value. The dashboard renders the
+      // null as absence, so a Firestore outage looked like a quiet, working
+      // system with nothing to report -- the failure mode this repo's liveness
+      // rules exist to prevent.
+      videoEvent = null;
+      videoEventError = e && e.message ? String(e.message).slice(0, 200) : 'settings/siteVideoEvents read failed';
+    }
 
     // Subcollections — one Firestore list per (device, subcollection). Runs
     // in parallel across devices so the overall wall-clock stays close to the
@@ -347,6 +356,7 @@ export default async function handler(req, res) {
       generated_at: new Date().toISOString(),
       devices: filteredDevices,
       videoEvent,
+      videoEventError,
     });
   } catch (err) {
     return res.status(500).json({ success: false, error: err.message || 'jp-devices failed' });
