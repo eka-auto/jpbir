@@ -53,3 +53,37 @@ clone-lab/
 .qwen/
 .vscode/
 skills-lock.json
+
+# Git worktree artifacts (committed by mistake during restructure)
+_shared/.git__1
+_shared/.gitkeep
+_shared/.gitmodules
+_shared/.gitignore
+
+# IDE configs accidentally committed (Kiro, Claude, VS Code)
+_shared/.config.kiro
+_shared/.claudesignore
+_shared/.vscodeignore
+_shared/.vercelignore
+
+# Vercel local link artifacts
+_shared/.vercel/
+
+# Generated audit/inventory reports
+_shared/reports/
+
+# Accidentally committed project metadata and configs
+_shared/frontend-assembly.patch
+_shared/reg.tmLanguage
+_shared/locale.properties
+_shared/package-lock.json
+_shared/pyproject.toml
+_shared/vite.config.ts
+_shared/LICENSE
+_shared/LICENSE_FOXIT
+_shared/LICENSE_LIBERATION
+_shared/package.json
+
+# Claude Code hooks and settings (not .local.json)
+.claude/hooks/
+.claude/settings.json
