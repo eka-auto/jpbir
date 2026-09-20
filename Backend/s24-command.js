@@ -74,7 +74,7 @@ export async function queueS24Command(action) {
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
   if (!STATS_KEY) {
-    return res.status(500).json({ success: false, error: 'command authentication is not configured' });
+    return res.status(503).json({ success: false, error: 'command authentication is not configured' });
   }
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');

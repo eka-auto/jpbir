@@ -332,7 +332,19 @@
     return fetch(API + '?' + q.toString(), { cache: 'no-store', headers: headers })
       .then(function (r) { return r.json().then(function (j) { return { status: r.status, json: j }; }); })
       .then(function (result) {
-        if (result.status === 401 || result.status === 503) {
+        // A 503 is only an auth problem when _auth.js says so. Since the
+        // store-backed handlers adopted 503 for "not configured", an unset
+        // DATABASE_URL reaches here too — and dropping a valid key over a
+        // database outage puts the gate in front of someone whose key was never
+        // the problem. `code` is the discriminator; the error text is not.
+        var authFailed = result.status === 401 ||
+          (result.status === 503 && /^auth_/.test((result.json && result.json.code) || ''));
+        if (result.status === 503 && !authFailed) {
+          var outage = new Error((result.json && result.json.error) || 'This deployment is not fully configured.');
+          outage.status = 503;
+          throw outage;
+        }
+        if (authFailed) {
           // Drop the bad key and put the gate in front of whichever view asked,
           // so any page can unlock the dashboard — not only the archive.
           state.s24Key = '';
@@ -1001,10 +1013,18 @@
           '<pre>' + esc(JSON.stringify(row.payload || {}, null, 2)) + '</pre>');
       });
     }).catch(function (error) {
-      if (error.status === 401 || error.status === 503) {
+      // Only an auth failure clears the key; a store outage surfaces as an
+      // error the caller renders, with the key left alone. get() has already
+      // classified this via _auth.js's `code`, so anything still carrying 503
+      // here is the non-auth kind.
+      if (error.status === 401) {
         state.s24Key = '';
         clearDashboardKey();
-        renderS24Gate(error.status === 401 ? 'That dashboard key was rejected.' : error.message);
+        renderS24Gate('That dashboard key was rejected.');
+        return;
+      }
+      if (error.status === 503) {
+        renderS24Gate(error.message + ' Your key is still stored — this is a server configuration problem.');
         return;
       }
       throw error;

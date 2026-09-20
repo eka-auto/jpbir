@@ -55,7 +55,7 @@ export default async function handler(req, res) {
   // drawer, so this is a server-side gap only.
   if (!requireKey(req, res)) return;
   if (!AWS_ACCESS_KEY_ID || !AWS_SECRET_ACCESS_KEY) {
-    return res.status(500).json({ success: false, error: 'AWS credentials not configured' });
+    return res.status(503).json({ success: false, error: 'AWS credentials not configured' });
   }
 
   const visitor = req.query.visitor;

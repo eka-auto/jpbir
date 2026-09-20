@@ -149,7 +149,7 @@ export default async function handler(req, res) {
   // sends ?key= (Frontend/index.html).
   if (!requireKey(req, res)) return;
   if (!ANTHROPIC_KEY) {
-    return res.status(500).json({ success: false, error: 'ANTHROPIC_API_KEY not configured' });
+    return res.status(503).json({ success: false, error: 'ANTHROPIC_API_KEY not configured' });
   }
 
   let body = req.body || {};

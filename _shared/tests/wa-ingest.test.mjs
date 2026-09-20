@@ -1,6 +1,15 @@
 // The WhatsApp ingest endpoint, guards only — the store-writing path is
 // exercised by wa-store.test.mjs's ingestBatch coverage.
 // Run: node _shared/tests/wa-ingest.test.mjs
+//
+// NOTE ON 503 vs 500: an unconfigured deployment answers 503, not 500.
+// Backend/_auth.js has always drawn that line for STATS_KEY -- 503 for "this
+// server was never set up", 401 for "wrong key" -- so an operator can tell the
+// two apart instead of hunting for a bug in the browser. The store-backed
+// handlers used 500 for the same condition, splitting the behaviour for no
+// reason: Frontend/db.html keys its gate off 401/503, so a 500 from db-api left
+// the page stuck. All 21 such responses moved to 503; these assertions moved
+// with them.
 let failures = 0;
 const check = (label, ok, detail) => {
   if (!ok) failures++;
@@ -56,8 +65,8 @@ res = mkRes(); await ingest({
   query: {},
   body: { chats: [{ id: 'j1', n: 'A', k: 'd', m: 1 }] },
 }, res);
-check('a well-formed batch reaches the store check (DATABASE_URL unset here → 500)',
-  res.statusCode === 500 && /DATABASE_URL/.test(res.payload.error),
+check('a well-formed batch reaches the store check (DATABASE_URL unset here → 503)',
+  res.statusCode === 503 && /DATABASE_URL/.test(res.payload.error),
   `${res.statusCode} ${JSON.stringify(res.payload)}`);
 
 /* ---------- body handling: a string body is parsed; a non-JSON string is 400 ---------- */
@@ -77,7 +86,7 @@ res = mkRes(); await ingest({
   body: JSON.stringify({ chats: [{ id: 'j1', n: 'A', k: 'd', m: 1 }] }),
 }, res);
 check('a stringified JSON body is parsed and reaches the store check',
-  res.statusCode === 500 && /DATABASE_URL/.test(res.payload.error),
+  res.statusCode === 503 && /DATABASE_URL/.test(res.payload.error),
   `${res.statusCode} ${JSON.stringify(res.payload)}`);
 
 /* ---------- with no WA_INGEST_KEY on the server: the route is closed, not open ---------- */

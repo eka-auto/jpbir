@@ -50,7 +50,7 @@ export default async function handler(req, res) {
   // caller learns nothing, not even whether this deployment is configured.
   if (!requireKey(req, res)) return;
   if (!AWS_ACCESS_KEY_ID || !AWS_SECRET_ACCESS_KEY) {
-    return res.status(500).json({ success: false, error: 'AWS credentials not configured' });
+    return res.status(503).json({ success: false, error: 'AWS credentials not configured' });
   }
 
   const days = Math.min(Math.max(parseInt(req.query.days) || 7, 1), 90);

@@ -165,7 +165,7 @@ export default async function handler(req, res) {
   }
 
   if (!isConfigured()) {
-    return res.status(500).json({ success: false, error: 'DATABASE_URL not set on this deployment' });
+    return res.status(503).json({ success: false, error: 'DATABASE_URL not set on this deployment' });
   }
 
   const days = Math.min(Math.max(parseInt(req.query.days) || 30, 1), 90);

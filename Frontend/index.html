@@ -1780,7 +1780,23 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
                    so calling it here would blank the whole page the moment
                    anyone clicked a visitor row. Keep the failure inside the
                    drawer and let them unlock deliberately. */
-                if (res.status === 401 || res.status === 503) {
+                /* 503 means two different things since the store-backed handlers
+                   adopted it for "not configured": no STATS_KEY (an auth problem,
+                   clear the key) or no DATABASE_URL (a store outage, where
+                   clearing a perfectly good key just makes the operator re-enter
+                   it). Backend/_auth.js tags its own failures with an `auth_*`
+                   code so the two are distinguishable without matching on
+                   human-readable error text. */
+                var authFailed = res.status === 401 ||
+                    (res.status === 503 && /^auth_/.test((res.body && res.body.code) || ''));
+                if (res.status === 503 && !authFailed) {
+                    $('drawerBody').innerHTML = '<div class="state err">' +
+                        esc((res.body && res.body.error) || 'This deployment is not fully configured.') +
+                        '<div style="margin-top:12px">Your key is still stored — this is a server-side ' +
+                        'configuration problem, not a rejected key.</div></div>';
+                    return;
+                }
+                if (authFailed) {
                     localStorage.removeItem(KEY_STORAGE); KEY = '';
                     $('drawerBody').innerHTML =
                         '<div class="state">' + esc(res.body.error || 'Unauthorized') +

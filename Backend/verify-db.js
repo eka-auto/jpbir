@@ -38,8 +38,15 @@ const FIREBASE_SA_JSON = _env['FIREBASE_' + 'SERVICE_ACCOUNT_JSON'];
 // letters, email_opens, video_events). That is why a missing table here is a
 // real, reportable state rather than an impossibility — a database can be
 // migrated by one project and not the other.
+//
+// `device_telemetry` is deliberately NOT here. It is the sibling repo's table
+// (created by its 009_device_telemetry.sql against this shared Neon database),
+// and since the Neon freshness overlay came out of jp-devices.js no read route
+// in THIS repo touches it. Listing a table nobody here reads would make
+// /api/verify-db report production as broken over a migration this project does
+// not own and cannot apply.
 export const REQUIRED_TABLES = [
-  'devices', 'device_telemetry', 'email_opens', 'events', 'letters', 'sessions', 'video_events', 'visitors',
+  'devices', 'email_opens', 'events', 'letters', 'sessions', 'video_events', 'visitors',
   's24_agents', 's24_calls', 's24_commands', 's24_device_snapshots', 's24_files',
   's24_ingest_seen', 's24_locations', 's24_queue_items', 's24_records', 's24_sms',
   's24_sync_datasets', 's24_sync_runs',

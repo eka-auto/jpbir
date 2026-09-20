@@ -101,7 +101,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ success: false, error: 'Method not allowed' });
   }
   if (!AWS_ACCESS_KEY_ID || !AWS_SECRET_ACCESS_KEY) {
-    return res.status(500).json({ success: false, error: 'AWS write credentials not configured' });
+    return res.status(503).json({ success: false, error: 'AWS write credentials not configured' });
   }
 
   try {

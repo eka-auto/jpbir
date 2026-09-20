@@ -163,7 +163,10 @@ t('jayti-dashboard VERCEL_PROJECT_ID is exactly 32 chars on every environment', 
 
 // ------------------------------------------------------------------- coverage --
 
-// Vars the deployed sandbox reads that are deliberately NOT project env vars.
+// Vars the deployed sandbox reads that are deliberately NOT project env vars,
+// or that are project env vars the manifest has not recorded yet — the
+// generator needs `vercel` auth, so a var that is only about to be provisioned
+// on the project is documented here until the next regeneration picks it up.
 const NOT_PROJECT_ENV = {
   VERCEL_GIT_COMMIT_SHA: 'injected by Vercel at build time',
   VERCEL_REGION: 'injected by Vercel at runtime',
@@ -172,6 +175,8 @@ const NOT_PROJECT_ENV = {
   AGENT_API_URL: 'optional; only /api/agent/query reads it',
   AGENT_API_KEY: 'optional; only /api/agent/query reads it',
   AWS_REGION: 'optional; read with a default',
+  DATABASE_URL: 'channel-sandbox project env var required by /api/data/whatsapp; provision per Devices/sandbox/README.md step 2, then regenerate the manifest',
+  POSTGRES_URL: 'fallback name for DATABASE_URL (same convention as Integrations/postgres.js); same provisioning note',
 };
 
 function walk(dir, out = []) {

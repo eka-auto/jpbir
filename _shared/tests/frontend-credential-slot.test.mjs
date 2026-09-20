@@ -18,7 +18,7 @@
 // None of it is catchable by eye: every page looked internally consistent. The
 // contract is cross-file, so the test has to be too.
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -107,6 +107,46 @@ t('every storage access is wrapped against private mode, where localStorage thro
       `${page} touches storage with no try/catch; private mode throws rather than returning null`);
   }
 });
+
+// ── 503 means two things; only one of them should log you out ───────────
+// The store-backed handlers moved their "not configured on this deployment"
+// responses from 500 to 503 to match Backend/_auth.js. That made 503 ambiguous:
+// "no STATS_KEY" (an auth problem) and "no DATABASE_URL" (a store outage) now
+// share a status. The pages clear the stored key on 503, which is right for the
+// first and destructive for the second -- a database outage would log the
+// operator out and make them re-enter a key that was never at fault.
+// _auth.js tags its own failures with an `auth_*` code; the pages branch on it.
+
+const AUTH_JS = readFileSync(join(FRONTEND, '..', 'Backend', '_auth.js'), 'utf8');
+
+t('_auth.js tags every failure with a stable code, so 503 can be told apart from a store outage', () => {
+  for (const code of ['auth_not_configured', 'auth_missing', 'auth_invalid']) {
+    assert.ok(AUTH_JS.includes(code), `_auth.js no longer emits ${code}`);
+  }
+  assert.match(AUTH_JS, /json\(\{\s*success:\s*false,\s*code:\s*result\.code/,
+    'requireKey stopped putting the code on the wire, so no client can branch on it');
+});
+
+t('no handler answers 500 for an unconfigured deployment — that split behaviour is what 503 fixed', () => {
+  const backend = join(FRONTEND, '..', 'Backend');
+  const offenders = [];
+  for (const f of readdirSync(backend).filter((n) => n.endsWith('.js'))) {
+    for (const line of readFileSync(join(backend, f), 'utf8').split('\n')) {
+      if (line.includes('status(500)') && /not set|not configured|unconfigured/i.test(line)) {
+        offenders.push(`${f}: ${line.trim().slice(0, 80)}`);
+      }
+    }
+  }
+  assert.deepEqual(offenders, [], 'these should be 503, like Backend/_auth.js');
+});
+
+for (const page of ['index.html', 'db.html']) {
+  t(`${page} only clears the stored key when _auth.js says the failure was an auth one`, () => {
+    const src = code(read(page));
+    assert.match(src, /\/\^auth_\/\.test\(/,
+      `${page} still treats every 503 as an auth failure, so a store outage logs the operator out`);
+  });
+}
 
 console.log(`\n${pass}/${total} checks passed`);
 if (pass !== total) process.exitCode = 1;

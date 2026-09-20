@@ -2,6 +2,15 @@
 // normalisation, the chunked upserts (against a query stub that records the
 // SQL), the galaxy payload in both name modes, and the read handler's guards.
 // Run: node _shared/tests/wa-store.test.mjs
+//
+// NOTE ON 503 vs 500: an unconfigured deployment answers 503, not 500.
+// Backend/_auth.js has always drawn that line for STATS_KEY -- 503 for "this
+// server was never set up", 401 for "wrong key" -- so an operator can tell the
+// two apart instead of hunting for a bug in the browser. The store-backed
+// handlers used 500 for the same condition, splitting the behaviour for no
+// reason: Frontend/db.html keys its gate off 401/503, so a 500 from db-api left
+// the page stuck. All 21 such responses moved to 503; these assertions moved
+// with them.
 import {
   normalizeChat, normalizeMessage, normalizeSender, whatsappAddress, messageSenderLabel, displayMessageBody,
   chatIdFor, assignChatIds, idlessChats, upsertChats, upsertMessages, ingestBatch,
@@ -193,13 +202,20 @@ check('galaxy without a key is 401', res.statusCode === 401, String(res.statusCo
 res = mkRes(); await galaxy({ method: 'GET', headers: {}, query: { key: 'wrong' } }, res);
 check('galaxy with the wrong key is 401', res.statusCode === 401, String(res.statusCode));
 res = mkRes(); await galaxy({ method: 'GET', headers: { 'x-stats-key': 'k-test' }, query: {} }, res);
-check('the key is accepted from a header too', res.statusCode !== 401 && res.statusCode !== 503, String(res.statusCode));
+// "not 401 and not 503" used to stand in for "auth passed", which worked only
+// while the unconfigured store answered 500. Now that both the missing STATS_KEY
+// and the missing DATABASE_URL answer 503, that proxy is ambiguous. Assert the
+// real thing instead: the request got PAST auth and reached the store check, so
+// the 503 it receives is the DATABASE_URL one, not the STATS_KEY one.
+check('the key is accepted from a header too',
+  res.statusCode !== 401 && /DATABASE_URL/.test(res.payload?.error || ''),
+  `${res.statusCode} ${JSON.stringify(res.payload)}`);
 res = mkRes(); await galaxy({ method: 'POST', headers: {}, query: { key: 'k-test' } }, res);
 check('galaxy POST is 405', res.statusCode === 405, String(res.statusCode));
 
 res = mkRes(); await galaxy({ method: 'GET', headers: {}, query: { key: 'k-test' } }, res);
 check('names never sit in a shared cache', res.headers['Cache-Control'] === 'private, no-store', JSON.stringify(res.headers));
-check('the right key with no store is a clear 500', res.statusCode === 500 && /DATABASE_URL/.test(res.payload.error), `${res.statusCode} ${JSON.stringify(res.payload)}`);
+check('the right key with no store is a clear 503', res.statusCode === 503 && /DATABASE_URL/.test(res.payload.error), `${res.statusCode} ${JSON.stringify(res.payload)}`);
 
 /* ---------- the chat drill-down carries the same guards ---------- */
 const { default: chat } = await import('../../Backend/wa-chat.js');
@@ -216,8 +232,8 @@ res = mkRes(); await chat({ method: 'GET', headers: {}, query: { key: 'k-test', 
 check('wa-chat rejects a malformed handle with 400, not a store error',
   res.statusCode === 400 && /handle/.test(res.payload.error), `${res.statusCode} ${JSON.stringify(res.payload)}`);
 res = mkRes(); await chat({ method: 'GET', headers: {}, query: { key: 'k-test', h: 'a'.repeat(16) } }, res);
-check('wa-chat with a well-formed handle and no store is a clear 500',
-  res.statusCode === 500 && /DATABASE_URL/.test(res.payload.error), `${res.statusCode} ${JSON.stringify(res.payload)}`);
+check('wa-chat with a well-formed handle and no store is a clear 503',
+  res.statusCode === 503 && /DATABASE_URL/.test(res.payload.error), `${res.statusCode} ${JSON.stringify(res.payload)}`);
 check('wa-chat never lets a shared cache hold a chat', res.headers['Cache-Control'] === 'private, no-store', JSON.stringify(res.headers));
 
 // Fails closed when the server was never configured. The rule lives in

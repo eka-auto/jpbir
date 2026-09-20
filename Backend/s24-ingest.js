@@ -132,7 +132,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ ok: false, error: 'method not allowed' });
   }
   if (!isConfigured()) {
-    return res.status(500).json({ ok: false, error: 'DATABASE_URL not set on this deployment' });
+    return res.status(503).json({ ok: false, error: 'DATABASE_URL not set on this deployment' });
   }
 
   const keys = loadPublicKeys(process.env.S24_SYNC_PUBLIC_KEYS);

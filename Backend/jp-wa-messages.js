@@ -52,7 +52,7 @@ export default async function handler(req, res) {
   const q = String(req.query.q || '').trim().slice(0, 200);
 
   if (!isConfigured()) {
-    return res.status(500).json({ ok: false, error: 'DATABASE_URL not set on this deployment' });
+    return res.status(503).json({ ok: false, error: 'DATABASE_URL not set on this deployment' });
   }
 
   try {
