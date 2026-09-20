@@ -3503,7 +3503,20 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
             .then(function (res) {
                 if (res.status === 401) { showGate(); return; }
                 if (!res.body.success) throw new Error(res.body.error || 'failed');
-                thinking.querySelector('div:last-child').textContent = res.body.answer;
+                var out = thinking.querySelector('div:last-child');
+                out.textContent = res.body.answer;
+                /* The backend reports which of its stores failed or were cut
+                   short. Without showing it, an answer built on an unreadable
+                   DynamoDB reads exactly like one built on a complete picture -
+                   and the most likely such answer is a confident "no devices". */
+                var degraded = (res.body.context && res.body.context.degraded) || [];
+                if (degraded.length) {
+                    var warn = document.createElement('div');
+                    warn.className = 'state err';
+                    warn.style.marginTop = '8px';
+                    warn.textContent = 'Answered from incomplete data — ' + degraded.join('; ');
+                    out.parentNode.appendChild(warn);
+                }
             })
             .catch(function (e) {
                 thinking.querySelector('div:last-child').textContent = 'Error: ' + e.message;

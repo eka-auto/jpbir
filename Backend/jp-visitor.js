@@ -1,5 +1,6 @@
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, ScanCommand } from '@aws-sdk/lib-dynamodb';
+import { scanBounded } from './lib/ddb-scan.js';
 import { decodeGeo } from './lib/geo.js';
 import { requireKey } from './_auth.js';
 
@@ -9,42 +10,11 @@ const AWS_SECRET_ACCESS_KEY = _env['JP_AWS_' + 'SECRET_ACCESS_KEY'];
 const AWS_REGION = _env['JP_AWS_' + 'REGION'] || 'us-west-2';
 const TABLE = _env['JP_TELEMETRY_' + 'TABLE'] || 'jaytipargal_telemetry';
 
-const MAX_SCAN_PAGES = 200;
-// A page ceiling alone does not stop a timeout - 200 sequential 1 MB Scans is
-// far longer than the function's limit - so bound wall-clock too, the way
-// visitor.js does, and tell the caller when either limit cut the result short.
-const SCAN_BUDGET_MS = 8000;
-
-// Filter server-side and cap pagination, the way visitor.js's listAll does.
-// This is still a Scan, so read capacity is unchanged - the real fix is a GSI
-// on visitorId - but shipping the entire table into the function on every
-// drawer open, only to discard all but one visitor in JS, made payload and
-// latency scale with total table size instead of with the row count asked for,
-// with no ceiling before the function timeout.
+// The bounded scan this file introduced now lives in lib/ddb-scan.js, so
+// jp-stats, jp-device and jp-agent -- which each carried an UNBOUNDED copy of
+// the same loop -- share one implementation instead of three that can drift.
 async function scanAll(client, extra) {
-  const out = [];
-  const start = Date.now();
-  let key, pages = 0, truncated = false;
-  do {
-    const cmd = new ScanCommand({
-      TableName: TABLE,
-      ...(extra || {}),
-      ...(key ? { ExclusiveStartKey: key } : {})
-    });
-    const res = await client.send(cmd);
-    out.push(...(res.Items || []));
-    key = res.LastEvaluatedKey;
-    // Check before issuing the next page, not after it returns. Testing only
-    // afterwards bounded the clock to the budget PLUS one more unbounded 1 MB
-    // Scan, which on a cold or throttled table is exactly the overrun that
-    // pushes the handler past its default timeout and returns a 504.
-    if (!key) break;
-    if (++pages >= MAX_SCAN_PAGES || Date.now() - start > SCAN_BUDGET_MS) {
-      truncated = true;
-      break;
-    }
-  } while (key);
-  return { items: out, truncated };
+  return scanBounded(client, TABLE, extra);
 }
 
 export default async function handler(req, res) {

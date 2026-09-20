@@ -1,5 +1,6 @@
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, ScanCommand } from '@aws-sdk/lib-dynamodb';
+import { scanBounded } from './lib/ddb-scan.js';
 import { decodeOne } from './lib/geo.js';
 import { requireKey } from './_auth.js';
 
@@ -32,17 +33,6 @@ function parseUA(ua) {
   return { device, browser, os };
 }
 
-async function scanAll(client) {
-  const out = [];
-  let key;
-  do {
-    const cmd = new ScanCommand({ TableName: TABLE, ...(key ? { ExclusiveStartKey: key } : {}) });
-    const res = await client.send(cmd);
-    out.push(...(res.Items || []));
-    key = res.LastEvaluatedKey;
-  } while (key);
-  return out;
-}
 
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
@@ -68,7 +58,11 @@ export default async function handler(req, res) {
       credentials: { accessKeyId: AWS_ACCESS_KEY_ID, secretAccessKey: AWS_SECRET_ACCESS_KEY }
     }));
 
-    const items = await scanAll(client);
+    // `truncated` is surfaced, not swallowed. A page ceiling or the time budget
+    // can stop the scan before the table ends, and a partial total presented as
+    // a complete one is worse than an error because nothing looks wrong.
+    const scan = await scanBounded(client, TABLE);
+    const items = scan.items;
     const inWindow = items.filter(i => i.epoch && i.epoch >= cutoff);
 
     const byType = {};
@@ -274,6 +268,7 @@ export default async function handler(req, res) {
     };
 
     _cache.set(cacheKey, { at: Date.now(), body });
+    if (scan.truncated) body.truncated = true;
     return res.status(200).json(body);
   } catch (err) {
     return res.status(500).json({ success: false, error: err.message || 'jp stats failed' });

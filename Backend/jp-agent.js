@@ -1,5 +1,6 @@
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, ScanCommand } from '@aws-sdk/lib-dynamodb';
+import { scanBounded } from './lib/ddb-scan.js';
 import { list } from '@vercel/blob';
 import { decodeGeo } from './lib/geo.js';
 import { requireKey } from './_auth.js';
@@ -20,17 +21,6 @@ const IDENTITY_MAP = {
   'jbtv_1788026445435_74eqr76hi': { canonical: 'iphone-london', label: 'iPhone (iOS 18.7)', ip: '172.226.0.6' },
 };
 
-async function scanAll(client) {
-  const out = [];
-  let key;
-  do {
-    const cmd = new ScanCommand({ TableName: TABLE, ...(key ? { ExclusiveStartKey: key } : {}) });
-    const res = await client.send(cmd);
-    out.push(...(res.Items || []));
-    key = res.LastEvaluatedKey;
-  } while (key);
-  return out;
-}
 
 function resolveIdentity(visitorId) {
   const m = IDENTITY_MAP[visitorId];
@@ -47,7 +37,12 @@ async function gatherContext(question) {
       region: AWS_REGION,
       credentials: { accessKeyId: AWS_ACCESS_KEY_ID, secretAccessKey: AWS_SECRET_ACCESS_KEY }
     }));
-    const items = await scanAll(client);
+    // `truncated` is surfaced, not swallowed. A page ceiling or the time budget
+    // can stop the scan before the table ends, and a partial total presented as
+    // a complete one is worse than an error because nothing looks wrong.
+    const scan = await scanBounded(client, TABLE);
+    if (scan.truncated) ctx.dynamoTruncated = true;
+    const items = scan.items;
     const cutoff = Date.now() - 30 * 86400000;
 
     const deviceMap = new Map();
@@ -113,6 +108,24 @@ async function gatherContext(question) {
   return ctx;
 }
 
+/**
+ * Everything that made the context incomplete, in the model's own words.
+ *
+ * gatherContext caught DynamoDB and Blob failures into ctx.dynamoError /
+ * ctx.blobError and then NOTHING read them. So a store outage produced an empty
+ * device list, and the prompt below said "DEVICES: - none" -- indistinguishable
+ * from a genuinely empty table. The model was instructed to answer from the
+ * context and say so plainly when something is absent, and it did exactly that:
+ * it reported there were no devices. Confidently, and wrongly.
+ */
+function degradations(ctx) {
+  const out = [];
+  if (ctx.dynamoError) out.push(`DynamoDB telemetry could not be read (${ctx.dynamoError})`);
+  if (ctx.dynamoTruncated) out.push('DynamoDB telemetry was TRUNCATED by the scan page/time limit, so device and history counts are partial');
+  if (ctx.blobError) out.push(`Vercel Blob analytics could not be read (${ctx.blobError})`);
+  return out;
+}
+
 function buildPrompt(question, ctx) {
   const devices = ctx.devices.map(d =>
     `- ${d.label} (${d.device}): ${d.events} events, types ${JSON.stringify(d.types)}, ip ${d.ip || 'unknown'}, first ${d.first}, last ${d.last}`
@@ -122,10 +135,15 @@ function buildPrompt(question, ctx) {
   ).join('\n') || '- none';
   const history = ctx.history.map(h => `- ${h.visitedAt} | ${h.title || h.url} | ${h.device}`).join('\n') || '- none';
 
+  const degraded = degradations(ctx);
+  const warning = degraded.length
+    ? `\n!! THE CONTEXT BELOW IS INCOMPLETE. These data sources failed or were cut short:\n${degraded.map((d) => '  - ' + d).join('\n')}\nAn empty or short section below may mean the source failed, NOT that there is nothing to report. Say which part of the answer is unreliable and why. Never state that something does not exist when its source is listed here.\n`
+    : '';
+
   return `You are the device-intelligence agent for the jaytipargal.tech analytics dashboard.
 Answer the user's question using ONLY the context below. Be concise and factual.
 If the answer is not in the context, say so plainly.
-
+${warning}
 DEVICES (last 30 days, DynamoDB telemetry):
 ${devices}
 
@@ -150,6 +168,12 @@ export default async function handler(req, res) {
   if (!requireKey(req, res)) return;
   if (!ANTHROPIC_KEY) {
     return res.status(503).json({ success: false, error: 'ANTHROPIC_API_KEY not configured' });
+  }
+  // The same guard every other DynamoDB-backed handler applies. Without it an
+  // unconfigured deployment spent a paid Anthropic call reasoning over an empty
+  // context and answered as though the fleet were genuinely empty.
+  if (!AWS_ACCESS_KEY_ID || !AWS_SECRET_ACCESS_KEY) {
+    return res.status(503).json({ success: false, error: 'AWS credentials not configured' });
   }
 
   let body = req.body || {};
@@ -192,6 +216,10 @@ export default async function handler(req, res) {
         devices: ctx.devices.length,
         ips: ctx.ips.length,
         history: ctx.history.length,
+        // Non-empty when a store was unreachable or the scan was cut short, so
+        // the UI can mark the answer as based on partial data instead of
+        // presenting it with the same confidence as a complete one.
+        degraded: degradations(ctx),
       },
     });
   } catch (error) {
