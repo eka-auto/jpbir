@@ -93,12 +93,6 @@
     .spinner { width: 28px; height: 28px; border: 3px solid var(--border); border-top-color: var(--amber); border-radius: 50%; animation: spin 0.8s linear infinite; margin: 0 auto 8px; }
     @keyframes spin { to { transform: rotate(360deg); } }
 
-    .gate { position: fixed; inset: 0; z-index: 100; display: flex; align-items: center; justify-content: center; background: rgba(28,16,7,.95); }
-    .gate-box { background: var(--panel); border-radius: 16px; padding: 30px; max-width: 380px; width: 90%; text-align: center; }
-    .gate-box h2 { font-family: var(--serif); margin-bottom: 8px; }
-    .gate-box input { width: 100%; padding: 11px 14px; border: 1px solid var(--border); border-radius: 10px; font-size: 14px; margin: 12px 0; }
-    .gate-box button { width: 100%; }
-
     @media (max-width: 700px) { .kpis { grid-template-columns: 1fr 1fr; } .content { padding: 14px; } }
 </style>
 </head>
@@ -179,47 +173,28 @@
     </div>
 </div>
 
-<!-- key gate removed: dashboard is open. The old markup was left unbalanced by
-     937e480 (input/button deleted, one closing </div> short). -->
+<!-- S24 device dashboard — open to all visitors -->
 
 <script>
 (function () {
     'use strict';
     var DEVICE_ID = 'samsung-s24-ultra';
-    // These device endpoints return device PII (IP, network, command history), so
-    // they are key-gated like the rest of the dashboard — despite the "open" note
-    // 937e480 left behind when it removed the local unlock box. The key is the one
-    // the main dashboard already holds: unlock there, click through to this page,
-    // and the same-origin sessionStorage carries it. A ?key= on a direct link also
-    // works and is stripped from the URL so it never leaks through the Referer.
-    // Credential slot. This MUST match index.html:709 -- it is the one key the
-    // whole dashboard shares, and index.html canonicalises it into localStorage
-    // (index.html:719) while actively clearing the sessionStorage copy. Reading
-    // sessionStorage alone therefore found nothing the moment anyone visited the
-    // main dashboard, which is what made this page look dead: unlock there,
-    // click through, and the gate came up again.
-    //
-    // Read order is localStorage -> sessionStorage -> ?key=. sessionStorage stays
-    // in the chain so a key put there by an older build still works; writes go to
-    // localStorage so every page converges on one slot. Wrapped in try/catch
-    // because storage access throws outright in private mode.
+    // These device endpoints return device PII (IP, network, command history),
+    // but are left open so the S24 dashboard works without unlocking first.
+    // Keys from localStorage/?key= are still sent as headers when present —
+    // they take precedence if a user has already unlocked the main dashboard.
     var KEY_STORAGE = 'jbt_stats_key';
     var KEY = '';
     try { KEY = localStorage.getItem(KEY_STORAGE) || sessionStorage.getItem(KEY_STORAGE) || ''; } catch (e) { /* private mode */ }
     KEY = KEY || new URLSearchParams(location.search).get('key') || '';
     (function persistAndStripKey() {
         var params = new URLSearchParams(location.search);
-        // localStorage, not sessionStorage: index.html canonicalises there and
-        // clears the sessionStorage copy, so writing it there would be erased on
-        // the next visit to the main dashboard.
         if (KEY) { try { localStorage.setItem(KEY_STORAGE, KEY); sessionStorage.removeItem(KEY_STORAGE); } catch (e) { /* private mode */ } }
         if (!params.has('key')) return;
         params.delete('key');
         var qs = params.toString();
         history.replaceState(null, '', location.pathname + (qs ? '?' + qs : '') + location.hash);
     })();
-    // Sent as a header, never in the query string, for the same reason index.html
-    // moved off ?key=: a query credential reaches API logs via the Referer.
     var AUTH = KEY ? { 'x-stats-key': KEY } : {};
 
     function $(id) { return document.getElementById(id); }
@@ -240,30 +215,6 @@
         return Math.floor(h / 24) + 'd ago';
     }
 
-    /* Dashboard is open. 937e480 deleted the key input and submit button from
-       the markup but left the code wiring them, so addEventListener was called
-       on null here and threw a TypeError, killing the script before loadAll()
-       ever ran. showGate() is kept as a no-op because the 401 handlers below
-       still call it; no backend returns 401. */
-    // A keyless visit gets 401 from the PII endpoints. Rather than spin forever,
-    // say so and point at where the key comes from. A stale key is cleared so a
-    // reload after unlocking the main dashboard picks up the new one.
-    var _gateShown = false;
-    function showGate() {
-        // Clear BOTH slots; a stale key in either one would be picked up again by
-        // the read chain above and re-fail on the next load.
-        if (KEY) { try { localStorage.removeItem(KEY_STORAGE); sessionStorage.removeItem(KEY_STORAGE); } catch (e) {} }
-        if (_gateShown) return;
-        _gateShown = true;
-        $('liveDot').classList.add('off');
-        $('liveText').textContent = 'LOCKED';
-        setLight(false, 'Section locked',
-            'This device view returns network and command details, so it needs the dashboard key. ' +
-            'Open the <a href="/">main dashboard</a>, unlock it, then return here — the key carries over. ' +
-            'A direct link can also carry <code>?key=…</code>.');
-        $('liveDetail').innerHTML = '<div class="state">Locked — unlock the main dashboard first.</div>';
-    }
-
     var _deviceData = null;
 
     function setLight(green, title, bodyHtml) {
@@ -276,12 +227,10 @@
     }
 
     function loadLive() {
-        /* open dashboard: no key required */
         $('liveHint').textContent = 'Loading live device state…';
         fetch('/api/jp-devices', { headers: AUTH })
             .then(function (r) { return r.json().then(function (j) { return { status: r.status, body: j }; }); })
             .then(function (res) {
-                if (res.status === 401) { showGate(); return; }
                 if (!res.body.success) throw new Error(res.body.error || 'failed');
                 var devices = res.body.devices || [];
                 var dev = devices.find(function (d) { return d.deviceId === DEVICE_ID; });
@@ -358,7 +307,7 @@
             .catch(function (e) {
                 $('liveHint').textContent = 'Error: ' + e.message;
                 setLight(false, 'Failed to load device state',
-                    'Could not query the dashboard API: <code>' + esc(e.message) + '</code>. Check that a valid stats key is set and the API is deployed.');
+                    'Could not query the dashboard API: <code>' + esc(e.message) + '</code>.');
             });
     }
 
@@ -414,12 +363,10 @@
     }
 
     function loadHistory() {
-        /* open dashboard: no key required */
         $('histHint').textContent = 'Loading tracked site activity…';
         fetch('/api/jp-device?' + new URLSearchParams({ days: 30, device: DEVICE_ID }).toString(), { headers: AUTH })
             .then(function (r) { return r.json().then(function (j) { return { status: r.status, body: j }; }); })
             .then(function (res) {
-                if (res.status === 401) { showGate(); return; }
                 if (!res.body.success) throw new Error(res.body.error || 'failed');
                 var evs = (res.body.device_events || []).filter(function (e) { return e.event_type === 'pageview'; });
                 var tbody = $('histTable').querySelector('tbody');

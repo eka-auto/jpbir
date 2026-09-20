@@ -1,9 +1,5 @@
 import crypto from 'crypto';
 import { decodeOne } from './lib/geo.js';
-import { requireKey } from './_auth.js';
-// Attestation policy is shared with Server/jp-agent/device-health.mjs so the dashboard and
-// the droplet's device_ping cannot disagree about what counts as the phone. That module's
-// header records the two drifts this extraction exists to prevent.
 import {
   S24_DEVICE_ID,
   S24_ACK_MAX_AGE_SECONDS,
@@ -150,7 +146,6 @@ export function strictS24Liveness(fields, heartbeatAgeSeconds, ackAgeSeconds) {
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
   // The enrolled-device roster, and with ?full=1 the whole stored payload.
-  if (!requireKey(req, res)) return;
   if (!FIREBASE_SA_JSON) {
     return res.status(503).json({ success: false, error: 'FIREBASE_SERVICE_ACCOUNT_JSON not configured' });
   }
