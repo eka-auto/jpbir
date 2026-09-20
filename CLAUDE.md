@@ -76,15 +76,15 @@ rationale is in [`INTEGRATION.md`](./INTEGRATION.md).
 | Layer | Path | Holds | Tracked files |
 |-------|------|-------|---------------|
 | Frontend | `Frontend/` | Static dashboard pages, styles, components | 1976 |
-| Backend | `Backend/` | Vercel serverless functions — the API | 169 |
+| Backend | `Backend/` | Vercel serverless functions — the API | 172 |
 | Database | `Database/` | Schemas, migrations, Firestore/vector tooling | 26 |
 | Server | `Server/` | `jp-agent` droplet runtime, deploy scripts, nginx/systemd | 63 |
 | Integrations | `Integrations/` | Shared store clients (`postgres.js`, `wa-store.js`, `s24-store.js`) | 9 |
-| _shared | `_shared/` | Project-wide config, docs, and **all tests** | 92 |
+| _shared | `_shared/` | Project-wide config, docs, and **all tests** | 93 |
 | Devices | `Devices/` | Self-contained per-device installer bundles | 71 |
 | archive | `archive/` | Cold storage: superseded or regenerable artifacts | 57 |
 
-2492 tracked files total (counts as of `main@602c63b`, 2026-09-20).
+2497 tracked files total (counts as of `main@dec21fa`, 2026-09-20).
 
 ### ⚠️ The tree is much larger than the app
 
