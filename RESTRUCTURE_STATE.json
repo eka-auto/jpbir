@@ -22054,8 +22054,8 @@
     "Backend/service/markdown-it-front-matter.js: '../yamlProperties' -> './yamlProperties' (pre-existing break).",
     "_shared/tests/*.mjs: '../Backend/' -> '../../Backend/', vercel.json path and build-frontend.mjs import repointed (pre-existing breaks)."
   ],
-  "resume_point": "set_channel_sandbox_env_vars",
-  "resume_detail": "The restructure is complete and verified (main@87ba028 refresh). channel-sandbox was re-created and its .vercelignore fix merged in PR #80 (d4be247). The production build was verified live on 2026-09-19: /api/status 200, dashboard page served, Root Directory applied. Next action (owner only, needs secrets): set STATS_KEY, SANDBOX_CONFIG_JSON and FIREBASE_SERVICE_ACCOUNT_JSON on the channel-sandbox Vercel project per Devices/sandbox/README.md, redeploy, and confirm https://channel-sandbox.vercel.app/api/diag reports ok:true. Then set resume_point back to `none`. The other open_questions entries are pre-existing and non-blocking.",
+  "resume_point": "none",
+  "resume_detail": "RESOLVED 2026-09-20: channel-sandbox env vars (STATS_KEY 64 chars, SANDBOX_CONFIG_JSON 675 chars sha256 3a32b4623517, FIREBASE_SERVICE_ACCOUNT_JSON client_email channel-sandbox@intrepid-stage-495117-q1.iam.gserviceaccount.com) are set on prj_hRRe8dOt2F3mYU721Qk9lFAG9V92; https://channel-sandbox.vercel.app/api/diag reports ok:true, / and /api/status return 200, and both roster devices are present in Firestore. Same-day follow-ups now tracked in-repo instead of here: (1) add DATABASE_URL to the channel-sandbox Vercel project so the dashboard's Neon-backed /api/data/whatsapp route serves data (503 'server not configured' until then; calls/sms cards already read the live device doc), (2) owner adds GitHub repo secrets EKA_SERVICE_ACCOUNT_JSON + S24_SYNC_PRIVATE_KEY_PEM for the new .github/workflows/s24-export-sync.yml schedule (see Devices/S24/README.md). The other open_questions entries are pre-existing and non-blocking.",
   "open_questions": [
     {
       "file": "(31 duplicate groups / 46 redundant files)",
