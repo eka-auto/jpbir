@@ -224,5 +224,33 @@ check('every screen::jsonb in db-api is behind a JSON-shape guard',
   casts > 0 && casts === guarded,
   `${casts} cast(s), ${guarded} guarded — an unguarded one aborts Overview for the whole property`);
 
+// ── /api/jp-stats must agree with the mirror about what a property is ────
+// jp-stats scanned the whole telemetry table and narrowed on time alone, so the
+// selector's "jaytipargal.com" option reported every property's events added
+// together under that one name. It is scoped now -- and it reuses siteFor from
+// this same module rather than re-deriving the rule, because three different
+// answers to "which site is this" is how one visit gets counted twice.
+const { effectiveSite } = await import('../../Backend/jp-stats.js');
+
+check('effectiveSite prefers the site jp-track already stored on the row',
+  effectiveSite({ site: 'jaytipargal.com', pageUrl: 'https://jaytibirthday.in/x' }) === 'jaytipargal.com',
+  'the stored field is authoritative; re-deriving it would disagree with db-push');
+
+check('a row written before the site field existed is derived the same way the mirror derives it',
+  effectiveSite({ pageUrl: 'https://jaytipargal.com/page' }) === siteFor('https://jaytipargal.com/page', null),
+  'jp-stats must not have its own opinion about what a property is');
+
+check('a preview deployment is not a property, here either',
+  effectiveSite({ pageUrl: 'https://jayti-dashboard-a8ajk.vercel.app/x' }) === null,
+  'otherwise every preview build invents a property, the bug siteFor exists to prevent');
+
+check('a row with nothing to go on classifies as null rather than guessing',
+  effectiveSite({}) === null && effectiveSite(null) === null,
+  'a guess here silently files a visit under the wrong property');
+
+check('www. is stripped so one property is not split in two',
+  effectiveSite({ pageUrl: 'https://www.jaytipargal.com/x' }) === effectiveSite({ pageUrl: 'https://jaytipargal.com/x' }),
+  'www and bare host must collapse to one property');
+
 console.log(`\n${failures ? `${failures} check(s) failed` : 'all checks passed'}`);
 process.exitCode = failures ? 1 : 0;
