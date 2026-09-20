@@ -173,16 +173,27 @@
     </div>
 </div>
 
-<!-- S24 device dashboard — open to all visitors -->
+<!-- S24 device dashboard — open to all visitors via the public projection
+     /api/s24-public (no key, PII-free device status). Panels that carry PII —
+     browsing history, network identities, command-queue contents, exact
+     timestamps — only render for visitors whose browser stored the dashboard
+     key; a stored key merely flips the response `precise` flag and unlocks the
+     two gated endpoints alongside it.
+     Why (2026-09-20 incident): the day's commits deleted this page's unlock UI
+     while /api/jp-devices kept its requireKey gate, so every keyless visitor
+     got "Failed to load device state … invalid key". The earlier
+     "endpoints left open on everything" fix is replaced by this narrowed
+     public projection — do not widen the public body again. -->
 
 <script>
 (function () {
     'use strict';
     var DEVICE_ID = 'samsung-s24-ultra';
-    // These device endpoints return device PII (IP, network, command history),
-    // but are left open so the S24 dashboard works without unlocking first.
-    // Keys from localStorage/?key= are still sent as headers when present —
-    // they take precedence if a user has already unlocked the main dashboard.
+    // /api/s24-public needs no key; it answers `precise: true` (exact
+    // timestamps + queue contents) only when the header below is present and
+    // valid, and a valid key additionally unlocks the two gated endpoints
+    // (jp-devices rich network data, jp-device browsing history). Key
+    // material still comes from localStorage/?key= exactly as before.
     var KEY_STORAGE = 'jbt_stats_key';
     var KEY = '';
     try { KEY = localStorage.getItem(KEY_STORAGE) || sessionStorage.getItem(KEY_STORAGE) || ''; } catch (e) { /* private mode */ }
@@ -226,15 +237,98 @@
         $('diagBody').innerHTML = bodyHtml;
     }
 
+    function fetchJSON(url, headers) {
+        return fetch(url, { headers: headers }).then(function (r) {
+            return r.text().then(function (text) {
+                var body = null;
+                try { body = JSON.parse(text); } catch (e) { /* HTML error page or empty body */ }
+                return { status: r.status, body: body };
+            });
+        });
+    }
+
+    // /api/s24-public ships COARSE lastSeen / lastCommandAck buckets that are
+    // safe for anyone; exact ISO stamps and numeric ages arrive only when the
+    // stored key made the response precise. Keyless age rows therefore show
+    // the bucket text, labelled "(coarse)", so nobody reads it as exact.
+    var COARSE_AGE_TEXT = {
+        'never': 'never',
+        'unknown': 'unknown',
+        '<1m': 'under 1m ago',
+        '<5m': 'under 5m ago',
+        '<15m': 'under 15m ago',
+        '<1h': 'under 1h ago',
+        '<6h': 'under 6h ago',
+        '<24h': 'under 24h ago',
+        '>1d': 'over 1d ago'
+    };
+    function coarseAgo(bucket) { return bucket == null ? null : (COARSE_AGE_TEXT[bucket] || bucket); }
+    function ageCell(exactSeconds, bucket) {
+        if (exactSeconds != null) return exactSeconds + 's';
+        var c = coarseAgo(bucket);
+        return c ? c + ' (coarse)' : '—';
+    }
+    function lastSeenAgeText(dev) {
+        return dev.lastSeenAgeSeconds != null ? dev.lastSeenAgeSeconds + 's ago' : (coarseAgo(dev.lastSeenCoarse) || 'unknown');
+    }
+
+    // Compatibility mapping onto the render paths below, which still read the
+    // dev.* fields the old jp-devices body provided. Data the public contract
+    // does not carry (or carries only when precise) stays null on purpose:
+    // lastSeen / lastCommandAckAt / numeric ages / commandQueue only populate
+    // for a key-made-precise response.
+    function mapPublicDevice(pub, precise) {
+        return {
+            deviceId: pub.deviceId,
+            deviceDisplayName: pub.deviceDisplayName,
+            model: pub.model,
+            deviceType: pub.deviceType,
+            online: pub.online,
+            reportedStatus: pub.reportedStatus,
+            uptimeSeconds: pub.uptimeSeconds,
+            heartbeatIntervalSeconds: pub.heartbeatIntervalSeconds,
+            heartbeatMaxAgeSeconds: pub.heartbeatMaxAgeSeconds,
+            live: pub.live,
+            liveness: pub.liveness,
+            lastSeenCoarse: pub.lastSeenCoarse,
+            lastCommandAckCoarse: pub.lastCommandAckCoarse,
+            agentVersion: pub.agentVersion,
+            connectionMethod: pub.connectionMethod,
+            batteryLevel: pub.batteryLevel,
+            batteryCharging: pub.batteryCharging,
+            networkType: pub.networkType,
+            wifiSignalPercent: pub.wifiSignalPercent,
+            commandQueueDepth: pub.commandQueueDepth,
+            commandQueuePendingDepth: pub.commandQueuePendingDepth,
+            lastSeen: precise ? pub.lastSeen : null,
+            lastSeenAgeSeconds: precise ? pub.lastSeenAgeSeconds : null,
+            lastCommandAckAt: precise ? pub.lastCommandAckAt : null,
+            lastCommandAckAgeSeconds: precise ? pub.lastCommandAckAgeSeconds : null,
+            commandQueue: precise ? pub.commandQueue : null,
+            network: null
+        };
+    }
+
     function loadLive() {
         $('liveHint').textContent = 'Loading live device state…';
-        fetch('/api/jp-devices', { headers: AUTH })
-            .then(function (r) { return r.json().then(function (j) { return { status: r.status, body: j }; }); })
+        fetchJSON('/api/s24-public', AUTH)
             .then(function (res) {
-                if (!res.body.success) throw new Error(res.body.error || 'failed');
-                var devices = res.body.devices || [];
-                var dev = devices.find(function (d) { return d.deviceId === DEVICE_ID; });
-                if (!dev) {
+                if (res.status === 503) {
+                    $('liveDetail').innerHTML = '<div class="state">Status API not configured.</div>';
+                    $('liveDot').classList.add('off');
+                    $('liveText').textContent = 'OFFLINE';
+                    setLight(false, 'API not configured on this deployment',
+                        '<code>/api/s24-public</code> returned 503 — the Firestore credentials are missing on this deployment, so no device state can be served. Server-side config problem, not the phone.');
+                    return;
+                }
+                if (res.status !== 200 || !res.body || !res.body.success) {
+                    setLight(false, 'Device state unavailable (temporary)',
+                        'The status API answered HTTP ' + res.status + ' instead of a device snapshot. This is retryable — the page re-polls every 30 s, or press Refresh.');
+                    return;
+                }
+                var precise = res.body.precise === true;
+                var pub = res.body.device;
+                if (!pub) {
                     $('liveDetail').innerHTML = '<div class="state">Device not found in Firestore. Waiting for first heartbeat…</div>';
                     $('liveDot').classList.add('off');
                     $('liveText').textContent = 'OFFLINE';
@@ -243,6 +337,7 @@
                         'Start the phone daemon in Termux, then use the authenticated main dashboard to request a sync.');
                     return;
                 }
+                var dev = mapPublicDevice(pub, precise);
                 _deviceData = dev;
                 var live = dev.live;
                 $('liveDot').classList.toggle('off', !live);
@@ -252,20 +347,20 @@
                 var reason = dev.liveness && dev.liveness.reason ? dev.liveness.reason : 'strict liveness checks did not pass';
                 if (live) {
                     setLight(true, 'Device connected — ONLINE',
-                        'Heartbeat received ' + (dev.lastSeenAgeSeconds != null ? dev.lastSeenAgeSeconds + 's ago' : 'just now') +
+                        'Heartbeat received ' + lastSeenAgeText(dev) +
                         ' (strict heartbeat window ' + threshold + 's; command ACK window 300s). Green light blinks while the phone daemon keeps heartbeating.');
-                } else if (!dev.lastSeen) {
+                } else if (dev.lastSeenCoarse === 'never') {
                     setLight(false, 'Device registered but never heartbeated',
                         '<code>lastSeen</code> is empty — the S24 phone daemon (<code>s24_phone_direct_cloud.py</code>) has never published to Firestore. ' +
                         'Fix: start the daemon in Termux on the phone, then use the authenticated main dashboard to request a sync.');
                 } else if (dev.liveness && dev.liveness.mode === 'strict-s24-attestation') {
                     setLight(false, 'Device OFFLINE — strict proof missing',
                         'The dashboard ignores the stored <code>online</code> flag. ' +
-                        esc(reason) + '. Last heartbeat was ' + (dev.lastSeenAgeSeconds != null ? dev.lastSeenAgeSeconds + 's' : '?') +
-                        ' ago; the required command acknowledgement window is 300s. Use the authenticated main dashboard to request a fresh sync.');
+                        esc(reason) + '. Last heartbeat: ' + lastSeenAgeText(dev) +
+                        '; the required command acknowledgement window is 300s. Use the authenticated main dashboard to request a fresh sync.');
                 } else {
                     setLight(false, 'Device OFFLINE — heartbeat stale',
-                        'Last heartbeat ' + (dev.lastSeenAgeSeconds != null ? dev.lastSeenAgeSeconds + 's' : '?') + ' ago exceeds the ' +
+                        'Last heartbeat: ' + lastSeenAgeText(dev) + ', which exceeds the ' +
                         threshold + 's live threshold. The phone daemon stopped checking in. Start it in Termux, then use the authenticated main dashboard to request a fresh sync.');
                 }
 
@@ -273,42 +368,84 @@
                 $('kpiStatus').className = 'value ' + (live ? 'good' : 'bad');
                 $('kpiStatusSub').textContent = dev.connectionMethod || '—';
 
-                $('kpiLastSeen').textContent = dev.lastSeen ? fmtAgo(dev.lastSeen) : '—';
-                $('kpiLastSeenSub').textContent = dev.lastSeen ? fmtTime(dev.lastSeen) : '';
+                $('kpiLastSeen').textContent = dev.lastSeen ? fmtAgo(dev.lastSeen) : (coarseAgo(dev.lastSeenCoarse) || '—');
+                $('kpiLastSeenSub').textContent = dev.lastSeen ? fmtTime(dev.lastSeen)
+                    : (dev.lastSeenCoarse && dev.lastSeenCoarse !== 'never' && dev.lastSeenCoarse !== 'unknown' ? 'exact time needs the dashboard key' : '');
 
                 var pendingCommands = dev.commandQueuePendingDepth != null ? dev.commandQueuePendingDepth : (dev.commandQueueDepth || 0);
                 $('kpiQueue').textContent = pendingCommands;
                 $('kpiQueueSub').textContent = pendingCommands > 0 ? 'pending' : 'empty';
 
-                var sig = dev.network && dev.network.wifiSignal && dev.network.wifiSignal.signal_percent != null ? dev.network.wifiSignal.signal_percent + '%' : '—';
-                $('kpiWifi').textContent = sig;
-                $('kpiWifiSub').textContent = dev.network ? (dev.network.ssid || '—') : '';
+                $('kpiWifi').textContent = dev.wifiSignalPercent != null ? dev.wifiSignalPercent + '%' : '—';
+                $('kpiWifiSub').textContent = dev.networkType || '';
 
                 var badge = live
                     ? '<span class="pill" style="background:rgba(46,160,67,.15);color:#2ea043">LIVE</span>'
                     : '<span class="pill" style="background:rgba(200,60,60,.12);color:#c83c3c">OFFLINE</span>';
 
+                var lastSeenVal = dev.lastSeen ? fmtTime(dev.lastSeen)
+                    : (coarseAgo(dev.lastSeenCoarse) ? coarseAgo(dev.lastSeenCoarse) + ' (coarse)' : '—');
                 var html = '<div class="kv-grid">' +
                     '<div class="kv-item"><div class="k">Device</div><div class="v">' + esc(dev.deviceDisplayName || dev.deviceId) + '</div></div>' +
                     '<div class="kv-item"><div class="k">Status</div><div class="v">' + badge + '</div></div>' +
-                    '<div class="kv-item"><div class="k">Last seen</div><div class="v">' + (dev.lastSeen ? fmtTime(dev.lastSeen) : '—') + '</div></div>' +
-                    '<div class="kv-item"><div class="k">Age</div><div class="v">' + (dev.lastSeenAgeSeconds != null ? dev.lastSeenAgeSeconds + 's' : '—') + '</div></div>' +
+                    '<div class="kv-item"><div class="k">Last seen</div><div class="v">' + lastSeenVal + '</div></div>' +
+                    '<div class="kv-item"><div class="k">Age</div><div class="v">' + (precise ? ageCell(dev.lastSeenAgeSeconds, dev.lastSeenCoarse) : 'Last reported ' + (coarseAgo(dev.lastSeenCoarse) || 'unknown')) + '</div></div>' +
                     '<div class="kv-item"><div class="k">Connection</div><div class="v">' + esc(dev.connectionMethod || '—') + '</div></div>' +
                     '<div class="kv-item"><div class="k">Agent proof</div><div class="v">' + esc(dev.agentVersion || '—') + '</div></div>' +
-                    '<div class="kv-item"><div class="k">Last command ACK</div><div class="v">' + (dev.lastCommandAckAgeSeconds != null ? dev.lastCommandAckAgeSeconds + 's ago' : '—') + '</div></div>' +
+                    '<div class="kv-item"><div class="k">Last command ACK</div><div class="v">' + (precise ? ageCell(dev.lastCommandAckAgeSeconds, dev.lastCommandAckCoarse) : 'Acknowledged ' + (coarseAgo(dev.lastCommandAckCoarse) || 'unknown')) + '</div></div>' +
                     '<div class="kv-item"><div class="k">Queued commands</div><div class="v">' + (dev.commandQueueDepth || 0) + '</div></div>' +
                     '</div>';
                 $('liveDetail').innerHTML = html;
-                $('liveHint').textContent = 'Firestore · ' + res.body.database + ' · strict liveness = authenticated heartbeat + attestation + ACK';
+                // generated_at resets on every poll, so it may only ever be
+                // labelled "fetched"; the device's own (coarse or exact)
+                // lastSeen is the real update time, never this stamp.
+                $('liveHint').textContent = 'Firestore · ' + res.body.database + ' · strict liveness = authenticated heartbeat + attestation + ACK · status fetched ' + fmtTime(res.body.generated_at) + (precise ? '' : ' · coarse public projection');
 
-                renderNetwork(dev);
-                renderQueue(dev);
+                renderNetworkCard(dev);
+                renderQueue(dev, precise);
             })
             .catch(function (e) {
                 $('liveHint').textContent = 'Error: ' + e.message;
-                setLight(false, 'Failed to load device state',
-                    'Could not query the dashboard API: <code>' + esc(e.message) + '</code>.');
+                setLight(false, 'Device state unavailable (temporary)',
+                    'Could not reach the status API: <code>' + esc(e.message) + '</code>. This is retryable — the page re-polls every 30 s, or press Refresh.');
             });
+    }
+
+    // Network card. Keyless visitors only ever get the PII-free public
+    // fields. A stored key fetches /api/jp-devices and feeds the untouched
+    // rich renderNetwork(dev) exactly as before; any lesser outcome (401,
+    // 403, 500, 503, transport failure, device not in response) degrades
+    // back to the coarse note instead of an error.
+    function renderNetworkCard(dev) {
+        if (!AUTH['x-stats-key']) { renderNetworkCoarse(dev); return; }
+        fetchJSON('/api/jp-devices', AUTH)
+            .then(function (res) {
+                var rich = (res.status === 200 && res.body && res.body.success)
+                    ? (res.body.devices || []).find(function (d) { return d.deviceId === DEVICE_ID; })
+                    : null;
+                if (rich) {
+                    if (rich.network && rich.network.wifiSignal && rich.network.wifiSignal.signal_percent != null) {
+                        $('kpiWifi').textContent = rich.network.wifiSignal.signal_percent + '%';
+                    }
+                    if (rich.network && rich.network.ssid) $('kpiWifiSub').textContent = rich.network.ssid;
+                    renderNetwork(rich);
+                } else {
+                    renderNetworkCoarse(dev);
+                }
+            })
+            .catch(function () { renderNetworkCoarse(dev); });
+    }
+
+    function renderNetworkCoarse(dev) {
+        function kvItem(k, v) {
+            return '<div class="kv-item"><div class="k">' + esc(k) + '</div><div class="v">' + esc(v) + '</div></div>';
+        }
+        var rows = '';
+        if (dev.networkType) rows += kvItem('Connection type', dev.networkType);
+        if (dev.wifiSignalPercent != null) rows += kvItem('WiFi signal', dev.wifiSignalPercent + '%');
+        rows += kvItem('Network identity', 'available on the authenticated dashboard');
+        $('netDetail').innerHTML = '<div class="kv-grid">' + rows + '</div>';
+        $('netHint').textContent = 'Network identity available on the authenticated dashboard';
     }
 
     function renderNetwork(dev) {
@@ -344,12 +481,21 @@
         $('netHint').textContent = n.ssid ? ('Connected to ' + n.ssid + ' · ' + sig + ' signal') : 'No WiFi connection';
     }
 
-    function renderQueue(dev) {
-        var q = dev.commandQueue;
+    function renderQueue(dev, precise) {
         var tbody = $('queueTable').querySelector('tbody');
+        var q = precise ? dev.commandQueue : null;
         if (!q || !q.length) {
-            tbody.innerHTML = '<tr><td colspan="4" class="state">No commands queued.</td></tr>';
-            $('queueHint').textContent = 'No commands queued · use the authenticated main dashboard to send S24 commands.';
+            var total = dev.commandQueueDepth || 0;
+            var pending = dev.commandQueuePendingDepth != null ? dev.commandQueuePendingDepth : total;
+            if (!precise && (total > 0 || pending > 0)) {
+                // Keyless visitors get depth counts only — the public body
+                // never carries queue entries, so no action strings render.
+                tbody.innerHTML = '<tr><td colspan="4" class="state">' + pending + ' pending · ' + total + ' total · entries need the dashboard key</td></tr>';
+                $('queueHint').textContent = 'Read-only queue · use the authenticated main dashboard to send S24 commands';
+            } else {
+                tbody.innerHTML = '<tr><td colspan="4" class="state">No commands queued.</td></tr>';
+                $('queueHint').textContent = 'No commands queued · use the authenticated main dashboard to send S24 commands.';
+            }
             return;
         }
         tbody.innerHTML = q.map(function (c) {
@@ -363,6 +509,16 @@
     }
 
     function loadHistory() {
+        // Browser history comes from the key-gated jp-device endpoint. With
+        // no stored key it is not fetched at all — a keyless 401 would only
+        // turn a deliberately hidden panel into an error.
+        if (!AUTH['x-stats-key']) {
+            $('histTable').querySelector('tbody').innerHTML =
+                '<tr><td colspan="4" class="state">No tracked site activity yet.<br>' +
+                '<span class="hint">Browsing history is only shown to browsers that stored the dashboard key — unlock the main dashboard on this browser, then Reload.</span></td></tr>';
+            $('histHint').textContent = 'Requires the dashboard key on this browser · not fetched.';
+            return;
+        }
         $('histHint').textContent = 'Loading tracked site activity…';
         fetch('/api/jp-device?' + new URLSearchParams({ days: 30, device: DEVICE_ID }).toString(), { headers: AUTH })
             .then(function (r) { return r.json().then(function (j) { return { status: r.status, body: j }; }); })
@@ -387,7 +543,7 @@
     $('histRefreshBtn').addEventListener('click', loadHistory);
 
     function loadAll() { loadLive(); loadHistory(); }
-    loadAll();   /* dashboard is open - no key required */
+    loadAll();   /* s24-public needs no key; gated panels self-check AUTH */
     setInterval(loadLive, 30000);
 })();
 </script>
