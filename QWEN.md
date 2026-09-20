@@ -31,15 +31,15 @@ rationale is in [`INTEGRATION.md`](./INTEGRATION.md).
 | Layer | Path | Holds | Tracked files |
 |-------|------|-------|---------------|
 | Frontend | `Frontend/` | Static dashboard pages, styles, components | 1976 |
-| Backend | `Backend/` | Vercel serverless functions — the API | 166 |
-| Database | `Database/` | Schemas, migrations, Firestore/vector tooling | 23 |
-| Server | `Server/` | `jp-agent` droplet runtime, deploy scripts, nginx/systemd | 61 |
-| Integrations | `Integrations/` | Shared store clients (`postgres.js`, `wa-store.js`, `s24-store.js`) | 7 |
-| _shared | `_shared/` | Project-wide config, docs, and **all tests** | 137 |
-| Devices | `Devices/` | Self-contained per-device installer bundles | 67 |
+| Backend | `Backend/` | Vercel serverless functions — the API | 169 |
+| Database | `Database/` | Schemas, migrations, Firestore/vector tooling | 26 |
+| Server | `Server/` | `jp-agent` droplet runtime, deploy scripts, nginx/systemd | 63 |
+| Integrations | `Integrations/` | Shared store clients (`postgres.js`, `wa-store.js`, `s24-store.js`) | 9 |
+| _shared | `_shared/` | Project-wide config, docs, and **all tests** | 92 |
+| Devices | `Devices/` | Self-contained per-device installer bundles | 71 |
 | archive | `archive/` | Cold storage: superseded or regenerable artifacts | 57 |
 
-~2520 tracked files total (counts as of `main@87ba028`, 2026-09-19).
+2492 tracked files total (counts as of `main@602c63b`, 2026-09-20).
 
 ### ⚠️ The tree is much larger than the app
 
@@ -62,7 +62,7 @@ vendored files; they are inert.
 ```bash
 npm install
 npm run dev      # vercel dev — local frontend + serverless functions
-npm test         # _shared/tests/run-all.mjs — 21 suites, all must pass
+npm test         # _shared/tests/run-all.mjs — every *.test.mjs, all must pass
 ```
 
 | Script | Command | Notes |
@@ -83,11 +83,13 @@ to the root package. Don't claim lint passed — it never ran.
 
 ## Testing conventions
 
-Tests live in **`_shared/tests/`**, not beside the code they cover. They are
-**plain ESM scripts**, not `node:test` files — `node --test` will not drive
-them. `run-all.mjs` discovers `*.test.mjs` alphabetically, spawns each in a
-child process, and treats any non-zero exit (including a signal kill) as a
-failure.
+Tests live in **`_shared/tests/`**, not beside the code they cover. Most are
+**plain ESM scripts** that set `process.exitCode` directly, not `node:test`
+suites — `node --test` will not drive those. A handful are real `node:test`
+files; `grep -l "node:test" _shared/tests/*.test.mjs` lists the current set.
+`run-all.mjs` covers both kinds: it discovers `*.test.mjs` alphabetically,
+spawns each as `node <file>` in a child process, and treats any non-zero exit
+(including a signal kill) as a failure.
 
 The house pattern, from `_shared/tests/device-liveness.test.mjs`:
 

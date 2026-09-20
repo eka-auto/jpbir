@@ -134,10 +134,19 @@ jobs:
           CODE=$(echo "$BODY" | tail -n 1)
           JSON=$(echo "$BODY" | sed '$d')
           OVERALL=$(echo "$JSON" | jq -r '.overall // "unreadable"')
-          if [ "$CODE" -eq 200 ] && [ "$OVERALL" != "fail" ]; then
+          CLOUDFAIL=$(echo "$JSON" | jq -r '.cloud_fail // "unreadable"')
+          ALLFAIL=$(echo "$JSON" | jq -r '.summary.fail // 0')
+          if [ "$CODE" = "200" ] && [ "$OVERALL" != "fail" ]; then
             echo "✅ Stack healthy (overall=$OVERALL, $(echo "$JSON" | jq -r '.summary.ok') checks ok)"
+          elif [ "$CLOUDFAIL" = "0" ]; then
+            # The only reds are device-freshness files: phones report in or they
+            # don't, and no deploy fixes them (inboundListener: false by design).
+            # The panel and the stack-alert cron keep carrying that red; a git
+            # check must not burn main-red on it every 15 minutes and every push.
+            echo "⚠️ Cloud probes all green; $((ALLFAIL)) red file(s) are device freshness only — go wake a daemon, CI does not gate on it"
+            echo "   $JSON"
           else
-            echo "❌ Stack check failed (HTTP $CODE, overall=$OVERALL): $JSON"
+            echo "❌ Stack check failed (HTTP $CODE, overall=$OVERALL, cloud_fail=$CLOUDFAIL): $JSON"
             exit 1
           fi
 
