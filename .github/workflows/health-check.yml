@@ -42,6 +42,10 @@ jobs:
       # the guard and refused, which is exactly healthy. A 503 means STATS_KEY
       # is missing on the deployment, and a 5xx means the route is broken, so
       # both still fail the check.
+      # The asymmetry is the design post-2026-09-20: /api/s24-public is
+      # deliberately public (coarse, PII-free status for /s24 visitors), while
+      # this 401 on /api/jp-devices is the key-gate working — full data stays
+      # authenticated.
       - name: Test Devices API
         run: |
           RESPONSE=$(curl -sL -o /dev/null -w "%{http_code}" https://jaytipargal.tech/api/jp-devices)
