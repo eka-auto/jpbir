@@ -56,10 +56,6 @@
       "use": "@vercel/node"
     },
     {
-      "src": "Backend/jp-device.js",
-      "use": "@vercel/node"
-    },
-    {
       "src": "Backend/jp-devices.js",
       "use": "@vercel/node"
     },
@@ -158,6 +154,10 @@
     {
       "src": "Backend/s24-sync-cron.js",
       "use": "@vercel/node"
+    },
+    {
+      "src": "Backend/jp-device.js",
+      "use": "@vercel/node"
     }
   ],
   "routes": [
@@ -204,6 +204,14 @@
     {
       "src": "/api/s24-sync-cron",
       "dest": "Backend/s24-sync-cron.js"
+    },
+    {
+      "src": "/api/jp-device",
+      "dest": "Backend/jp-device.js"
+    },
+    {
+      "src": "/api/jp-devices",
+      "dest": "Backend/jp-devices.js"
     },
     {
       "src": "/api/(.*)(.js)?",

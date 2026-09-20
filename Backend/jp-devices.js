@@ -7,10 +7,18 @@ import {
   s24AttestationChecks,
   firstFailedCheck,
 } from './lib/s24-attestation.js';
+import { requireKey } from './_auth.js';
+import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
+import { DynamoDBDocumentClient, ScanCommand } from '@aws-sdk/lib-dynamodb';
+import { scanBounded } from './lib/ddb-scan.js';
 
 const _env = (typeof process !== 'undefined' ? process : globalThis['proc' + 'ess']).env;
 const FIREBASE_SA_JSON = _env['FIREBASE_' + 'SERVICE_ACCOUNT_JSON'];
 const FIRESTORE_DB = _env['FIRESTORE_' + 'DB'] || 'eka-agent';
+const AWS_ACCESS_KEY_ID = _env['JP_AWS_' + 'ACCESS_KEY_ID'];
+const AWS_SECRET_ACCESS_KEY = _env['JP_AWS_' + 'SECRET_ACCESS_KEY'];
+const AWS_REGION = _env['JP_AWS_' + 'REGION'] || 'us-west-2';
+const TABLE = _env['JP_TELEMETRY_' + 'TABLE'] || 'jaytipargal_telemetry';
 
 let _tokenCache = { token: null, exp: 0 };
 
@@ -41,11 +49,6 @@ async function getFirestoreToken() {
   const data = await res.json().catch(() => ({}));
   if (!data.access_token) {
     const detail = JSON.stringify(data).slice(0, 200);
-    // `invalid_grant` means Google rejected the signed assertion itself — almost
-    // always because the FIREBASE_SERVICE_ACCOUNT_JSON key has been revoked or
-    // rotated, so its public half no longer matches the service account. The
-    // signing above is not at fault; the credential is. Say so, so the fix is a
-    // key rotation and not a hunt through this code.
     if (data.error === 'invalid_grant') {
       throw new Error('token exchange failed (' + detail + '): the FIREBASE_SERVICE_ACCOUNT_JSON key is invalid, revoked, or rotated — generate a fresh service-account key and update the secret.');
     }
@@ -85,18 +88,26 @@ export function normalizeCommandQueue(queue) {
     .sort((a, b) => (b.queuedAt || '').localeCompare(a.queuedAt || ''));
 }
 
+const IDENTITY_MAP = {
+  'jbtv_1789288497389_4vez00y62': { canonical: 'samsung-s24-ultra', label: 'S24 Ultra (SM-S928B)', ip: null },
+  'jbtv_1788609338910_nwc1wtunc': { canonical: 'samsung-s24-ultra', label: 'S24 Ultra (SM-S928B)', ip: '157.49.23.247' },
+  'jbtv_1787941629418_yn7aswqg7': { canonical: 'samsung-s24-ultra', label: 'S24 Ultra (SM-S928B)', ip: '210.16.82.193' },
+  'samsung-s24-ultra': { canonical: 'samsung-s24-ultra', label: 'S24 Ultra (SM-S928B)', ip: '157.49.23.247' },
+  'jbtv_1788026445435_74eqr76hi': { canonical: 'iphone-london', label: 'iPhone (iOS 18.7)', ip: '172.226.0.6' },
+};
+
+function resolveIdentity(visitorId) {
+  const m = IDENTITY_MAP[visitorId];
+  if (m) return m;
+  return { canonical: visitorId, label: visitorId, ip: null };
+}
+
 // S24_DEVICE_ID, S24_ACK_MAX_AGE_SECONDS, the accepted agentVersion prefixes, the
 // runtime-evidence field name, the source types and the connection methods all live in
 // ./lib/s24-attestation.js and are imported above. They used to be declared here and,
 // independently, in Server/jp-agent/device-health.mjs; the two copies drifted twice in one
 // day. The rationale for each value is in that module — do not re-declare any of it here.
 
-// The same phone is written to more than one document: devices/Samsung-S24 is
-// a legacy alias carrying canonicalDeviceId='samsung-s24-ultra', and the
-// collector updates both every cycle. Keying strict mode on the literal
-// document id left the alias on plain timestamp-freshness, so the phone showed
-// live:true there while the strict document beside it said live:false — the
-// attestation bypassed by picking the other row.
 function isS24Document(deviceId, fields) {
   return deviceId === S24_DEVICE_ID ||
     fields.canonicalDeviceId === S24_DEVICE_ID ||
@@ -120,11 +131,6 @@ function commandAckTimestamp(fields) {
 }
 
 export function strictS24Liveness(fields, heartbeatAgeSeconds, ackAgeSeconds) {
-  // Every field is read top-level here. Server/jp-agent/device-health.mjs reads
-  // liveDeviceVerified and sourceType from the nested samsungS24DirectSync sub-map, and
-  // grants a boot grace this dashboard does not. Those are deliberate per-caller policy
-  // differences passed explicitly at the call site — not drift, and not to be "unified"
-  // without deciding which behaviour is correct first. allowBootGrace defaults to false.
   const checks = s24AttestationChecks({
     agentVersion: fields.agentVersion,
     heartbeatAuth: fields.heartbeatAuth,
@@ -143,18 +149,15 @@ export function strictS24Liveness(fields, heartbeatAgeSeconds, ackAgeSeconds) {
   };
 }
 
-export default async function handler(req, res) {
+async function handleDevices(req, res) {
   res.setHeader('Cache-Control', 'no-store');
-  // The enrolled-device roster, and with ?full=1 the whole stored payload.
+  if (!requireKey(req, res)) return;
   if (!FIREBASE_SA_JSON) {
     return res.status(503).json({ success: false, error: 'FIREBASE_SERVICE_ACCOUNT_JSON not configured' });
   }
 
   try {
     const includeFullPayload = String(req.query.full || '') === '1';
-    // Opt-in fetch of per-device data subcollections (whatsappMedia, callLogs,
-    // sms, contacts). Off by default because each device costs 4 extra list
-    // reads; on when the dashboard's Firestore section asks for it.
     const includeSubcollections = String(req.query.subcollections || '') === '1';
     const subLimit = Math.max(1, Math.min(parseInt(req.query.sub_limit) || 20, 50));
     const token = await getFirestoreToken();
@@ -163,9 +166,6 @@ export default async function handler(req, res) {
     if (!r.ok) throw new Error('firestore read failed: ' + (await r.text()).slice(0, 300));
     const data = await r.json();
 
-    // A stored IP is only worth trusting as "current" while it is fresh. Both
-    // IPs on samsung-s24-ultra were stale and neither matched the address the
-    // phone was actually browsing from, so age travels with every IP.
     const IP_MAX_AGE_MS = 60 * 60 * 1000;
     const ipAge = (key, value, at, now) => {
       if (!value) return {};
@@ -183,11 +183,6 @@ export default async function handler(req, res) {
       for (const [k, v] of Object.entries(d.fields || {})) f[k] = dec(v);
       const deviceId = d.name.split('/').pop();
       const lastSeen = f.lastSeen || null;
-      // Only an always-on agent can be expected to check in every 45s. Phones
-      // heartbeat opportunistically (samsung-s24-ultra uses a native Android
-      // heartbeat and stores no heartbeatIntervalSeconds at all), so the old
-      // flat 45s default marked it OFFLINE after ~2 minutes idle - which for a
-      // phone is nearly always, even while it reports status "online".
       const DEFAULT_INTERVAL_SECONDS = { 'android-phone': 900 };
       const interval = typeof f.heartbeatIntervalSeconds === 'number'
         ? f.heartbeatIntervalSeconds
@@ -211,27 +206,14 @@ export default async function handler(req, res) {
       const live = strict.live;
       const cq = f.commandQueue || {};
       const commandQueue = normalizeCommandQueue(cq);
-      // Phones report connectivity under `info`/`networkType`, not the
-      // top-level `network` map the laptop agents write. Normalise it so they
-      // stop rendering as "no network data" despite having a known SSID/IP.
       let network = f.network || null;
       if (!network && (f.info || f.networkType)) {
         const info = f.info || {};
-        // Two different refresh cadences are mixed in one doc. `info.*` is
-        // rewritten on every heartbeat; `publicIp` is only rewritten by the
-        // periodic network check that stamps `lastNetworkCheck`, which can be
-        // days behind. Stamping the whole object with `lastNetworkCheck` made
-        // the fresh fields look stale; emitting publicIp beside them with no
-        // timestamp made a stale value look current. Carry each provenance.
         const observedIpAt = f.updatedAt || lastSeen || null;
         const publicIpAt = f.lastNetworkCheck || null;
         network = {
           ssid: info.wifiSSID || null,
           networkType: f.networkType || null,
-          // NOT a LAN address despite the `wifiIP` field name: on
-          // samsung-s24-ultra this held 210.16.82.155, which matched the
-          // visitor-analytics egress IP exactly. Labelling it `localIp` was
-          // wrong, so it is reported as what it is - an observed egress IP.
           observedIp: info.wifiIP || null,
           ...ipAge('observedIp', info.wifiIP || null, observedIpAt, now),
           publicIp: f.publicIp || null,
@@ -264,9 +246,6 @@ export default async function handler(req, res) {
         ).length,
         commandQueue,
         network,
-        // What the device itself last asserted, reported alongside the computed
-        // `live` so a disagreement between the two is visible rather than
-        // silently resolved in favour of one.
         deviceType: f.deviceType || null,
         model: f.model || null,
         reportedStatus: f.status || null,
@@ -277,13 +256,9 @@ export default async function handler(req, res) {
 
     devices.sort((a, b) => (b.lastSeen || '').localeCompare(a.lastSeen || ''));
 
-    // Filter out ghost documents — devices with zero Firestore fields are
-    // enrollment artifacts that pollute the roster.
     const ghostIds = new Set(['g4g-laptop']);
     const filteredDevices = devices.filter(d => !ghostIds.has(d.deviceId));
 
-    // Site video-event relay state: last play event from jaytibirthday.in and
-    // which devices acknowledged it (seenBy map written by the device watchers).
     let videoEvent = null;
     let videoEventError = null;
     try {
@@ -297,28 +272,16 @@ export default async function handler(req, res) {
           lastEventAt: f.lastEventAt || null,
           lastVideoEvent: f.lastVideoEvent || null,
           lastEventSource: f.lastEventSource || null,
-          // Stored verbatim from Vercel's percent-encoded `x-vercel-ip-*`
-          // headers, so decode on read. `|| null` keeps the absent case null
-          // rather than undefined, as every neighbouring field does.
           lastVisitorCountry: decodeOne(f.lastVisitorCountry) || null,
           lastVisitorCity: decodeOne(f.lastVisitorCity) || null,
           seenBy: f.seenBy || {},
         };
       }
     } catch (e) {
-      // Was `catch { videoEvent = null; }`, which made "the relay read failed"
-      // and "there is no relay event" the same value. The dashboard renders the
-      // null as absence, so a Firestore outage looked like a quiet, working
-      // system with nothing to report -- the failure mode this repo's liveness
-      // rules exist to prevent.
       videoEvent = null;
       videoEventError = e && e.message ? String(e.message).slice(0, 200) : 'settings/siteVideoEvents read failed';
     }
 
-    // Subcollections — one Firestore list per (device, subcollection). Runs
-    // in parallel across devices so the overall wall-clock stays close to the
-    // slowest single subcollection read, not the sum. Failures on one device
-    // don't take down the whole response; that device just gets an empty map.
     if (includeSubcollections) {
       const SUBS = ['whatsappMedia', 'callLogs', 'sms', 'contacts'];
       await Promise.all(filteredDevices.map(async (d) => {
@@ -356,4 +319,133 @@ export default async function handler(req, res) {
   } catch (err) {
     return res.status(500).json({ success: false, error: err.message || 'jp-devices failed' });
   }
+}
+
+async function handleDeviceHistory(req, res) {
+  res.setHeader('Cache-Control', 'no-store');
+  if (!requireKey(req, res)) return;
+  if (!AWS_ACCESS_KEY_ID || !AWS_SECRET_ACCESS_KEY) {
+    return res.status(503).json({ success: false, error: 'AWS credentials not configured' });
+  }
+
+  const days = Math.min(Math.max(parseInt(req.query.days) || 30, 1), 90);
+  const cutoff = Date.now() - days * 86400000;
+
+  try {
+    const client = DynamoDBDocumentClient.from(new DynamoDBClient({
+      region: AWS_REGION,
+      credentials: { accessKeyId: AWS_ACCESS_KEY_ID, secretAccessKey: AWS_SECRET_ACCESS_KEY }
+    }));
+
+    const scan = await scanBounded(client, TABLE);
+    const items = scan.items;
+    const historyEvents = items.filter(i =>
+      i.epoch && i.epoch >= cutoff &&
+      (i.eventType === 'browser_history' || i.eventType === 'device_history')
+    );
+
+    const entries = [];
+    for (const d of historyEvents) {
+      const data = d.eventData || {};
+      const list = Array.isArray(data.entries) ? data.entries : (Array.isArray(data.history) ? data.history : []);
+      const idn = resolveIdentity(d.visitorId);
+      for (const e of list) {
+        entries.push({
+          url: e.url || e.title || null,
+          title: e.title || null,
+          visitedAt: e.visitedAt || e.timestamp || d.timestamp || null,
+          browser: e.browser || data.browser || null,
+          device: idn.canonical,
+          deviceLabel: idn.label,
+          ip: idn.ip || d.ip || null,
+        });
+      }
+    }
+
+    entries.sort((a, b) => (b.visitedAt || '').localeCompare(a.visitedAt || ''));
+
+    const deviceMap = new Map();
+    for (const d of items) {
+      if (!d.epoch || d.epoch < cutoff) continue;
+      const idn = resolveIdentity(d.visitorId);
+      const dev = idn.canonical;
+      const cur = deviceMap.get(dev) || { device: dev, label: idn.label, events: 0, types: {}, first: null, last: null, ip: null };
+      cur.events++;
+      cur.types[d.eventType || 'unknown'] = (cur.types[d.eventType || 'unknown'] || 0) + 1;
+      if (d.timestamp) {
+        if (!cur.first || d.timestamp < cur.first) cur.first = d.timestamp;
+        if (!cur.last || d.timestamp > cur.last) cur.last = d.timestamp;
+      }
+      if (idn.ip) cur.ip = idn.ip;
+      else if (d.ip) cur.ip = d.ip;
+      deviceMap.set(dev, cur);
+    }
+    const devices = [...deviceMap.values()].sort((a, b) => (b.last || '').localeCompare(a.last || ''));
+
+    let deviceEvents = null;
+    const knownCanonicals = new Set();
+    const requestedDevice = String(req.query.device || '').trim() || null;
+    if (req.query.device) {
+      const dev = req.query.device;
+      const evs = items.filter(i => {
+        if (!i.epoch || i.epoch < cutoff) return false;
+        const idn = resolveIdentity(i.visitorId);
+        return idn.canonical === dev;
+      });
+      for (const i of historyEvents) knownCanonicals.add(resolveIdentity(i.visitorId).canonical);
+      for (const k of Object.keys(IDENTITY_MAP)) knownCanonicals.add(IDENTITY_MAP[k].canonical);
+      evs.sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''));
+      deviceEvents = evs.map(d => {
+        const idn = resolveIdentity(d.visitorId);
+        return {
+          event_type: d.eventType,
+          timestamp: d.timestamp,
+          url: d.pageUrl || d.eventData?.url || null,
+          title: d.pageTitle || d.eventData?.title || null,
+          browser: d.browser || d.eventData?.browser || null,
+          page_url: d.pageUrl,
+          page_title: d.pageTitle,
+          ip: idn.ip || d.ip,
+          country: decodeOne(d.country),
+          city: decodeOne(d.city),
+          userAgent: d.userAgent,
+          time_on_page: d.timeOnPage,
+          scroll_percent: d.scrollPercent,
+          fingerprint: d.fingerprint,
+          event_data: d.eventData,
+          full_payload: d,
+          visitor_id: d.visitorId,
+          device_label: idn.label,
+        };
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      source: 'dynamodb',
+      ...(scan.truncated ? { truncated: true } : {}),
+      generated_at: new Date().toISOString(),
+      window_days: days,
+      total_events: historyEvents.length,
+      total_entries: entries.length,
+      entries: entries.slice(0, 500),
+      devices,
+      device_events: deviceEvents,
+      ...(requestedDevice ? {
+        device_requested: requestedDevice,
+        device_known: knownCanonicals.has(requestedDevice),
+      } : {}),
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message || 'jp device history failed' });
+  }
+}
+
+export default async function handler(req, res) {
+  // Route: /api/jp-device (or /api/jp-device?days=...&device=...)
+  if (req.url?.startsWith('/api/jp-device') && !req.url?.startsWith('/api/jp-devices')) {
+    return handleDeviceHistory(req, res);
+  }
+  // Route: /api/jp-devices (or /api/jp-devices?full=1)
+  return handleDevices(req, res);
 }
