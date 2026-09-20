@@ -1,12 +1,14 @@
 // Contract tests for the Product engineering panel's status maths.
 //
 // The panel's only value is that a green light is earned. These assertions pin
-// the three ways that could quietly stop being true: a layer averaging away a
-// broken file, an unprobed subsystem rendering green, and a red light shipping
-// without the one-line reason the operator needs.
+// the four ways that could quietly stop being true: a layer averaging away a
+// broken file, an unprobed subsystem rendering green, a red light shipping
+// without the one-line reason the operator needs, and the cloud/device verdict
+// split that lets CI gate on what a merge can break bleeding in either
+// direction.
 
 import assert from 'node:assert/strict';
-import { worst, buildLayers } from '../../Backend/jp-stack.js';
+import { worst, buildLayers, snapshot } from '../../Backend/jp-stack.js';
 import { evaluateStack, failureLines, alertBody } from '../../Backend/stack-cron.js';
 import { LAYERS, REQUIRED_ENV, allFiles } from '../../Backend/lib/stack-map.js';
 
@@ -147,6 +149,24 @@ t('the alert email names every failing probe and its reason', () => {
   assert.doesNotMatch(body, /dns/, 'a healthy probe must not appear in a failure mail');
   assert.match(alertBody('down', snap).subject, /DOWN/);
   assert.match(alertBody('recovered', snap).subject, /RECOVERED/);
+});
+
+t('a stopped device daemon reddens the panel but never the cloud verdict', () => {
+  // CI gating on device freshness turns every push red for an outage no
+  // deploy can fix — phones phone home or they are silent, and
+  // Devices/S24/runtime_contract.json forbids any inbound listener. The
+  // cloud_fail split is what lets the git check stay meaningful while the
+  // panel keeps the dead daemon red, so it must count everything but devices.
+  const probes = allOk();
+  probes.devices = { status: 'fail', problem: 'newest device heartbeat is 9,500 min old' };
+  const dead = snapshot(probes);
+  assert.equal(dead.overall, 'fail', 'the panel must still call a dead fleet red');
+  assert.ok(dead.summary.fail > 0, 'device files count in the headline fail tally');
+  assert.equal(dead.cloud_fail, 0, 'device freshness must never enter the cloud gate');
+
+  probes.postgres = { status: 'fail', problem: 'schema incomplete — missing wa_messages' };
+  const broken = snapshot(probes);
+  assert.ok(broken.cloud_fail > dead.cloud_fail, 'a failing Neon does gate CI');
 });
 
 console.log('\n  ' + pass + '/' + total + ' passed');
