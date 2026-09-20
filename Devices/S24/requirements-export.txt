@@ -1,0 +1,21 @@
+# Pinned dependencies for the Firestore-export -> signed-push pipeline
+# (pull_direct_cloud.py | push_to_vercel.py), used by
+# .github/workflows/s24-export-sync.yml.
+#
+# Why this file exists separately from requirements-broker.txt: the CI job was
+# installing `-r requirements-broker.txt firebase-admin`, pinning cryptography
+# but leaving firebase-admin to float. An unattended twice-daily job that
+# resolves a different dependency tree on every run has no reproducible failure
+# mode — a green run yesterday says nothing about today. It also made the
+# actions/setup-python pip cache key wrong, because the cache keyed on
+# requirements-broker.txt while the real input set included an unpinned package.
+#
+# requirements-broker.txt is NOT reused here: requests and psutil are for the
+# on-device broker path and are dead weight in the export job.
+#
+# pull_direct_cloud.py imports firebase_admin (and firebase_admin.credentials,
+# firebase_admin.firestore); push_to_vercel.py imports cryptography and the
+# sibling signer.py module. Nothing else in this pipeline needs a third-party
+# package.
+firebase-admin==7.6.0
+cryptography==49.0.0
