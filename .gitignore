@@ -87,3 +87,9 @@ _shared/package.json
 # Claude Code hooks and settings (not .local.json)
 .claude/hooks/
 .claude/settings.json
+
+# Per-machine agent tooling. .claude/settings.local.json is already ignored
+# above; .kilo/ is the same class -- another assistant's local workspace state,
+# untracked but NOT ignored, so one `git add -A` sweeps it into a commit.
+# .vercelignore already fences both out of a CLI deploy.
+.kilo/
