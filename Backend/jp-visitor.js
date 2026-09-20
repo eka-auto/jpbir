@@ -17,6 +17,29 @@ async function scanAll(client, extra) {
   return scanBounded(client, TABLE, extra);
 }
 
+/**
+ * Lift the tracker's telemetry sub-objects out of `eventData` to the top level.
+ *
+ * Mirrors the field set Backend/visitor.js:89-101 emits, so the dashboard's one
+ * drawer renderer sees the same shape from both endpoints. Unknown keys are not
+ * spread wholesale: an allowlist keeps a tracker change from silently widening
+ * this response, which is a PII surface behind requireKey.
+ */
+const TELEMETRY_FIELDS = [
+  'browser_info', 'network_info', 'screen_info', 'battery_info', 'input_type',
+  'memory_info', 'storage_estimate', 'refresh_rate', 'frame_rate',
+  'pwa_state', 'advanced_capabilities', 'interactions',
+];
+
+function projectTelemetry(eventData) {
+  if (!eventData || typeof eventData !== 'object') return {};
+  const out = {};
+  for (const k of TELEMETRY_FIELDS) {
+    if (eventData[k] !== undefined) out[k] = eventData[k];
+  }
+  return out;
+}
+
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
   // Same dossier as /api/visitor - IP, fingerprint, user agent, geolocation and
@@ -143,6 +166,18 @@ export default async function handler(req, res) {
         }),
         server_request_meta: { userAgent: d.userAgent, referer: d.referrer },
         event_data: d.eventData,
+        // The drawer's "Device & network" and "Device probe" panels read these
+        // off the EVENT, because that is the shape /api/visitor returns
+        // (Backend/visitor.js:89-101). jp-track stores the tracker's whole
+        // payload under `eventData` instead, so on the jp side every one of
+        // them was undefined and both panels rendered as a grid of dashes --
+        // not an error, just silently empty, on data that was present the whole
+        // time one level down.
+        //
+        // Projected here rather than taught to the frontend: Frontend/jp-tracker.js
+        // is embedded on a third-party origin and cannot be redeployed in
+        // lockstep, so the two endpoints must converge on the server side.
+        ...projectTelemetry(d.eventData),
         raw: d.rawPayload,
         web_vitals: d.eventType === 'web_vitals' ? d.eventData : undefined,
         interactions: d.eventType === 'interaction_batch' && d.eventData ? d.eventData.interactions : undefined,

@@ -177,7 +177,23 @@ export default async function handler(req, res) {
       }
 
       const sid = d.session_id || 'no-session';
-      if (!sessions.has(sid)) sessions.set(sid, { first: d.receivedAt, last: d.receivedAt, count: 0, ip, types: {} });
+      if (!sessions.has(sid)) sessions.set(sid, {
+        first: d.receivedAt, last: d.receivedAt, count: 0, ip, types: {},
+        // Carried per session so the sessions table can render its Visitor,
+        // City, Country and User agent columns. Those <th>s exist in
+        // index.html and were being fed from fields only jp-stats.js returned,
+        // so on the DEFAULT site -- jbt, which routes here -- four declared
+        // columns rendered empty on every row. Same auth gate, same rows
+        // already being read; no extra query and no second round-trip per row.
+        visitor_id: d.visitor_id || null,
+        city: city || null,
+        country: country || null,
+        timezone: (loc && loc.timezone) || null,
+        userAgent: ua || null,
+        referrer: ref || null,
+        fingerprint: d.fingerprint || d.device_fingerprint || null,
+        page_url: d.page_url || null,
+      });
       const s = sessions.get(sid);
       s.count++;
       s.types[d.event_type || 'unknown'] = (s.types[d.event_type || 'unknown'] || 0) + 1;
@@ -247,6 +263,17 @@ export default async function handler(req, res) {
       .map(([id, s]) => ({
         id, ip: s.ip, count: s.count, types: s.types, first: s.first, last: s.last,
         durationSec: s.first && s.last ? Math.round((new Date(s.last) - new Date(s.first)) / 1000) : 0,
+        // Shape parity with /api/jp-stats. The dashboard renders one sessions
+        // table for both endpoints, so a field present in one and absent in the
+        // other shows as a blank column depending only on which site is selected.
+        visitor_id: s.visitor_id || null,
+        city: s.city || null,
+        country: s.country || null,
+        timezone: s.timezone || null,
+        userAgent: s.userAgent || null,
+        referrer: s.referrer || null,
+        fingerprint: s.fingerprint || null,
+        page_url: s.page_url || null,
       }))
       .sort((a, b) => (b.last || '').localeCompare(a.last || ''));
 
