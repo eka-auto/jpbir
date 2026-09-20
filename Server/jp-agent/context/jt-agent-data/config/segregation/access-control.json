@@ -1,0 +1,17 @@
+{
+  "version": "1.0",
+  "components": {
+    "memory": { "description": "Long-term memory storage and retrieval", "allowed_sources": ["whatsapp", "chrome", "device:*", "custom:*"], "encryption_required": true, "read_write": "read_write" },
+    "context": { "description": "Current conversation context injection", "allowed_sources": ["whatsapp", "chrome", "device:*", "custom:*"], "encryption_required": true, "read_write": "read_only", "max_tokens": 8192 },
+    "search": { "description": "Encrypted search across all sources", "allowed_sources": ["whatsapp", "chrome", "device:*", "custom:*"], "encryption_required": true, "read_write": "read_only", "index_only": true },
+    "summarization": { "description": "Content summarization and extraction", "allowed_sources": ["whatsapp", "chrome", "device:*"], "encryption_required": true, "read_write": "read_only", "max_chunk_size": 4096 },
+    "automation": { "description": "Action execution based on data", "allowed_sources": ["chrome", "device:*"], "encryption_required": true, "read_write": "read_only", "requires_confirmation": true },
+    "form_filling": { "description": "Auto-fill forms from stored data", "allowed_sources": ["chrome"], "encryption_required": true, "read_write": "read_only", "field_types": ["credentials", "address", "payment", "personal"] },
+    "location_aware": { "description": "Location-based context and triggers", "allowed_sources": ["device:mobile-android"], "encryption_required": true, "read_write": "read_only", "precision": "approximate" },
+    "notification_summary": { "description": "Notification aggregation and prioritization", "allowed_sources": ["device:mobile-android"], "encryption_required": true, "read_write": "read_only", "batch_interval_minutes": 15 },
+    "system_monitor": { "description": "System health and performance monitoring", "allowed_sources": ["device:desktop-*"], "encryption_required": true, "read_write": "read_only", "metrics": ["cpu", "memory", "disk", "network", "processes"] },
+    "file_search": { "description": "Encrypted file content search", "allowed_sources": ["device:desktop-*"], "encryption_required": true, "read_write": "read_only", "index_types": ["filename", "content", "metadata"] }
+  },
+  "default_deny": true,
+  "audit_logging": true
+}

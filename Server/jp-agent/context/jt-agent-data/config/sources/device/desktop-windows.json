@@ -1,0 +1,11 @@
+{
+  "source_id": "device:desktop-windows",
+  "display_name": "Windows Desktop",
+  "description": "Windows file system, registry, processes, network",
+  "encryption_profile": "aes-256-gcm-argon2id",
+  "segregation_rules": { "by_date": "monthly", "by_type": ["file_system", "registry", "processes", "network", "event_logs", "powershell_history"], "by_user": "required" },
+  "retention_policy": { "file_system": "1_year", "registry": "indefinite", "processes": "30_days", "network": "90_days", "event_logs": "2_years", "powershell_history": "indefinite" },
+  "access_control": { "agent_components": ["context", "automation", "system_monitor", "file_search"], "encryption_layer": "standard" },
+  "sync_schedule": { "type": "batch", "interval": "30_minutes", "batch_size": 5000 },
+  "sharding": { "strategy": "time_partitioned", "partition_key": "timestamp", "max_shard_size_mb": 500 }
+}
