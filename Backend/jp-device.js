@@ -117,6 +117,8 @@ export default async function handler(req, res) {
 
     // full event dump for one device when ?device= is given
     let deviceEvents = null;
+    const knownCanonicals = new Set();
+    const requestedDevice = String(req.query.device || '').trim() || null;
     if (req.query.device) {
       const dev = req.query.device;
       const evs = items.filter(i => {
@@ -124,6 +126,11 @@ export default async function handler(req, res) {
         const idn = resolveIdentity(i.visitorId);
         return idn.canonical === dev;
       });
+      // Every canonical identity this table can actually yield, whether or not
+      // it had events inside the window -- that is what makes "unknown device"
+      // distinguishable from "quiet device".
+      for (const i of historyEvents) knownCanonicals.add(resolveIdentity(i.visitorId).canonical);
+      for (const k of Object.keys(IDENTITY_MAP)) knownCanonicals.add(IDENTITY_MAP[k].canonical);
       evs.sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''));
       deviceEvents = evs.map(d => {
         const idn = resolveIdentity(d.visitorId);
@@ -165,6 +172,19 @@ export default async function handler(req, res) {
       entries: entries.slice(0, 500),
       devices,
       device_events: deviceEvents,
+      // Whether the requested device can EVER produce events here, as distinct
+      // from having none in this window.
+      //
+      // device_events is filtered by `resolveIdentity(visitorId).canonical ===
+      // dev`, so a device that never writes to this DynamoDB table -- or whose
+      // browser visitorId is absent from IDENTITY_MAP -- matches nothing however
+      // long the window. Frontend/vivobook.html asks for 'jayti-asus-vivobook'
+      // and rendered the empty result as "No events synced yet", which reads as
+      // a quiet device rather than a query that cannot succeed.
+      ...(requestedDevice ? {
+        device_requested: requestedDevice,
+        device_known: knownCanonicals.has(requestedDevice),
+      } : {}),
     });
   } catch (err) {
     return res.status(500).json({ success: false, error: err.message || 'jp device history failed' });

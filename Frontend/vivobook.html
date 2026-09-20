@@ -344,8 +344,23 @@
                 var evs = res.body.device_events || [];
                 var tbody = $('histTable').querySelector('tbody');
                 if (!evs.length) {
-                    tbody.innerHTML = '<tr><td colspan="4" class="state">No events synced yet.</td></tr>';
-                    $('histHint').textContent = 'No events yet.';
+                    /* "No events synced yet" was a lie of omission. This panel
+                       queries /api/jp-device, which keys browser telemetry off
+                       visitorId -> canonical device via its IDENTITY_MAP. This
+                       machine writes its state to Firestore, not to that table,
+                       and no visitorId maps to 'jayti-asus-vivobook' - so the
+                       result is empty no matter how long the window, and always
+                       will be until a mapping is added. Saying "no events yet"
+                       described a quiet device; this describes the real state. */
+                    var unmapped = res.body.device_known === false;
+                    tbody.innerHTML = '<tr><td colspan="4" class="state">' +
+                        (unmapped
+                            ? 'This machine has no browser-telemetry identity. Its live state above comes from Firestore; ' +
+                              'the history table is fed by /api/jp-device, which matches events by browser visitor id. ' +
+                              'No visitor id currently maps to ' + esc(DEVICE_ID) + ', so there is nothing to show here.'
+                            : 'No events in the last 30 days.') +
+                        '</td></tr>';
+                    $('histHint').textContent = unmapped ? 'No browser-telemetry identity for this device' : 'No events in window.';
                     return;
                 }
                 tbody.innerHTML = evs.slice(0, 50).map(function (e) {
