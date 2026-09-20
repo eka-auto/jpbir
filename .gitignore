@@ -93,3 +93,21 @@ _shared/package.json
 # untracked but NOT ignored, so one `git add -A` sweeps it into a commit.
 # .vercelignore already fences both out of a CLI deploy.
 .kilo/
+
+# Pre-restructure residue, and the same hazard one level up: untracked but NOT
+# ignored, so one `git add -A` commits 84 files -- among them a live GCP
+# service-account private key
+# (firebase-adminsdk-fbsvc-intrep@intrepid-stage-495117-q1, kid f57ce7f23f91...),
+# secrets.json / secret_scan.json / secrets-scrub.json, password-, cookie- and
+# login-metadata dumps, hf_bucket_credential_audit.json, and eight _tmp_*.mjs
+# one-off scripts. Nothing under app/ is tracked at HEAD; it is leftover from
+# before the five-layer restructure. .vercelignore already fences app/ out of a
+# `vercel --prod` upload -- this is the git-side guard on the same tree.
+/app/
+
+# Service-account keys anywhere in the tree, not just under app/. Named for the
+# GCP project and for the two conventional credential filenames, so a key dropped
+# next to the code it serves is still caught. No tracked file matches these.
+intrepid-stage-*.json
+*serviceAccountKey*.json
+*service_account*.json
