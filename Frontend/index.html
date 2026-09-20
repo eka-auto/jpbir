@@ -469,88 +469,79 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
                 <div class="panel"><h2>Email opens by recipient</h2><div class="hint" id="emailHint"></div><div id="emails"></div></div>
             </section>
 
-            <!-- DEVICE DASHBOARD -->
+            <!-- DEVICE DASHBOARD — rebuilt 2026-09-20 -->
             <section class="page" id="page-device">
                 <div class="panel">
-                    <div class="panel-head"><div><h2>Device Dashboard</h2><div class="hint">Live database sync every 10 seconds · device status, content, browser history, and network details</div></div></div>
+                    <div class="panel-head">
+                        <div>
+                            <h2>Device Dashboard</h2>
+                            <div class="hint" id="deviceDashHint">Live sync every 10 seconds · Firestore device state + DynamoDB browser history</div>
+                        </div>
+                        <div class="tools">
+                            <span id="deviceSyncDot" class="live-dot"></span>
+                            <button id="deviceSyncBtn">Sync now</button>
+                        </div>
+                    </div>
+                    <div id="deviceSummary" class="kpis" style="margin-top:12px"></div>
                 </div>
+
+                <!-- MAIN DEVICES TABLE -->
                 <div class="panel">
-                    <div class="panel-head"><div><h2>Live device status</h2><div class="hint" id="liveDevicesHint">Firestore device state — liveness derived from lastSeen age</div></div>
-                        <div class="tools"><button id="liveDevicesRefreshBtn">Refresh</button></div></div>
+                    <div class="panel-head">
+                        <div><h2>Registered devices</h2><div class="hint" id="devicesTableHint">Click a row to expand full device details</div></div>
+                        <div class="tools"><input id="deviceSearch" type="text" placeholder="Search devices…"></div>
+                    </div>
                     <div class="table-wrap">
-                        <table id="liveDevicesTable">
+                        <table id="mainDevicesTable">
                             <thead><tr>
+                                <th style="width:28px"></th>
                                 <th>Device</th>
+                                <th>Platform</th>
                                 <th>Status</th>
                                 <th>Last seen</th>
-                                <th>Connection</th>
+                                <th>Battery</th>
                                 <th>Network</th>
-                                <th>Queued commands</th>
+                                <th>Queue</th>
+                                <th>Agent</th>
                             </tr></thead>
                             <tbody></tbody>
                         </table>
                     </div>
-                    <div id="livePayloadPanel" style="margin-top:18px;padding-top:16px;border-top:1px solid var(--border-light)">
-                        <div class="panel-head"><div><h2>Full daemon payloads</h2><div class="hint" id="livePayloadHint">Complete Firestore documents, organized into readable device sections</div></div></div>
-                        <div id="livePayloadList" class="payload-list"></div>
-                    </div>
                 </div>
+
+                <!-- EXPANDED DEVICE DETAIL (hidden by default) -->
+                <div class="panel" id="deviceDetailPanel" style="display:none">
+                    <div class="panel-head">
+                        <div><h2 id="deviceDetailTitle">Device details</h2><div class="hint" id="deviceDetailHint"></div></div>
+                        <div class="tools"><button id="deviceDetailClose">Close</button></div>
+                    </div>
+                    <div id="deviceDetailContent"></div>
+                </div>
+
+                <!-- BROWSER HISTORY (from DynamoDB) -->
                 <div class="panel">
-                    <div class="panel-head"><div><h2>Device browser history</h2><div class="hint" id="deviceHint">Own-device history synced from the S24 daemon</div></div>
-                        <div class="tools"><button id="deviceAskBtn" title="Queue an authenticated S24 sync through the live command channel">Sync S24 now</button><button id="deviceRefreshBtn">Refresh</button></div></div>
+                    <div class="panel-head">
+                        <div><h2>Browser history</h2><div class="hint" id="browserHistoryHint">Synced from device daemons · DynamoDB</div></div>
+                        <div class="tools">
+                            <select id="historyDeviceFilter"><option value="all">All devices</option></select>
+                            <button id="historyRefreshBtn">Refresh</button>
+                        </div>
+                    </div>
                     <div class="table-wrap">
-                        <table id="deviceTable">
+                        <table id="browserHistoryTable">
                             <thead><tr>
                                 <th>Visited</th>
                                 <th>Title</th>
                                 <th>URL</th>
-                                <th>Browser</th>
                                 <th>Device</th>
                             </tr></thead>
                             <tbody></tbody>
                         </table>
                     </div>
                 </div>
-                <div class="panel">
-                    <div class="panel-head"><div><h2>Devices</h2><div class="hint" id="devicesHint">Every device that has sent events — click to see all its data</div></div></div>
-                    <div class="table-wrap">
-                        <table id="devicesTable">
-                            <thead><tr>
-                                <th>Device</th>
-                                <th>Events</th>
-                                <th>Event types</th>
-                                <th>IP</th>
-                                <th>First seen</th>
-                                <th>Last seen</th>
-                            </tr></thead>
-                            <tbody></tbody>
-                        </table>
-                    </div>
-                </div>
-                <div class="panel" id="deviceDetailPanel" style="display:none">
-                    <div class="panel-head"><div><h2 id="deviceDetailTitle">Device data</h2><div class="hint" id="deviceDetailHint"></div></div>
-                        <div class="tools"><button id="deviceDetailClose">Close</button></div></div>
-                    <div id="deviceNetworkDetail" style="display:none"></div>
-                    <div class="table-wrap" id="deviceDetailTableWrap">
-                        <table id="deviceDetailTable">
-                            <thead><tr>
-                                <th>Time</th>
-                                <th>Event</th>
-                                <th>Page</th>
-                                <th>IP</th>
-                                <th>Location</th>
-                                <th>Time on page</th>
-                                <th>Scroll</th>
-                                <th>Fingerprint</th>
-                            </tr></thead>
-                            <tbody></tbody>
-                        </table>
-                    </div>
-                    <div id="devicePayloadPanel" style="margin-top:18px;padding-top:16px;border-top:1px solid var(--border-light)">
-                        <div class="panel-head"><div><h2>Full event payloads</h2><div class="hint" id="devicePayloadHint">Complete DynamoDB rows, organized into readable event sections</div></div></div>
-                        <div id="devicePayloadList" class="payload-list"></div>
-                    </div>
-                </div>
+
+                <!-- VIDEO RELAY BANNER (inserted dynamically) -->
+                <div id="videoRelayContainer"></div>
             </section>
 
             <!-- FIRESTORE -->
@@ -2578,20 +2569,22 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
 
     /* ===== DEVICE HISTORY ===== */
     var DEVICE_DATA = null;
+    var _expandedDevice = null;
+
     function loadDeviceHistory() {
-        /* open dashboard: no key required */
-        $('deviceHint').textContent = 'Loading device history…';
+        /* Browser history from DynamoDB */
+        $('browserHistoryHint').textContent = 'Loading browser history…';
         fetch('/api/jp-device?days=30', { headers: authHeaders() })
             .then(function (r) { return r.json().then(function (j) { return { status: r.status, body: j }; }); })
             .then(function (res) {
                 if (res.status === 401) { showGate(); return; }
                 if (!res.body.success) throw new Error(res.body.error || 'failed');
                 DEVICE_DATA = res.body;
-                var tbody = $('deviceTable').querySelector('tbody');
+                var tbody = $('browserHistoryTable').querySelector('tbody');
                 tbody.innerHTML = '';
                 var entries = res.body.entries || [];
                 if (!entries.length) {
-                    tbody.innerHTML = '<tr><td colspan="5" style="padding:14px;color:var(--ink-muted)">No device history synced yet.</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="4" style="padding:14px;color:var(--ink-muted)">No browser history synced yet.</td></tr>';
                 } else {
                     entries.forEach(function (e) {
                         var tr = document.createElement('tr');
@@ -2599,40 +2592,42 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
                             '<td>' + esc(fmtTime(e.visitedAt)) + '</td>' +
                             '<td>' + esc(e.title || '—') + '</td>' +
                             '<td style="max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(e.url || '—') + '</td>' +
-                            '<td>' + esc(e.browser || '—') + '</td>' +
                             '<td>' + esc(e.device || '—') + '</td>';
                         tbody.appendChild(tr);
                     });
                 }
-                $('deviceHint').textContent = res.body.total_entries + ' entries · ' + res.body.total_events + ' sync events · fetched ' + fmtTime(res.body.generated_at);
-
-                var dtbody = $('devicesTable').querySelector('tbody');
-                dtbody.innerHTML = '';
+                $('browserHistoryHint').textContent = res.body.total_entries + ' entries · ' + res.body.total_events + ' sync events · fetched ' + fmtTime(res.body.generated_at);
+                
+                /* Populate device filter dropdown */
+                var filter = $('historyDeviceFilter');
                 var devices = res.body.devices || [];
-                if (!devices.length) {
-                    dtbody.innerHTML = '<tr><td colspan="6" style="padding:14px;color:var(--ink-muted)">No devices have sent events yet.</td></tr>';
-                } else {
-                    devices.forEach(function (d) {
-                        var tr = document.createElement('tr');
-                        var types = Object.entries(d.types || {}).map(function (kv) {
-                            return '<span class="pill">' + esc(kv[0]) + ' ' + kv[1] + '</span>';
-                        }).join('');
-                        var name = d.label && d.label !== d.device ? d.label + ' <span style="color:var(--ink-muted);font-size:10px">(' + esc(d.device) + ')</span>' : esc(d.device);
-                        tr.innerHTML =
-                            '<td><span class="clickable" data-device="' + esc(d.device) + '">' + name + '</span></td>' +
-                            '<td>' + d.events + '</td>' +
-                            '<td>' + types + '</td>' +
-                            '<td class="mono">' + esc(d.ip || '—') + '</td>' +
-                            '<td>' + fmtTime(d.first) + '</td>' +
-                            '<td>' + fmtTime(d.last) + '</td>';
-                        dtbody.appendChild(tr);
-                    });
-                }
-                $('devicesHint').textContent = devices.length + ' devices in window';
+                var currentVal = filter.value;
+                filter.innerHTML = '<option value="all">All devices</option>';
+                devices.forEach(function (d) {
+                    var opt = document.createElement('option');
+                    opt.value = d.device;
+                    opt.textContent = d.label || d.device;
+                    filter.appendChild(opt);
+                });
+                filter.value = currentVal || 'all';
             })
             .catch(function (e) {
-                $('deviceHint').textContent = 'Error: ' + e.message;
+                $('browserHistoryHint').textContent = 'Error: ' + e.message;
             });
+    }
+
+    function renderDeviceSummary(devices) {
+        var summary = $('deviceSummary');
+        if (!summary) return;
+        var liveCount = devices.filter(function (d) { return d.live; }).length;
+        var totalCount = devices.length;
+        var queueTotal = devices.reduce(function (sum, d) { return sum + (d.commandQueueDepth || 0); }, 0);
+        
+        summary.innerHTML = 
+            '<div class="kpi"><div class="v">' + totalCount + '</div><div class="k">Total devices</div></div>' +
+            '<div class="kpi"><div class="v" style="color:var(--good)">' + liveCount + '</div><div class="k">Live now</div></div>' +
+            '<div class="kpi"><div class="v" style="color:var(--bad)">' + (totalCount - liveCount) + '</div><div class="k">Offline</div></div>' +
+            '<div class="kpi"><div class="v">' + queueTotal + '</div><div class="k">Queued commands</div></div>';
     }
 
     function loadDeviceDetail(device) {
@@ -3368,108 +3363,229 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
     }
 
     /* ===== LIVE DEVICE STATUS (Firestore) ===== */
+    var _liveDevicesCache = {};
+    
     function loadLiveDevices() {
-        /* open dashboard: no key required */
-        $('liveDevicesHint').textContent = 'Loading live device state…';
+        /* Fetch device state from Firestore */
+        $('deviceDashHint').textContent = 'Syncing…';
         fetch('/api/jp-devices?full=1', { headers: authHeaders() })
             .then(function (r) { return r.json().then(function (j) { return { status: r.status, body: j }; }); })
             .then(function (res) {
                 if (res.status === 401) { showGate(); return; }
                 if (!res.body.success) throw new Error(res.body.error || 'failed');
-                var tbody = $('liveDevicesTable').querySelector('tbody');
-                tbody.innerHTML = '';
+                
                 var devices = res.body.devices || [];
                 _liveDevicesCache = {};
                 devices.forEach(function (d) { _liveDevicesCache[d.deviceId] = d; });
+                
+                /* Render summary KPIs */
+                renderDeviceSummary(devices);
+                
+                /* Render main devices table */
+                var tbody = $('mainDevicesTable').querySelector('tbody');
+                tbody.innerHTML = '';
+                
                 if (!devices.length) {
-                    tbody.innerHTML = '<tr><td colspan="6" style="padding:14px;color:var(--ink-muted)">No devices registered in Firestore.</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="9" style="padding:14px;color:var(--ink-muted)">No devices registered in Firestore.</td></tr>';
                 } else {
-                    devices.forEach(function (d) {
+                    devices.forEach(function (d, idx) {
                         var tr = document.createElement('tr');
                         var live = d.live;
-                        var badge = live
+                        var statusBadge = live
                             ? '<span class="pill" style="background:rgba(46,160,67,.15);color:#2ea043">LIVE</span>'
                             : '<span class="pill" style="background:rgba(200,60,60,.12);color:#c83c3c">OFFLINE</span>';
-                        var lastSeen = d.lastSeen ? fmtTime(d.lastSeen) + ' (' + (d.lastSeenAgeSeconds != null ? d.lastSeenAgeSeconds + 's ago' : '—') + ')' : '—';
-                        var net = d.network || null;
-                        var netCell = '—';
-                        if (net) {
-                            var sig = net.wifiSignal && net.wifiSignal.signal_percent != null ? net.wifiSignal.signal_percent + '%' : '—';
-                            var nconns = (net.connections || []).length;
-                            netCell = esc(net.ssid || '—') + ' · ' + sig + ' · ' + nconns + ' conns · ↑' + (net.sent_mb != null ? net.sent_mb : '—') + '/↓' + (net.recv_mb != null ? net.recv_mb : '—') + ' MB';
-                        }
+                        
+                        var lastSeen = d.lastSeen 
+                            ? fmtTime(d.lastSeen) + '<br><span style="font-size:10px;color:var(--ink-muted)">' + fmtAgo(d.lastSeen) + '</span>'
+                            : '—';
+                        
+                        var net = d.network || {};
+                        var netCell = net.ssid 
+                            ? esc(net.ssid) + (net.wifiSignal && net.wifiSignal.signal_percent != null ? ' · ' + net.wifiSignal.signal_percent + '%' : '')
+                            : '—';
+                        
+                        var battery = d.batteryLevel != null ? d.batteryLevel + '%' : '—';
+                        var platform = d.platform || d.deviceType || '—';
+                        var agent = d.agentVersion || '—';
+                        if (agent.length > 20) agent = agent.substring(0, 20) + '…';
+                        
                         tr.innerHTML =
-                            '<td>' + esc(d.deviceDisplayName || d.deviceId) + '</td>' +
-                            '<td>' + badge + '</td>' +
+                            '<td><span style="cursor:pointer;font-size:12px" class="expand-toggle">▶</span></td>' +
+                            '<td><strong>' + esc(d.deviceDisplayName || d.deviceId) + '</strong><br><span style="font-size:10px;color:var(--ink-muted)" class="mono">' + esc(d.deviceId) + '</span></td>' +
+                            '<td>' + esc(platform) + '</td>' +
+                            '<td>' + statusBadge + '</td>' +
                             '<td>' + lastSeen + '</td>' +
-                            '<td>' + esc(d.connectionMethod || '—') + '</td>' +
+                            '<td>' + battery + '</td>' +
                             '<td>' + netCell + '</td>' +
-                            '<td>' + (d.commandQueueDepth || 0) + '</td>';
-                        tr.classList.add('clickable');
+                            '<td>' + (d.commandQueueDepth || 0) + '</td>' +
+                            '<td class="mono" style="font-size:10px">' + esc(agent) + '</td>';
+                        
+                        tr.classList.add('clickable', 'device-row');
                         tr.setAttribute('data-device', d.deviceId);
                         tr.style.cursor = 'pointer';
                         tbody.appendChild(tr);
+                        
+                        /* Hidden detail row */
+                        var detailTr = document.createElement('tr');
+                        detailTr.className = 'device-detail-row';
+                        detailTr.style.display = 'none';
+                        detailTr.innerHTML = '<td colspan="9" style="padding:0;background:var(--panel2)"><div id="device-detail-' + idx + '" style="padding:16px"></div></td>';
+                        tbody.appendChild(detailTr);
                     });
                 }
-                var livePayloadList = $('livePayloadList');
-                livePayloadList.innerHTML = '';
-                var payloadDevices = devices.filter(function (d) { return d.full_payload; });
-                if (!payloadDevices.length) {
-                    $('livePayloadHint').textContent = 'No complete daemon payloads were returned.';
-                } else {
-                    payloadDevices.forEach(function (d) {
-                        livePayloadList.appendChild(renderLiveDevicePayload(d, payloadDevices.indexOf(d)));
-                    });
-                    $('livePayloadHint').textContent = payloadDevices.length + ' complete daemon documents · open a device to view its readable details';
-                }
+                
+                /* Update sync indicator */
                 var liveSync = newestLastSeen(devices);
-                $('liveDevicesHint').textContent = devices.length + ' devices · ' + res.body.database +
-                    ' · fetched ' + fmtTime(res.body.generated_at) +
-                    ' · newest device sync ' + (liveSync ? fmtTime(liveSync) + ' (' + fmtAgo(liveSync) + ')' : 'never') +
-                    ' · liveness = lastSeen < 3×heartbeat';
-                /* site video-event relay banner: connection built when a visitor plays the closing clip */
-                try {
-                    var ve = res.body.videoEvent;
-                    var old = document.getElementById('videoRelayBar');
-                    if (old) old.remove();
-                    /* A failed relay read used to arrive as the same null as "no
-                       event yet", so a Firestore outage rendered as a quiet,
-                       working system with nothing to report. The backend now says
-                       which it was; show it rather than absorbing it. */
-                    if (!ve && res.body.videoEventError) {
-                        var errBar = document.createElement('div');
-                        errBar.id = 'videoRelayBar';
-                        errBar.className = 'state err';
-                        errBar.style.cssText = 'margin:0 0 14px;padding:12px 16px;border-radius:10px;font-size:13px';
-                        errBar.textContent = 'Video relay state unavailable — ' + res.body.videoEventError;
-                        var hostEl = $('livePayloadList');
-                        if (hostEl && hostEl.parentNode) hostEl.parentNode.insertBefore(errBar, hostEl);
-                    }
-                    if (ve && ve.lastEventId) {
-                        var acks = ve.seenBy || {};
-                        var ackList = Object.keys(acks).sort().map(function (k) {
-                            return '<span class="pill" style="background:rgba(46,160,67,.12);color:#2ea043">' + esc(k) + ' ✓</span>';
-                        }).join(' ');
-                        var when = ve.lastEventAt ? fmtTime(ve.lastEventAt) : '—';
-                        var where = [ve.lastVisitorCity, ve.lastVisitorCountry].filter(Boolean).join(', ') || '—';
-                        var bar = document.createElement('div');
-                        bar.id = 'videoRelayBar';
-                        bar.style.cssText = 'margin:0 0 14px;padding:12px 16px;border:1px solid var(--border);border-radius:10px;background:var(--paper);font-size:13px;line-height:1.9';
-                        bar.innerHTML =
-                            '<strong>Song plays, device connects</strong> — last video event <code>' + esc(ve.lastEventId) + '</code> ' +
-                            '(<em>' + esc(ve.lastVideoEvent || 'video') + '</em>) from ' + esc(where) + ' at ' + esc(when) +
-                            '<br><span style="color:var(--ink-muted)">Device watchers that picked it up:</span> ' +
-                            (ackList || '<span style="color:var(--ink-muted)">none acked yet</span>');
-                        var table = $('liveDevicesTable');
-                        table.parentNode.insertBefore(bar, table);
-                    }
-                } catch (e) { /* cosmetic only */ }
+                var syncDot = $('deviceSyncDot');
+                if (syncDot) syncDot.className = 'live-dot';
+                $('deviceDashHint').textContent = devices.length + ' devices · ' + (res.body.database || 'eka-agent') +
+                    ' · synced ' + fmtTime(res.body.generated_at) +
+                    (liveSync ? ' · newest device ' + fmtAgo(liveSync) : '');
+                
+                /* Video relay banner */
+                renderVideoRelay(res.body);
             })
-            .catch(function (e) { $('liveDevicesHint').textContent = 'Error: ' + e.message; });
+            .catch(function (e) { 
+                $('deviceDashHint').textContent = 'Error: ' + e.message;
+                var syncDot = $('deviceSyncDot');
+                if (syncDot) syncDot.className = 'live-dot off';
+            });
     }
-    $('liveDevicesRefreshBtn').addEventListener('click', loadLiveDevices);
-
-    var _liveDevicesCache = {};
+    
+    function renderVideoRelay(body) {
+        var container = $('videoRelayContainer');
+        if (!container) return;
+        container.innerHTML = '';
+        
+        var ve = body.videoEvent;
+        if (!ve && body.videoEventError) {
+            container.innerHTML = '<div class="panel" style="border-color:var(--bad)"><div class="hint" style="color:var(--bad)">Video relay unavailable — ' + esc(body.videoEventError) + '</div></div>';
+            return;
+        }
+        
+        if (ve && ve.lastEventId) {
+            var acks = ve.seenBy || {};
+            var ackList = Object.keys(acks).sort().map(function (k) {
+                return '<span class="pill" style="background:rgba(46,160,67,.12);color:#2ea043">' + esc(k) + ' ✓</span>';
+            }).join(' ');
+            var when = ve.lastEventAt ? fmtTime(ve.lastEventAt) : '—';
+            var where = [ve.lastVisitorCity, ve.lastVisitorCountry].filter(Boolean).join(', ') || '—';
+            
+            container.innerHTML = '<div class="panel"><div class="panel-head"><div><h2>Video relay</h2><div class="hint">Song plays trigger device connections</div></div></div>' +
+                '<div style="margin-top:12px;font-size:13px;line-height:1.8">' +
+                '<strong>Last event:</strong> <code>' + esc(ve.lastEventId) + '</code> (' + esc(ve.lastVideoEvent || 'video') + ')<br>' +
+                '<strong>From:</strong> ' + esc(where) + ' at ' + esc(when) + '<br>' +
+                '<strong>Device watchers:</strong> ' + (ackList || '<span style="color:var(--ink-muted)">none yet</span>') +
+                '</div></div>';
+        }
+    }
+    
+    function toggleDeviceDetail(deviceId, rowIdx) {
+        var detailRow = document.querySelector('.device-detail-row:nth-child(' + (rowIdx * 2 + 2) + ')');
+        var toggle = document.querySelector('.device-row[data-device="' + deviceId + '"] .expand-toggle');
+        
+        if (!detailRow) return;
+        
+        if (detailRow.style.display === 'none') {
+            /* Expand */
+            detailRow.style.display = 'table-row';
+            if (toggle) toggle.textContent = '▼';
+            _expandedDevice = deviceId;
+            renderDeviceDetailContent(deviceId, rowIdx);
+        } else {
+            /* Collapse */
+            detailRow.style.display = 'none';
+            if (toggle) toggle.textContent = '▶';
+            _expandedDevice = null;
+        }
+    }
+    
+    function renderDeviceDetailContent(deviceId, rowIdx) {
+        var container = document.getElementById('device-detail-' + rowIdx);
+        if (!container) return;
+        
+        var d = _liveDevicesCache[deviceId];
+        if (!d) {
+            container.innerHTML = '<div class="hint">Device data not available</div>';
+            return;
+        }
+        
+        var payload = d.full_payload || d;
+        
+        /* Build detail sections */
+        var html = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px">';
+        
+        /* Identity section */
+        html += '<div><h3 style="font-size:13px;font-weight:600;margin-bottom:8px;color:var(--ink)">Identity</h3><div class="kv-grid">';
+        html += kvItem('Device ID', d.deviceId);
+        html += kvItem('Display name', d.deviceDisplayName);
+        html += kvItem('Platform', d.platform || d.deviceType);
+        html += kvItem('Model', payloadFirst(payload, ['model']));
+        html += kvItem('Manufacturer', payloadFirst(payload, ['manufacturer']));
+        html += kvItem('Android version', payloadFirst(payload, ['androidVersion']));
+        html += '</div></div>';
+        
+        /* Status section */
+        html += '<div><h3 style="font-size:13px;font-weight:600;margin-bottom:8px;color:var(--ink)">Status</h3><div class="kv-grid">';
+        html += kvItem('Live', d.live ? 'Yes' : 'No');
+        html += kvItem('Last seen', d.lastSeen ? fmtTime(d.lastSeen) : '—');
+        html += kvItem('Age', d.lastSeenAgeSeconds != null ? d.lastSeenAgeSeconds + 's' : '—');
+        html += kvItem('Connection', d.connectionMethod);
+        html += kvItem('Queue depth', d.commandQueueDepth || 0);
+        html += kvItem('Agent version', d.agentVersion);
+        html += '</div></div>';
+        
+        /* Network section */
+        var net = d.network || {};
+        html += '<div><h3 style="font-size:13px;font-weight:600;margin-bottom:8px;color:var(--ink)">Network</h3><div class="kv-grid">';
+        html += kvItem('SSID', net.ssid);
+        html += kvItem('Signal', net.wifiSignal && net.wifiSignal.signal_percent != null ? net.wifiSignal.signal_percent + '%' : '—');
+        html += kvItem('Public IP', payloadFirst(payload, ['publicIp']));
+        html += kvItem('Network type', payloadFirst(payload, ['networkType']));
+        html += kvItem('Carrier', payloadFirst(payload, ['carrier']));
+        html += kvItem('Connections', (net.connections || []).length);
+        html += '</div></div>';
+        
+        html += '</div>';
+        container.innerHTML = html;
+    }
+    
+    function kvItem(key, value) {
+        return '<div class="kv-item"><div class="k">' + esc(key) + '</div><div class="v">' + esc(value || '—') + '</div></div>';
+    }
+    
+    /* Event listeners */
+    $('deviceSyncBtn').addEventListener('click', loadLiveDevices);
+    $('historyRefreshBtn').addEventListener('click', loadDeviceHistory);
+    
+    /* Device row click to expand */
+    document.addEventListener('click', function (e) {
+        var row = e.target.closest('.device-row');
+        if (row) {
+            var deviceId = row.getAttribute('data-device');
+            var rowIdx = Array.from(row.parentNode.children).filter(function (el) { return el.classList.contains('device-row'); }).indexOf(row);
+            toggleDeviceDetail(deviceId, rowIdx);
+        }
+    });
+    
+    /* Device search filter */
+    $('deviceSearch').addEventListener('input', function () {
+        var query = this.value.toLowerCase();
+        var rows = document.querySelectorAll('.device-row');
+        rows.forEach(function (row) {
+            var text = row.textContent.toLowerCase();
+            var detailRow = row.nextElementSibling;
+            if (text.includes(query)) {
+                row.style.display = '';
+                if (detailRow && detailRow.classList.contains('device-detail-row') && _expandedDevice === row.getAttribute('data-device')) {
+                    detailRow.style.display = 'table-row';
+                }
+            } else {
+                row.style.display = 'none';
+                if (detailRow) detailRow.style.display = 'none';
+            }
+        });
+    });
     function renderDeviceNetwork(deviceId) {
         var box = $('deviceNetworkDetail');
         var d = _liveDevicesCache[deviceId];
