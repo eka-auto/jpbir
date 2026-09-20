@@ -17,10 +17,13 @@
     "@aws-sdk/client-dynamodb": "^3.1115.0",
     "@aws-sdk/client-sts": "^3.1131.0",
     "@aws-sdk/lib-dynamodb": "^3.1115.0",
+    "@neondatabase/neon-js": "^0.7.0-beta",
     "@vercel/blob": "^2.8.0",
     "@vercel/connect": "^2.0.1",
     "nodemailer": "9.1.1",
-    "pg": "^8.23.0"
+    "pg": "^8.23.0",
+    "react-router-dom": "^7.18.4",
+    "workflow": "^4.8.9"
   },
   "engines": {
     "node": "24.x"
