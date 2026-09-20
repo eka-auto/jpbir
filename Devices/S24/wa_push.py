@@ -21,8 +21,10 @@ Env (all read from the environment; keep the key OUT of a shell script):
 
     WA_INGEST_URL   e.g. https://jaytipargal.tech/api/wa-ingest  (default)
     WA_INGEST_KEY   matches WA_INGEST_KEY on the jpbir Vercel project
-    WA_MSGSTORE_DB  default ~/storage/shared/WhatsApp/Databases/msgstore.db
-    WA_CONTACTS_DB  default ~/storage/shared/WhatsApp/Databases/wa.db
+    WA_MSGSTORE_DB  default: first of ~/storage/shared/Android/media/com.whatsapp/
+                    WhatsApp/Databases/msgstore.db (Android 11+) or
+                    ~/storage/shared/WhatsApp/Databases/msgstore.db (legacy)
+    WA_CONTACTS_DB  same two roots, wa.db
     WA_DEVICE_ID    default samsung-s24-ultra
 
 Schema notes: msgstore.db's column names drift between WhatsApp versions.
@@ -42,8 +44,34 @@ import urllib.request
 from datetime import datetime, timezone
 
 DEFAULT_URL = "https://jaytipargal.tech/api/wa-ingest"
-DEFAULT_MSGSTORE = os.path.expanduser("~/storage/shared/WhatsApp/Databases/msgstore.db")
-DEFAULT_CONTACTS = os.path.expanduser("~/storage/shared/WhatsApp/Databases/wa.db")
+# WhatsApp moved its on-sdcard tree from /sdcard/WhatsApp to
+# /sdcard/Android/media/com.whatsapp/WhatsApp when it adopted scoped storage on
+# Android 11. The S24 Ultra is Android 14, so the scoped path is the live one --
+# but this file hard-coded the pre-11 path alone and exited 2 when it was
+# absent. The */30 cron therefore logged "[error] msgstore not at ..." forever
+# and no WhatsApp text ever reached /api/wa-ingest, while wa_media_push.py --
+# which already probed both roots -- kept uploading media and made the pipeline
+# look half-alive rather than broken. Probe in the same order it does.
+MSGSTORE_CANDIDATES = [
+    os.path.expanduser("~/storage/shared/Android/media/com.whatsapp/WhatsApp/Databases/msgstore.db"),
+    os.path.expanduser("~/storage/shared/WhatsApp/Databases/msgstore.db"),
+]
+CONTACTS_CANDIDATES = [
+    os.path.expanduser("~/storage/shared/Android/media/com.whatsapp/WhatsApp/Databases/wa.db"),
+    os.path.expanduser("~/storage/shared/WhatsApp/Databases/wa.db"),
+]
+
+
+def first_existing(candidates):
+    """The first candidate present on disk, else None so the caller can report all."""
+    for c in candidates:
+        if os.path.exists(c):
+            return c
+    return None
+
+
+DEFAULT_MSGSTORE = first_existing(MSGSTORE_CANDIDATES) or MSGSTORE_CANDIDATES[0]
+DEFAULT_CONTACTS = first_existing(CONTACTS_CANDIDATES) or CONTACTS_CANDIDATES[0]
 DEFAULT_DEVICE = "samsung-s24-ultra"
 CHUNK = 200  # matches wa-store.js CHUNK; keeps a batch under Vercel's function timeout
 
@@ -233,7 +261,14 @@ def main():
         return 0
 
     if not os.path.exists(args.msgstore):
-        print(f"[error] msgstore not at {args.msgstore}", file=sys.stderr)
+        # Name every path tried, not just the one that lost. The single-path
+        # version of this message sent debugging after a typo in WA_MSGSTORE_DB
+        # when the real cause was WhatsApp's scoped-storage move.
+        tried = [args.msgstore] + [c for c in MSGSTORE_CANDIDATES if c != args.msgstore]
+        print("[error] no WhatsApp msgstore.db found; checked:", file=sys.stderr)
+        for c in tried:
+            print(f"[error]   {c}", file=sys.stderr)
+        print("[error] set WA_MSGSTORE_DB if the database lives elsewhere", file=sys.stderr)
         return 2
 
     contact_names = load_contact_names(args.contacts)
