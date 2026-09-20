@@ -1,0 +1,112 @@
+// Every gated page must read the SAME credential slot, the same way.
+//
+// Four slots had drifted apart across eight pages, and the symptom was pages
+// that looked dead:
+//
+//   index.html       'jbt_stats_key' in localStorage, and it actively DELETES
+//                    the sessionStorage copy (index.html:719)
+//   s24 / vivobook   'jbt_stats_key' in sessionStorage ONLY -- so unlocking the
+//   / agent          main dashboard and clicking through hit the gate again,
+//                    because index.html had just cleared the slot they read
+//   jteka            'jbt_site' -- which is index.html's SITE SELECTOR, not a
+//                    credential. After any visit to the main dashboard this
+//                    page sent `x-stats-key: jbt` and took a flat 401
+//   db               's24DashboardKey' -- a fourth slot, so /db needed its own
+//                    unlock for the same key, on the only page that renders the
+//                    entire S24 archive
+//
+// None of it is catchable by eye: every page looked internally consistent. The
+// contract is cross-file, so the test has to be too.
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const FRONTEND = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'Frontend');
+const read = (f) => readFileSync(join(FRONTEND, f), 'utf8');
+
+let pass = 0, total = 0;
+function t(name, fn) {
+  total++;
+  try { fn(); pass++; console.log('  ok  ' + name); }
+  catch (e) { console.log('  FAIL ' + name + ' -> ' + e.message); process.exitCode = 1; }
+}
+
+// Every live page that sends the dashboard key. template.html and viewer.html
+// do not gate, so they are deliberately absent.
+const GATED = ['index.html', 's24.html', 'vivobook.html', 'agent.html', 'jteka.html', 'db.html'];
+const SLOT = 'jbt_stats_key';
+
+// Strip // and /* */ comments so a slot name mentioned in an explanation is not
+// mistaken for a live read. Naive, but these files have no regex literals or
+// strings containing '//' in the credential code.
+function code(src) {
+  return src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+}
+
+for (const page of GATED) {
+  t(`${page} stores the dashboard key in the shared '${SLOT}' slot`, () => {
+    assert.ok(code(read(page)).includes(SLOT), `${page} never names ${SLOT}`);
+  });
+}
+
+t('no page uses the site-selector slot as a credential — jteka did, and took a 401 every time', () => {
+  for (const page of GATED) {
+    const src = code(read(page));
+    // index.html legitimately owns jbt_site as the site selector. Anywhere else
+    // it must not appear next to key handling at all.
+    if (page === 'index.html') continue;
+    assert.equal(src.includes('jbt_site'), false,
+      `${page} references jbt_site; that slot is index.html's site selector, not the key`);
+  }
+});
+
+t('index.html keeps jbt_site strictly for site selection, never as a key', () => {
+  const src = code(read('index.html'));
+  for (const m of src.matchAll(/^.*jbt_site.*$/gm)) {
+    assert.equal(/KEY|stats-key|x-stats/i.test(m[0]), false,
+      `jbt_site appears on a credential line: ${m[0].trim().slice(0, 100)}`);
+  }
+});
+
+for (const page of GATED) {
+  t(`${page} reads localStorage, so a key set by the main dashboard reaches it`, () => {
+    const src = code(read(page));
+    assert.match(src, /localStorage\.getItem\(\s*(KEY_STORAGE|KEY_STORE|'jbt_stats_key'|"jbt_stats_key")/,
+      `${page} never reads the slot from localStorage; index.html canonicalises it there`);
+  });
+}
+
+for (const page of ['s24.html', 'vivobook.html', 'agent.html', 'jteka.html']) {
+  t(`${page} writes the key to localStorage, not only sessionStorage`, () => {
+    const src = code(read(page));
+    assert.match(src, /localStorage\.setItem\(\s*(KEY_STORAGE|KEY_STORE)/,
+      `${page} writes only to sessionStorage; index.html:719 clears that copy`);
+  });
+}
+
+t('db.html migrates its legacy s24DashboardKey slot rather than stranding anyone already unlocked', () => {
+  const src = code(read('db.html'));
+  assert.ok(src.includes("LEGACY_KEY_STORAGE = 's24DashboardKey'"), 'legacy slot name is gone entirely');
+  assert.match(src, /getItem\(LEGACY_KEY_STORAGE\)/, 'legacy slot is never read, so existing users are logged out');
+  assert.match(src, /removeItem\(LEGACY_KEY_STORAGE\)/, 'legacy slot is never cleared, so the migration never completes');
+});
+
+t('no gated page still makes a raw sessionStorage call against the legacy db slot', () => {
+  for (const page of GATED) {
+    const src = code(read(page));
+    assert.equal(/sessionStorage\.(get|set|remove)Item\(\s*['"]s24DashboardKey['"]/.test(src), false,
+      `${page} still touches 's24DashboardKey' directly instead of the migrating accessors`);
+  }
+});
+
+t('every storage access is wrapped against private mode, where localStorage throws on access', () => {
+  for (const page of GATED) {
+    const src = read(page);
+    assert.match(src, /try\s*\{[^}]*(localStorage|sessionStorage)/,
+      `${page} touches storage with no try/catch; private mode throws rather than returning null`);
+  }
+});
+
+console.log(`\n${pass}/${total} checks passed`);
+if (pass !== total) process.exitCode = 1;

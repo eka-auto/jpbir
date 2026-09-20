@@ -172,11 +172,27 @@
     // the main dashboard already holds: unlock there, click through to this page,
     // and the same-origin sessionStorage carries it. A ?key= on a direct link also
     // works and is stripped from the URL so it never leaks through the Referer.
+    // Credential slot. This MUST match index.html:709 -- it is the one key the
+    // whole dashboard shares, and index.html canonicalises it into localStorage
+    // (index.html:719) while actively clearing the sessionStorage copy. Reading
+    // sessionStorage alone therefore found nothing the moment anyone visited the
+    // main dashboard, which is what made this page look dead: unlock there,
+    // click through, and the gate came up again.
+    //
+    // Read order is localStorage -> sessionStorage -> ?key=. sessionStorage stays
+    // in the chain so a key put there by an older build still works; writes go to
+    // localStorage so every page converges on one slot. Wrapped in try/catch
+    // because storage access throws outright in private mode.
     var KEY_STORAGE = 'jbt_stats_key';
-    var KEY = sessionStorage.getItem(KEY_STORAGE) || new URLSearchParams(location.search).get('key') || '';
+    var KEY = '';
+    try { KEY = localStorage.getItem(KEY_STORAGE) || sessionStorage.getItem(KEY_STORAGE) || ''; } catch (e) { /* private mode */ }
+    KEY = KEY || new URLSearchParams(location.search).get('key') || '';
     (function persistAndStripKey() {
         var params = new URLSearchParams(location.search);
-        if (KEY) { try { sessionStorage.setItem(KEY_STORAGE, KEY); } catch (e) { /* private mode */ } }
+        // localStorage, not sessionStorage: index.html canonicalises there and
+        // clears the sessionStorage copy, so writing it there would be erased on
+        // the next visit to the main dashboard.
+        if (KEY) { try { localStorage.setItem(KEY_STORAGE, KEY); sessionStorage.removeItem(KEY_STORAGE); } catch (e) { /* private mode */ } }
         if (!params.has('key')) return;
         params.delete('key');
         var qs = params.toString();
@@ -214,7 +230,9 @@
     // reload after unlocking the main dashboard picks up the new one.
     var _gateShown = false;
     function showGate() {
-        if (KEY) { try { sessionStorage.removeItem(KEY_STORAGE); } catch (e) {} }
+        // Clear BOTH slots; a stale key in either one would be picked up again by
+        // the read chain above and re-fail on the next load.
+        if (KEY) { try { localStorage.removeItem(KEY_STORAGE); sessionStorage.removeItem(KEY_STORAGE); } catch (e) {} }
         if (_gateShown) return;
         _gateShown = true;
         $('liveDot').classList.add('off');

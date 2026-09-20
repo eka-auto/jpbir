@@ -80,13 +80,21 @@
 <script>
 (function(){
   "use strict";
-  var KEY_STORE = "jbt_site";
+  // "jbt_site" until now -- which is index.html's SITE SELECTOR slot, not a
+  // credential (index.html:726 reads it, :3498 writes 'jbt' or 'jaytibirthday.in'
+  // into it). After any visit to the main dashboard this page read that value
+  // and sent `x-stats-key: jbt`, earning a flat 401 from Backend/_auth.js on
+  // every request. Two different concerns must never share a storage key: one
+  // is a UI preference, the other is the dashboard credential.
+  var KEY_STORE = "jbt_stats_key";
   var ENDPOINT  = "/api/jp-devices";
   var el = function(id){ return document.getElementById(id); };
 
-  function getKey(){ try { return sessionStorage.getItem(KEY_STORE) || ""; } catch(e){ return ""; } }
-  function setKey(v){ try { sessionStorage.setItem(KEY_STORE, v); } catch(e){} }
-  function clearKey(){ try { sessionStorage.removeItem(KEY_STORE); } catch(e){} }
+  // localStorage first, matching index.html:710/719, which canonicalises the key
+  // there and clears the sessionStorage copy.
+  function getKey(){ try { return localStorage.getItem(KEY_STORE) || sessionStorage.getItem(KEY_STORE) || ""; } catch(e){ return ""; } }
+  function setKey(v){ try { localStorage.setItem(KEY_STORE, v); sessionStorage.removeItem(KEY_STORE); } catch(e){} }
+  function clearKey(){ try { localStorage.removeItem(KEY_STORE); sessionStorage.removeItem(KEY_STORE); } catch(e){} }
 
   function rel(sec){
     if (sec === null || sec === undefined || !isFinite(sec)) return "unknown";
