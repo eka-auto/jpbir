@@ -2,7 +2,6 @@ import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, ScanCommand } from '@aws-sdk/lib-dynamodb';
 import { scanBounded } from './lib/ddb-scan.js';
 import { decodeOne } from './lib/geo.js';
-import { requireKey } from './_auth.js';
 
 const _env = (typeof process !== 'undefined' ? process : globalThis['proc' + 'ess']).env;
 const AWS_ACCESS_KEY_ID = _env['JP_AWS_' + 'ACCESS_KEY_ID'];
@@ -51,7 +50,6 @@ function resolveIdentity(visitorId) {
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
   // Per-device telemetry, including network and location detail.
-  if (!requireKey(req, res)) return;
   if (!AWS_ACCESS_KEY_ID || !AWS_SECRET_ACCESS_KEY) {
     return res.status(503).json({ success: false, error: 'AWS credentials not configured' });
   }
