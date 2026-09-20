@@ -108,6 +108,39 @@ jobs:
             exit 1
           fi
 
+      # The outside witness for the Product engineering panel.
+      #
+      # /api/stack-cron already runs every 5 min on Vercel's scheduler, so this
+      # is not about detection speed. It is about who notices when the SCHEDULER
+      # stops: a Vercel cron cannot report its own absence, and the panel would
+      # sit there showing a cheerful last-known-good from hours ago. This job
+      # runs on GitHub's infrastructure, so it survives that failure
+      # independently — the whole point of two schedules in two places.
+      #
+      # Uses the same narrow HEALTH_CHECK_KEY projection as verify-db above:
+      # a verdict and counts, never file paths or problem strings, because those
+      # name internal hosts and env vars. 503 means something is genuinely
+      # failing; 401 here is a failure, not a healthy refusal, because this
+      # credential is supposed to work.
+      - name: Test Stack Health (Product engineering probes)
+        env:
+          HEALTH_CHECK_KEY: ${{ secrets.HEALTH_CHECK_KEY }}
+        run: |
+          if [ -z "$HEALTH_CHECK_KEY" ]; then
+            echo "❌ The HEALTH_CHECK_KEY secret is not set"
+            exit 1
+          fi
+          BODY=$(curl -sS -H "x-health-key: $HEALTH_CHECK_KEY" -w '\n%{http_code}' https://jaytipargal.tech/api/jp-stack)
+          CODE=$(echo "$BODY" | tail -n 1)
+          JSON=$(echo "$BODY" | sed '$d')
+          OVERALL=$(echo "$JSON" | jq -r '.overall // "unreadable"')
+          if [ "$CODE" -eq 200 ] && [ "$OVERALL" != "fail" ]; then
+            echo "✅ Stack healthy (overall=$OVERALL, $(echo "$JSON" | jq -r '.summary.ok') checks ok)"
+          else
+            echo "❌ Stack check failed (HTTP $CODE, overall=$OVERALL): $JSON"
+            exit 1
+          fi
+
       - name: Report Status
         run: |
           {
@@ -119,4 +152,5 @@ jobs:
             echo "| Devices API | ✅ OK |"
             echo "| Stats API | ✅ OK |"
             echo "| Database (Neon query) | ✅ OK |"
+            echo "| Stack health | ✅ OK |"
           } >> "$GITHUB_STEP_SUMMARY"
