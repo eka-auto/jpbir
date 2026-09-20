@@ -174,8 +174,29 @@ export async function fsGet(path) {
   return r.json();
 }
 
+/**
+ * Sentinel value for fsPatch: put this where a value would go and the field is
+ * DELETED instead of written.
+ *
+ * Firestore's REST PATCH deletes a field by naming it in `updateMask.fieldPaths`
+ * while omitting it from the body — there is no null-ish value that means
+ * "remove". Without a sentinel the only way to drop one key from a map is to
+ * send the whole map back minus that key, which is a read-modify-write over the
+ * entire field and clobbers any concurrent writer. `commandQueue` has four
+ * concurrent writers (this API, the cron, the claim/complete broker routes, and
+ * the phone daemon itself), so that whole-map form is not available to us.
+ */
+export const DELETE_FIELD = Symbol('firestore.deleteField');
+
 export async function fsPatch(path, fields, precondition) {
+  // The mask names every path, deletions included; the body carries only the
+  // ones being written. A path in the mask but absent from the body is exactly
+  // Firestore's delete instruction.
   const mask = Object.keys(fields).map((f) => `updateMask.fieldPaths=${encodeURIComponent(f)}`).join('&');
+  const writes = {};
+  for (const [k, v] of Object.entries(fields)) {
+    if (v !== DELETE_FIELD) writes[k] = v;
+  }
   let qs = mask;
   if (precondition && precondition.updateTime) {
     qs += `&currentDocument.updateTime=${encodeURIComponent(precondition.updateTime)}`;
@@ -185,7 +206,7 @@ export async function fsPatch(path, fields, precondition) {
   const r = await fsFetch(`${path}?${qs}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ fields: encodeDocumentFields(expandFieldPaths(fields)) }),
+    body: JSON.stringify({ fields: encodeDocumentFields(expandFieldPaths(writes)) }),
   });
   if (r.status === 409 || r.status === 412) {
     const err = new Error('firestore precondition conflict');
