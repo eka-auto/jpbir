@@ -41,6 +41,7 @@ const mkRes = () => ({
 // write route exists at all.
 const ROUTES = [
   { file: 'jp-whatsapp.js', method: 'GET', refuses: 401 },
+  { file: 'jp-live-content.js', method: 'GET', refuses: 401 },
   // Proxies to the agent runtime (shell). Gated before the config check.
   { file: 'jp-live-agent.js', method: 'POST', refuses: 401, body: {} },
   { file: 'wa-galaxy.js', method: 'GET', refuses: 401 },
