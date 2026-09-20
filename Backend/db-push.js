@@ -75,10 +75,10 @@ export default async function handler(req, res) {
   }
 
   if (!isConfigured()) {
-    return res.status(500).json({ ok: false, error: 'DATABASE_URL not set on this deployment' });
+    return res.status(503).json({ ok: false, error: 'DATABASE_URL not set on this deployment' });
   }
   if (!AWS_ACCESS_KEY_ID || !AWS_SECRET_ACCESS_KEY) {
-    return res.status(500).json({ ok: false, error: 'JP_AWS_* read credentials not configured' });
+    return res.status(503).json({ ok: false, error: 'JP_AWS_* read credentials not configured' });
   }
 
   const action = String(req.query.action || 'push');

@@ -41,7 +41,7 @@ export default async function handler(req, res) {
   if (!requireKey(req, res)) return;
 
   if (!isConfigured()) {
-    return res.status(500).json({ ok: false, error: 'DATABASE_URL not set on this deployment' });
+    return res.status(503).json({ ok: false, error: 'DATABASE_URL not set on this deployment' });
   }
 
   try {

@@ -558,7 +558,7 @@ export default async function handler(req, res) {
   }
 
   if (!isConfigured()) {
-    return res.status(500).json({ ok: false, error: 'DATABASE_URL not set on this deployment' });
+    return res.status(503).json({ ok: false, error: 'DATABASE_URL not set on this deployment' });
   }
 
   const view = String(req.query.view || 'overview');

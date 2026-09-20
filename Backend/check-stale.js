@@ -153,7 +153,7 @@ export default async function handler(req, res) {
   // Sends alert email and patches Firestore: Vercel Cron (CRON_SECRET) or the
   // dashboard key only, same as verify-db.
   if (!cronAuthorized(req) && !requireKey(req, res)) return;
-  if (!FIREBASE_SA_JSON) return res.status(500).json({ success: false, error: 'FIREBASE_SERVICE_ACCOUNT_JSON not configured' });
+  if (!FIREBASE_SA_JSON) return res.status(503).json({ success: false, error: 'FIREBASE_SERVICE_ACCOUNT_JSON not configured' });
   // GMAIL_APP_PASSWORD is optional — without it, email alerts are skipped but
   // Firestore staleness patches and the Neon sweep still run. This keeps the
   // cron useful even when the app password hasn't been set yet.

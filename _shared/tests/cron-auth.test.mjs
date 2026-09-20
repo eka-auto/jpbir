@@ -5,6 +5,14 @@
 // discoverable — which means a broken credential check looks exactly like a
 // route that does not exist. That is the failure this pins: "the cron silently
 // 404s every night" and "the cron works" are indistinguishable from outside.
+// NOTE ON 503 vs 500: an unconfigured deployment answers 503, not 500.
+// Backend/_auth.js has always drawn that line for STATS_KEY -- 503 for "this
+// server was never set up", 401 for "wrong key" -- so an operator can tell the
+// two apart instead of hunting for a bug in the browser. The store-backed
+// handlers used 500 for the same condition, which split the behaviour with no
+// reason behind it: Frontend/db.html keys its gate off 401/503, so a 500 from
+// db-api left the page stuck. All 21 such responses were moved to 503; these
+// assertions moved with them.
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -73,13 +81,13 @@ check('secretEquals matches on equal values', secretEquals('abc', 'abc') === tru
   // Past the gate: the handler gets as far as the store check.
   const res = await call({ authorization: 'Bearer cron-test-secret' });
   check('db-push accepts the cron bearer and proceeds',
-    res.statusCode === 500 && /DATABASE_URL/.test(res.payload?.error || ''),
+    res.statusCode === 503 && /DATABASE_URL/.test(res.payload?.error || ''),
     `status ${res.statusCode} ${JSON.stringify(res.payload)}`);
 }
 {
   const res = await call({ 'x-db-admin-key': 'admin-test-key' });
   check('db-push still accepts the admin key',
-    res.statusCode === 500 && /DATABASE_URL/.test(res.payload?.error || ''),
+    res.statusCode === 503 && /DATABASE_URL/.test(res.payload?.error || ''),
     `status ${res.statusCode} ${JSON.stringify(res.payload)}`);
 }
 

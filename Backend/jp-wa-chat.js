@@ -33,7 +33,7 @@ export default async function handler(req, res) {
   if (chatId.length > 200) return res.status(400).json({ ok: false, error: 'chat_id too long' });
 
   if (!isConfigured()) {
-    return res.status(500).json({ ok: false, error: 'DATABASE_URL not set on this deployment' });
+    return res.status(503).json({ ok: false, error: 'DATABASE_URL not set on this deployment' });
   }
 
   try {
