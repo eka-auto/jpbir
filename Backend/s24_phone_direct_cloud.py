@@ -7,6 +7,23 @@ DESIGNED EXCLUSIVELY TO RUN ON THE SAMSUNG S24 (Inside the Termux App).
 100% Laptop-Free. No ADB wireless connect, no local ARP scans, no laptop dependencies.
 Queries native Android call logs, SMS, and GPS location locally on the device,
 and writes them directly to Firestore over public HTTPS REST APIs on any network (4G/5G or Wi-Fi).
+
+2026-09-20 end-to-end debug: this copy had been retired from running duties on
+the wrong assumption. The documents devices/samsung-s24-ultra received between
+~09-07 and 09-14T04:40Z were NOT written by the phone: the self-reported
+termuxInstallation block in those very heartbeats says repoDir=
+C:/Users/abcom/Go4Garage/Eka Runner with pythonBin=C:/.../python.exe and
+every collector diagnostic is a WinError 2 - the Windows laptop loop was
+stamping termux-phone attestation constants, the exact incident that produced
+strictS24Liveness. When the source guard (exit(78) below, added by c725376's
+lineage) refused non-Termux runtimes, the heartbeats stopped; the real Termux
+daemon was never installed. The doc's battery/online staleness fields are
+merge-patch remnants, not phone state. The phone-side runtime lives in the
+private eka-runner repo and must receive the same reductions in its termux/
+boot scripts before installation. The queue writers (s24-tools.mjs, s24-connect
+MCP) are also gated now: this daemon no longer implements inbound-ssh,
+reverse-tunnel or lock-screen primitives at all, per runtime_contract.json
+forbiddenRuntimeFeatures.
 """
 
 import os
@@ -348,16 +365,11 @@ WATCHDOG_PERIOD_MS = env_int('EKA_S24_WATCHDOG_PERIOD_MS', 900000, minimum=90000
 TERMUX_RUNTIME_TTL_SECONDS = env_int('EKA_S24_RUNTIME_TTL_SECONDS', 900, minimum=60)
 TERMUX_RUNTIME_CACHE = {'checked_at': 0.0, 'data': {}}
 
-# Reverse tunnel + ntfy push wake
-BORE_SERVER = 'bore.pub'
-BORE_BIN_URL = 'https://github.com/ekzhang/bore/releases/download/v0.6.0/bore-v0.6.0-aarch64-unknown-linux-musl.tar.gz'
-# SHA-256 of the tarball at the URL above.
-# v0.5.0 had no aarch64-unknown-linux-musl asset; v0.6.0 is the first release
-# that ships the ARM64 Linux binary. Verified: ffc4515f...
-BORE_BIN_SHA256 = 'ffc4515f3617420b243758cf36ed6a63208d7dba76b2ec3e90d1f476a9742951'
+# ntfy push-wake (outbound only: the phone LONG-POLLS https://ntfy.sh/... ;
+# there is no listener, no sshd and no bore reverse tunnel in this copy since
+# 2026-09-20, per runtime_contract.json forbiddenRuntimeFeatures).
 NTFY_BASE_URL = 'https://ntfy.sh'
-_bore_proc = None
-_bore_port = None
+_bore_port = None  # retained only so collect_and_upload keeps publishing stable nulls
 WAKE_EVENT = threading.Event()
 
 
@@ -1140,92 +1152,12 @@ def ntfy_listener_thread():
             backoff = min(backoff * 2, 300)
 
 
-def _ensure_bore_binary():
-    """Download bore ARM64 binary to ~/bin/bore if not present.
+# _ensure_bore_binary / ensure_reverse_tunnel / ensure_sshd_running were
+# deleted on 2026-09-20. The bore.pub tunnel they opened was an inbound
+# network listener banned by runtime_contract.json and it leaked ssh
+# coordinates into a document the dashboard reads; test-ping (which set a
+# password) is likewise refused below, so no call sites remain.
 
-    The tarball SHA-256 is verified before extraction. If the digest does not
-    match BORE_BIN_SHA256, the download is discarded and None is returned.
-    Set EKA_BORE_DISABLED=1 to disable reverse-tunnel functionality entirely.
-    """
-    if os.environ.get('EKA_BORE_DISABLED') == '1':
-        print("[Bore] EKA_BORE_DISABLED=1 — reverse tunnel disabled.")
-        return None
-    import tarfile, io, hashlib
-    bin_dir = os.path.expanduser('~/bin')
-    bore_path = os.path.join(bin_dir, 'bore')
-    if os.path.exists(bore_path):
-        return bore_path
-    os.makedirs(bin_dir, exist_ok=True)
-    try:
-        print(f"[Bore] Downloading bore binary from {BORE_BIN_URL}...")
-        resp = urllib.request.urlopen(BORE_BIN_URL, timeout=30)
-        data = resp.read()
-
-        # Verify checksum before extracting anything
-        actual_sha256 = hashlib.sha256(data).hexdigest()
-        expected = os.environ.get('EKA_BORE_SHA256', BORE_BIN_SHA256).strip().lower()
-        if expected and actual_sha256 != expected:
-            print(f"[Bore] SECURITY: tarball checksum mismatch — expected {expected}, got {actual_sha256}. Aborting.")
-            return None
-        print(f"[Bore] Checksum OK ({actual_sha256[:16]}...)")
-
-        with tarfile.open(fileobj=io.BytesIO(data)) as tf:
-            for member in tf.getmembers():
-                if member.name.endswith('bore') or member.name == 'bore':
-                    f = tf.extractfile(member)
-                    if f:
-                        with open(bore_path, 'wb') as out:
-                            out.write(f.read())
-                        os.chmod(bore_path, 0o755)
-                        return bore_path
-    except Exception as exc:
-        print(f"[Bore] Download/extract error: {exc}")
-    return None
-
-
-def ensure_reverse_tunnel():
-    """Start bore reverse tunnel exposing port 8022 to bore.pub. Store URL in Firestore."""
-    global _bore_proc, _bore_port
-    if _bore_proc and _bore_proc.poll() is None:
-        return _bore_port
-    bore_path = _ensure_bore_binary()
-    if not bore_path:
-        return None
-    try:
-        proc = subprocess.Popen(
-            [bore_path, 'local', '8022', '--to', BORE_SERVER],
-            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-            text=True
-        )
-        _bore_proc = proc
-        port = None
-        for _ in range(15):
-            line = proc.stdout.readline()
-            if not line:
-                break
-            m = re.search(r'bore\.pub:(\d+)', line)
-            if m:
-                port = int(m.group(1))
-                break
-        _bore_port = port
-        return port
-    except Exception:
-        return None
-
-
-def ensure_sshd_running():
-    """Start sshd on port 8022 if it is not already running.
-
-    IMPORTANT: This must only be called when an explicit start-ssh or wakeup
-    command is received, NOT on every main-loop iteration. Installing and
-    auto-starting SSH without a request increases the attack surface of the
-    device and is not needed for normal telemetry operation.
-    """
-    if not command_exists('sshd'):
-        run_command(['pkg', 'install', '-y', 'openssh'], timeout=60)
-    check = run_command(['pgrep', '-x', 'sshd'], timeout=5)
-    if not check.get('stdout', '').strip():
-        run_command(['sshd'], timeout=10)
 
 
 def get_battery_info():
@@ -1454,14 +1386,11 @@ def collect_and_upload(remote_state=None, request=None, unsupported_commands=Non
     ntfy_topic = get_ntfy_topic()
     telemetry['ntfyTopic'] = ntfy_topic
     telemetry['ntfyWakeUrl'] = f'{NTFY_BASE_URL}/{ntfy_topic}'
-    if _bore_port:
-        telemetry['tunnelHost'] = BORE_SERVER
-        telemetry['tunnelPort'] = _bore_port
-        telemetry['tunnelSshCmd'] = f'ssh -p {_bore_port} u0_a0@{BORE_SERVER}'
-    else:
-        telemetry['tunnelHost'] = None
-        telemetry['tunnelPort'] = None
-        telemetry['tunnelSshCmd'] = None
+    # Inbound-network capability telemetry retired on 2026-09-20: always null.
+    # Kept as fields only so older dashboard readers do not fault.
+    telemetry['tunnelHost'] = None
+    telemetry['tunnelPort'] = None
+    telemetry['tunnelSshCmd'] = None
 
     if os.environ.get('EKA_VERBOSE_DEVICE_OUTPUT') == '1':
         print("\n--- OUTPUT PAYLOAD GENERATED BY SCRIPT ---")
@@ -1494,7 +1423,6 @@ def main_loop():
         'updatedAt': datetime.now(timezone.utc).isoformat(),
     }
     push_to_firestore(_startup_payload, doc_ids=[DEVICE_DOC_ID])
-    ensure_reverse_tunnel()
     while True:
         # NOTE: ensure_sshd_running() is intentionally NOT called here.
         # SSH is started only in response to an explicit 'start-ssh' or 'wakeup' command.
@@ -1583,70 +1511,55 @@ def main_loop():
                 time.sleep(2)
                 sys.exit(0)
             elif request and request.get('action') == 'start-ssh':
-                ssh_ok = False
-                try:
-                    if not command_exists('sshd'):
-                        run_command(['pkg', 'install', '-y', 'openssh'])
-                    if command_exists('sshd'):
-                        run_command(['sshd'])
-                        ssh_ok = True
-                except Exception as ssh_err:
-                    print(f"[Direct-S24] SSH start error: {ssh_err}")
-
+                # 2026-09-20: the start-ssh branch was removed. Starting sshd on
+                # a phone is forbiddenRuntimeFeatures 'inbound-ssh'; it used to be
+                # a one-word queue write away. Log the refusal explicitly so a
+                # historical client fails visibly rather than silently.
+                print('[Direct-S24] start-ssh command is refused: runtime_contract forbids inbound-ssh.')
                 publish_runtime_status(
                     remote_state,
                     request=request,
-                    request_status='completed' if ssh_ok else 'error',
-                    payload_status='ssh-started' if ssh_ok else 'ssh-failed',
-                    last_error='' if ssh_ok else 'Failed to start sshd',
+                    request_status='error',
+                    payload_status='refused-inbound-ssh',
+                    last_error='start-ssh is not supported by this daemon (runtime_contract.json)',
                     unsupported_commands=unsupported,
                 )
+                finalize_command_ack(request, 'rejected', unsupported)
+
             elif request and request.get('action') == 'wakeup':
-                # Quiet site-event reaction (SITE_DEVICE_RELAY_ARCHITECTURE [E]):
-                # wake lock + best-effort notification, sshd ensure, bore tunnel publish.
+                # Wake = wake-lock + notification + one immediate status
+                # publish (below). The sshd ensure and bore tunnel this branch
+                # used to launch were removed on 2026-09-20; the queue writers
+                # no longer admit inbound actions anyway.
                 wake = ensure_wake_lock()
-                ssh_ok = False
-                try:
-                    ensure_sshd_running()
-                    ssh_ok = True
-                except Exception as ssh_err:
-                    print(f"[Direct-S24] wakeup sshd error: {ssh_err}")
-                try:
-                    ensure_reverse_tunnel()
-                except Exception as tunnel_err:
-                    print(f"[Direct-S24] wakeup tunnel error: {tunnel_err}")
                 if command_exists('termux-notification'):
                     run_command(['termux-notification',
                                  '--title', 'EKA wakeup',
-                                 '--content', 'Device awake: sshd + tunnel ensured.'],
+                                 '--content', 'Device awake: immediate heartbeat issued.'],
                                 timeout=10)
-                wake_ok = wake.get('status') == 'held' and ssh_ok
-                publish_runtime_status(
-                    remote_state,
-                    request=request,
-                    request_status='completed' if wake_ok else 'error',
-                    payload_status='device-awake' if wake_ok else 'wakeup-failed',
-                    last_error='' if wake_ok else 'wakeup: wake lock or sshd failed',
-                    unsupported_commands=unsupported,
-                )
+                # Fall through to the default collect_and_upload path so the
+                # dashboard sees a fresh status immediately.
+                collect_and_upload(remote_state=remote_state, request=request, unsupported_commands=unsupported)
+
             elif request and request.get('action') == 'test-ping':
-                # Pipeline test: changes the phone lock screen password.
-                # If the password changes, the full Firestore->daemon->execute path is proven.
-                new_pw = request.get('newPassword', '')
-                lock_ok = False
-                try:
-                    if new_pw:
-                        run_command(['locksettings', 'set-password', new_pw], timeout=15)
-                        lock_ok = True
-                except Exception:
-                    pass
+                # 2026-09-20: the lock-screen password setter (locksettings
+                # set-password) is deleted. It proved the pipeline only by
+                # damaging the device, with no token or confirmation, and it
+                # sat one queue write away from locking the owner out.
+                # An honest pipeline proof is a command-queue drain plus a
+                # fresh ack, which this publish itself provides.
+                print('[Direct-S24] test-ping reduces to a plain ack on 2026-09-20 hardened copy.')
+                new_pw = request.get('newPassword')
+                if new_pw:
+                    print('[Direct-S24] test-ping newPassword ignored: lock-screen setting removed.')
                 publish_runtime_status(
                     remote_state,
                     request=request,
                     request_status='completed',
-                    payload_status='lock-changed' if lock_ok else 'lock-attempted',
+                    payload_status='acknowledged',
                     unsupported_commands=unsupported,
                 )
+
             else:
                 collect_and_upload(remote_state=remote_state, request=request, unsupported_commands=unsupported)
         except Exception as e:

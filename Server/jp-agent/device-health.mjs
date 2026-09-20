@@ -70,10 +70,82 @@ export function deviceHealth(deviceId, doc, now = Date.now()) {
   };
 }
 
+/**
+ * Command gating, added after the 2026-09-20 end-to-end debug of the
+ * direct-cloud chain.
+ *
+ * Before this, every queue writer accepted an arbitrary action string and
+ * merged arbitrary params into the queued item — and the daemon that reads
+ * that mailbox historically implemented actions that
+ * Devices/S24/runtime_contract.json now forbids outright: 'start-ssh', a
+ * 'wakeup' that also spawned sshd and published a public bore.pub reverse
+ * tunnel, and a 'test-ping' that SET AN ATTACKER-CHOSEN LOCK-SCREEN PASSWORD
+ * with NO token check at all ("pipeline test"). The device is a pull-only
+ * mailbox client, so a leaked JP_AGENT_TOKEN or MCP session was enough to
+ * queue something that locks the owner out of their own phone the next time
+ * it wakes. The queue is the trust boundary; nothing that can hurt the
+ * device or its owner may be enqueued through a tool.
+ *
+ * 'secure-wipe' is intentionally refused here: it stays reachable only
+ * through the audited bootstrap/emergency token path the daemon verifies
+ * itself — not through anything a tool token can touch. 'wakeup' and
+ * 'heartbeat' are permitted because the 2026-09-20 daemon copy reduces them
+ * to a wake-lock, a notification and an immediate status publish; permitting
+ * 'wakeup' also lets the three commands parked since 2026-09-17 drain
+ * harmlessly when the real phone daemon is finally installed.
+ *
+ * The MCP server (Integrations/s24-connect-mcp/server.py) mirrors this exact
+ * table; _shared/tests/s24-action-gate.test.mjs fails if the two lists, or
+ * the hardened daemon copy, drift apart.
+ */
+export const SAFE_DEVICE_ACTIONS = new Set([
+  // contract (runtime_contract.json allowlistedActions)
+  'status-only', 'ping', 'echo', 'wa-push', 'wa-media-push', 'sync-now',
+  // daemon aliases that resolve to the above
+  'sync', 'direct-cloud-sync', 'collect-history', 'history',
+  // safe queue-only verbs implemented by the 2026-09-20 daemon
+  'heartbeat', 'wakeup',
+]);
+
+/** Mirrors normalize_runtime_action() in the daemon, gate before queueing. */
+export function normalizeAction(action) {
+  const normalized = String(action ?? '').trim().toLowerCase().replace(/_/g, '-');
+  const aliases = {
+    'sync': 'sync-now', 'direct-cloud-sync': 'sync-now', 'collect-history': 'sync-now', 'history': 'sync-now',
+    'status': 'status-only',
+    'ping': 'heartbeat', // daemon maps 'ping' to heartbeat; 'test-ping' stays test-ping
+    'start-sshd': 'start-ssh', 'ssh': 'start-ssh',
+    'wake': 'wakeup', 'wake-up': 'wakeup',
+    'restart': 'update-and-restart', 'pull-and-restart': 'update-and-restart', 'update': 'update-and-restart',
+    'wipe': 'secure-wipe', 'kill': 'secure-wipe', 'emergency-wipe': 'secure-wipe',
+    'test': 'test-ping',
+  };
+  return aliases[normalized] ?? (normalized || '');
+}
+
+/** Returns null when enqueueing `action` is safe, otherwise the refusal text. */
+export function actionGateError(action) {
+  const resolved = normalizeAction(action);
+  if (SAFE_DEVICE_ACTIONS.has(resolved)) return null;
+  return `action '${action}' is not allowed: it resolves to '${resolved || 'unknown'}', which is outside `
+    + `the safe set [${[...SAFE_DEVICE_ACTIONS].sort().join(', ')}]. Destructive or inbound-network actions `
+    + '(secure-wipe, start-ssh, test-ping, update-and-restart, arbitrary text) are refused at every queue '
+    + 'writer since 2026-09-20; see runtime_contract.json forbiddenRuntimeFeatures.';
+}
+
+/** Param keys a queue writer must never accept — see commandItem / MCP parity. */
+export const RESERVED_COMMAND_PARAMS = Object.freeze([
+  'action', 'status', 'priority', 'requestedAt', 'requestedBy',
+  'source', 'completedAt', 'ackAt', 'claimedAt', 'processedAt', 'result',
+  // handler credentials/readers: wipeToken gates the daemon emergency wipe,
+  // newPassword was the 'test-ping' lockout primitive. Neither belongs in a
+  // tool-suppliable param.
+  'wipeToken', 'newPassword',
+]);
+
 export function commandItem(action, priority, params, requestedAt) {
   // Extra parameters must never forge a completed command or change its action.
-  const reserved = ['action', 'status', 'priority', 'requestedAt', 'requestedBy',
-    'source', 'completedAt', 'ackAt', 'claimedAt', 'processedAt', 'result'];
+  const reserved = RESERVED_COMMAND_PARAMS;
   for (const key of reserved) {
     if (Object.hasOwn(params, key)) throw new Error(`Reserved command parameter: ${key}`);
   }
