@@ -1,0 +1,7 @@
+{
+  "algorithm": "argon2id",
+  "parameters": { "memory_kib": 65536, "iterations": 3, "parallelism": 4, "hash_length": 32, "salt_length": 16 },
+  "key_separation": { "master_key_purpose": "key_encryption_key", "data_encryption_keys": "per_source_per_shard", "key_hierarchy": "master -> source -> shard" },
+  "rotation": { "enabled": true, "interval_days": 90, "re_encrypt_on_rotation": true, "max_key_versions": 5 },
+  "backup": { "key_escrow": false, "shamir_shares": 0, "hardware_key_storage": "recommended" }
+}

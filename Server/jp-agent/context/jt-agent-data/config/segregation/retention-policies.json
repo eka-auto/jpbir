@@ -1,0 +1,15 @@
+{
+  "version": "1.0",
+  "policies": {
+    "whatsapp": { "messages": "7_years", "media": "3_years", "contacts": "indefinite", "groups": "indefinite", "deleted_items": "30_days" },
+    "chrome": { "history": "2_years", "bookmarks": "indefinite", "passwords": "indefinite", "cookies": "30_days", "extensions": "indefinite", "sessions": "90_days" },
+    "device:mobile-android": { "sensors": "90_days", "apps": "1_year", "location": "30_days", "notifications": "30_days", "call_logs": "2_years", "sms": "2_years" },
+    "device:desktop-windows": { "file_system": "1_year", "registry": "indefinite", "processes": "30_days", "network": "90_days", "event_logs": "2_years", "powershell_history": "indefinite" },
+    "device:desktop-macos": { "file_system": "1_year", "keychain": "indefinite", "spotlight": "90_days", "time_machine": "indefinite" },
+    "device:desktop-linux": { "file_system": "1_year", "dconf": "indefinite", "systemd": "2_years", "bash_history": "indefinite" },
+    "custom:*": { "default": "1_year", "configurable": true }
+  },
+  "archive": { "enabled": true, "storage_class": "cold", "bucket": "jt-agent-bucket", "path_prefix": "archives/" },
+  "deletion": { "secure_wipe": true, "verification": true, "grace_period_days": 7 },
+  "compliance": { "gdpr_right_to_erasure": true, "ccpa_deletion": true, "audit_trail": true }
+}
