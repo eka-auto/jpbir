@@ -77,36 +77,28 @@ jobs:
           CODE=$(echo "$BODY" | tail -n 1)
           JSON=$(echo "$BODY" | sed '$d')
           if [ "$CODE" -eq 200 ] && echo "$JSON" | jq -e '.postgres.ok == true' >/dev/null; then
-            TABLES=$(echo "$JSON" | jq -r '.postgres.tables_present')
-            EVENTS=$(echo "$JSON" | jq -r '.postgres.events // "n/a"')
-            NEWEST=$(echo "$JSON" | jq -r '.postgres.newest_event_at // "never"')
-            WROTE=$(echo "$JSON" | jq -r '.postgres.last_write_at // "never"')
-            echo "✅ Neon answered with the full schema ($TABLES tables)"
-            echo "   rows in events: $EVENTS | newest event: $NEWEST | last write: $WROTE"
+            echo "✅ Neon answered with the full schema ($(echo "$JSON" | jq -r '.postgres.tables_present') tables)"
 
-            # Freshness is reported as a WARNING, never a failure.
+            # Row counts and write freshness are NOT available here, by design.
             #
-            # This job answers "can the endpoint reach the database", and that is
-            # what its red/green must mean. A warehouse that is reachable but has
-            # not been written to for a day is a DIFFERENT incident with a
-            # different owner -- the ingest path, not the API -- and failing here
-            # for it would train everyone to ignore a red health check.
-            # check-stale.js is what alerts on ingestion going quiet.
+            # A previous version of this step tried to print
+            # .postgres.events / .newest_event_at / .last_write_at. They are
+            # always absent for this caller: Backend/verify-db.js:217-222 gives
+            # the HEALTH_CHECK_KEY a deliberately narrowed projection --
+            # {ok, tables_present, tables_expected} and nothing else -- so that
+            # the dashboard key never has to live in CI. The narrowing is pinned
+            # by _shared/tests/verify-db-health-key.test.mjs.
             #
-            # Surfaced anyway because it costs nothing: the response already
-            # carries these fields, and until now the log threw them away, which
-            # is why "production freshness is unverifiable without the dashboard
-            # key" kept being said. It is verifiable right here, in CI, by anyone
-            # who can read this log and without holding any key.
-            if [ "$WROTE" != "never" ]; then
-              AGE=$(( $(date -u +%s) - $(date -u -d "$WROTE" +%s) ))
-              echo "   last write was $((AGE / 3600))h $(((AGE % 3600) / 60))m ago"
-              if [ "$AGE" -gt 86400 ]; then
-                echo "::warning title=Neon warehouse is stale::No write to events in $((AGE / 3600))h. The database is reachable; the INGEST path is the thing to look at."
-              fi
-            else
-              echo "::warning title=Neon warehouse has never been written::events.ingested_at is empty."
-            fi
+            # The result was a log line reading "rows in events: n/a" and a
+            # ::warning:: claiming the warehouse had never been written, on every
+            # single run. A permanently-on false alarm is worse than no signal,
+            # because it is the one people learn to scroll past.
+            #
+            # If freshness in CI is genuinely wanted, the change is to widen that
+            # projection on purpose and update its test -- a decision about what
+            # a narrow credential may read, not a tweak to this echo.
+            # Until then, check-stale.js is what watches ingestion, and
+            # /api/verify-db with the dashboard key is what reports counts.
           else
             echo "❌ Database verification failed (HTTP $CODE): $JSON"
             exit 1
