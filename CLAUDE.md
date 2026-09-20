@@ -5,6 +5,48 @@ repository. Read this before editing. This is Claude's own working file; a
 parallel `QWEN.md` written by Qwen covers the same project from its own
 perspective — this file is the one Claude follows.
 
+## Working agreement: "change it" means change it
+
+**When the operator asks for a change, they are asking for the running system to
+be different afterwards.** They are not asking for a proposal, a draft, a plan
+file, or a second copy of the thing placed next to the original. Deliver the
+edit, not a description of the edit.
+
+This rule exists because the repo already carries the scar of the opposite
+habit. `Frontend/` holds 1976 tracked files to serve a 404 KB dashboard — three
+unrelated vendored trees that were swept in and left beside the real code rather
+than resolved. Every "I'll add a new file instead of changing the existing one"
+decision compounds into exactly that. The tree is the evidence; don't add to it.
+
+Concretely, for each kind of ask:
+
+| Ask | What "done" means | What is **not** done |
+|-----|-------------------|----------------------|
+| Code change | Edit the handler/module in place; `npm test` passes | A new `*-v2.js` beside the old one |
+| DB change | A real migration in `Database/migrations/`, applied via `npm run db:migrate` | A `.sql` file nobody runs, or a schema doc |
+| UI/UX change | Edit the live page in `Frontend/` (one of the 8 in the layout table); load it and confirm it renders | A mockup, an artifact, or a new `*-new.html` |
+| Config/infra | Edit `vercel.json`, the workflow, or the unit file itself | A snippet in chat saying what to paste |
+| Docs | Update the doc that already covers the topic | A second doc covering the same topic |
+
+Corollaries:
+
+- **Edit existing files over creating new ones.** A new file needs a reason that
+  survives being asked "why not change the one that already does this?"
+- **No `.md` summary of work as a substitute for the work.** Write-ups are for
+  when they are asked for, or when the reasoning genuinely will not fit in a
+  commit message. A plan file is not a deliverable.
+- **Verify, don't assert.** "Changed and tests pass" requires having run them.
+  A UI change requires having loaded the page. Report what actually happened,
+  including failures.
+- **Finish the whole ask.** If part is blocked, complete every other part and
+  say plainly which piece was left and why.
+
+**This does not override the guardrails below.** `## Do not touch` still holds,
+secrets still never enter the repo or a transcript, and genuinely destructive or
+irreversible actions (dropping data, force-pushing, rotating a live credential,
+deploying to production) are still confirmed before they are taken. "Act, don't
+draft" is about ordinary engineering work, not about skipping the seatbelts.
+
 ## Project overview
 
 **jpbir** ("Jayti Device Dashboard") is real-time device monitoring, telemetry,
