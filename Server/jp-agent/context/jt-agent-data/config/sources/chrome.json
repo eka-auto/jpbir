@@ -1,0 +1,11 @@
+{
+  "source_id": "chrome",
+  "display_name": "Chrome Browser",
+  "description": "Chrome history, bookmarks, passwords, cookies, extensions, sessions",
+  "encryption_profile": "aes-256-gcm-argon2id",
+  "segregation_rules": { "by_date": "quarterly", "by_type": ["history", "bookmarks", "passwords", "cookies", "extensions", "sessions"], "by_domain": "optional", "by_profile": "required" },
+  "retention_policy": { "history": "2_years", "bookmarks": "indefinite", "passwords": "indefinite", "cookies": "30_days", "extensions": "indefinite", "sessions": "90_days" },
+  "access_control": { "agent_components": ["context", "search", "automation", "form_filling"], "encryption_layer": "enhanced" },
+  "sync_schedule": { "type": "incremental", "interval": "5_minutes", "batch_size": 500 },
+  "sharding": { "strategy": "time_partitioned", "partition_key": "timestamp", "max_shard_size_mb": 50 }
+}

@@ -1,0 +1,11 @@
+{
+  "source_id": "device:mobile-android",
+  "display_name": "Android Mobile",
+  "description": "Android sensors, apps, location, notifications",
+  "encryption_profile": "aes-256-gcm-argon2id",
+  "segregation_rules": { "by_date": "monthly", "by_type": ["sensors", "apps", "location", "notifications", "call_logs", "sms"], "by_app": "optional" },
+  "retention_policy": { "sensors": "90_days", "apps": "1_year", "location": "30_days", "notifications": "30_days", "call_logs": "2_years", "sms": "2_years" },
+  "access_control": { "agent_components": ["context", "automation", "location_aware", "notification_summary"], "encryption_layer": "standard" },
+  "sync_schedule": { "type": "batch", "interval": "1_hour", "batch_size": 10000 },
+  "sharding": { "strategy": "time_partitioned", "partition_key": "timestamp", "max_shard_size_mb": 200 }
+}

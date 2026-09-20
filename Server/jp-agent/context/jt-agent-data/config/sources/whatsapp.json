@@ -1,0 +1,11 @@
+{
+  "source_id": "whatsapp",
+  "display_name": "WhatsApp",
+  "description": "WhatsApp messages, media, contacts, and groups",
+  "encryption_profile": "aes-256-gcm-argon2id",
+  "segregation_rules": { "by_date": "quarterly", "by_type": ["messages", "media", "contacts", "groups"], "by_contact": "optional", "by_group": "optional" },
+  "retention_policy": { "messages": "7_years", "media": "3_years", "contacts": "indefinite", "groups": "indefinite" },
+  "access_control": { "agent_components": ["memory", "context", "search", "summarization"], "encryption_layer": "standard" },
+  "sync_schedule": { "type": "incremental", "interval": "15_minutes", "batch_size": 1000 },
+  "sharding": { "strategy": "time_partitioned", "partition_key": "timestamp", "max_shard_size_mb": 100 }
+}
