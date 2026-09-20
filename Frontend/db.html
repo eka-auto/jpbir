@@ -210,15 +210,51 @@
     // as printable ASCII and are never shorter than 32 characters.
     return /^[\x21-\x7E]{32,256}$/.test(value);
   }
-  var storedDashboardKey = normalizeDashboardKey(sessionStorage.getItem('s24DashboardKey'));
+  // Credential storage. /db used its own slot, 's24DashboardKey', while
+  // index.html, /s24, /vivobook, /agent and /jteka share 'jbt_stats_key'. That
+  // made /db -- the ONLY rendering surface for the whole S24 archive pipeline --
+  // need a separate unlock from every other page, for the same key.
+  //
+  // One slot now, read localStorage -> sessionStorage -> legacy, written to
+  // localStorage to match index.html:719. The legacy read is a one-time
+  // migration so anyone already unlocked here is not logged out by this change;
+  // it is consumed and cleared on first use.
+  var KEY_STORAGE = 'jbt_stats_key';
+  var LEGACY_KEY_STORAGE = 's24DashboardKey';
+
+  function readDashboardKey() {
+    try {
+      var v = localStorage.getItem(KEY_STORAGE) || sessionStorage.getItem(KEY_STORAGE) || '';
+      if (v) return v;
+      var legacy = sessionStorage.getItem(LEGACY_KEY_STORAGE) || '';
+      if (legacy) { writeDashboardKey(legacy); return legacy; }
+    } catch (e) { /* private mode */ }
+    return '';
+  }
+  function writeDashboardKey(value) {
+    try {
+      localStorage.setItem(KEY_STORAGE, value);
+      sessionStorage.removeItem(KEY_STORAGE);
+      sessionStorage.removeItem(LEGACY_KEY_STORAGE);
+    } catch (e) { /* private mode */ }
+  }
+  function clearDashboardKey() {
+    try {
+      localStorage.removeItem(KEY_STORAGE);
+      sessionStorage.removeItem(KEY_STORAGE);
+      sessionStorage.removeItem(LEGACY_KEY_STORAGE);
+    } catch (e) { /* private mode */ }
+  }
+
+  var storedDashboardKey = normalizeDashboardKey(readDashboardKey());
   if (storedDashboardKey && !isHeaderSafeDashboardKey(storedDashboardKey)) {
     storedDashboardKey = '';
-    sessionStorage.removeItem('s24DashboardKey');
+    clearDashboardKey();
   }
   var state = { site: 'jaytibirthday.in', days: 30, noise: false, page: 'overview',
                 offsets: { visitors: 0, sessions: 0, events: 0, video: 0, emails: 0, s24: 0 },
                 type: '', s24Dataset: '', s24Section: 'overview',
-                s24Key: sessionStorage.getItem('s24DashboardKey') || '', counts: {} };
+                s24Key: storedDashboardKey || '', counts: {} };
 
   var PAGES = [
     ['overview',  'Overview',  null],
@@ -278,7 +314,7 @@
   function get(view, extra) {
     if (state.s24Key && !isHeaderSafeDashboardKey(state.s24Key)) {
       state.s24Key = '';
-      sessionStorage.removeItem('s24DashboardKey');
+      clearDashboardKey();
       renderKeyGate('The dashboard key contains unsupported or invisible characters. Paste the plain-text key again.');
       var invalid = new Error('invalid dashboard key');
       invalid.handled = true;
@@ -296,7 +332,7 @@
           // Drop the bad key and put the gate in front of whichever view asked,
           // so any page can unlock the dashboard — not only the archive.
           state.s24Key = '';
-          sessionStorage.removeItem('s24DashboardKey');
+          clearDashboardKey();
           renderKeyGate(result.status === 401
             ? 'That dashboard key was rejected.'
             : ((result.json && result.json.error) || 'The dashboard key is not configured on the server.'));
@@ -343,7 +379,7 @@
         return;
       }
       state.s24Key = value;
-      sessionStorage.setItem('s24DashboardKey', value);
+      writeDashboardKey(value);
       el.innerHTML = '<div class="empty">Checking key…</div>';
       clearErr();
       draw();
@@ -733,7 +769,7 @@
         return;
       }
       state.s24Key = value;
-      sessionStorage.setItem('s24DashboardKey', value);
+      writeDashboardKey(value);
       el.innerHTML = '<div class="empty">Checking key…</div>';
       draw();
     });
@@ -916,7 +952,7 @@
         });
       $('s24Lock').addEventListener('click', function () {
         state.s24Key = '';
-        sessionStorage.removeItem('s24DashboardKey');
+        clearDashboardKey();
         renderS24Gate('Archive locked. Enter the dashboard key to unlock it again.');
       });
       wireRows(el, d.rows, function (row) {
@@ -929,7 +965,7 @@
     }).catch(function (error) {
       if (error.status === 401 || error.status === 503) {
         state.s24Key = '';
-        sessionStorage.removeItem('s24DashboardKey');
+        clearDashboardKey();
         renderS24Gate(error.status === 401 ? 'That dashboard key was rejected.' : error.message);
         return;
       }

@@ -90,9 +90,20 @@
 
 <script>
 (function () {
+    // Credential slot. This MUST match index.html:709 -- it is the one key the
+    // whole dashboard shares, and index.html canonicalises it into localStorage
+    // (index.html:719) while actively clearing the sessionStorage copy. Reading
+    // sessionStorage alone therefore found nothing the moment anyone visited the
+    // main dashboard, which is what made this page look dead: unlock there,
+    // click through, and the gate came up again.
+    //
+    // Read order is localStorage -> sessionStorage -> ?key=. sessionStorage stays
+    // in the chain so a key put there by an older build still works; writes go to
+    // localStorage so every page converges on one slot. Wrapped in try/catch
+    // because storage access throws outright in private mode.
     var KEY_STORAGE = 'jbt_stats_key';
     var KEY = '';
-    try { KEY = sessionStorage.getItem(KEY_STORAGE) || ''; } catch (e) { /* private mode */ }
+    try { KEY = localStorage.getItem(KEY_STORAGE) || sessionStorage.getItem(KEY_STORAGE) || ''; } catch (e) { /* private mode */ }
     var $ = function (id) { return document.getElementById(id); };
     var busy = false;
 
@@ -136,13 +147,13 @@
         var v = $('keyInput').value.trim();
         if (!v) return;
         KEY = v;
-        try { sessionStorage.setItem(KEY_STORAGE, v); } catch (e) {}
+        try { localStorage.setItem(KEY_STORAGE, v); sessionStorage.removeItem(KEY_STORAGE); } catch (e) {}
         checkHealth().then(function (ok) { if (ok) { $('gate').hidden = true; $('keyInput').value = ''; $('prompt').focus(); } });
     });
     $('keyInput').addEventListener('keydown', function (e) { if (e.key === 'Enter') $('unlockBtn').click(); });
     $('lockBtn').addEventListener('click', function () {
         KEY = '';
-        try { sessionStorage.removeItem(KEY_STORAGE); } catch (e) {}
+        try { localStorage.removeItem(KEY_STORAGE); sessionStorage.removeItem(KEY_STORAGE); } catch (e) {}
         showGate();
     });
 
