@@ -54,6 +54,23 @@
       <p class="subtitle">Real-time device monitoring and data synchronization</p>
     </header>
 
+    <!-- Unlock gate. Without it, opening this page with no ?key= produced a 401
+         on every request and panels that sat at "Connecting..." forever with
+         nothing on screen explaining why. The key was only ever accepted from
+         the URL, so there was no way to supply one from the page itself. -->
+    <div id="key-gate" hidden style="margin:0 0 18px;padding:14px 16px;border:1px solid #c83c3c;
+         border-radius:10px;background:rgba(200,60,60,.08);font-size:14px;line-height:1.7">
+      <strong>Dashboard key required.</strong>
+      <span id="key-gate-msg">Every route except /api/status needs it.</span>
+      <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+        <input id="key-input" type="password" placeholder="dashboard key" autocomplete="off"
+               style="flex:1 1 260px;padding:7px 10px;border-radius:7px;border:1px solid #888;font:inherit">
+        <button id="key-unlock" type="button"
+                style="padding:7px 14px;border-radius:7px;border:1px solid currentColor;
+                       background:transparent;color:inherit;font:inherit;cursor:pointer">Unlock</button>
+      </div>
+    </div>
+
     <div class="devices-grid">
       <!-- Samsung S24 Ultra -->
       <div class="device-card">
@@ -173,20 +190,64 @@
     // so subsequent navigations don't lose it, and sent on every API call as
     // X-Stats-Key. The API refuses every non-status route without it (STATS_KEY
     // env on Vercel is the expected value).
+    // localStorage, with sessionStorage kept in the read chain so a key stored by
+    // an older build still works. sessionStorage alone meant the key died with
+    // the tab and the only way back in was to re-find the ?key= URL.
+    //
+    // ?key= is accepted and then stripped from the address bar: it would
+    // otherwise travel in the Referer header of every outbound link, which is
+    // why the main dashboard's pages do the same.
     (function bootstrapKey() {
-      const fromUrl = new URLSearchParams(location.search).get('key');
+      const params = new URLSearchParams(location.search);
+      const fromUrl = params.get('key');
       if (fromUrl) {
-        try { sessionStorage.setItem('SANDBOX_KEY', fromUrl); } catch (_) {}
+        setKey(fromUrl);
+        params.delete('key');
+        const qs = params.toString();
+        history.replaceState(null, '', location.pathname + (qs ? '?' + qs : '') + location.hash);
       }
     })();
     function getKey() {
-      try { return sessionStorage.getItem('SANDBOX_KEY') || ''; } catch (_) { return ''; }
+      try { return localStorage.getItem('SANDBOX_KEY') || sessionStorage.getItem('SANDBOX_KEY') || ''; }
+      catch (_) { return ''; }
+    }
+    function setKey(v) {
+      try { localStorage.setItem('SANDBOX_KEY', v); sessionStorage.removeItem('SANDBOX_KEY'); } catch (_) {}
+    }
+    function clearKey() {
+      try { localStorage.removeItem('SANDBOX_KEY'); sessionStorage.removeItem('SANDBOX_KEY'); } catch (_) {}
+    }
+
+    function showGate(msg) {
+      const g = document.getElementById('key-gate');
+      if (!g) return;
+      if (msg) document.getElementById('key-gate-msg').textContent = msg;
+      g.hidden = false;
+    }
+    function hideGate() {
+      const g = document.getElementById('key-gate');
+      if (g) g.hidden = true;
     }
     function apiFetch(path, opts = {}) {
       const headers = Object.assign({}, opts.headers || {});
       const k = getKey();
       if (k) headers['X-Stats-Key'] = k;
-      return fetch(API_BASE + path, Object.assign({}, opts, { headers }));
+      return fetch(API_BASE + path, Object.assign({}, opts, { headers })).then(function (r) {
+        // 401 and 503 mean different things here and the server is careful to
+        // distinguish them (dashboard_api.py guard_and_bootstrap): 503 is "this
+        // deployment has no STATS_KEY", a server problem no key can fix, while
+        // 401 is "you did not present a valid one". Clearing a stored key on 503
+        // would be wrong, so only 401 does that.
+        if (r.status === 401) {
+          clearKey();
+          showGate(k ? 'That key was rejected. Paste it again.' : 'Enter the dashboard key to load device data.');
+        } else if (r.status === 503) {
+          showGate('This deployment is not fully configured (the server reported 503). A key will not help.');
+        } else if (r.ok) {
+          hideGate();
+        }
+        return r;
+      });
     }
 
     // Device state
@@ -355,6 +416,21 @@
         await fetchLatestData();
       }, 15000);
     }
+
+    document.getElementById('key-unlock').addEventListener('click', function () {
+      const v = document.getElementById('key-input').value.trim();
+      if (!v) return;
+      setKey(v);
+      document.getElementById('key-input').value = '';
+      hideGate();
+      init();
+    });
+    document.getElementById('key-input').addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') document.getElementById('key-unlock').click();
+    });
+
+    // Say so before the first request rather than after three 401s.
+    if (!getKey()) showGate('Enter the dashboard key to load device data.');
 
     init();
   </script>
