@@ -1,0 +1,13 @@
+{
+  "version": "1.0",
+  "rules": [
+    { "source_pattern": "whatsapp.*", "target_path": "data/whatsapp/", "sharding": "quarterly_by_timestamp", "index": "indexes/whatsapp-search.idx.enc" },
+    { "source_pattern": "chrome.*", "target_path": "data/chrome/", "sharding": "quarterly_by_timestamp", "index": "indexes/chrome-history.idx.enc" },
+    { "source_pattern": "device:mobile-android.*", "target_path": "data/device/mobile-android/", "sharding": "monthly_by_timestamp", "index": "indexes/device-mobile-android.idx.enc" },
+    { "source_pattern": "device:desktop-windows.*", "target_path": "data/device/desktop-windows/", "sharding": "monthly_by_timestamp", "index": "indexes/device-desktop-windows.idx.enc" },
+    { "source_pattern": "device:desktop-macos.*", "target_path": "data/device/desktop-macos/", "sharding": "monthly_by_timestamp", "index": "indexes/device-desktop-macos.idx.enc" },
+    { "source_pattern": "device:desktop-linux.*", "target_path": "data/device/desktop-linux/", "sharding": "monthly_by_timestamp", "index": "indexes/device-desktop-linux.idx.enc" },
+    { "source_pattern": "custom:.*", "target_path": "data/custom/{source_id}/", "sharding": "monthly_by_timestamp", "index": "indexes/custom-{source_id}.idx.enc" }
+  ],
+  "fallback": { "target_path": "data/unclassified/", "sharding": "monthly_by_timestamp", "index": "indexes/unclassified.idx.enc", "alert": true }
+}
