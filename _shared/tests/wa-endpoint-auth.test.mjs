@@ -28,6 +28,7 @@ delete process.env.DATABASE_URL;
 delete process.env.POSTGRES_URL;
 process.env.STATS_KEY = 'k-test';
 process.env.WA_INGEST_KEY = 'i-test';
+delete process.env['FIREBASE_' + 'SERVICE_ACCOUNT_JSON'];
 
 const mkRes = () => ({
   statusCode: null, payload: null, headers: {},
@@ -108,6 +109,83 @@ for (const route of ROUTES) {
       !/"chats"\s*:\s*\[[^\]]/.test(body) && !/@(lid|c\.us|g\.us|s\.whatsapp\.net)/.test(body),
       body.slice(0, 160));
   }
+}
+
+/* ---------- the 2026-09-20 S24 auth flip-flop ---------- */
+// f372da6 removed requireKey from /api/jp-devices and /api/jp-device so the
+// keyless /s24 page would load — publishing IP/SSID/command bodies with it —
+// and its parent merge b2c1778 restored the gate on BOTH, breaking the
+// supposedly-public page again. The settled contract, in both directions:
+//   * Backend/jp-devices.js (both of its url-branching routes) MUST refuse a
+//     keyless request with 401. The CI health-check treats that 401 as the
+//     healthy posture for this route.
+//   * Backend/s24-public.js MUST NOT 401 a keyless request. In this test
+//     process FIREBASE_SERVICE_ACCOUNT_JSON is deleted above, so its deepest
+//     reachable keyless branch is its own config check: 503
+//     'FIREBASE_SERVICE_ACCOUNT_JSON not configured'. That 503 is the PROOF
+//     auth was not the blocker — the request walked past every gate and only
+//     the missing credentials stopped it. A 401 here means someone re-added
+//     requireKey() to the route that exists precisely because requiring the
+//     key was wrong; a 200 would mean this process suddenly holds real
+//     Firestore credentials. Both are breaks; on /api/s24-public, 401 = red.
+{
+  const { default: roster } = await import(new URL('../../Backend/jp-devices.js', import.meta.url).href);
+  const { default: s24Public } = await import(new URL('../../Backend/s24-public.js', import.meta.url).href);
+  const mkReq = (url, key) => ({
+    method: 'GET', url,
+    headers: key ? { 'x-stats-key': key } : {},
+    query: key ? { key } : {},
+    body: undefined,
+  });
+  const NOT_CONFIGURED = /FIREBASE_SERVICE_ACCOUNT_JSON not configured/;
+
+  // Both branches of the single default export, driven by req.url the way
+  // vercel.json does: /api/jp-devices* -> the keyed roster, /api/jp-device* ->
+  // the keyed history. A data-bearing query must not be a way through either.
+  for (const url of ['/api/jp-devices?full=1&subcollections=1', '/api/jp-device?days=30&device=samsung-s24-ultra']) {
+    const res = mkRes();
+    await roster(mkReq(url), res);
+    check(`the roster handler refuses keyless GET ${url} with 401 before config or credentials`,
+      res.statusCode === 401 && res.payload && res.payload.code === 'auth_missing',
+      `got ${res.statusCode} ${JSON.stringify(res.payload)}`);
+    check(`the roster handler leaks no device data on the keyless ${url} refusal`,
+      !/devices|ssid|bssid|observedIp|publicIp|commandQueue|full_payload/.test(JSON.stringify(res.payload || {})),
+      JSON.stringify(res.payload).slice(0, 200));
+  }
+
+  const anon = mkRes();
+  await s24Public(mkReq('/api/s24-public'), anon);
+  check('s24-public answers a keyless request with 503 config — prove it is public BY DESIGN, never re-adding requireKey —',
+    anon.statusCode === 503 && anon.statusCode !== 401 && anon.statusCode !== 200 &&
+    NOT_CONFIGURED.test(anon.payload && anon.payload.error || ''),
+    `got ${anon.statusCode} ${JSON.stringify(anon.payload)}`);
+
+  // A WRONG key must behave exactly like a missing one: precision downgrades,
+  // service is never denied. The one case where an auth failure may reach the
+  // response is auth_not_configured, and this route cannot even surface that.
+  const badKey = mkRes();
+  await s24Public(mkReq('/api/s24-public', 'wrong'), badKey);
+  check('s24-public treats a wrong key as anonymous: the same 503 config, never a 401 denial',
+    badKey.statusCode === 503 && NOT_CONFIGURED.test(badKey.payload && badKey.payload.error || ''),
+    `got ${badKey.statusCode} ${JSON.stringify(badKey.payload)}`);
+
+  const keyed = mkRes();
+  await s24Public(mkReq('/api/s24-public', 'k-test'), keyed);
+  check('s24-public with the valid key still cannot 200 credential-free: 503 config is the same for authenticated callers',
+    keyed.statusCode === 503,
+    `got ${keyed.statusCode} ${JSON.stringify(keyed.payload)}`);
+
+  // One line, both routes, both directions of the flip-flop at once: this is
+  // the assertion that fails the day someone "fixes" /s24 by reopening
+  // jp-devices, or "fixes" the 401 storm by gating s24-public.
+  const rosterRes = mkRes();
+  const publicRes = mkRes();
+  await roster(mkReq('/api/jp-devices'), rosterRes);
+  await s24Public(mkReq('/api/s24-public'), publicRes);
+  check('the 2026-09-20 flip-flop stays pinned: jp-devices 401s keyless while s24-public does not',
+    rosterRes.statusCode === 401 && publicRes.statusCode !== 401 &&
+    publicRes.statusCode === 503 && NOT_CONFIGURED.test(publicRes.payload && publicRes.payload.error || ''),
+    `jp-devices ${rosterRes.statusCode}, s24-public ${publicRes.statusCode}`);
 }
 
 /* ---------- the part that catches the next one ---------- */

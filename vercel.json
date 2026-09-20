@@ -60,6 +60,10 @@
       "use": "@vercel/node"
     },
     {
+      "src": "Backend/s24-public.js",
+      "use": "@vercel/node"
+    },
+    {
       "src": "Backend/jp-live-agent.js",
       "use": "@vercel/node"
     },
@@ -212,6 +216,10 @@
     {
       "src": "/api/jp-devices",
       "dest": "Backend/jp-devices.js"
+    },
+    {
+      "src": "/api/s24-public",
+      "dest": "Backend/s24-public.js"
     },
     {
       "src": "/api/(.*)(.js)?",
