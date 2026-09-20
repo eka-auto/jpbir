@@ -30,6 +30,33 @@ jobs:
       - name: Run tests
         run: npm test --if-present
 
+  # Nothing ever validated the workflow files themselves, and it cost a release.
+  #
+  # s24-export-sync.yml shipped with `SYNC_ROOT: ${{ runner.temp }}/s24-sync` in
+  # WORKFLOW-level env. The `runner` context is only available in a step's env,
+  # so that expression resolved to the empty string, SYNC_ROOT became the
+  # unwritable path "/s24-sync", and both halves of the export pipeline would
+  # have failed on every scheduled run. A YAML parse does not catch that -- the
+  # file is perfectly well-formed YAML. actionlint checks context availability
+  # per workflow key, which is exactly the class of bug involved.
+  #
+  # Run from the upstream-published image at a pinned tag rather than a
+  # third-party marketplace action, so the only new trust here is rhysd's own
+  # release. Pinned, not :latest, so a lint rule added upstream cannot turn a
+  # green pipeline red without a commit here.
+  workflow-lint:
+    name: Validate workflow definitions
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: actionlint
+        run: |
+          docker run --rm -v "$PWD:/repo" --workdir /repo \
+            rhysd/actionlint:1.7.12 -color -verbose
+
   # Server/jp-agent is the droplet runtime and has its own package.json, so neither `npm ci`
   # nor `npm test` above ever touched it. Its tests existed and passed by hand, but nothing
   # ran them - so two fixes to device-health.mjs on 2026-09-19 (0637de9, 9040523) went in
