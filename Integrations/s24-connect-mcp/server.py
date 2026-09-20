@@ -113,6 +113,60 @@ _FS_BASE = (
 _TOKEN_URL = "https://oauth2.googleapis.com/token"
 _SCOPE = "https://www.googleapis.com/auth/datastore"
 _REQUESTED_BY = "s24-connect-mcp"
+
+# ---------------------------------------------------------------------------
+# Command gate. Mirrors SAFE_DEVICE_ACTIONS in
+# Server/jp-agent/device-health.mjs — 2026-09-20 e2e debug of the direct-cloud
+# chain found every queue writer accepting ANY action, while the daemon copy
+# still implemented the pre-contract dangerous set: start-ssh (inbound sshd),
+# the bore.pub reverse tunnel the old 'wakeup' spawned, test-ping (set
+# attacker-chosen lock password, no token check), update-and-restart,
+# secure-wipe; the last two stay reachable only via audited paths the daemon
+# itself validates, never via a tool token (runtime_contract.json's
+# forbiddenRuntimeFeatures is the source of truth).
+# _shared/tests/s24-action-gate.test.mjs compares this table against the
+# JavaScript one and fails on drift.
+# ---------------------------------------------------------------------------
+_SAFE_DEVICE_ACTIONS = frozenset({
+    'status-only', 'ping', 'echo', 'wa-push', 'wa-media-push', 'sync-now',
+    'sync', 'direct-cloud-sync', 'collect-history', 'history',
+    'heartbeat', 'wakeup',
+})
+
+_ACTION_ALIASES = {
+    'sync': 'sync-now', 'direct-cloud-sync': 'sync-now', 'collect-history': 'sync-now', 'history': 'sync-now',
+    'status': 'status-only',
+    'ping': 'heartbeat',
+    'start-sshd': 'start-ssh', 'ssh': 'start-ssh',
+    'wake': 'wakeup', 'wake-up': 'wakeup',
+    'restart': 'update-and-restart', 'pull-and-restart': 'update-and-restart', 'update': 'update-and-restart',
+    'wipe': 'secure-wipe', 'kill': 'secure-wipe', 'emergency-wipe': 'secure-wipe',
+    'test': 'test-ping',
+}
+
+# Keys the daemon treats as command state or handler credentials/inputs:
+# wipeToken gates the emergency wipe, newPassword fed the 'test-ping' lockout.
+# Neither may be merged into a tool-queued item — mirrors the reserved list in
+# Server/jp-agent/device-health.mjs.
+_RESERVED_COMMAND_PARAMS = (
+    'action', 'status', 'priority', 'requestedAt', 'requestedBy',
+    'source', 'completedAt', 'ackAt', 'claimedAt', 'processedAt', 'result',
+    'wipeToken', 'newPassword',
+)
+
+
+def _normalize_action(action: str) -> str:
+    n = re.sub(r'_', '-', str(action or '').strip().lower())
+    return _ACTION_ALIASES.get(n, n or '')
+
+
+def _action_gate(action: str) -> str | None:
+    resolved = _normalize_action(action)
+    if resolved in _SAFE_DEVICE_ACTIONS:
+        return None
+    return (f"action {action!r} is not allowed: it resolves to {resolved or 'unknown'!r}, outside "
+            f"the safe set {sorted(_SAFE_DEVICE_ACTIONS)}. Destructive or inbound-network actions are "
+            f"refused at every queue writer since 2026-09-20 (runtime_contract.json).")
 _HTTP_TIMEOUT = 20
 S24_HEARTBEAT_FRESHNESS_SECONDS = 300
 S24_BOOT_GRACE_SECONDS = 600  # allow fresh heartbeat without ack during boot
@@ -575,9 +629,10 @@ def device_send(action: str, device_id: str = DEFAULT_DEVICE,
     Queue a command for a device and wake it so it runs promptly.
 
     Args:
-        action:      command name the device's daemon understands
-                     (e.g. 'sync-now', 'collect-sms', 'collect-calls',
-                     'collect-location', 'start-ssh').
+        action:      command name the device's daemon understands and the
+                     command gate admits (e.g. 'sync-now', 'status-only').
+                     'start-ssh' and the other historical RCE-style actions
+                     are refused since 2026-09-20.
         device_id:   target device (default: the S24).
         params_json: JSON object string of extra fields, e.g. '{"port": 8022}'.
         priority:    NORMAL | HIGH | CRITICAL (default NORMAL).
@@ -595,11 +650,17 @@ def device_send(action: str, device_id: str = DEFAULT_DEVICE,
         extra = json.loads(params_json)
         if not isinstance(extra, dict):
             return "Error: params_json must be a JSON object, e.g. '{\"port\": 8022}'."
+        stolen = [k for k in extra if k in _RESERVED_COMMAND_PARAMS]
+        if stolen:
+            return f"Error: params_json may not set reserved command field(s): {', '.join(stolen)}."
     except json.JSONDecodeError as ex:
         return f"Error: params_json is not valid JSON ({ex})."
     priority = priority.upper()
     if priority not in {"NORMAL", "HIGH", "CRITICAL"}:
         return "Error: priority must be NORMAL, HIGH or CRITICAL."
+    gate = _action_gate(action)
+    if gate is not None:
+        return "Error: " + gate
 
     at = _now_iso()
     # Keep the id to [A-Za-z0-9_] so it is a valid Firestore field-path segment
