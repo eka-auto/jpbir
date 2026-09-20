@@ -12,6 +12,10 @@
     {
       "path": "/api/s24-sync-cron",
       "schedule": "17 */6 * * *"
+    },
+    {
+      "path": "/api/stack-cron",
+      "schedule": "*/5 * * * *"
     }
   ],
   "builds": [
@@ -72,6 +76,10 @@
       "use": "@vercel/node"
     },
     {
+      "src": "Backend/jp-stack.js",
+      "use": "@vercel/node"
+    },
+    {
       "src": "Backend/jp-stats.js",
       "use": "@vercel/node"
     },
@@ -81,6 +89,10 @@
     },
     {
       "src": "Backend/jp-visitor.js",
+      "use": "@vercel/node"
+    },
+    {
+      "src": "Backend/stack-cron.js",
       "use": "@vercel/node"
     },
     {
@@ -212,6 +224,14 @@
     {
       "src": "/api/jp-device",
       "dest": "Backend/jp-device.js"
+    },
+    {
+      "src": "/api/stack-cron",
+      "dest": "Backend/stack-cron.js"
+    },
+    {
+      "src": "/api/jp-stack",
+      "dest": "Backend/jp-stack.js"
     },
     {
       "src": "/api/jp-devices",
