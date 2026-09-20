@@ -1,0 +1,155 @@
+name: S24 Direct-Cloud Export Sync
+
+# Scheduled replacement for the manual laptop pipeline
+# (Devices/S24/pull_direct_cloud.py | Devices/S24/push_to_vercel.py).
+# It reads the phone's Firestore state, writes a local export run, and pushes
+# it to https://jaytipargal.tech/api/s24-ingest with a P-256 signature.
+#
+# ---------------------------------------------------------------------------
+# Required repository secrets (Settings -> Secrets and variables -> Actions):
+#
+# 1) EKA_SERVICE_ACCOUNT_JSON
+#    The full JSON of the Google service account that can READ the Firestore
+#    database (project eka-agent). This is the same key the laptop flow points
+#    EKA_SERVICE_ACCOUNT_KEY at, embedded as a secret instead of a file path.
+#    Provision (owner only):
+#      gh secret set EKA_SERVICE_ACCOUNT_JSON < path/to/service-account.json
+#    (gh needs a PAT with repo access; the web UI paste works too.)
+#
+# 2) S24_SYNC_PRIVATE_KEY_PEM
+#    An EXPORTABLE ECDSA P-256 private key in PEM (PKCS#8) form, used via
+#    push_to_vercel.py --software-key.
+#
+#    SECURITY TRADE-OFF — read before enabling:
+#    The production laptop flow signs with JP-S24-LOCAL-SYNC-P256, a
+#    NON-exportable key inside the Windows TPM (CNG Platform Crypto Provider).
+#    A GitHub runner cannot reach that TPM, and a non-exportable key cannot be
+#    put into a secret by definition. Running in CI therefore requires an
+#    exportable PEM, which means anyone who can read repo secrets can sign
+#    uploads to the s24 ingest endpoint. The alternative is to decline: delete
+#    this workflow and keep running push_to_vercel.py by hand on the laptop.
+#
+#    To accept the trade-off, mint a DEDICATED CI keypair (do not reuse any
+#    other key), publish only its public half to Vercel, then store the PEM:
+#      openssl ecparam -name prime256v1 -genkey -noout -out s24-ci-signing-key.pem
+#      python Devices/S24/push_to_vercel.py --software-key s24-ci-signing-key.pem --print-public-key
+#      gh secret set S24_SYNC_PRIVATE_KEY_PEM < s24-ci-signing-key.pem
+#      rm s24-ci-signing-key.pem
+#    The --print-public-key output (PEM on stdout, key_id on stderr) is a
+#    SubjectPublicKeyInfo PEM; Backend/s24-ingest.js loadPublicKeys() accepts
+#    several such blocks newline-separated, or a JSON array of them, in the
+#    Vercel env var S24_SYNC_PUBLIC_KEYS. APPEND the CI public key so the
+#    laptop key keeps working, rotate by add -> cut over -> remove. The public
+#    key can also be re-derived later from the PEM with
+#    `openssl ec -in key.pem -pubout` (key_id = sha256 of its DER SPKI,
+#    first 32 hex chars).
+#
+# Failure behaviour: pull exits 1 when Firestore is unreadable or the device
+# document is missing; push exits 1 on signature/HTTP/validation errors. An
+# export with zero new records is NOT a failure — the run/batch/dataset ledger
+# still uploads with 0 records. Re-running a failed workflow is safe: records
+# upsert on (device_id, dataset, record_id) and batches on run_id, so a retry
+# converges instead of duplicating (Integrations/s24-store.js).
+
+on:
+  schedule:
+    # 05:23 and 17:23 UTC daily. The minute is chosen to avoid the :17 mark
+    # used by the Vercel cron /api/s24-sync-cron (17 */6 * * *), so the two
+    # schedulers never stack. Scheduled runs fire on the default branch only.
+    - cron: '23 5,17 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: s24-export-sync
+  # Let an in-flight run finish rather than cancelling it mid-upload; the
+  # pipeline is idempotent, so a skipped run's data is covered by the next one.
+  cancel-in-progress: false
+
+env:
+  # SYNC_ROOT is deliberately NOT set here. The `runner` context is unavailable
+  # in workflow-level env -- GitHub's context-availability table allows it only
+  # in a STEP's env -- so `${{ runner.temp }}` expanded to the empty string and
+  # SYNC_ROOT became "/s24-sync", an unwritable path at the filesystem root.
+  # Both scripts would have failed on every scheduled run. It is computed from
+  # $RUNNER_TEMP in the first step instead and exported through $GITHUB_ENV,
+  # which every later step reads.
+  #
+  # These two are literals with no context expression, so they are fine here.
+  SERVICE_ACCOUNT_PATH: /tmp/eka-sa.json
+  SIGNING_KEY_PATH: /tmp/s24-ci-signing-key.pem
+
+jobs:
+  export-sync:
+    name: Pull Firestore export and push to Vercel ingest
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Resolve the shared sync root
+        # One run's working area: pull writes <root>/runs/<run_id>/ plus
+        # latest.txt, and push reads the newest run back from the same root.
+        # An explicit path keeps both scripts off their LOCALAPPDATA default.
+        run: |
+          echo "SYNC_ROOT=$RUNNER_TEMP/s24-sync" >> "$GITHUB_ENV"
+          mkdir -p "$RUNNER_TEMP/s24-sync"
+          echo "sync root: $RUNNER_TEMP/s24-sync"
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: Devices/S24/requirements-export.txt
+
+      - name: Install Python dependencies
+        # Fully pinned, and the cache key above points at the same file, so a
+        # cache hit and a cache miss install identical trees. Previously this
+        # installed `-r requirements-broker.txt firebase-admin`, which left
+        # firebase-admin floating on an unattended twice-daily job.
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r Devices/S24/requirements-export.txt
+          python -c "import firebase_admin, cryptography; print('firebase-admin', firebase_admin.__version__)"
+
+      - name: Write Firestore service-account key
+        env:
+          EKA_SERVICE_ACCOUNT_JSON: ${{ secrets.EKA_SERVICE_ACCOUNT_JSON }}
+        run: |
+          if [ -z "$EKA_SERVICE_ACCOUNT_JSON" ]; then
+            echo "secret EKA_SERVICE_ACCOUNT_JSON is not set — see the header comment of this workflow"
+            exit 1
+          fi
+          printf '%s' "$EKA_SERVICE_ACCOUNT_JSON" > "$SERVICE_ACCOUNT_PATH"
+          chmod 600 "$SERVICE_ACCOUNT_PATH"
+          python -c "import json; json.load(open('$SERVICE_ACCOUNT_PATH'))"
+          echo "service-account JSON written and parsed OK"
+
+      - name: Pull direct-cloud export from Firestore
+        env:
+          # Not a secret. The script defaults to the eka-agent database;
+          # change only if the export must target another Firestore database.
+          EKA_FIRESTORE_DB: eka-agent
+        run: |
+          python Devices/S24/pull_direct_cloud.py \
+            --service-account "$SERVICE_ACCOUNT_PATH" \
+            --output-root "$SYNC_ROOT"
+
+      - name: Write P-256 signing key
+        env:
+          S24_SYNC_PRIVATE_KEY_PEM: ${{ secrets.S24_SYNC_PRIVATE_KEY_PEM }}
+        run: |
+          if [ -z "$S24_SYNC_PRIVATE_KEY_PEM" ]; then
+            echo "secret S24_SYNC_PRIVATE_KEY_PEM is not set — see the header comment of this workflow"
+            exit 1
+          fi
+          printf '%s\n' "$S24_SYNC_PRIVATE_KEY_PEM" > "$SIGNING_KEY_PATH"
+          chmod 600 "$SIGNING_KEY_PATH"
+          grep -q "BEGIN.*PRIVATE KEY" "$SIGNING_KEY_PATH"
+          echo "signing key written OK"
+
+      - name: Push newest run to Vercel ingest
+        run: |
+          python Devices/S24/push_to_vercel.py \
+            --root "$SYNC_ROOT" \
+            --software-key "$SIGNING_KEY_PATH"
