@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { fsGet, fsPatch } from './broker.js';
+import { secretEquals } from './lib/cron-auth.js';
 
 const _env = (typeof process !== 'undefined' ? process : globalThis['proc' + 'ess']).env;
 const STATS_KEY = _env['STATS_' + 'KEY'];
@@ -14,17 +15,25 @@ export const ALLOWED_ACTIONS = new Set([
   'wa-media-push',
 ]);
 
-function timingSafeEqualText(actual, expected) {
-  if (!actual || !expected) return false;
-  const a = Buffer.from(String(actual));
-  const b = Buffer.from(String(expected));
-  return a.length === b.length && crypto.timingSafeEqual(a, b);
-}
-
+/**
+ * Bearer-token check for the S24 command endpoint.
+ *
+ * The comparison is delegated to secretEquals in lib/cron-auth.js, which SHA-256
+ * digests both sides before timingSafeEqual. The local version compared raw
+ * buffers behind an `a.length === b.length` guard, so a wrong-length token took
+ * a different, cheaper path than a right-length one -- the key's length was
+ * observable, which is the exact failure both _auth.js and cron-auth.js carry
+ * comments about avoiding. Two copies of a credential comparison is how they
+ * drift into disagreeing about what counts as authorised.
+ *
+ * The Bearer shape is kept rather than moved to requireKey(): Frontend's call
+ * sends `Authorization: Bearer`, and _auth.js reads ?key= / x-stats-key. Only
+ * the comparison was wrong, not the transport.
+ */
 export function isAuthorized(req, expectedKey = STATS_KEY) {
   const header = String(req?.headers?.authorization || '');
   if (!header.startsWith('Bearer ')) return false;
-  return timingSafeEqualText(header.slice(7).trim(), expectedKey);
+  return secretEquals(header.slice(7).trim(), expectedKey);
 }
 
 export function validateCommand(body) {

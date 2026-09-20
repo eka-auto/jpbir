@@ -1056,7 +1056,13 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
                 ul.style.cssText = 'display:flex;flex-direction:column;gap:6px;max-height:420px;overflow-y:auto;';
                 msgs.forEach(function (m) {
                     var row = document.createElement('div');
-                    row.style.cssText = 'padding:8px 10px;border:1px solid #333;border-radius:8px;background:#111;';
+                    /* An explicit light foreground is required here. These cards set a
+                       near-black background (#111) but no colour, so the text inherited
+                       body's `color: var(--ink)` = #221A15 - near-black on near-black.
+                       The messages rendered correctly and were simply unreadable, which
+                       looks identical to an empty panel. #F4E9DC is the same light ink
+                       the topbar, sidebar hover and chart tooltip already use on dark. */
+                    row.style.cssText = 'padding:8px 10px;border:1px solid #333;border-radius:8px;background:#111;color:#F4E9DC;';
                     var top = document.createElement('div');
                     top.style.cssText = 'display:flex;justify-content:space-between;gap:6px;font-size:11px;';
                     var who = document.createElement('span');
@@ -3426,6 +3432,19 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
                     var ve = res.body.videoEvent;
                     var old = document.getElementById('videoRelayBar');
                     if (old) old.remove();
+                    /* A failed relay read used to arrive as the same null as "no
+                       event yet", so a Firestore outage rendered as a quiet,
+                       working system with nothing to report. The backend now says
+                       which it was; show it rather than absorbing it. */
+                    if (!ve && res.body.videoEventError) {
+                        var errBar = document.createElement('div');
+                        errBar.id = 'videoRelayBar';
+                        errBar.className = 'state err';
+                        errBar.style.cssText = 'margin:0 0 14px;padding:12px 16px;border-radius:10px;font-size:13px';
+                        errBar.textContent = 'Video relay state unavailable — ' + res.body.videoEventError;
+                        var hostEl = $('livePayloadList');
+                        if (hostEl && hostEl.parentNode) hostEl.parentNode.insertBefore(errBar, hostEl);
+                    }
                     if (ve && ve.lastEventId) {
                         var acks = ve.seenBy || {};
                         var ackList = Object.keys(acks).sort().map(function (k) {
