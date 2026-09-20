@@ -71,8 +71,13 @@ if [ ! -f "$WA_ENV_FILE" ]; then
 # this file every tick). See Devices/S24/wa_push.py for what each does.
 WA_INGEST_URL=https://jaytipargal.tech/api/wa-ingest
 WA_INGEST_KEY=
-WA_MSGSTORE_DB=$HOME/storage/shared/WhatsApp/Databases/msgstore.db
-WA_CONTACTS_DB=$HOME/storage/shared/WhatsApp/Databases/wa.db
+# Left unset on purpose. wa_push.py probes the scoped-storage root
+# (~/storage/shared/Android/media/com.whatsapp/WhatsApp/Databases, Android 11+)
+# before the legacy ~/storage/shared/WhatsApp one, and picks whichever exists.
+# Pinning the legacy path here overrode that probe and made every tick exit 2
+# on this Android 14 phone. Set these only to point at a non-standard copy.
+#WA_MSGSTORE_DB=
+#WA_CONTACTS_DB=
 WA_DEVICE_ID=samsung-s24-ultra
 ENV
   chmod 600 "$WA_ENV_FILE"
