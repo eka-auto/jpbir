@@ -304,11 +304,18 @@ export function snapshot(probes) {
     unknown: flat.filter((f) => f.status === UNKNOWN).length,
     total: flat.length,
   };
+  // Device freshness is the one red this stack cannot fix from the cloud —
+  // devices phone home or they don't (see Devices/S24/runtime_contract.json:
+  // no inbound listener exists by design). Counting it separately lets CI gate
+  // on what a merge could actually have broken, while the panel and the alert
+  // cron keep painting the stopped daemon red, loudly.
+  const cloud_fail = flat.filter((f) => f.status === FAIL && f.probe !== 'devices').length;
   return {
     // Not "synced": this is when the server answered THIS poll.
     fetched_at: new Date().toISOString(),
     devices_note: DEVICES_NOTE,
     overall: summary.fail ? FAIL : summary.warn ? WARN : OK,
+    cloud_fail,
     summary,
     probes: Object.fromEntries(
       Object.entries(probes).map(([k, v]) => [k, { status: v.status, problem: v.problem || '', detail: v.detail || '' }])
@@ -402,6 +409,10 @@ export default async function handler(req, res) {
     return res.status(snap.overall === FAIL ? 503 : 200).json({
       success: snap.overall !== FAIL,
       overall: snap.overall,
+      // cloud_fail is a bare count — no probe names, no reasons — so the CI
+      // gate can stay green over a device nobody can reach from the cloud
+      // without this response ever describing which device or why.
+      cloud_fail: snap.cloud_fail,
       summary: snap.summary,
     });
   }
