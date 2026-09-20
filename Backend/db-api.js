@@ -402,6 +402,14 @@ const VIEWS = {
               android_version, model, record_count, uploaded_records, upload_status, uploaded_at, notes
          FROM s24_sync_runs WHERE device_id = $1
         ORDER BY started_at DESC LIMIT 25`, ['samsung-s24-ultra'])).rows;
+    // The LIMIT above is a page, but /db rendered its length as the "Sync runs"
+    // KPI -- so once 25 runs existed the tile read "25" forever, on the one
+    // number an operator uses to judge whether the export automation is
+    // running at all. A capped list cannot be corrected frontend-side, so the
+    // true total is returned alongside it.
+    const runsTotal = Number((await query(
+      `SELECT COUNT(*)::int AS n FROM s24_sync_runs WHERE device_id = $1`,
+      ['samsung-s24-ultra'])).rows[0].n) || 0;
     const statusCounts = (await query(
       `SELECT status AS label, COUNT(*)::int n
          FROM s24_sync_datasets
@@ -426,7 +434,7 @@ const VIEWS = {
                 runtime_is_android, live_device_verified, last_seen
            FROM s24_device_snapshots ORDER BY observed_at DESC NULLS LAST LIMIT 1`)).rows[0] || null;
     }
-    return { migrated: true, normalized, section: selected, total, limit, offset, rows, datasets, runs, statusCounts, counts, device };
+    return { migrated: true, normalized, section: selected, total, limit, offset, rows, datasets, runs, runsTotal, statusCounts, counts, device };
   },
 
   // Every table, every column — the "is anything missing" panel.
