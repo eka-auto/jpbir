@@ -77,7 +77,36 @@ jobs:
           CODE=$(echo "$BODY" | tail -n 1)
           JSON=$(echo "$BODY" | sed '$d')
           if [ "$CODE" -eq 200 ] && echo "$JSON" | jq -e '.postgres.ok == true' >/dev/null; then
-            echo "✅ Neon answered with the full schema ($(echo "$JSON" | jq -r '.postgres.tables_present') tables)"
+            TABLES=$(echo "$JSON" | jq -r '.postgres.tables_present')
+            EVENTS=$(echo "$JSON" | jq -r '.postgres.events // "n/a"')
+            NEWEST=$(echo "$JSON" | jq -r '.postgres.newest_event_at // "never"')
+            WROTE=$(echo "$JSON" | jq -r '.postgres.last_write_at // "never"')
+            echo "✅ Neon answered with the full schema ($TABLES tables)"
+            echo "   rows in events: $EVENTS | newest event: $NEWEST | last write: $WROTE"
+
+            # Freshness is reported as a WARNING, never a failure.
+            #
+            # This job answers "can the endpoint reach the database", and that is
+            # what its red/green must mean. A warehouse that is reachable but has
+            # not been written to for a day is a DIFFERENT incident with a
+            # different owner -- the ingest path, not the API -- and failing here
+            # for it would train everyone to ignore a red health check.
+            # check-stale.js is what alerts on ingestion going quiet.
+            #
+            # Surfaced anyway because it costs nothing: the response already
+            # carries these fields, and until now the log threw them away, which
+            # is why "production freshness is unverifiable without the dashboard
+            # key" kept being said. It is verifiable right here, in CI, by anyone
+            # who can read this log and without holding any key.
+            if [ "$WROTE" != "never" ]; then
+              AGE=$(( $(date -u +%s) - $(date -u -d "$WROTE" +%s) ))
+              echo "   last write was $((AGE / 3600))h $(((AGE % 3600) / 60))m ago"
+              if [ "$AGE" -gt 86400 ]; then
+                echo "::warning title=Neon warehouse is stale::No write to events in $((AGE / 3600))h. The database is reachable; the INGEST path is the thing to look at."
+              fi
+            else
+              echo "::warning title=Neon warehouse has never been written::events.ingested_at is empty."
+            fi
           else
             echo "❌ Database verification failed (HTTP $CODE): $JSON"
             exit 1
