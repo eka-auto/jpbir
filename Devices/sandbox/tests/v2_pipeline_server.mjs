@@ -24,7 +24,11 @@ process.env.FIRESTORE_DB = 'sandbox-broker-v2';
 const {
   dec,
   encodeDocumentFields,
-} = await import('../../jayti-dashboard/lib/broker.js');
+} = await import('../../../Backend/broker.js');
+// Repointed from '../../jayti-dashboard/...': the restructure moved these
+// handlers into Backend/ and deleted that tree, so every import here threw
+// ERR_MODULE_NOT_FOUND and this harness could not start. From
+// Devices/sandbox/tests/ the repo root is three levels up.
 
 const projectId = 'broker-v2-sandbox';
 const database = 'sandbox-broker-v2';
@@ -229,11 +233,11 @@ documents.set(`devices/${seed.deviceId}`, makeDocument(`devices/${seed.deviceId}
 }));
 
 const handlers = {
-  '/api/device-enroll': (await import('../../jayti-dashboard/api/device-enroll.js')).default,
-  '/api/device-heartbeat': (await import('../../jayti-dashboard/api/device-heartbeat.js')).default,
-  '/api/device-commands-poll': (await import('../../jayti-dashboard/api/device-commands-poll.js')).default,
-  '/api/device-command-claim': (await import('../../jayti-dashboard/api/broker-command-claim.js')).default,
-  '/api/device-command-complete': (await import('../../jayti-dashboard/api/broker-command-complete.js')).default,
+  '/api/device-enroll': (await import('../../../Backend/device-enroll.js')).default,
+  '/api/device-heartbeat': (await import('../../../Backend/device-heartbeat.js')).default,
+  '/api/device-commands-poll': (await import('../../../Backend/device-commands-poll.js')).default,
+  '/api/device-command-claim': (await import('../../../Backend/broker-command-claim.js')).default,
+  '/api/device-command-complete': (await import('../../../Backend/broker-command-complete.js')).default,
 };
 
 function authorized(req) {

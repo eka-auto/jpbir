@@ -272,51 +272,70 @@
       }
     }
 
-    // Fetch latest data (rolling window - last 50)
-    async function fetchLatestData() {
+    function escapeHtml(value) {
+      return String(value ?? '').replace(/[&<>"']/g, ch => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      }[ch]));
+    }
+
+    function formatTime(value) {
+      const t = value ? new Date(value) : null;
+      return t && !isNaN(t.getTime()) ? t.toLocaleString() : '—';
+    }
+
+    // Fetch one data card. A failed or unconfigured source renders an
+    // explicit "live source unavailable" state instead of spinning forever,
+    // and one dead card never blanks the other three.
+    async function fetchDataCard(path, elementId, renderFn) {
+      const el = document.getElementById(elementId);
       try {
-        const [whatsapp, calls, sms, contacts] = await Promise.all([
-          apiFetch(`/data/whatsapp?limit=50`).then(r => r.json()),
-          apiFetch(`/data/calls?limit=50`).then(r => r.json()),
-          apiFetch(`/data/sms?limit=50`).then(r => r.json()),
-          apiFetch(`/data/contacts?limit=50`).then(r => r.json())
-        ]);
-
-        renderDataList('whatsapp-list', whatsapp.data || [], item => 
-          `<div class="data-item">
-            <div>${item.path || item.name || 'Media file'}</div>
-            <div class="timestamp">${new Date(item.backed_up_at || item.date).toLocaleString()} • ${item.deviceId || ''}</div>
-          </div>`
-        );
-
-        renderDataList('calls-list', calls.data || [], item =>
-          `<div class="data-item">
-            <div>${item.name || item.number} • ${item.type === 1 ? 'Incoming' : item.type === 2 ? 'Outgoing' : item.type === 3 ? 'Missed' : 'Call'}</div>
-            <div class="timestamp">${new Date(item.date).toLocaleString()} • ${item.duration}s</div>
-          </div>`
-        );
-
-        renderDataList('sms-list', sms.data || [], item =>
-          `<div class="data-item">
-            <div>${item.body?.substring(0, 50) || 'No content'}</div>
-            <div class="timestamp">${new Date(item.date).toLocaleString()} • ${item.type === 1 ? 'Inbox' : item.type === 2 ? 'Sent' : 'SMS'}</div>
-          </div>`
-        );
-
-        renderDataList('contacts-list', contacts.data || [], item =>
-          `<div class="data-item">
-            <div>${item.name}</div>
-            <div class="timestamp">${(item.phones || []).join(', ') || 'No phone'}</div>
-          </div>`
-        );
+        const response = await apiFetch(path);
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        renderDataList(elementId, await response.json(), renderFn);
       } catch (error) {
-        console.error('Error fetching data:', error);
+        console.error(`Error fetching ${path}:`, error);
+        el.innerHTML = '<div class="empty-state">live source unavailable</div>';
       }
     }
 
-    function renderDataList(elementId, data, renderFn) {
+    // Fetch latest data (rolling window - last 50)
+    async function fetchLatestData() {
+      await Promise.all([
+        // WhatsApp: Neon wa_messages joined to wa_chats (live source).
+        fetchDataCard(`/data/whatsapp?limit=50`, 'whatsapp-list', item =>
+          `<div class="data-item">
+            <div>${escapeHtml(item.body) || `<em>(${escapeHtml(item.kind || 'message')})</em>`}</div>
+            <div class="timestamp">${formatTime(item.sent_at)} • ${escapeHtml(item.chat_name || item.chat_id || '')}${item.sender ? ' • ' + escapeHtml(item.sender) : ''}</div>
+          </div>`
+        ),
+        // Calls: live samsungS24DirectSync.callLogs array from the device doc.
+        fetchDataCard(`/data/calls?limit=50`, 'calls-list', item =>
+          `<div class="data-item">
+            <div>${escapeHtml(item.name && item.name !== 'Unknown' ? item.name : item.number || 'Unknown')} • ${escapeHtml(item.type || 'Call')}</div>
+            <div class="timestamp">${formatTime(item.date)} • ${item.duration_seconds ?? 0}s • ${escapeHtml(item.deviceId || '')}</div>
+          </div>`
+        ),
+        // SMS: live samsungS24DirectSync.sms array from the device doc.
+        fetchDataCard(`/data/sms?limit=50`, 'sms-list', item =>
+          `<div class="data-item">
+            <div>${escapeHtml((item.body || '').substring(0, 80)) || 'No content'}</div>
+            <div class="timestamp">${formatTime(item.timestamp)} • ${escapeHtml(item.type || 'SMS')} • ${escapeHtml(item.sender || '')}</div>
+          </div>`
+        ),
+        // Contacts are not collected anywhere — the API says so explicitly and
+        // the card renders that designed empty state, not a fake "no data".
+        fetchDataCard(`/data/contacts?limit=50`, 'contacts-list', () => '')
+      ]);
+    }
+
+    function renderDataList(elementId, payload, renderFn) {
       const el = document.getElementById(elementId);
-      if (!data || data.length === 0) {
+      if (payload && payload.collected === false) {
+        el.innerHTML = `<div class="empty-state">${escapeHtml(payload.note || 'not collected')}</div>`;
+        return;
+      }
+      const data = (payload && payload.data) || [];
+      if (data.length === 0) {
         el.innerHTML = '<div class="empty-state">No data available</div>';
         return;
       }

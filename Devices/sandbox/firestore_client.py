@@ -147,9 +147,12 @@ class FirestoreClient:
     def list_docs(self, collection, doc_id, subcollection, limit=50):
         """List documents in a device subcollection, newest first.
 
-        The S24 daemon persists collected records (callLogs, sms, contacts,
-        whatsappMedia) as subcollection documents under the device document,
-        so the dashboard reads them through this path.
+        Legacy path: older exporters persisted collected records (callLogs,
+        sms, contacts, whatsappMedia) as subcollection documents under the
+        device document. Nothing writes them anymore — the phone daemon
+        PATCHes rolling arrays into the device doc under samsungS24DirectSync
+        — so this is only a fallback for a device that has no direct-sync
+        array yet.
         """
         path = (
             f"/{quote(collection, safe='')}/{quote(doc_id, safe='')}"

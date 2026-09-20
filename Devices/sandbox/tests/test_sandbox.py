@@ -6,6 +6,7 @@ import sys
 import tempfile
 import threading
 import unittest
+import urllib.error
 from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import Mock, patch
@@ -17,7 +18,7 @@ import dashboard_api
 import device_agent
 import firestore_client
 import single_instance
-from firestore_client import FirestoreClient, decode_fields
+from firestore_client import FirestoreClient, decode_fields, _encode_fields
 from single_instance import check_guard, cmdline_matches
 
 
@@ -346,6 +347,175 @@ class DashboardTests(unittest.TestCase):
         with patch.dict(os.environ, {"AGENT_API_URL": "http://agent.local:8000"}, clear=False):
             response = self.http.post("/api/agent/query", json={"query": "health"})
         self.assertEqual(response.status_code, 503)
+
+
+class DataRoutesTests(unittest.TestCase):
+    """/api/data/<kind> is backed by live sources, not the dead subcollections.
+
+    whatsapp reads Neon wa_messages over the SQL-over-HTTP API (DATABASE_URL),
+    calls/sms read the rolling samsungS24DirectSync arrays the phone daemon
+    PATCHes into the device doc (falling back to the legacy subcollection only
+    when a device has no array yet), and contacts are an explicit
+    not-collected state rather than a fake empty read.
+    """
+
+    NEON_URL = "postgres://user:pass@ep-demo-pooler.us-east-1.aws.neon.tech/db"
+
+    def setUp(self):
+        dashboard_api.app.config["TESTING"] = True
+        # TESTING implies PROPAGATE_EXCEPTIONS, which would re-raise the
+        # ConfigError a missing DATABASE_URL must instead answer 503 with.
+        dashboard_api.app.config["PROPAGATE_EXCEPTIONS"] = False
+        dashboard_api.app.config["SANDBOX_CFG"] = {
+            "collection": "sandbox_devices",
+            "devices": [{"id": "known", "display_name": "Known"}],
+            "allowed_commands": ["ping"],
+        }
+        self.firestore = Mock()
+        dashboard_api.app.config["FIRESTORE"] = self.firestore
+        dashboard_api.app.config["SANDBOX_AUTH_DISABLED"] = True
+        self.addCleanup(self._reset_app_config)
+        self.http = dashboard_api.app.test_client()
+
+    @staticmethod
+    def _reset_app_config():
+        for key in (
+            "SANDBOX_CFG",
+            "FIRESTORE",
+            "SANDBOX_AUTH_DISABLED",
+            "PROPAGATE_EXCEPTIONS",
+            "TESTING",
+        ):
+            dashboard_api.app.config.pop(key, None)
+
+    @staticmethod
+    def _doc_with_direct_sync(**arrays):
+        sync = {name: rows for name, rows in arrays.items()}
+        return {"fields": _encode_fields({"samsungS24DirectSync": sync})}
+
+    def test_calls_read_the_live_direct_sync_array(self):
+        self.firestore.get_doc.return_value = self._doc_with_direct_sync(
+            callLogs=[
+                {"number": "+91 111", "name": "A", "type": "Incoming",
+                 "date": "2026-09-20T09:00:00+05:30", "duration_seconds": 60},
+                {"number": "+91 222", "name": "B", "type": "Missed",
+                 "date": "2026-09-20T10:00:00+05:30", "duration_seconds": 0},
+            ]
+        )
+        response = self.http.get("/api/data/calls?limit=50")
+        self.assertEqual(response.status_code, 200)
+        rows = response.get_json()["data"]
+        # newest first, daemon shape passed through with deviceId attached
+        self.assertEqual([r["number"] for r in rows], ["+91 222", "+91 111"])
+        self.assertEqual(rows[0]["type"], "Missed")
+        self.assertEqual(rows[0]["duration_seconds"], 0)
+        self.assertEqual(rows[0]["deviceId"], "known")
+        # the live array was present, so the legacy subcollection must not be read
+        self.firestore.list_docs.assert_not_called()
+
+    def test_calls_fall_back_to_the_subcollection_when_no_array_yet(self):
+        self.firestore.get_doc.return_value = {"fields": {}}
+        self.firestore.list_docs.return_value = [
+            {"id": "c1", "number": "+91 999", "type": 2, "date": "2026-09-19T08:00:00+05:30",
+             "duration": 45},
+        ]
+        response = self.http.get("/api/data/calls?limit=50")
+        self.assertEqual(response.status_code, 200)
+        rows = response.get_json()["data"]
+        self.assertEqual(len(rows), 1)
+        # legacy numeric codes are normalized to the daemon's type strings
+        self.assertEqual(rows[0]["type"], "Outgoing")
+        self.assertEqual(rows[0]["duration_seconds"], 45)
+        self.assertEqual(rows[0]["deviceId"], "known")
+        self.firestore.list_docs.assert_called_once_with(
+            "sandbox_devices", "known", "callLogs", limit=50
+        )
+
+    def test_sms_read_the_live_direct_sync_array(self):
+        self.firestore.get_doc.return_value = self._doc_with_direct_sync(
+            sms=[
+                {"sender": "+91 555", "body": "hi", "timestamp": "2026-09-20T08:00:00+05:30",
+                 "type": "Received"},
+            ]
+        )
+        response = self.http.get("/api/data/sms?limit=50")
+        self.assertEqual(response.status_code, 200)
+        rows = response.get_json()["data"]
+        self.assertEqual(rows[0]["sender"], "+91 555")
+        self.assertEqual(rows[0]["type"], "Received")
+        self.assertEqual(rows[0]["deviceId"], "known")
+        self.firestore.list_docs.assert_not_called()
+
+    def test_whatsapp_without_database_url_is_server_not_configured(self):
+        env = {k: v for k, v in os.environ.items()
+               if k not in ("DATABASE_URL", "POSTGRES_URL")}
+        with patch.dict(os.environ, env, clear=True):
+            response = self.http.get("/api/data/whatsapp")
+        self.assertEqual(response.status_code, 503)
+        body = response.get_json()
+        self.assertEqual(body["error"], "server not configured")
+        self.assertIn("DATABASE_URL", body["detail"])
+
+    def test_whatsapp_queries_neon_over_http(self):
+        request_seen = {}
+
+        class FakeResp:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+            def read(self):
+                return json.dumps({
+                    "rows": [{"msg_id": "m1", "chat_name": "Jayti", "body": "hello"}]
+                }).encode("utf-8")
+
+        def fake_urlopen(req, timeout=None):
+            request_seen["url"] = req.full_url
+            request_seen["header"] = req.get_header("Neon-connection-string")
+            request_seen["sql"] = req.data.decode("utf-8")
+            return FakeResp()
+
+        with patch.dict(os.environ, {"DATABASE_URL": self.NEON_URL}, clear=False), \
+                patch.object(dashboard_api.urllib.request, "urlopen", fake_urlopen):
+            response = self.http.get("/api/data/whatsapp?limit=25")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()["data"][0]["msg_id"], "m1")
+        # the HTTP SQL API answers on the direct endpoint, not the pooler
+        self.assertEqual(
+            request_seen["url"],
+            "https://ep-demo.us-east-1.aws.neon.tech/sql",
+        )
+        self.assertEqual(request_seen["header"], self.NEON_URL)
+        self.assertIn("JOIN wa_chats", request_seen["sql"])
+        self.assertIn("LIMIT 25", request_seen["sql"])
+
+    def test_whatsapp_neon_failure_is_a_502_not_a_crash(self):
+        def failing_urlopen(req, timeout=None):
+            raise urllib.error.URLError("connection reset")
+
+        with patch.dict(os.environ, {"DATABASE_URL": self.NEON_URL}, clear=False), \
+                patch.object(dashboard_api.urllib.request, "urlopen", failing_urlopen):
+            response = self.http.get("/api/data/whatsapp")
+        self.assertEqual(response.status_code, 502)
+        self.assertEqual(response.get_json()["error"], "live store unavailable")
+
+    def test_contacts_are_an_explicit_not_collected_state(self):
+        response = self.http.get("/api/data/contacts")
+        self.assertEqual(response.status_code, 200)
+        body = response.get_json()
+        self.assertEqual(body["data"], [])
+        self.assertIs(body["collected"], False)
+        self.assertIn("not collected", body["note"])
+        # no Firestore read backs a state that has no source at all
+        self.firestore.get_doc.assert_not_called()
+        self.firestore.list_docs.assert_not_called()
+
+    def test_unknown_kind_is_still_a_404(self):
+        response = self.http.get("/api/data/weather")
+        self.assertEqual(response.status_code, 404)
 
 
 class DashboardAuthTests(unittest.TestCase):
