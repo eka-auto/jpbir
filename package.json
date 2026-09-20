@@ -5,7 +5,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vercel dev",
+    "dev": "node scripts/dev-server.mjs",
     "build": "echo 'Build completed - frontend files ready'",
     "deploy": "vercel --prod",
     "test": "node _shared/tests/run-all.mjs",
