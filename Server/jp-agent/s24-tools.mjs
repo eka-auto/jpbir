@@ -12,7 +12,7 @@ import { createSign, randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { z } from 'zod';
 import { tool, createSdkMcpServer } from '@anthropic-ai/claude-agent-sdk';
-import { deviceHealth, commandItem } from './device-health.mjs';
+import { deviceHealth, commandItem, actionGateError } from './device-health.mjs';
 
 const PROJECT_ID = process.env.S24_PROJECT_ID || 'intrepid-stage-495117-q1';
 const DATABASE = process.env.S24_FIRESTORE_DB || 'eka-agent';
@@ -264,7 +264,7 @@ const deviceWake = tool(
 
 const deviceSend = tool(
   'device_send',
-  "Queue a supported command (e.g. 'sync-now', 'status-only', 'start-ssh'). Queued is not executed. Check device_ping and device_result; do not infer supported actions from historical examples.",
+  "Queue a supported command (e.g. 'sync-now', 'status-only'). Queued is not executed. Check device_ping and device_result; do not infer supported actions from historical examples. Actions that touch inbound network (sshd, tunnels) or the lock screen are refused at the gate since 2026-09-20.",
   {
     action: z.string().describe("Command name the device's daemon understands, e.g. 'sync-now'."),
     device_id: z.string().default(DEFAULT_DEVICE),
@@ -274,6 +274,9 @@ const deviceSend = tool(
   async ({ action, device_id, params, priority }) => {
     const bad = validId(device_id);
     if (bad) return { content: [{ type: 'text', text: bad }] };
+    // See SAFE_DEVICE_ACTIONS in device-health.mjs for why this gate exists.
+    const gate = actionGateError(action);
+    if (gate) return { content: [{ type: 'text', text: gate }] };
     const at = new Date().toISOString();
     const actionSlug = action.replace(/[^A-Za-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'cmd';
     const cmdId = `jpagent_${Date.now()}_${actionSlug}_${randomUUID()}`;
