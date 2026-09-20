@@ -22,10 +22,14 @@ import hmac
 import json
 import logging
 import os
+import time
+import urllib.error
+import urllib.request
 import uuid
 from datetime import datetime, timezone
+from urllib.parse import urlparse
 
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, send_from_directory
 import requests
 
 from firestore_client import FirestoreClient, decode_fields
@@ -190,6 +194,42 @@ def api_status():
     return jsonify({"name": "channel-sandbox-dashboard", "status": "ok", "version": "1.0"})
 
 
+@app.get("/")
+def index():
+    """Serve the dashboard page — for LOCAL runs only.
+
+    On Vercel this route is never reached: vercel.json sends `/(.*)` to the
+    @vercel/static build of dashboard/index.html and only `/api/(.*)` here, so
+    Flask never sees a page request. Locally there is no such router, which
+    meant `./start_dashboard.sh` came up serving the API while the dashboard
+    itself 404'd — you had to know to open the HTML off disk. A local bring-up
+    that cannot show you the dashboard is not a working sandbox.
+    """
+    return send_from_directory(os.path.join(os.path.dirname(os.path.abspath(__file__)), "dashboard"), "index.html")
+
+
+# The Firestore half of /api/diag is cached. /api/diag is deliberately public
+# (an operator must be able to see what is misconfigured without holding the
+# key), but the probe underneath it is one get_doc plus one list_docs PER
+# CONFIGURED DEVICE PER SUBCOLLECTION -- currently 2 devices x 4 subcollections
+# plus 2 doc reads, so 10 Firestore round-trips for one unauthenticated GET.
+# That is a read-amplification lever pointed at a billed API by anyone who
+# knows the URL. The answer changes on the order of hours, so a short TTL
+# removes the lever without touching the auth story or the diagnostic value.
+_DIAG_PROBE_TTL_SECONDS = 60
+# Wall-clock ceiling for the whole probe. FirestoreClient uses a 15s per-request
+# timeout, and the probe makes one get_doc plus one list_docs per subcollection
+# per device -- 10 requests today. Against an unreachable Firestore that is
+# 10 x 15s of an UNAUTHENTICATED request holding a worker. Measured at 30s
+# locally against a stopped emulator before this budget existed.
+#
+# A partial answer delivered quickly is worth more here than a complete one
+# nobody waits for: the first probe already tells an operator whether Firestore
+# is reachable at all. What is skipped is reported, never silently dropped.
+_DIAG_PROBE_BUDGET_SECONDS = 5.0
+_diag_probe_cache = {"at": 0.0, "value": None}
+
+
 @app.get("/api/diag")
 def api_diag():
     """Report the state of every dependency this service needs, WITHOUT leaking
@@ -215,6 +255,8 @@ def api_diag():
             "STATS_KEY": envmark("STATS_KEY"),
             "SANDBOX_CONFIG_JSON": envmark("SANDBOX_CONFIG_JSON"),
             "FIREBASE_SERVICE_ACCOUNT_JSON": envmark("FIREBASE_SERVICE_ACCOUNT_JSON"),
+            "DATABASE_URL": envmark("DATABASE_URL"),
+            "POSTGRES_URL": envmark("POSTGRES_URL"),
             "AGENT_API_URL": envmark("AGENT_API_URL"),
             "AGENT_API_KEY": envmark("AGENT_API_KEY"),
             "SANDBOX_AUTH_DISABLED": {"set": bool(os.environ.get("SANDBOX_AUTH_DISABLED"))},
@@ -279,20 +321,44 @@ def api_diag():
     except Exception as exc:  # noqa: BLE001
         diag["bootstrap"]["load_config"] = {"ok": False, "error": f"{type(exc).__name__}: {exc}"[:400]}
 
+    # A local run loads its config from --config, not SANDBOX_CONFIG_JSON, so
+    # "not set" is the expected state there and must not read as a deployment
+    # fault. Applies to BOTH failure branches above, which is why it sits after
+    # the try rather than inside one of them.
+    if not diag["bootstrap"]["load_config"].get("ok") and app.config.get("SANDBOX_CFG"):
+        diag["bootstrap"]["load_config"]["note"] = (
+            "a file-based config is active for this process (--config), so "
+            "SANDBOX_CONFIG_JSON is not required; this is normal for a local run"
+        )
+        cfg = app.config["SANDBOX_CFG"]
+        client = app.config.get("FIRESTORE")
+
     # Firestore probe — only if bootstrap succeeded. Reports which of the
     # devices configured in SANDBOX_CONFIG_JSON already exist in the target
     # collection, and whether their subcollections have any data. Doc IDs
     # come from the same config as the rest of the service and are already
     # visible in the repo, so surfacing them here is safe.
     if client is not None and cfg is not None:
+        cached = _diag_probe_cache["value"]
+        if cached is not None and (time.time() - _diag_probe_cache["at"]) < _DIAG_PROBE_TTL_SECONDS:
+            diag["firestore"] = dict(cached, cached=True,
+                                     cache_age_seconds=round(time.time() - _diag_probe_cache["at"]))
+            return jsonify(diag)
         collection = cfg.get("collection", "devices")
         subcolls = list(DATA_SUBCOLLECTIONS.values()) if 'DATA_SUBCOLLECTIONS' in globals() else [
             "whatsappMedia", "callLogs", "sms", "contacts",
         ]
         device_probes = []
-        for dev in cfg.get("devices", []) or []:
+        deadline = time.time() + _DIAG_PROBE_BUDGET_SECONDS
+        skipped = 0
+        configured = cfg.get("devices", []) or []
+        for dev in configured:
             dev_id = dev.get("id")
+            if time.time() >= deadline:
+                skipped += 1
+                continue
             probe = {"id": dev_id, "role": dev.get("role"), "doc_present": False, "subcollections": {}}
+            reachable = True
             try:
                 doc = client.get_doc(collection, dev_id)
                 probe["doc_present"] = doc is not None
@@ -300,7 +366,17 @@ def api_diag():
                     probe["field_count"] = len(doc.get("fields", {}))
             except Exception as exc:  # noqa: BLE001
                 probe["error"] = f"{type(exc).__name__}: {exc}"[:200]
+                # If the document read could not reach Firestore, the four
+                # subcollection reads behind it cannot either. Retrying them
+                # only burns the budget to relearn the same fact.
+                reachable = not isinstance(exc, (OSError, requests.exceptions.RequestException))
             for sub in subcolls:
+                if not reachable:
+                    probe["subcollections"][sub] = {"skipped": "firestore unreachable"}
+                    continue
+                if time.time() >= deadline:
+                    probe["subcollections"][sub] = {"skipped": "probe budget exhausted"}
+                    continue
                 try:
                     docs = client.list_docs(collection, dev_id, sub, limit=1)
                     probe["subcollections"][sub] = {"any": len(docs) > 0}
@@ -312,7 +388,13 @@ def api_diag():
             "devices_configured": len(cfg.get("devices", []) or []),
             "devices_present_in_firestore": sum(1 for p in device_probes if p.get("doc_present")),
             "probes": device_probes,
+            "devices_skipped": skipped,
+            "budget_seconds": _DIAG_PROBE_BUDGET_SECONDS,
+            "truncated": skipped > 0,
         }
+        _diag_probe_cache["value"] = diag["firestore"]
+        _diag_probe_cache["at"] = time.time()
+        diag["firestore"] = dict(diag["firestore"], cached=False, cache_age_seconds=0)
 
     return jsonify(diag)
 
@@ -387,6 +469,11 @@ def api_device_status(device_id):
     return jsonify({"deviceId": device_id, "status": status})
 
 
+# Legacy Firestore subcollections the older exporters wrote under each device
+# document. None of them has a live writer anymore (the phone daemon PATCHes
+# rolling arrays into the device doc instead, see DIRECT_SYNC_ARRAY_FIELDS);
+# the callLogs/sms names are still used as a fallback for devices that have no
+# direct-sync array yet, and /api/diag probes them to report that state.
 DATA_SUBCOLLECTIONS = {
     "whatsapp": "whatsappMedia",
     "calls": "callLogs",
@@ -394,18 +481,89 @@ DATA_SUBCOLLECTIONS = {
     "contacts": "contacts",
 }
 
+# Rolling last-50 arrays the phone daemon PATCHes into the device document
+# under the samsungS24DirectSync map on every sync cycle
+# (Backend/s24_phone_direct_cloud.py). These are the always-live source for
+# calls/sms; the Neon s24_calls/s24_sms archives only refresh when the laptop
+# export runs, so the dashboard must not depend on them.
+DIRECT_SYNC_ARRAY_FIELDS = {
+    "calls": "callLogs",
+    "sms": "sms",
+}
+
+# Numeric type codes in the legacy subcollection documents -> the daemon's
+# normalized type strings (normalize_call_log_entry / normalize_sms_entry in
+# Backend/s24_phone_direct_cloud.py).
+CALL_TYPE_NAMES = {"1": "Incoming", "2": "Outgoing", "3": "Missed", "5": "Rejected"}
+SMS_TYPE_NAMES = {"1": "Received", "2": "Sent"}
+
+CONTACTS_NOT_COLLECTED_NOTE = (
+    "Contacts are not collected — names come from WhatsApp chat names."
+)
+
+
+def neon_database_url():
+    """The Neon connection string, from the same env names as the main backend."""
+    return os.environ.get("DATABASE_URL") or os.environ.get("POSTGRES_URL")
+
+
+def neon_query(sql):
+    """Run one read-only statement through Neon's SQL-over-HTTP endpoint.
+
+    Chosen over psycopg so the Vercel python runtime needs no native wheels:
+    stdlib urllib is enough. The endpoint takes the full connection string in
+    the ``Neon-Connection-String`` header (same approach as
+    @neondatabase/serverless), and it answers on the direct endpoint, so a
+    pooled (``-pooler``) DATABASE_URL gets its suffix stripped first. There
+    is no parameter binding — callers interpolate only values they have
+    already clamped to a safe form (e.g. the int limit).
+    """
+    url = neon_database_url()
+    if not url:
+        raise ConfigError("DATABASE_URL is not set")
+    host = urlparse(url).hostname or ""
+    if "-pooler." in host:
+        host = host.replace("-pooler.", ".", 1)
+    # JSON body, not a raw SQL one. Neon's SQL-over-HTTP endpoint is the same
+    # one @neondatabase/serverless drives, and it expects
+    # {"query": ..., "params": [...]} with Content-Type: application/json. The
+    # earlier `application/sql` form with the statement as the raw body is not
+    # part of that API and never reached a deployment to prove otherwise, so it
+    # is corrected here rather than shipped and discovered in production.
+    body = json.dumps({"query": sql, "params": []}).encode("utf-8")
+    req = urllib.request.Request(
+        f"https://{host}/sql", data=body, method="POST"
+    )
+    req.add_header("Neon-Connection-String", url)
+    req.add_header("Content-Type", "application/json")
+    req.add_header("Accept", "application/json")
+    try:
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            payload = json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", "replace")[:300]
+        raise RuntimeError(f"neon http sql failed ({exc.code}): {detail}") from exc
+    except urllib.error.URLError as exc:
+        raise RuntimeError(f"neon http sql unreachable: {exc.reason}") from exc
+    if not isinstance(payload, dict) or not isinstance(payload.get("rows"), list):
+        raise RuntimeError("neon http sql returned an unexpected payload")
+    return payload["rows"]
+
 
 @app.get("/api/data/<kind>")
 def api_data(kind):
-    """Return the latest collected records for a device data kind.
+    """Return the latest records for a device data kind.
 
-    The S24 daemon persists collected records as subcollection documents
-    under each device document (callLogs, sms, contacts, whatsappMedia).
-    This endpoint reads those subcollections and returns the newest
-    ``limit`` records (default 50) across all configured devices.
+    whatsapp — Neon Postgres: the newest ``limit`` rows of wa_messages joined
+    to wa_chats for display names (the Firestore whatsappMedia subcollection
+    has no writer, so it never has data). Requires DATABASE_URL.
+    calls / sms — the live rolling arrays the phone daemon PATCHes into each
+    device document under samsungS24DirectSync; a device with no such array
+    yet falls back to its legacy subcollection read.
+    contacts — nothing collects contacts anywhere (contact names live in
+    wa_chats.name), so the response says so instead of faking an empty read.
     """
-    subcollection = DATA_SUBCOLLECTIONS.get(kind)
-    if subcollection is None:
+    if kind not in DATA_SUBCOLLECTIONS:
         return jsonify({"error": f"unknown data kind: {kind}"}), 404
     try:
         limit = int(request.args.get("limit", 50))
@@ -413,25 +571,101 @@ def api_data(kind):
         return jsonify({"error": "limit must be an integer"}), 400
     limit = max(1, min(limit, 200))
 
+    if kind == "whatsapp":
+        return _api_data_whatsapp(limit)
+    if kind == "contacts":
+        return jsonify({
+            "data": [],
+            "collected": False,
+            "note": CONTACTS_NOT_COLLECTED_NOTE,
+        })
+    return _api_data_device_records(kind, limit)
+
+
+def _api_data_whatsapp(limit):
+    # The body/kind filter mirrors Backend/jp-live-content.js: owner-side bulk
+    # imports land rows with no body and kind 'other'/'system', and a card
+    # full of blank rows reads as "broken", not "quiet".
+    sql = (
+        "SELECT m.msg_id, m.chat_id, m.sent_at, m.from_me, m.sender, m.kind, "
+        "m.body, m.ingested_at, c.name AS chat_name, c.kind AS chat_kind "
+        "FROM wa_messages m JOIN wa_chats c ON c.chat_id = m.chat_id "
+        "WHERE ((m.body IS NOT NULL AND m.body <> '') "
+        "OR m.kind IN ('image','video','audio','ptt','document','media','call')) "
+        "ORDER BY m.sent_at DESC NULLS LAST, m.ingested_at DESC "
+        f"LIMIT {limit}"
+    )
+    try:
+        rows = neon_query(sql)
+    except ConfigError:
+        # Missing DATABASE_URL is a deployment misconfiguration, not an
+        # outage — it must keep the "server not configured" 503 shape.
+        raise
+    except RuntimeError as exc:
+        return jsonify({"error": "live store unavailable", "detail": str(exc)}), 502
+    return jsonify({"data": rows, "limit": limit})
+
+
+def _normalize_device_record(kind, device_id, rec):
+    """Shape a call/sms record for the dashboard, whichever source it came from.
+
+    Live daemon rows already carry the normalized fields (type strings,
+    duration_seconds, date/timestamp ISO strings); legacy subcollection docs
+    carry the older numeric codes and duration/date names, mapped here so the
+    frontend only ever sees one shape.
+    """
+    rec = dict(rec)
+    if kind == "calls":
+        rec["type"] = CALL_TYPE_NAMES.get(str(rec.get("type")), rec.get("type"))
+        if "duration_seconds" not in rec:
+            rec["duration_seconds"] = rec.get("duration", 0)
+        if not rec.get("date"):
+            rec["date"] = rec.get("backed_up_at")
+    else:
+        rec["type"] = SMS_TYPE_NAMES.get(str(rec.get("type")), rec.get("type"))
+        if not rec.get("timestamp"):
+            rec["timestamp"] = rec.get("date") or rec.get("backed_up_at")
+    rec["deviceId"] = device_id
+    return rec
+
+
+def _api_data_device_records(kind, limit):
     cfg = app.config["SANDBOX_CFG"]
     client = app.config["FIRESTORE"]
-    collection = cfg["collection"]
+    array_field = DIRECT_SYNC_ARRAY_FIELDS[kind]
+    date_key = "date" if kind == "calls" else "timestamp"
     records = []
     for dev in configured_devices(cfg):
+        rows = []
         try:
-            docs = client.list_docs(collection, dev["id"], subcollection, limit=limit)
+            doc = client.get_doc(cfg["collection"], dev["id"])
+        except Exception as exc:  # noqa: BLE001 - one device must not break the rest
+            log.warning("doc read failed for %s: %s", dev["id"], exc)
+            continue
+        if doc:
+            status = decode_fields(doc.get("fields", {}))
+            sync = status.get("samsungS24DirectSync")
+            if isinstance(sync, dict) and isinstance(sync.get(array_field), list):
+                rows = [r for r in sync[array_field] if isinstance(r, dict)]
+        if rows:
+            records.extend(
+                _normalize_device_record(kind, dev["id"], rec) for rec in rows
+            )
+            continue
+        # No direct-sync array on the doc (device not yet migrated / daemon
+        # never ran) — fall back to the legacy subcollection so it still
+        # shows what its older exporter wrote.
+        subcollection = DATA_SUBCOLLECTIONS[kind]
+        try:
+            docs = client.list_docs(cfg["collection"], dev["id"], subcollection, limit=limit)
         except Exception as exc:  # noqa: BLE001 - one device must not break the rest
             log.warning("data read failed for %s/%s: %s", dev["id"], subcollection, exc)
             continue
-        for doc in docs:
-            doc["deviceId"] = dev["id"]
-            records.append(doc)
-
-    def sort_key(rec):
-        return rec.get("backed_up_at") or rec.get("date") or ""
-
-    records.sort(key=sort_key, reverse=True)
-    return jsonify({"data": records[:limit]})
+        records.extend(
+            _normalize_device_record(kind, dev["id"], rec) for rec in docs
+        )
+    records.sort(key=lambda rec: rec.get(date_key) or "", reverse=True)
+    return jsonify({"data": records[:limit], "limit": limit})
 
 
 @app.post("/api/devices/<device_id>/commands")
@@ -504,7 +738,15 @@ def api_agent_query():
 def main():
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
     p = argparse.ArgumentParser(description="Channel-sandbox dashboard")
-    p.add_argument("--config", default="devices.json")
+    # Defaults to the EMULATOR config, not devices.json. devices.json is
+    # mode=real against the production `devices` collection with no
+    # allow_production_devices, which FirestoreClient refuses by design
+    # (firestore_client.py:34) -- so the documented local command crashed on
+    # startup before it ever served a request. devices.json remains the
+    # canonical public device roster; it is just not a runnable local config.
+    # Production is unaffected: Vercel imports the `app` object directly and
+    # never calls main(), taking its config from SANDBOX_CONFIG_JSON.
+    p.add_argument("--config", default="devices.emulator.json")
     p.add_argument("--host", default="127.0.0.1")
     p.add_argument("--port", type=int, default=5000)
     args = p.parse_args()

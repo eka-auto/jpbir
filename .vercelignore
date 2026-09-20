@@ -34,6 +34,18 @@ Database/backups/
 .env.*
 !.env.example
 
+# Key material, for the same reason as the .env rules above: a CLI deploy
+# uploads the WORKING DIRECTORY, not the committed tree, so a private key that
+# git never saw can still be shipped. Devices/sandbox/signer.py writes a
+# generated P-256 key to disk on first use of the broker path, and
+# Devices/sandbox/.gitignore carries the matching rules. Nothing the deployed
+# app needs is a .pem — the S24 ingest route reads PUBLIC keys from the
+# S24_SYNC_PUBLIC_KEYS env var, never from a file.
+*.pem
+*.key
+keys/
+*.broker-state.json
+
 # Heavy local-only trees. A CLI deploy from the laptop must never upload these;
 # Git-driven deploys already skip them via .gitignore, but .vercelignore
 # overrides .gitignore for `vercel --prod`, so without this the upload tries to

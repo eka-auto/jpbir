@@ -1,1 +1,13 @@
 .venv-sandbox/
+
+# Key material must never reach the repo, and the broker path creates some.
+# signer.py's make_signer writes a generated P-256 private key to disk on first
+# use, and the enrollment flow leaves a broker state file beside it. Neither was
+# ignored, so a clean-machine bring-up that exercised the broker left a private
+# key sitting in `git status` as an untracked file, one `git add -A` away from
+# being committed. .vercelignore carries a matching *.pem rule so a laptop-run
+# `vercel --prod`, which uploads the working directory rather than the committed
+# tree, cannot ship one either.
+keys/
+*.pem
+*.broker-state.json

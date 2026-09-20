@@ -46,6 +46,7 @@ Load the dashboard with `?key=<STATS_KEY>` in the URL; the key persists in
    | `STATS_KEY` | any long random string; you'll pass it in `?key=` |
    | `SANDBOX_CONFIG_JSON` | see `.env.example` |
    | `FIREBASE_SERVICE_ACCOUNT_JSON` | paste the service-account JSON as one line |
+   | `DATABASE_URL` | the Neon connection string — same name the main backend uses (`POSTGRES_URL` is accepted as a fallback); powers `/api/data/whatsapp` |
 
    Optional (only if you use `/api/agent/query`):
    `AGENT_API_URL`, `AGENT_API_KEY`.
@@ -60,12 +61,16 @@ Load the dashboard with `?key=<STATS_KEY>` in the URL; the key persists in
    ```bash
    pip install -r Devices/sandbox/requirements.txt
    export FIREBASE_SERVICE_ACCOUNT_JSON="$(cat path/to/service-account.json)"
-   python Devices/sandbox/scripts/seed_devices.py
+   python Devices/sandbox/scripts/seed_devices.py --write --allow-production
    ```
 
    The script reads `Devices/sandbox/devices.json`, writes each entry as a
    Firestore document under `devices/<id>`, and refuses to run against
-   `mode:real` unless `--allow-production` is passed.
+   `mode:real` unless `--allow-production` is passed. Both flags are required
+   and the command above previously omitted them: without `--write` it is a
+   dry run that prints and exits, and without `--allow-production` it refuses
+   outright — so following this step as written seeded nothing while looking
+   like it had worked.
 
 5. **Verify end-to-end.** Visit
    `https://channel-sandbox.vercel.app/?key=<STATS_KEY>`. The two
@@ -82,7 +87,10 @@ Load the dashboard with `?key=<STATS_KEY>` in the URL; the key persists in
 | `GET /api/devices` | key | list every enrolled device |
 | `GET /api/devices/<id>/status` | key | one device's current status |
 | `POST /api/devices/<id>/commands` | key | queue a command for the device |
-| `GET /api/data/{whatsapp,calls,sms,contacts}` | key | latest N items the device has synced |
+| `GET /api/data/whatsapp` | key | latest N WhatsApp messages from Neon (`wa_messages` ⨝ `wa_chats`, newest first); requires `DATABASE_URL` |
+| `GET /api/data/calls` | key | live rolling `samsungS24DirectSync.callLogs` array PATCHed into the device doc (falls back to the legacy `callLogs` subcollection only when the array is absent) |
+| `GET /api/data/sms` | key | live rolling `samsungS24DirectSync.sms` array PATCHed into the device doc (same fallback as calls) |
+| `GET /api/data/contacts` | key | nothing collects contacts — names come from WhatsApp chat names; always answers an explicit not-collected empty state |
 | `POST /api/agent/query` | key + `AGENT_API_KEY` | proxy a RAG query to the external agent |
 
 Every key-gated route returns `401 {"error":"unauthorized"}` without a valid
@@ -93,10 +101,32 @@ missing.
 
 ```bash
 pip install -r requirements.txt
-cp .env.example .env
-# edit .env with real values (or point at a Firestore emulator)
-python dashboard_api.py --auth-disabled --port 5000
+./start_dashboard.sh            # or: python dashboard_api.py --port 5000
 ```
 
-`--auth-disabled` bypasses `STATS_KEY` for loopback testing only. Never set
-`SANDBOX_AUTH_DISABLED` on Vercel.
+Then open <http://127.0.0.1:5000>.
+
+Two things this used to get wrong, both of which stopped a clean-machine
+bring-up dead:
+
+- **There is no `--auth-disabled` flag.** It was documented but never existed;
+  the command above exited 2 with `unrecognized arguments`. Auth is instead
+  waived automatically when `STATS_KEY` is unset AND the bind is loopback, and
+  `main()` refuses a non-loopback bind without a key. Setting
+  `SANDBOX_AUTH_DISABLED` in the environment does nothing whatsoever — the
+  guard reads `app.config`, which Flask never populates from `os.environ`.
+- **`--config` now defaults to `devices.emulator.json`.** `devices.json` is
+  `mode:real` against the production `devices` collection with no
+  `allow_production_devices`, so `FirestoreClient` refuses it and the old
+  default crashed before serving a request. `devices.json` remains the
+  canonical public device roster; it is simply not a runnable local config.
+
+The emulator config expects a Firestore emulator on `127.0.0.1:8080`:
+
+```bash
+firebase emulators:start --only firestore    # separate terminal
+```
+
+Without one running, the pages load and every Firestore-backed card reports
+`live source unavailable` rather than failing silently — which is the state
+worth being able to see locally.
