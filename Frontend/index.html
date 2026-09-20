@@ -1823,7 +1823,9 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
         var t = d.totals;
         // "fetched", not "updated": generated_at is when the API answered this
         // poll, not when the underlying analytics last changed.
-        $('lastUpdated').textContent = 'fetched ' + fmtTime(d.generated_at) + (d.cached ? ' (cached)' : '');
+        $('lastUpdated').textContent = 'fetched ' + fmtTime(d.generated_at) + (d.cached ? ' (cached)' : '') +
+            (d.site ? ' · ' + (d.site === 'all' ? 'all properties' : d.site) : '') +
+            (d.truncated ? ' · PARTIAL (scan limit reached)' : '');
         $('dailyHint').textContent = 'Window: ' + d.window_days + ' days · peak hour ' + (t.peak_hour ? t.peak_hour.hour.slice(11) + ':00 (' + t.peak_hour.count + ' events)' : '–');
         $('liveHint').textContent = 'Auto-refreshes every ' + (REFRESH_MS / 1000) + 's · window ' + d.window_days + ' days';
         $('sessionsHint').textContent = t.unique_sessions + ' unique sessions · ' + t.unique_ips + ' unique IPs';
@@ -1865,8 +1867,16 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
         /* open dashboard: no key required */
         var days = $('daysSel').value;
         var endpoint = SITE === 'jp' ? '/api/jp-stats' : '/api/stats';
+        /* Ask for the property the selector names. /api/jp-stats used to narrow
+           only on time and return EVERY property's events under the
+           "jaytipargal.com" label, so the page was not empty - it was reporting
+           the wrong thing while naming a specific site. It is scoped now, and
+           the scope is sent explicitly rather than left to a server default so
+           the label and the data cannot drift apart again. */
+        var params = { days: days };
+        if (SITE === 'jp') params.site = 'jaytipargal.com';
         setStatus('Loading analytics…');
-        fetch(endpoint + '?' + new URLSearchParams({ days: days }).toString(), { headers: authHeaders() })
+        fetch(endpoint + '?' + new URLSearchParams(params).toString(), { headers: authHeaders() })
             .then(function (r) { return r.json().then(function (j) { return { status: r.status, body: j }; }); })
             .then(function (res) {
                 if (res.status === 401) {

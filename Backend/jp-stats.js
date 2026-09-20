@@ -1,6 +1,7 @@
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, ScanCommand } from '@aws-sdk/lib-dynamodb';
 import { scanBounded } from './lib/ddb-scan.js';
+import { siteFor } from './lib/warehouse.js';
 import { decodeOne } from './lib/geo.js';
 import { requireKey } from './_auth.js';
 
@@ -34,6 +35,28 @@ function parseUA(ua) {
 }
 
 
+// The property a telemetry row belongs to.
+//
+// jp-track.js:165 derives `site` with siteFor() and stores it on every row it
+// writes, so the common case is a straight read. Rows written before that field
+// existed have no `site`, and re-deriving it here with the SAME function is what
+// keeps this endpoint, the live mirror and db-push agreeing on what a property
+// is -- three different answers to "which site is this" is how one visit ends
+// up counted under two names.
+export function effectiveSite(row) {
+  if (!row) return null;
+  if (row.site) return row.site;
+  return siteFor(row.pageUrl, row.origin || row.referer || null);
+}
+
+// The property this endpoint reports on. /api/stats has always been scoped --
+// `WHERE site = $1` with STATS_SITE defaulting to jaytibirthday.in -- while this
+// one, its counterpart behind the selector's "jaytipargal.com" option, narrowed
+// only on time and returned EVERY property's events under that label. The
+// dashboard was not empty; it was reporting the wrong thing while naming a
+// specific site.
+const DEFAULT_SITE = _env['JP_STATS_' + 'SITE'] || 'jaytipargal.com';
+
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
   // Before the credential check and before the cache: an unauthenticated
@@ -44,7 +67,12 @@ export default async function handler(req, res) {
   }
 
   const days = Math.min(Math.max(parseInt(req.query.days) || 7, 1), 90);
-  const cacheKey = 'd' + days;
+  // `all` is an explicit, honest opt-out for the cross-property view; anything
+  // else names one property. The site is part of the cache key -- without that,
+  // the first caller's scope would be served to every later one.
+  const siteParam = String(req.query.site || '').trim();
+  const site = siteParam === 'all' ? null : (siteParam || DEFAULT_SITE);
+  const cacheKey = 'd' + days + '|s' + (site || 'all');
   const cached = _cache.get(cacheKey);
   if (cached && Date.now() - cached.at < CACHE_TTL) {
     return res.status(200).json({ ...cached.body, cached: true });
@@ -63,7 +91,11 @@ export default async function handler(req, res) {
     // a complete one is worse than an error because nothing looks wrong.
     const scan = await scanBounded(client, TABLE);
     const items = scan.items;
-    const inWindow = items.filter(i => i.epoch && i.epoch >= cutoff);
+    const inWindow = items.filter((i) => {
+      if (!i.epoch || i.epoch < cutoff) return false;
+      if (!site) return true;
+      return effectiveSite(i) === site;
+    });
 
     const byType = {};
     const daily = {};
@@ -236,6 +268,7 @@ export default async function handler(req, res) {
       : 0;
 
     const body = {
+      site: site || 'all',
       success: true,
       source: 'dynamodb',
       window_days: days,
