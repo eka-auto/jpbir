@@ -40,6 +40,15 @@ scp -o BatchMode=yes -o StrictHostKeyChecking=accept-new -i "$KEY" \
 
 "${SSH[@]}" 'bash -s' <<'REMOTE'
 set -euo pipefail
+
+# The recursive chown below reaches everything under /opt/jp-agent, including
+# root-only artifacts that are not part of the runtime — the reconcile-* quarantine
+# dirs and the timestamped *.bak-* snapshots. Handing those to the service user
+# widens what a compromised agent can read, so snapshot them and restore after.
+ROOT_ONLY="$(mktemp)"
+trap 'rm -f "$ROOT_ONLY"' EXIT
+find /opt/jp-agent -mindepth 1 -user root -print0 > "$ROOT_ONLY"
+
 chown -R jpagent:jpagent /opt/jp-agent
 
 echo "==> installing dependencies"
@@ -49,6 +58,11 @@ sudo -u jpagent npm install --omit=dev --no-audit --no-fund --silent
 chown root:root /opt/jp-agent /opt/jp-agent/sync-auth-token.py
 chmod 755 /opt/jp-agent
 chmod 644 /opt/jp-agent/sync-auth-token.py
+
+if [ -s "$ROOT_ONLY" ]; then
+  echo "==> restoring root ownership on pre-existing root-only paths"
+  xargs -0 -r -a "$ROOT_ONLY" chown root:root --
+fi
 
 # Create the env file on first run only, so re-deploying never clobbers a key
 # that is already in place.
