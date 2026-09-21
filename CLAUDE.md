@@ -106,18 +106,19 @@ vendored files; they are inert.
 
 ```bash
 npm install
-npm run dev      # vercel dev — local frontend + serverless functions
+npm run dev      # scripts/dev-server.mjs — serve Frontend/ on :3000 (static only)
 npm test         # _shared/tests/run-all.mjs — every *.test.mjs, all must pass
 ```
 
 | Script | Command | Notes |
 |--------|---------|-------|
-| `npm run dev` | `vercel dev` | Requires the Vercel CLI (pinned devDependency) |
+| `npm run dev` | `node scripts/dev-server.mjs` | Static frontend server on `:3000`. It does NOT run the serverless API — `Backend/*.js` handlers require Vercel's own runtime and are only exercised in preview / production deploys. |
 | `npm test` | `node _shared/tests/run-all.mjs` | Runs every `*.test.mjs` in its own child process |
 | `npm run build` | `echo '...'` | **No-op.** Frontend is served statically; there is nothing to compile |
-| `npm run deploy` | `vercel --prod` | Manual CLI deploy — see the deployment warning below |
 | `npm run db:migrate` | `node Database/scripts/migrate.mjs` | Postgres schema migrations |
 | `npm run wa:build` / `wa:import` | `node Database/scripts/wa-*.mjs` | WhatsApp inventory build / import |
+
+There is no root-level `deploy` script and no `vercel` CLI in `devDependencies`. Production deploys go through Vercel's Git integration (see below); nothing in this repo shells out to `vercel`. The 28-vulnerability audit report the CLI's transitive tree used to drag in went with it — `npm audit` is now clean.
 
 **There is no `lint` script at the root.** CI runs `npm run lint --if-present`,
 which silently no-ops. An `_shared/eslint.config.mjs` exists but is not wired

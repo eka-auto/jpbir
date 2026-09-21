@@ -7,7 +7,6 @@
   "scripts": {
     "dev": "node scripts/dev-server.mjs",
     "build": "echo 'Build completed - frontend files ready'",
-    "deploy": "vercel --prod",
     "test": "node _shared/tests/run-all.mjs",
     "db:migrate": "node Database/scripts/migrate.mjs",
     "wa:build": "node Database/scripts/wa-build-inventory.mjs",
@@ -37,8 +36,5 @@
     "telemetry"
   ],
   "author": "Jayti Pargal",
-  "license": "UNLICENSED",
-  "devDependencies": {
-    "vercel": "^59.16.0"
-  }
+  "license": "UNLICENSED"
 }
