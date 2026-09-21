@@ -14,7 +14,7 @@ jobs:
     
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
       
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -123,6 +123,7 @@ jobs:
       # failing; 401 here is a failure, not a healthy refusal, because this
       # credential is supposed to work.
       - name: Test Stack Health (Product engineering probes)
+        id: stack
         env:
           HEALTH_CHECK_KEY: ${{ secrets.HEALTH_CHECK_KEY }}
         run: |
@@ -138,6 +139,7 @@ jobs:
           ALLFAIL=$(echo "$JSON" | jq -r '.summary.fail // 0')
           if [ "$CODE" = "200" ] && [ "$OVERALL" != "fail" ]; then
             echo "✅ Stack healthy (overall=$OVERALL, $(echo "$JSON" | jq -r '.summary.ok') checks ok)"
+            echo "status=ok" >> "$GITHUB_OUTPUT"
           elif [ "$CLOUDFAIL" = "0" ]; then
             # The only reds are device-freshness files: phones report in or they
             # don't, and no deploy fixes them (inboundListener: false by design).
@@ -145,15 +147,40 @@ jobs:
             # check must not burn main-red on it every 15 minutes and every push.
             echo "⚠️ Cloud probes all green; $((ALLFAIL)) red file(s) are device freshness only — go wake a daemon, CI does not gate on it"
             echo "   $JSON"
+            echo "status=device_freshness" >> "$GITHUB_OUTPUT"
+            echo "device_freshness_red=$ALLFAIL" >> "$GITHUB_OUTPUT"
           else
             echo "❌ Stack check failed (HTTP $CODE, overall=$OVERALL, cloud_fail=$CLOUDFAIL): $JSON"
             exit 1
           fi
 
       - name: Report Status
+        env:
+          STACK_STATUS: ${{ steps.stack.outputs.status }}
+          STACK_REDS: ${{ steps.stack.outputs.device_freshness_red }}
         run: |
+          # Only the stack probe can succeed with a caveat, so it is the only row
+          # that is not a hardcoded OK: every earlier step exits 1 on failure and
+          # therefore skips this one. Claiming "All Endpoints Healthy" while the
+          # stack probe warned about stale devices is a false all-clear -- the same
+          # permanently-wrong-signal failure this workflow's own comments warn
+          # against, inverted.
+          case "$STACK_STATUS" in
+            ok)
+              heading="## ✅ All Endpoints Healthy"
+              stack_row="✅ OK"
+              ;;
+            device_freshness)
+              heading="## ⚠️ Cloud Endpoints Healthy — Devices Stale"
+              stack_row="⚠️ ${STACK_REDS:-?} device-freshness red(s); cloud probes green, CI does not gate on it"
+              ;;
+            *)
+              heading="## ❓ Stack Probe Recorded No Status"
+              stack_row="❓ no status recorded — treat as unknown, not healthy"
+              ;;
+          esac
           {
-            echo "## ✅ All Endpoints Healthy"
+            echo "$heading"
             echo ""
             echo "| Endpoint | Status |"
             echo "|----------|--------|"
@@ -161,5 +188,5 @@ jobs:
             echo "| Devices API | ✅ OK |"
             echo "| Stats API | ✅ OK |"
             echo "| Database (Neon query) | ✅ OK |"
-            echo "| Stack health | ✅ OK |"
+            echo "| Stack health | $stack_row |"
           } >> "$GITHUB_STEP_SUMMARY"
