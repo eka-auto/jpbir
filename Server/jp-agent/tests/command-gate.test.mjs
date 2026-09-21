@@ -7,8 +7,11 @@ import assert from 'node:assert/strict';
 import { SAFE_DEVICE_ACTIONS, actionGateError, commandItem, normalizeAction } from '../device-health.mjs';
 
 test('device_send can enqueue only contract-safe actions after alias resolution', () => {
-  for (const a of ['sync-now', 'status-only', 'wa-push', 'wa-media-push', 'echo', 'ping', 'heartbeat', 'wakeup', 'sync_now']) {
+  for (const a of ['sync-now', 'status-only', 'wa-push', 'wa-media-push', 'echo', 'ping', 'sync_now']) {
     assert.equal(actionGateError(a), null, a + ' must pass the gate');
+  }
+  for (const a of ['heartbeat', 'wakeup']) {
+    assert.equal(typeof actionGateError(a), 'string', a + ' is outside runtime_contract.json');
   }
 });
 
@@ -31,5 +34,6 @@ test('queued params can never carry handler credentials or forge state', () => {
   assert.throws(() => commandItem('echo', 'NORMAL', { wipeToken: 'x' }, 't'), /Reserved command parameter: wipeToken/);
   assert.throws(() => commandItem('echo', 'NORMAL', { newPassword: 'x' }, 't'), /Reserved command parameter: newPassword/);
   assert.throws(() => commandItem('echo', 'NORMAL', { status: 'completed' }, 't'), /Reserved command parameter: status/);
-  assert.ok([...SAFE_DEVICE_ACTIONS].length >= 11);
+  assert.deepEqual([...SAFE_DEVICE_ACTIONS].sort(),
+    ['echo', 'ping', 'status-only', 'sync-now', 'wa-media-push', 'wa-push']);
 });

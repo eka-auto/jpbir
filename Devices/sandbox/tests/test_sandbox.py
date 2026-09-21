@@ -16,6 +16,7 @@ sys.path.insert(0, str(HERE))
 
 import dashboard_api
 import device_agent
+from broker_client import BrokerAuthError
 import firestore_client
 import single_instance
 from firestore_client import FirestoreClient, decode_fields, _encode_fields
@@ -324,6 +325,27 @@ class DashboardTests(unittest.TestCase):
             404,
         )
         self.firestore.get_doc.assert_not_called()
+        self.firestore.update_command_queue.assert_not_called()
+
+    def test_command_writer_accepts_contract_action_and_preserves_payload(self):
+        response = self.http.post(
+            "/api/devices/known/commands",
+            json={"action": "echo", "payload": {"sequence": 7}},
+        )
+        self.assertEqual(response.status_code, 202)
+        args = self.firestore.update_command_queue.call_args.args
+        self.assertEqual(args[:2], ("sandbox_devices", "known"))
+        self.assertEqual(args[3]["action"], "echo")
+        self.assertEqual(args[3]["payload"], {"sequence": 7})
+        self.assertEqual(args[3]["status"], "pending")
+
+    def test_stale_config_cannot_reenable_non_contract_action(self):
+        dashboard_api.app.config["SANDBOX_CFG"]["allowed_commands"] = ["start-ssh"]
+        response = self.http.post(
+            "/api/devices/known/commands", json={"action": "start-ssh"}
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("not allowed", response.get_json()["error"])
         self.firestore.update_command_queue.assert_not_called()
 
     def test_agent_query_proxies_to_live_agent(self):
@@ -699,15 +721,34 @@ class AgentAndGuardTests(unittest.TestCase):
         self.assertEqual(entries["one"]["status"], "ok")
         self.assertEqual(entries["two"]["status"], "rejected")
 
-    def test_once_failure_exits_two_and_skips_guard(self):
+    def test_every_mode_takes_the_guard_and_releases_it_on_failure(self):
+        # --once used to run unguarded and raced the daemon the installer's own
+        # JobScheduler job had just started: both signed the same seq, and the
+        # second request was rejected as a replay.
+        for flag in ("--once", "--enroll-only"):
+            with self.subTest(flag=flag):
+                argv = ["device_agent.py", "config.json", "device-1", flag]
+                with patch.object(sys, "argv", argv), patch.object(
+                    device_agent, "run", side_effect=RuntimeError("failed")
+                ), patch.object(device_agent, "acquire_guard") as acquire, patch.object(
+                    device_agent, "release_guard"
+                ) as release, patch.object(device_agent.atexit, "register"):
+                    with self.assertRaises(SystemExit) as caught:
+                        device_agent.main()
+                self.assertEqual(caught.exception.code, 2)
+                acquire.assert_called_once()
+                release.assert_called()
+
+    def test_a_held_guard_exits_with_the_code_the_installer_retries_on(self):
         argv = ["device_agent.py", "config.json", "device-1", "--once"]
         with patch.object(sys, "argv", argv), patch.object(
-            device_agent, "run", side_effect=RuntimeError("failed")
-        ), patch.object(device_agent, "acquire_guard") as acquire:
+            device_agent, "acquire_guard", side_effect=device_agent.GuardHeldError("held")
+        ), patch.object(device_agent, "run") as run:
             with self.assertRaises(SystemExit) as caught:
                 device_agent.main()
-        self.assertEqual(caught.exception.code, 2)
-        acquire.assert_not_called()
+        self.assertEqual(caught.exception.code, device_agent.GUARD_HELD_EXIT)
+        self.assertEqual(device_agent.GUARD_HELD_EXIT, 75)
+        run.assert_not_called()
 
     def test_broker_launchers_share_guard_beside_broker_state(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -729,6 +770,48 @@ class AgentAndGuardTests(unittest.TestCase):
             paths = [device_agent.guard_pidfile(config, "device-1") for config in configs]
             self.assertEqual(paths[0], paths[1])
             self.assertEqual(paths[0], state.parent / "logs" / "device-1.pid")
+
+
+class BrokerEnrollOnlyTests(unittest.TestCase):
+    CFG = {
+        "broker_url": "https://example.invalid",
+        "heartbeat_interval_seconds": 45,
+        "command_poll_interval_seconds": 15,
+        "allowed_commands": list(device_agent.S24_ALLOWED_COMMANDS),
+    }
+
+    def enroll_only(self, device_id, cfg=None, poll=None):
+        client = Mock(enrolled=True)
+        client.poll.side_effect = poll if poll is not None else [{"commands": []}]
+        with patch.object(device_agent, "make_signer"), patch.object(
+            device_agent, "BrokerClient", return_value=client
+        ):
+            device_agent.run_broker(
+                cfg or dict(self.CFG), Path(tempfile.gettempdir()), device_id, {"id": device_id},
+                False, enroll_only=True,
+            )
+        return client
+
+    def test_existing_enrollment_is_proven_with_a_signed_poll_not_assumed(self):
+        # Local state saying "enrolled" used to be enough for the installer to print
+        # "signed enrollment verified" and install boot persistence.
+        client = self.enroll_only("samsung-s24-ultra")
+        client.poll.assert_called_once()
+        client.enroll.assert_not_called()
+        client.heartbeat.assert_not_called()
+
+    def test_a_revoked_or_expired_key_stops_before_persistence_is_installed(self):
+        with self.assertRaises(SystemExit) as caught:
+            self.enroll_only("samsung-s24-ultra", poll=BrokerAuthError("key expired; re-enroll", status=403))
+        self.assertIn("fresh enrollment code", str(caught.exception.code))
+
+    def test_s24_allowlist_is_the_contract_set_in_any_order(self):
+        reordered = ["sync-now", "status-only", "ping", "echo", "wa-push", "wa-media-push"]
+        self.enroll_only("samsung-s24-ultra", cfg={**self.CFG, "allowed_commands": reordered})
+        with self.assertRaises(SystemExit):
+            self.enroll_only("samsung-s24-ultra", cfg={**self.CFG, "allowed_commands": reordered[:-1]})
+        with self.assertRaises(SystemExit):
+            self.enroll_only("samsung-s24-ultra", cfg={**self.CFG, "allowed_commands": reordered + ["start-ssh"]})
 
 
 if __name__ == "__main__":

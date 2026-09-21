@@ -70,18 +70,62 @@ def json_safe(value):
     return str(value)
 
 
+def _age_seconds(value) -> float | None:
+    moment = as_datetime(value)
+    return None if moment is None else (datetime.now(timezone.utc) - moment).total_seconds()
+
+
+def _fresh(age: float | None) -> bool:
+    return age is not None and 0 <= age <= PHONE_HEARTBEAT_MAX_AGE_SECONDS
+
+
 def phone_attestation(fields: dict) -> tuple[bool, str]:
+    """Python mirror of s24LivenessVerdict() in Backend/lib/s24-attestation.js.
+
+    _shared/tests/s24-attestation.test.mjs feeds this and the JS module the same
+    documents. This copy once rejected connectionMethod='signed-broker-v2' and
+    required sourceType='live_termux' while the broker writes 'live_daemon', so every
+    payload a healthy broker-era phone produced was marked unattested and dropped.
+    """
+    heartbeat_age = _age_seconds(fields.get("lastSeen"))
     checks = {
-        "runtimeIsAndroid": fields.get("runtimeIsAndroid") is True,
+        "freshLastSeen": _fresh(heartbeat_age),
         "agentVersion": str(fields.get("agentVersion") or "").startswith(("s24-termux-", "s24-direct-cloud-")),
         "heartbeatAuth": fields.get("heartbeatAuth") == "termux-phone",
-        "sourceType": fields.get("sourceType") == "live_termux",
         "liveDeviceVerified": fields.get("liveDeviceVerified") is True,
-        "connectionMethod": fields.get("connectionMethod") in {"termux-direct-cloud", "direct-daemon"},
+        "sourceType": fields.get("sourceType") in {"live_termux", "live_daemon"},
+        "runtimeIsAndroid": fields.get("runtimeIsAndroid") is True,
     }
-    last_seen = as_datetime(fields.get("lastSeen"))
-    fresh = bool(last_seen and (datetime.now(timezone.utc) - last_seen).total_seconds() <= PHONE_HEARTBEAT_MAX_AGE_SECONDS)
-    checks["freshLastSeen"] = fresh
+    method = fields.get("connectionMethod")
+    if method == "signed-broker-v2":
+        # The broker stamps these beside the enrollment only after it verifies the
+        # signature, the active unexpired key and the enrolled hardware.
+        enrollment = fields.get("enrollment") if isinstance(fields.get("enrollment"), dict) else {}
+        active_key = enrollment.get("activeKeyId")
+        checks["signedBrokerHeartbeat"] = (
+            isinstance(enrollment.get("lastSignedHeartbeatAt"), str)
+            and enrollment.get("lastSignedHeartbeatAt") == fields.get("lastSeen")
+            and isinstance(active_key, str) and active_key != ""
+            and enrollment.get("lastSignedHeartbeatKeyId") == active_key
+            and enrollment.get("lastSignedHeartbeatProtocol") == "2"
+        )
+        checks["androidHardwareKey"] = enrollment.get("keyType") == "android-keystore-p256"
+    elif method in {"termux-direct-cloud", "direct-daemon"}:
+        # No server stamp on the legacy path, so a fresh completed ACK whose queue
+        # entry agrees with it has to stand in for one.
+        queue = fields.get("commandQueue") if isinstance(fields.get("commandQueue"), dict) else {}
+        ack_id = fields.get("lastCommandAckId")
+        entry = queue.get(ack_id) if isinstance(ack_id, str) else None
+        checks["commandAckFresh"] = (
+            _fresh(_age_seconds(fields.get("lastCommandAckAt")))
+            and fields.get("lastCommandAckStatus") == "completed"
+            and isinstance(entry, dict)
+            and entry.get("status") == "completed"
+            and isinstance(fields.get("lastCommandAckAt"), str)
+            and entry.get("completedAt") == fields.get("lastCommandAckAt")
+        )
+    else:
+        checks["connectionMethod"] = False
     failed = [name for name, passed in checks.items() if not passed]
     return not failed, "all phone-runtime checks passed" if not failed else "failed: " + ", ".join(failed)
 

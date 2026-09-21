@@ -268,7 +268,7 @@ const deviceSend = tool(
   {
     action: z.string().describe("Command name the device's daemon understands, e.g. 'sync-now'."),
     device_id: z.string().default(DEFAULT_DEVICE),
-    params: z.record(z.string(), z.any()).default({}).describe('Extra fields to merge into the queued command item.'),
+    params: z.record(z.string(), z.any()).default({}).describe("The command's payload, e.g. { timeout_seconds: 900 } for 'wa-media-push'. Only sync-now, wa-push and wa-media-push accept timeout_seconds; echo echoes any object back; other actions take none."),
     priority: z.enum(['NORMAL', 'HIGH', 'CRITICAL']).default('NORMAL'),
   },
   async ({ action, device_id, params, priority }) => {
@@ -293,7 +293,7 @@ const deviceSend = tool(
     return {
       content: [{
         type: 'text',
-        text: JSON.stringify({ queued: true, device_id, command_id: cmdId, action, priority, at, next: 'poll with device_result(command_id=...)' }, null, 2),
+        text: JSON.stringify({ queued: true, device_id, command_id: cmdId, action: item.action, priority, at, next: 'poll with device_result(command_id=...)' }, null, 2),
       }],
     };
   },

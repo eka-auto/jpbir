@@ -23,7 +23,7 @@ import { readFileSync } from 'node:fs';
 import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
-import { deviceHealth, commandItem } from '/opt/jp-agent/device-health.mjs';
+import { deviceHealth, commandItem, actionGateError } from '/opt/jp-agent/device-health.mjs';
 
 const PORT = Number(process.env.S24_MCP_PORT || 8792);
 const HOST = '127.0.0.1';
@@ -297,17 +297,19 @@ mcp.registerTool(
 mcp.registerTool(
   'device_send',
   {
-    description: "Queue a supported command (e.g. 'sync-now', 'status-only', 'start-ssh'). Queued is not executed. Check device_result and device_ping; do not infer supported actions from historical examples.",
+    description: "Queue a supported command (e.g. 'sync-now', 'status-only'). Queued is not executed. Check device_result and device_ping; do not infer supported actions from historical examples. Actions that touch inbound network (sshd, tunnels) or the lock screen are refused at the gate since 2026-09-20.",
     inputSchema: {
       action: z.string().describe("Command name the device's daemon understands, e.g. 'sync-now'."),
       device_id: z.string().default(DEFAULT_DEVICE),
-      params: z.record(z.string(), z.any()).default({}).describe('Extra fields to merge into the queued command item.'),
+      params: z.record(z.string(), z.any()).default({}).describe("The command's payload, e.g. { timeout_seconds: 900 } for 'wa-media-push'. Only sync-now, wa-push and wa-media-push accept timeout_seconds; echo echoes any object back; other actions take none."),
       priority: z.enum(['NORMAL', 'HIGH', 'CRITICAL']).default('NORMAL'),
     },
   },
   async ({ action, device_id, params, priority }) => {
     const bad = validId(device_id);
     if (bad) return text(bad);
+    const gate = actionGateError(action);
+    if (gate) return text(gate);
     const at = new Date().toISOString();
     const actionSlug = action.replace(/[^A-Za-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'cmd';
     const cmdId = `jpagent_${Date.now()}_${actionSlug}_${randomUUID()}`;
@@ -321,7 +323,7 @@ mcp.registerTool(
     });
     const err = errText(res);
     if (err) return text(err);
-    return json({ queued: true, device_id, command_id: cmdId, action, priority, at, next: 'poll with device_result(command_id=...)' });
+    return json({ queued: true, device_id, command_id: cmdId, action: item.action, priority, at, next: 'poll with device_result(command_id=...)' });
   },
 );
 

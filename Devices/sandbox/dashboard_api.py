@@ -43,6 +43,15 @@ app = Flask("channel_sandbox_dashboard")
 # without handing out the key.
 PUBLIC_ENDPOINTS = {"api_status", "api_diag"}
 
+# This is an immutable ceiling, not a deployment-tunable capability list.
+# SANDBOX_CONFIG_JSON used to contain start-ssh and collection actions left over
+# from the pre-contract daemon; trusting that stale list made this HTTP endpoint
+# a bypass around every newer MCP gate. Tests compare it and both checked-in
+# configs to Devices/S24/runtime_contract.json.
+ALLOWED_DEVICE_ACTIONS = frozenset({
+    "status-only", "ping", "echo", "wa-push", "wa-media-push", "sync-now",
+})
+
 
 class ConfigError(RuntimeError):
     """Raised when the sandbox config cannot be resolved at request time."""
@@ -676,7 +685,7 @@ def api_post_command(device_id):
         return jsonify({"error": "unknown device", "deviceId": device_id}), 404
     body = request.get_json(silent=True) or {}
     action = body.get("action")
-    if action not in cfg.get("allowed_commands", []):
+    if action not in ALLOWED_DEVICE_ACTIONS:
         return jsonify({"error": f"action not allowed: {action}"}), 400
     payload = body.get("payload", {})
     cmd_id = uuid.uuid4().hex[:12]

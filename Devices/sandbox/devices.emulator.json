@@ -5,6 +5,7 @@
   "emulator_host": "127.0.0.1:8080",
   "database": "eka-agent",
   "collection": "sandbox_devices",
+  "service_account_key": null,
   "firestore_scope": "https://www.googleapis.com/auth/datastore",
   "heartbeat_interval_seconds": 15,
   "command_poll_interval_seconds": 15,
@@ -25,20 +26,11 @@
     }
   ],
   "allowed_commands": [
-    "sync-now",
-    "heartbeat",
     "status-only",
-    "wakeup",
-    "collect-calls",
-    "collect-sms",
-    "collect-contacts",
-    "collect-location",
-    "collect-app-list",
-    "collect-whatsapp",
-    "full-sync",
-    "extract_whatsapp",
-    "debug-calllogs",
-    "start-ssh",
-    "start-daemon"
+    "ping",
+    "echo",
+    "wa-push",
+    "wa-media-push",
+    "sync-now"
   ]
 }

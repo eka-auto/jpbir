@@ -245,11 +245,24 @@ CI workflows in `.github/workflows/`: `ci-cd.yml` (lint + test),
 - **Timing-safe comparison.** Both sides are SHA-256 digested before
   `timingSafeEqual`, because that function throws on length mismatch and would
   otherwise leak the key's length.
-- **Liveness is attested, not asserted.** `strictS24Liveness` requires multiple
-  independent writer-honest signals (Android runtime, authenticated heartbeat,
-  fresh command ACK). A stored `online: true` or a matching version string is
-  not sufficient — a Windows bridge process once spoofed exactly that in
-  production. New device-status logic must fail closed the same way.
+- **Liveness is attested, not asserted.** A stored `online: true` or a matching
+  version string is never sufficient — a Windows bridge process once spoofed
+  exactly that in production. What `strictS24Liveness` requires depends on the
+  evidence mode, decided once in `S24_EVIDENCE_REQUIREMENTS`
+  (`Backend/lib/s24-attestation.js`):
+  - **`signed-broker-v2`**: the broker's own stamp of a heartbeat it verified
+    (device signature, active unexpired key, enrolled hardware), an
+    AndroidKeyStore key, and the Android runtime evidence. A command ACK is
+    **not** required — commands run hours apart — and is reported separately as
+    `commandExecutionRecentlyProven`.
+  - **Legacy direct-cloud** (no server stamp): all of the runtime evidence plus a
+    fresh *completed* command ACK that matches its queue entry.
+
+  Only the S24's own enrolled key may write the S24 evidence fields
+  (`S24_ONLY_TELEMETRY` in `Backend/device-heartbeat.js`). The dashboard, the
+  droplet and both Python mirrors take the policy from that module, and
+  `_shared/tests/s24-attestation.test.mjs` runs them against each other. New
+  device-status logic must fail closed the same way.
 - **Secrets never enter the repo, the deploy script, or an agent transcript.**
   On the droplet, `ANTHROPIC_AUTH_TOKEN` is piped over **stdin**
   (`printf '%s' "$TOKEN" | python3 /opt/jp-agent/sync-auth-token.py`), never

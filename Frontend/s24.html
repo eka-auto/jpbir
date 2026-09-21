@@ -348,10 +348,17 @@
 
                 var threshold = dev.heartbeatMaxAgeSeconds || 300;
                 var reason = dev.liveness && dev.liveness.reason ? dev.liveness.reason : 'strict liveness checks did not pass';
+                // A signed-broker doc proves itself with the broker's own stamp on a heartbeat
+                // signed by the phone's hardware key; only a legacy direct-cloud doc still needs
+                // a command ACK to count as live. Telling a broker-era visitor to "request a
+                // fresh sync" pointed at a fix that cannot change the verdict.
+                var brokerDoc = dev.connectionMethod === 'signed-broker-v2';
                 if (live) {
                     setLight(true, 'Device connected — ONLINE',
                         'Heartbeat received ' + lastSeenAgeText(dev) +
-                        ' (strict heartbeat window ' + threshold + 's; command ACK window 300s). Green light blinks while the phone daemon keeps heartbeating.');
+                        ' (strict heartbeat window ' + threshold + 's' +
+                        (brokerDoc ? '; signed by the phone\'s enrolled hardware key' : '; command ACK window 300s') +
+                        '). Green light blinks while the phone daemon keeps heartbeating.');
                 } else if (dev.lastSeenCoarse === 'never') {
                     setLight(false, 'Device registered but never heartbeated',
                         '<code>lastSeen</code> is empty — the S24 phone daemon (<code>s24_phone_direct_cloud.py</code>) has never published to Firestore. ' +
@@ -359,8 +366,10 @@
                 } else if (dev.liveness && dev.liveness.mode === 'strict-s24-attestation') {
                     setLight(false, 'Device OFFLINE — strict proof missing',
                         'The dashboard ignores the stored <code>online</code> flag. ' +
-                        esc(reason) + '. Last heartbeat: ' + lastSeenAgeText(dev) +
-                        '; the required command acknowledgement window is 300s. Use the authenticated main dashboard to request a fresh sync.');
+                        esc(reason) + '. Last heartbeat: ' + lastSeenAgeText(dev) + '. ' +
+                        (brokerDoc
+                            ? 'A queued command cannot supply this proof: it needs a fresh heartbeat signed by the phone\'s enrolled key. Check that the broker daemon is running in Termux on the phone and read its log.'
+                            : 'Legacy direct-cloud liveness also needs a completed command acknowledgement within 300s. Use the authenticated main dashboard to request a fresh sync.'));
                 } else {
                     setLight(false, 'Device OFFLINE — heartbeat stale',
                         'Last heartbeat: ' + lastSeenAgeText(dev) + ', which exceeds the ' +
@@ -402,7 +411,7 @@
                 // generated_at resets on every poll, so it may only ever be
                 // labelled "fetched"; the device's own (coarse or exact)
                 // lastSeen is the real update time, never this stamp.
-                $('liveHint').textContent = 'Firestore · ' + res.body.database + ' · strict liveness = authenticated heartbeat + attestation + ACK · status fetched ' + fmtTime(res.body.generated_at) + (precise ? '' : ' · coarse public projection');
+                $('liveHint').textContent = 'Firestore · ' + res.body.database + ' · strict liveness = ' + (brokerDoc ? 'broker-signed heartbeat + attestation' : 'authenticated heartbeat + attestation + ACK') + ' · status fetched ' + fmtTime(res.body.generated_at) + (precise ? '' : ' · coarse public projection');
 
                 renderNetworkCard(dev);
                 renderQueue(dev, precise);
