@@ -1930,7 +1930,19 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
         if (SITE === 'jp') params.site = 'jaytipargal.com';
         setStatus('Loading analytics…');
         fetch(endpoint + '?' + new URLSearchParams(params).toString(), { headers: authHeaders() })
-            .then(function (r) { return r.json().then(function (j) { return { status: r.status, body: j }; }); })
+            .then(function (r) {
+                return r.text().then(function (text) {
+                    var body;
+                    try {
+                        body = JSON.parse(text);
+                    } catch (error) {
+                        throw new Error(r.status === 404
+                            ? 'Analytics API endpoint is unavailable (404). Start the API server or use the deployed preview.'
+                            : 'Analytics API returned an invalid response (HTTP ' + r.status + ').');
+                    }
+                    return { status: r.status, body: body };
+                });
+            })
             .then(function (res) {
                 if (res.status === 401) {
                     localStorage.removeItem(KEY_STORAGE);
