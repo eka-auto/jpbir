@@ -17,6 +17,11 @@ const valid = {
   sourceType: 'live_termux',
   runtimeIsAndroid: true,
   lastSeen: '2026-09-21T00:00:00.000Z',
+  // A completed ACK whose queue entry agrees with it: the only kind that proves execution.
+  lastCommandAckAt: '2026-09-21T00:00:00.000Z',
+  lastCommandAckId: 'c1',
+  lastCommandAckStatus: 'completed',
+  commandQueue: { c1: { action: 'ping', status: 'completed', completedAt: '2026-09-21T00:00:00.000Z' } },
   enrollment: {
     activeKeyId: 'a'.repeat(32),
     keyType: 'android-keystore-p256',
@@ -77,8 +82,38 @@ t('client telemetry without a matching server broker stamp fails closed', () => 
 t('legacy direct-cloud evidence remains a strict ACK-gated fallback', () => {
   const legacy = { ...valid, connectionMethod: 'termux-direct-cloud' };
   delete legacy.enrollment;
-  assert.equal(strictS24Liveness(legacy, 30, 30).live, true);
-  assert.equal(strictS24Liveness(legacy, 30, 301).live, false);
+  const live = strictS24Liveness(legacy, 30, 30);
+  assert.equal(live.live, true);
+  assert.equal(live.evidenceMode, 'legacy-strict');
+  assert.equal(live.reason, 'legacy heartbeat and completed command acknowledgement are authenticated and fresh',
+    'a legacy doc must not be described as a signed broker heartbeat');
+  const stale = strictS24Liveness(legacy, 30, 301);
+  assert.equal(stale.live, false);
+  assert.equal(stale.reason, 'commandAckFresh is missing or stale');
+});
+
+t('a legacy doc with a fresh ACK timestamp but no completed queue entry behind it is offline', () => {
+  // The droplet briefly accepted exactly this after dropping its ack-triple check: a bare
+  // lastCommandAckAt is one field write away for any writer.
+  const orphan = { ...valid, connectionMethod: 'termux-direct-cloud', lastCommandAckId: 'gone', commandQueue: {} };
+  delete orphan.enrollment;
+  const result = strictS24Liveness(orphan, 30, 10);
+  assert.equal(result.live, false);
+  assert.equal(result.checks.commandAckFresh, false);
+});
+
+t('a rejected command is acknowledged, not executed, so it proves nothing about execution', () => {
+  // broker-command-complete stamps lastCommandAckAt for rejected results too; the phone
+  // rejecting a leftover 'wakeup' once read as commandExecutionRecentlyProven=true here
+  // while the droplet said false.
+  const rejected = {
+    ...valid,
+    lastCommandAckStatus: 'rejected',
+    commandQueue: { c1: { action: 'wakeup', status: 'rejected', completedAt: valid.lastCommandAckAt } },
+  };
+  const result = strictS24Liveness(rejected, 30, 10);
+  assert.equal(result.live, true, 'a signed heartbeat is still liveness');
+  assert.equal(result.commandExecutionRecentlyProven, false);
 });
 
 t('a bridge process acknowledging commands on time is still not the phone', () => {

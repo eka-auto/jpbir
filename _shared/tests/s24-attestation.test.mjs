@@ -34,8 +34,9 @@ const {
   S24_ACK_MAX_AGE_SECONDS,
   s24AttestationChecks,
 } = await import('../../Backend/lib/s24-attestation.js');
-const { strictS24Liveness } = await import('../../Backend/jp-devices.js');
+const { strictS24Liveness, computeS24Liveness } = await import('../../Backend/jp-devices.js');
 const { deviceHealth } = await import('../../Server/jp-agent/device-health.mjs');
+const { runPython } = await import('./python-harness.mjs');
 
 let pass = 0, total = 0;
 function t(name, fn) {
@@ -45,8 +46,8 @@ function t(name, fn) {
 }
 
 // A document that satisfies every check except the one an off-device process cannot fake.
-// Field placement follows each caller's own convention: the dashboard reads everything
-// top-level, the droplet reads liveDeviceVerified/sourceType from the nested sub-map.
+// Every caller reads the evidence top-level, where the broker heartbeat writes it; the
+// nested samsungS24DirectSync copy is legacy and deliberately ignored.
 //
 // One timestamp, not one Date.now() per field: the droplet requires
 // commandQueue[lastCommandAckId].completedAt === lastCommandAckAt as exact strings, so two
@@ -214,7 +215,79 @@ t('both callers retain the ACK-gated legacy direct-cloud fallback', () => {
   assert.equal(strictS24Liveness(doc, fresh, 301).live, false);
 });
 
+t('both callers refuse a legacy doc whose fresh ACK no completed queue entry backs', () => {
+  const doc = { ...phoneDoc(), connectionMethod: 'termux-direct-cloud', lastCommandAckId: 'gone', commandQueue: {} };
+  delete doc.enrollment;
+  assert.equal(strictS24Liveness(doc, fresh, fresh).live, false, 'dashboard accepted an orphan ACK');
+  assert.equal(deviceHealth('samsung-s24-ultra', doc).device_online, false, 'droplet accepted an orphan ACK');
+});
+
+t('both callers agree a rejected command proves nothing about execution', () => {
+  const doc = phoneDoc();
+  doc.lastCommandAckStatus = 'rejected';
+  doc.commandQueue = { c1: { status: 'rejected', completedAt: doc.lastCommandAckAt } };
+  assert.equal(strictS24Liveness(doc, fresh, fresh).commandExecutionRecentlyProven, false);
+  assert.equal(deviceHealth('samsung-s24-ultra', doc).command_execution_recently_proven, false);
+});
+
 // --------------------------------------------- all four implementations stay in step --
+
+t('the Python mirrors reach the same verdict as this module on every evidence shape', () => {
+  // Integrations/s24-connect-mcp/server.py and Devices/S24/pull_direct_cloud.py once
+  // rejected connectionMethod='signed-broker-v2' outright, read evidence from a nested map
+  // the broker never writes, and (the puller) demanded sourceType 'live_termux' while the
+  // broker writes 'live_daemon'. A healthy phone read live on the dashboard and droplet and
+  // offline/unattested in both. So they are executed here, not pattern-matched.
+  const ago = (seconds) => new Date(Date.now() - seconds * 1000).toISOString();
+  const legacy = (overrides = {}) => {
+    const doc = { ...phoneDoc(), connectionMethod: 'termux-direct-cloud', ...overrides };
+    delete doc.enrollment;
+    return doc;
+  };
+  const staleAck = ago(301);
+  const staleSeen = ago(301);
+  const cases = {
+    'attested broker phone': phoneDoc(),
+    'broker phone writing live_daemon': { ...phoneDoc(), sourceType: 'live_daemon' },
+    'off-device bridge': bridgeDoc(),
+    'broker telemetry without the server stamp': (() => { const d = phoneDoc(); delete d.enrollment; return d; })(),
+    'broker stamp for a software key': { ...phoneDoc(), enrollment: { ...phoneDoc().enrollment, keyType: 'software-p256' } },
+    'broker stamp from a superseded key': { ...phoneDoc(), enrollment: { ...phoneDoc().enrollment, activeKeyId: 'b'.repeat(32) } },
+    'broker phone whose last command was rejected': {
+      ...phoneDoc(), lastCommandAckStatus: 'rejected',
+      commandQueue: { c1: { status: 'rejected', completedAt: phoneDoc().lastCommandAckAt } },
+    },
+    'stale broker heartbeat': {
+      ...phoneDoc(), lastSeen: staleSeen, enrollment: { ...phoneDoc().enrollment, lastSignedHeartbeatAt: staleSeen },
+    },
+    'future-dated heartbeat': (() => {
+      const at = new Date(Date.now() + 60000).toISOString();
+      return { ...phoneDoc(), lastSeen: at, enrollment: { ...phoneDoc().enrollment, lastSignedHeartbeatAt: at } };
+    })(),
+    'unknown agent version': { ...phoneDoc(), agentVersion: 's24-bridge-win32-2026-09-07.1' },
+    'laptop broker connection method': { ...phoneDoc(), connectionMethod: 'channel-sandbox-broker' },
+    'legacy phone with a consistent fresh ACK': legacy(),
+    'legacy phone with an orphan ACK': legacy({ lastCommandAckId: 'gone', commandQueue: {} }),
+    'legacy phone with a stale ACK': legacy({
+      lastCommandAckAt: staleAck, commandQueue: { c1: { status: 'completed', completedAt: staleAck } },
+    }),
+  };
+  const python = runPython(`
+connect = load("Integrations/s24-connect-mcp/server.py")
+puller = load("Devices/S24/pull_direct_cloud.py")
+print(json.dumps({
+    name: {"connect": connect._s24_liveness_evidence(doc), "puller": puller.phone_attestation(doc)[0]}
+    for name, doc in INPUT.items()
+}))
+`, cases);
+  for (const [name, doc] of Object.entries(cases)) {
+    const expected = computeS24Liveness(doc, Date.now()).liveness.evidenceMode;
+    assert.equal(python[name].connect, expected, `connect MCP disagrees on "${name}"`);
+    assert.equal(python[name].puller, expected !== null, `puller disagrees on "${name}"`);
+  }
+  assert.equal(python['attested broker phone'].connect, 'signed-broker-v2', 'the matrix must include a live broker verdict');
+  assert.equal(python['legacy phone with a consistent fresh ACK'].connect, 'legacy-strict');
+});
 
 t('the Python mirrors accept exactly the prefixes this module exports', () => {
   // s24-source-mirrors.test.mjs asserts the literal tuples; this ties them to the JS

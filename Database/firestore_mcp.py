@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import time
 import urllib.request
 import urllib.parse
@@ -192,6 +193,31 @@ def _to_fs_value(v) -> dict:
     return {"stringValue": str(v)}
 
 
+_SIMPLE_SEGMENT_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+
+
+def _mask_path(dotted: str) -> str:
+    """
+    Build a valid Firestore field-mask path from a dot-separated key.
+
+    A segment that is not a simple identifier must be backtick-quoted, or
+    Firestore rejects the whole PATCH with 400 INVALID_ARGUMENT. Command ids
+    embed the action name and every contract action but ping and echo has a
+    hyphen, so unquoted, trigger_wa_sync ('wa-push') failed every time; legacy
+    queue ids cleared by s24_clear_queue carry hyphens too. Mirrors _mask_path in
+    Integrations/s24-connect-mcp/server.py and quoteFirestoreFieldPath in
+    Backend/broker.js.
+    """
+    out = []
+    for seg in dotted.split("."):
+        if _SIMPLE_SEGMENT_RE.fullmatch(seg):
+            out.append(seg)
+        else:
+            esc = seg.replace("\\", "\\\\").replace("`", "\\`")
+            out.append(f"`{esc}`")
+    return ".".join(out)
+
+
 def _patch_doc(doc_path: str, fields: dict) -> dict:
     """PATCH (merge) specific fields (supporting dot notation) onto a Firestore document."""
     nested = {}
@@ -203,7 +229,9 @@ def _patch_doc(doc_path: str, fields: dict) -> dict:
         curr[parts[-1]] = v
 
     fs_fields = {k: _to_fs_value(v) for k, v in nested.items()}
-    field_mask = "&".join(f"updateMask.fieldPaths={k}" for k in fields)
+    field_mask = "&".join(
+        f"updateMask.fieldPaths={urllib.parse.quote(_mask_path(k), safe='')}" for k in fields
+    )
     url = f"devices/{doc_path}?{field_mask}"
     return _fs_request("PATCH", url, body={"fields": fs_fields})
 
@@ -277,7 +305,8 @@ def s24_queue_command(action: str, extra: str = "{}") -> str:
     Append a command to the S24 commandQueue in Firestore.
 
     action: one of the actions admitted by the S24 runtime contract
-    extra:  JSON object string with non-reserved additional fields
+    extra:  JSON object string sent as the command's payload, e.g.
+            '{"timeout_seconds": 900}' for wa-media-push
     """
     gate = _action_gate(action)
     if gate is not None:
@@ -293,7 +322,8 @@ def s24_queue_command(action: str, extra: str = "{}") -> str:
         return f"Error: extra may not set reserved command field(s): {', '.join(reserved)}"
 
     canonical_action = _normalize_action(action)
-    qid = f"mcp_{int(time.time())}_{canonical_action.replace(' ', '_')}"
+    # Keep the id to [A-Za-z0-9_] too, so it reads the same in every Firestore tool.
+    qid = f"mcp_{int(time.time())}_{re.sub(r'[^A-Za-z0-9]+', '_', canonical_action)}"
     at  = _now_iso()
     item = {
         "action": canonical_action,
@@ -301,7 +331,8 @@ def s24_queue_command(action: str, extra: str = "{}") -> str:
         "requestedAt": at,
         "requestedBy": "claude-mcp-s24-cloud",
         "source": "commandQueue",
-        **extra_dict,
+        # The broker's poll and claim hand the device `payload` and nothing else.
+        "payload": extra_dict,
     }
     _patch_doc(PRIMARY_DOC, {
         f"commandQueue.{qid}": item,

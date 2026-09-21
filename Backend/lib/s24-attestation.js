@@ -22,10 +22,17 @@
 // apart, so requiring a five-minute ACK made a healthy heartbeating phone offline for most
 // of every day.
 //
+// Which checks each evidence mode requires is decided here, in S24_EVIDENCE_REQUIREMENTS,
+// and nowhere else. jp-devices.js once kept its own name lists for "the checks that matter
+// for a broker doc" beside the evidence function, so `live` and the reported reason could
+// disagree the moment either list moved. Callers take the verdict — mode and first failing
+// check — from s24LivenessVerdict() instead of re-deriving the policy.
+//
 // Two more implementations exist in Python and are NOT served by this file:
-// Integrations/s24-connect-mcp/server.py and Devices/S24/pull_direct_cloud.py. They are
-// kept in step by _shared/tests/s24-source-mirrors.test.mjs, which regex-asserts their
-// prefix tuples. Change a constant here and that suite tells you what else must move.
+// Integrations/s24-connect-mcp/server.py and Devices/S24/pull_direct_cloud.py. Regex checks
+// of their constants let both keep rejecting every signed-broker-v2 heartbeat, so
+// _shared/tests/s24-attestation.test.mjs now executes them against this module on the same
+// documents. Change the policy here and that suite tells you what else must move.
 
 export const S24_DEVICE_ID = 'samsung-s24-ultra';
 
@@ -56,11 +63,33 @@ const isFresh = (seconds) =>
   seconds !== null && seconds !== undefined && seconds >= 0 && seconds <= S24_ACK_MAX_AGE_SECONDS;
 
 /**
+ * True only for a *completed* acknowledgement whose queue entry agrees with it.
+ *
+ * A fresh lastCommandAckAt alone proves nothing about execution: broker-command-complete
+ * stamps it for rejected, failed and error results too, and a legacy writer can set it with
+ * no queue entry behind it at all. The dashboard once reported a rejected leftover 'wakeup'
+ * as commandExecutionRecentlyProven while the droplet, which checked the entry, said false.
+ * Both now ask this one question.
+ */
+export function s24CommandAckConsistent(doc) {
+  const d = doc && typeof doc === 'object' ? doc : {};
+  const queue = d.commandQueue && typeof d.commandQueue === 'object' ? d.commandQueue : {};
+  const entry = typeof d.lastCommandAckId === 'string' && Object.hasOwn(queue, d.lastCommandAckId)
+    ? queue[d.lastCommandAckId]
+    : null;
+  return d.lastCommandAckStatus === 'completed' &&
+    Boolean(entry) && entry.status === 'completed' &&
+    typeof d.lastCommandAckAt === 'string' && entry.completedAt === d.lastCommandAckAt;
+}
+
+/**
  * Evaluate every attestation check. Key order is load-bearing: callers report the first
  * failing key as the reason, so do not reorder without reading the tests.
  *
  * `commandAckFresh` is returned alongside heartbeat attestation, but consumers must use
- * s24HeartbeatAuthenticated() for basic liveness rather than requiring every value here.
+ * s24LivenessVerdict() for basic liveness rather than requiring every value here. It is a
+ * fresh *and* consistent acknowledgement (see s24CommandAckConsistent): pass
+ * `ackConsistent` or it stays false.
  */
 export function s24AttestationChecks({
   agentVersion,
@@ -71,6 +100,7 @@ export function s24AttestationChecks({
   runtimeIsAndroid,
   heartbeatAgeSeconds,
   ackAgeSeconds,
+  ackConsistent,
   lastSeen,
   signedHeartbeatAt,
   signedHeartbeatKeyId,
@@ -92,31 +122,33 @@ export function s24AttestationChecks({
     liveDeviceVerified: liveDeviceVerified === true,
     liveSource: S24_SOURCE_TYPES.has(sourceType),
     androidRuntime: runtimeIsAndroid === true,
-    commandAckFresh: isFresh(ackAgeSeconds),
+    commandAckFresh: isFresh(ackAgeSeconds) && ackConsistent === true,
   };
 }
 
-export function s24LivenessEvidence(checks) {
-  const common = checks.heartbeatFresh && checks.authenticatedAgent &&
-    checks.heartbeatAuth && checks.liveDeviceVerified && checks.liveSource &&
-    checks.androidRuntime;
-  if (checks.signedBrokerConnection) {
-    return common && checks.signedBrokerHeartbeat && checks.androidHardwareKey
-      ? 'signed-broker-v2'
-      : null;
-  }
-  if (checks.legacyConnection) {
-    return common && checks.commandAckFresh ? 'legacy-strict' : null;
-  }
-  return null;
-}
+const COMMON_LIVENESS_CHECKS = [
+  'heartbeatFresh', 'authenticatedAgent', 'heartbeatAuth', 'liveDeviceVerified', 'liveSource',
+  'androidRuntime',
+];
 
-export function s24HeartbeatAuthenticated(checks) {
-  return s24LivenessEvidence(checks) !== null;
-}
+// The whole liveness policy. A signed-broker doc proves itself with the broker's own stamp
+// and an AndroidKeyStore key; a legacy doc has no server stamp, so it still needs a fresh,
+// consistent command ACK. A doc with any other connectionMethod is judged — and fails — as
+// legacy, on legacyConnection.
+export const S24_EVIDENCE_REQUIREMENTS = Object.freeze({
+  'signed-broker-v2': Object.freeze([
+    'signedBrokerConnection', 'signedBrokerHeartbeat', 'androidHardwareKey', ...COMMON_LIVENESS_CHECKS,
+  ]),
+  'legacy-strict': Object.freeze(['legacyConnection', 'commandAckFresh', ...COMMON_LIVENESS_CHECKS]),
+});
 
-/** The first failing check name, or null when every check passed. */
-export function firstFailedCheck(checks) {
-  const failed = Object.entries(checks).find(([, passed]) => !passed);
-  return failed ? failed[0] : null;
+/**
+ * { evidenceMode, failedCheck }: the mode that proved liveness (null if none did) and the
+ * first required check that failed, in the checks object's key order.
+ */
+export function s24LivenessVerdict(checks) {
+  const mode = checks.signedBrokerConnection ? 'signed-broker-v2' : 'legacy-strict';
+  const required = S24_EVIDENCE_REQUIREMENTS[mode];
+  const failedCheck = Object.keys(checks).find((name) => required.includes(name) && !checks[name]) || null;
+  return { evidenceMode: failedCheck ? null : mode, failedCheck };
 }

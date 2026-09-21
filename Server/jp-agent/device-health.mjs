@@ -9,14 +9,15 @@
 // this file did not check at all — so device_ping reported an off-device Windows bridge as
 // both device_online and heartbeat_authenticated while the dashboard correctly refused it.
 // The Python implementations (Integrations/s24-connect-mcp/server.py and
-// Devices/S24/pull_direct_cloud.py) are kept in step by s24-source-mirrors.test.mjs.
+// Devices/S24/pull_direct_cloud.py) are executed against it by s24-attestation.test.mjs.
 import {
   S24_DEVICE_ID,
   S24_CONNECTION_METHODS,
   S24_ACK_MAX_AGE_SECONDS,
   S24_RUNTIME_EVIDENCE,
   s24AttestationChecks,
-  s24HeartbeatAuthenticated,
+  s24CommandAckConsistent,
+  s24LivenessVerdict,
 } from './s24-attestation.js';
 
 export function deviceHealth(deviceId, doc, now = Date.now()) {
@@ -28,7 +29,6 @@ export function deviceHealth(deviceId, doc, now = Date.now()) {
   const lastSeenAge = age(doc.lastSeen);
   const ackAge = age(doc.lastCommandAckAt);
   const fresh = value => value !== null && value >= 0 && value <= S24_ACK_MAX_AGE_SECONDS;
-  const ack = doc.commandQueue?.[doc.lastCommandAckId];
   const enrollment = doc.enrollment || {};
 
   const checks = s24AttestationChecks({
@@ -40,6 +40,11 @@ export function deviceHealth(deviceId, doc, now = Date.now()) {
     runtimeIsAndroid: doc[S24_RUNTIME_EVIDENCE],
     heartbeatAgeSeconds: lastSeenAge,
     ackAgeSeconds: ackAge,
+    // The ack triple — completed status, a completed queue entry, matching completedAt — is
+    // part of commandAckFresh itself, so the legacy path (which requires it) cannot pass on a
+    // bare lastCommandAckAt with no queue entry behind it, as it briefly did when this caller
+    // dropped its own triple check.
+    ackConsistent: s24CommandAckConsistent(doc),
     lastSeen: doc.lastSeen,
     signedHeartbeatAt: enrollment.lastSignedHeartbeatAt,
     signedHeartbeatKeyId: enrollment.lastSignedHeartbeatKeyId,
@@ -48,16 +53,12 @@ export function deviceHealth(deviceId, doc, now = Date.now()) {
     keyType: enrollment.keyType,
   });
 
-  // Conditions this caller adds on top of the shared set. The stored online flag and the
-  // connection method are extra evidence the dashboard does not require; sync.heartbeatAuth
-  // and the ack triple are the droplet's stricter proof that a recorded acknowledgement
-  // really belongs to the command it claims to complete.
-  const ackConsistent = doc.lastCommandAckStatus === 'completed' && ack?.status === 'completed'
-    && ack.completedAt === doc.lastCommandAckAt;
-  const authenticated = s24HeartbeatAuthenticated(checks)
+  // Conditions this caller adds on top of the shared verdict: the stored online flag and a
+  // known connection method are extra evidence the dashboard does not require.
+  const authenticated = s24LivenessVerdict(checks).evidenceMode !== null
     && doc.online === true
     && S24_CONNECTION_METHODS.includes(doc.connectionMethod);
-  const commandExecutionRecentlyProven = checks.commandAckFresh && ackConsistent;
+  const commandExecutionRecentlyProven = checks.commandAckFresh;
   return {
     device_online: deviceId === S24_DEVICE_ID ? authenticated
       : Boolean(doc.online || doc.effectiveOnline) && fresh(lastSeenAge),
@@ -141,11 +142,17 @@ export const RESERVED_COMMAND_PARAMS = Object.freeze([
 export function commandItem(action, priority, params, requestedAt) {
   const gate = actionGateError(action);
   if (gate) throw new Error(gate);
-  // Extra parameters must never forge a completed command or change its action.
+  // Reserved names stay refused even though params no longer sit beside them: wipeToken and
+  // newPassword were read by historical handlers, and none of these is a payload field.
   const reserved = RESERVED_COMMAND_PARAMS;
   for (const key of reserved) {
     if (Object.hasOwn(params, key)) throw new Error(`Reserved command parameter: ${key}`);
   }
-  return { ...params, action: normalizeAction(action), status: 'pending', priority, requestedAt,
-    requestedBy: 'jp-agent-s24-tools', source: 'commandQueue' };
+  // Params travel as the command's `payload`, which is the only place the broker's poll and
+  // claim hand them to the device (Devices/S24/README.md documents timeout_seconds there).
+  // Spread at the top level of the entry they never reached the phone — a queued
+  // timeout_seconds was silently replaced by the default — and they sat beside the lease
+  // fields the broker writes onto the same entry (claimToken, leaseUntil, attempt).
+  return { action: normalizeAction(action), status: 'pending', priority, requestedAt,
+    requestedBy: 'jp-agent-s24-tools', source: 'commandQueue', payload: { ...params } };
 }

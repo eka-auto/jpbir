@@ -1,6 +1,6 @@
 {
   "schemaVersion": "3",
-  "release": "s24-termux-broker-2026-09-21.1",
+  "release": "s24-termux-broker-2026-09-21.2",
   "projectId": "intrepid-stage-495117-q1",
   "firestoreDatabase": "eka-agent",
   "deviceId": "samsung-s24-ultra",
