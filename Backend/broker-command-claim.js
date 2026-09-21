@@ -82,8 +82,13 @@ export default async function handler(req, res) {
         return sendError(res, 401, priorResult.error, 'claim-reqid-reused', { keyId: env.keyId, deviceId, commandId });
       }
       if (priorResult) {
+        // The stored body omits the payload (see below); it is re-read from the entry,
+        // which the claim did not change.
         slog('claim-idempotent-replay', { keyId: env.keyId, deviceId, commandId });
-        return res.status(priorResult.status).json(priorResult.body);
+        const claimedEntry = (d.commandQueue || {})[commandId] || {};
+        return res.status(priorResult.status).json(
+          { ...priorResult.body, payload: claimedEntry.payload || {} },
+        );
       }
       if (env.seq <= (enrollment.seq || 0)) {
         return sendError(res, 401, 'sequence replay rejected', 'claim-seq-replay', { keyId: env.keyId, deviceId });
@@ -137,7 +142,7 @@ export default async function handler(req, res) {
       const claimToken = crypto.randomBytes(16).toString('hex');
       const leaseUntilIso = new Date(now + CLAIM_LEASE_MS).toISOString();
       const q = `commandQueue.${commandId}`;
-      const responseBody = {
+      const rememberedBody = {
         success: true,
         deviceId,
         commandId,
@@ -145,8 +150,8 @@ export default async function handler(req, res) {
         leaseUntil: leaseUntilIso,
         attempt: priorAttempts + 1,
         action: entry.action,
-        payload: entry.payload || {},
       };
+      const responseBody = { ...rememberedBody, payload: entry.payload || {} };
       try {
         await fsPatch(
           `/devices/${deviceId}`,
@@ -159,8 +164,10 @@ export default async function handler(req, res) {
             [`${q}.claimedAt`]: nowIso,
             'enrollment.seq': env.seq,
             'enrollment.lastRequestIds': [env.requestId, ...recent].slice(0, MAX_RECENT_REQUESTS),
+            // Without the payload: the device doc already holds it on the entry, and a
+            // copy per remembered result multiplies its size toward Firestore's 1 MiB cap.
             'enrollment.recentResults': rememberIdempotentResult(
-              enrollment, env, canonicalClaimPath(commandId), 200, responseBody,
+              enrollment, env, canonicalClaimPath(commandId), 200, rememberedBody,
             ),
           },
           { updateTime: devDoc.updateTime },

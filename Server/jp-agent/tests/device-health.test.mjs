@@ -81,6 +81,20 @@ test('fresh signed heartbeat remains live without a prior acknowledgement', () =
   assert.equal(health(doc).command_execution_recently_proven, false);
   assert.equal(health({ ...doc, heartbeatAuth: null }).device_online, false);
 });
+test('a legacy doc needs a completed ACK its queue entry agrees with, not just a fresh timestamp', () => {
+  // Dropping the ack-triple check let a legacy writer look online again with nothing but a
+  // fresh lastCommandAckAt pointing at no queue entry.
+  const legacy = { ...valid(), connectionMethod: 'termux-direct-cloud' };
+  delete legacy.enrollment;
+  assert.equal(health(legacy).device_online, true);
+  for (const change of [
+    { lastCommandAckId: 'gone', commandQueue: {} },
+    { lastCommandAckStatus: 'rejected' },
+    { commandQueue: { test: { status: 'rejected', completedAt: at } } },
+  ]) {
+    assert.equal(health({ ...legacy, ...change }).device_online, false, JSON.stringify(change));
+  }
+});
 test('self-asserted phone telemetry without server broker evidence fails closed', () => {
   const doc = valid();
   delete doc.enrollment;
@@ -91,10 +105,12 @@ test('stored flag alone is never current connectivity', () => {
   assert.equal(health({ online: true, updatedAt: at }).device_online, false);
   assert.equal(deviceHealth('jayti-asus-vivobook', { online: true }, now).device_online, false);
 });
-test('preserve permitted parameters, reject forged lifecycle metadata', () => {
+test('preserve permitted parameters as the payload, reject forged lifecycle metadata', () => {
+  // poll and claim deliver entry.payload only; a top-level param never reached the device.
   const item = commandItem('sync-now', 'HIGH', { detail: 'test' }, at);
   assert.equal(item.status, 'pending');
-  assert.equal(item.detail, 'test');
+  assert.deepEqual(item.payload, { detail: 'test' });
+  assert.equal(Object.hasOwn(item, 'detail'), false);
   for (const key of ['status', 'action', 'completedAt', 'requestedBy']) {
     assert.throws(() => commandItem('sync-now', 'HIGH', { [key]: 'forged' }, at), /Reserved/);
   }

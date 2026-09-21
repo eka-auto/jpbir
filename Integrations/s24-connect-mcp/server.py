@@ -165,10 +165,15 @@ def _action_gate(action: str) -> str | None:
             f"the safe set {sorted(_SAFE_DEVICE_ACTIONS)}. Destructive or inbound-network actions are "
             f"refused at every queue writer since 2026-09-20 (runtime_contract.json).")
 _HTTP_TIMEOUT = 20
+# Python mirror of Backend/lib/s24-attestation.js. _shared/tests/s24-attestation.test.mjs
+# runs _s24_liveness_evidence() against the JS module on the same documents and fails on
+# any disagreement: this copy once rejected every signed-broker-v2 heartbeat and read its
+# evidence from a nested map the broker never writes, so device_ping called a healthy
+# phone offline while the dashboard and droplet called it live.
 S24_HEARTBEAT_FRESHNESS_SECONDS = 300
-S24_BOOT_GRACE_SECONDS = 600  # allow fresh heartbeat without ack during boot
 S24_PHONE_AGENT_PREFIXES = ("s24-termux-", "s24-direct-cloud-")
-S24_PHONE_CONNECTION_METHODS = frozenset({"termux-direct-cloud", "direct-daemon"})
+S24_LEGACY_CONNECTION_METHODS = frozenset({"termux-direct-cloud", "direct-daemon"})
+S24_PHONE_CONNECTION_METHODS = frozenset({"signed-broker-v2"}) | S24_LEGACY_CONNECTION_METHODS
 S24_PHONE_SYNC_SOURCES = frozenset({"live_termux", "live_daemon"})
 
 # device_id convention: lowercase, hyphen-separated (e.g. samsung-s24-ultra)
@@ -402,53 +407,69 @@ def _heartbeat_fields(doc: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _s24_phone_heartbeat_is_fresh(doc: dict[str, Any], age: int | None = None) -> bool:
-    """Accept S24 online only from a fresh, authenticated Termux heartbeat."""
+def _is_fresh(age: int | None) -> bool:
+    return age is not None and 0 <= age <= S24_HEARTBEAT_FRESHNESS_SECONDS
 
-    age = _heartbeat_age(doc) if age is None else age
-    if age is None or age < 0 or age > S24_HEARTBEAT_FRESHNESS_SECONDS:
-        return False
-    if doc.get("online") is not True:
-        return False
-    agent = str(doc.get("agentVersion") or "")
-    if not agent.startswith(S24_PHONE_AGENT_PREFIXES):
-        return False
-    if doc.get("connectionMethod") not in S24_PHONE_CONNECTION_METHODS:
-        return False
-    if doc.get("heartbeatAuth") != "termux-phone":
-        return False
-    sync = doc.get("samsungS24DirectSync") or {}
-    ack_age = _age_seconds(doc.get("lastCommandAckAt"))
-    ack_id = str(doc.get("lastCommandAckId") or "")
-    queue = doc.get("commandQueue") or {}
-    ack_item = queue.get(ack_id) if ack_id and isinstance(queue, dict) else None
 
-    # Full check: completed ack within freshness window
-    # Daemon writes completedAt to queue items, not ackAt (schema alignment 2026-09-17)
-    has_fresh_ack = (
+def _s24_command_ack_consistent(doc: dict[str, Any]) -> bool:
+    """A completed ACK whose queue entry agrees with it (s24CommandAckConsistent)."""
+    queue = doc.get("commandQueue")
+    ack_id = doc.get("lastCommandAckId")
+    entry = queue.get(ack_id) if isinstance(queue, dict) and isinstance(ack_id, str) else None
+    return (
         doc.get("lastCommandAckStatus") == "completed"
-        and isinstance(ack_item, dict)
-        and ack_item.get("status") == "completed"
-        and ack_item.get("completedAt") == doc.get("lastCommandAckAt")
-        and ack_age is not None
-        and 0 <= ack_age <= S24_HEARTBEAT_FRESHNESS_SECONDS
+        and isinstance(entry, dict)
+        and entry.get("status") == "completed"
+        and isinstance(doc.get("lastCommandAckAt"), str)
+        and entry.get("completedAt") == doc.get("lastCommandAckAt")
     )
-    if has_fresh_ack:
-        return (
-            sync.get("liveDeviceVerified") is True
-            and sync.get("heartbeatAuth") == "termux-phone"
-            and sync.get("sourceType") in S24_PHONE_SYNC_SOURCES
-        )
 
-    # Boot grace: phone just started, no ack yet but heartbeat is authenticated
-    if ack_age is None and age <= S24_BOOT_GRACE_SECONDS:
-        return (
-            sync.get("liveDeviceVerified") is True
-            and sync.get("heartbeatAuth") == "termux-phone"
-            and sync.get("sourceType") in S24_PHONE_SYNC_SOURCES
-        )
 
-    return False
+def _s24_liveness_evidence(doc: dict[str, Any], age: int | None = None) -> str | None:
+    """
+    The evidence mode that proves the phone is alive, or None (s24LivenessVerdict).
+
+    A signed-broker-v2 doc proves itself with the broker's own stamp -- written only
+    after the device signature, active unexpired key and enrolled hardware verify --
+    plus an AndroidKeyStore key. A legacy doc has no server stamp, so it still needs a
+    fresh completed command ACK. Every evidence field is read top-level, where the
+    broker heartbeat writes it.
+    """
+    age = _heartbeat_age(doc) if age is None else age
+    if not (
+        _is_fresh(age)
+        and str(doc.get("agentVersion") or "").startswith(S24_PHONE_AGENT_PREFIXES)
+        and doc.get("heartbeatAuth") == "termux-phone"
+        and doc.get("liveDeviceVerified") is True
+        and doc.get("sourceType") in S24_PHONE_SYNC_SOURCES
+        and doc.get("runtimeIsAndroid") is True
+    ):
+        return None
+    method = doc.get("connectionMethod")
+    if method == "signed-broker-v2":
+        enrollment = doc.get("enrollment") if isinstance(doc.get("enrollment"), dict) else {}
+        active_key = enrollment.get("activeKeyId")
+        signed = (
+            isinstance(enrollment.get("lastSignedHeartbeatAt"), str)
+            and enrollment.get("lastSignedHeartbeatAt") == doc.get("lastSeen")
+            and isinstance(active_key, str) and active_key != ""
+            and enrollment.get("lastSignedHeartbeatKeyId") == active_key
+            and enrollment.get("lastSignedHeartbeatProtocol") == "2"
+        )
+        android_key = enrollment.get("keyType") == "android-keystore-p256"
+        return "signed-broker-v2" if signed and android_key else None
+    if method in S24_LEGACY_CONNECTION_METHODS:
+        ack_fresh = (
+            _is_fresh(_age_seconds(doc.get("lastCommandAckAt")))
+            and _s24_command_ack_consistent(doc)
+        )
+        return "legacy-strict" if ack_fresh else None
+    return None
+
+
+def _s24_phone_heartbeat_is_fresh(doc: dict[str, Any], age: int | None = None) -> bool:
+    """Accept S24 online only from attested evidence, plus the stored flag the droplet also requires."""
+    return doc.get("online") is True and _s24_liveness_evidence(doc, age) is not None
 
 
 def _effective_online(device_id: str, doc: dict[str, Any], age: int | None = None) -> bool:
@@ -631,7 +652,10 @@ def device_send(action: str, device_id: str = DEFAULT_DEVICE,
                      'start-ssh' and the other historical RCE-style actions
                      are refused since 2026-09-20.
         device_id:   target device (default: the S24).
-        params_json: JSON object string of extra fields, e.g. '{"port": 8022}'.
+        params_json: JSON object string sent as the command's payload, e.g.
+                     '{"timeout_seconds": 900}' for 'wa-media-push'. Only sync-now,
+                     wa-push and wa-media-push accept timeout_seconds; echo echoes
+                     any object back; other actions take none.
         priority:    NORMAL | HIGH | CRITICAL (default NORMAL).
 
     Returns the generated command id; poll it with device_result(...).
@@ -646,7 +670,7 @@ def device_send(action: str, device_id: str = DEFAULT_DEVICE,
     try:
         extra = json.loads(params_json)
         if not isinstance(extra, dict):
-            return "Error: params_json must be a JSON object, e.g. '{\"port\": 8022}'."
+            return "Error: params_json must be a JSON object, e.g. '{\"timeout_seconds\": 900}'."
         stolen = [k for k in extra if k in _RESERVED_COMMAND_PARAMS]
         if stolen:
             return f"Error: params_json may not set reserved command field(s): {', '.join(stolen)}."
@@ -672,7 +696,9 @@ def device_send(action: str, device_id: str = DEFAULT_DEVICE,
         "requestedAt": at,
         "requestedBy": _REQUESTED_BY,
         "source": "commandQueue",
-        **extra,
+        # The broker's poll and claim hand the device `payload` and nothing else, so
+        # params spread at the top level (as they were) never reached the phone.
+        "payload": extra,
     }
     res = _patch_doc(device_id, {
         f"commandQueue.{cmd_id}": item,

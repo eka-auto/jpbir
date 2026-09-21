@@ -125,6 +125,15 @@ class TestDeployKits(unittest.TestCase):
         self.assertLess(scheduler_proof, evidence)
         self.assertLess(evidence, final_heartbeat)
 
+        # The previous release's job cannot relaunch a daemon mid-enrollment, the final
+        # heartbeat retries when the new job's daemon holds the guard (exit 75) instead of
+        # racing it on the same seq, and success is a live guard owner, not one PID.
+        self.assertLess(installer.index('termux-job-scheduler --cancel --job-id "$JOB_ID"'), enroll)
+        self.assertIn('[[ "$final_status" -eq 75 ]] || break', installer)
+        self.assertLess(installer.index("stop_running_agent\n  final_status=0"), final_heartbeat)
+        self.assertIn('DAEMON_PID="$(guard_owner_pid)"', installer)
+        self.assertNotIn('kill -0 "$DAEMON_PID"', installer)
+
     def test_s24_installer_sha256_pins_match_bundled_bytes(self):
         kp = kit_path("s24")
         installer = (kp / "install_s24.sh").read_text(encoding="utf-8")

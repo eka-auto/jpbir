@@ -478,11 +478,15 @@ export function findIdempotentResult(enrollment, env, canonicalPath) {
   const records = Array.isArray(enrollment && enrollment.recentResults) ? enrollment.recentResults : [];
   const record = records.find((item) => item && item.requestId === env.requestId);
   if (!record) return null;
-  if (record.seq !== env.seq || record.path !== canonicalPath ||
-      record.bodySha256 !== env.bodySha256 ||
-      record.signedRequestHash !== signedRequestHash(env, canonicalPath)) {
-    return { error: 'requestId was reused with a different signed request' };
-  }
+  // The hash covers seq, path, body digest, timestamp and keyId, so it alone decides.
+  // Records written before it existed carry none; judging those by the hash turned a
+  // legitimate retry that straddled the deploy into a 401, which the client treats as a
+  // revoked key (exit 3). They fall back to the fields they do carry and age out after
+  // MAX_RECENT_RESULTS newer requests.
+  const sameRequest = typeof record.signedRequestHash === 'string'
+    ? record.signedRequestHash === signedRequestHash(env, canonicalPath)
+    : record.seq === env.seq && record.path === canonicalPath && record.bodySha256 === env.bodySha256;
+  if (!sameRequest) return { error: 'requestId was reused with a different signed request' };
   return { status: record.status, body: record.body };
 }
 

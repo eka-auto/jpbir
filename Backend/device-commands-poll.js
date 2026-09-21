@@ -76,8 +76,12 @@ export default async function handler(req, res) {
         return sendError(res, 401, priorResult.error, 'poll-reqid-reused', { keyId: env.keyId, deviceId });
       }
       if (priorResult) {
+        // Poll records keep no body (see below). A poll only reads, so the current queue is
+        // the correct answer to a retried one.
         slog('poll-idempotent-replay', { keyId: env.keyId, deviceId, seq: env.seq });
-        return res.status(priorResult.status).json(priorResult.body);
+        return res.status(priorResult.status).json(
+          { success: true, deviceId, commands: pollResponseCommands(d.commandQueue || {}) },
+        );
       }
       if (env.seq <= (enrollment.seq || 0)) {
         return sendError(res, 401, 'sequence replay rejected', 'poll-seq-replay', { keyId: env.keyId, deviceId });
@@ -98,8 +102,13 @@ export default async function handler(req, res) {
             'enrollment.seq': env.seq,
             'enrollment.lastRequestIds': [env.requestId, ...recent].slice(0, MAX_RECENT_REQUESTS),
             'enrollment.lastPollAt': nowIso,
+            // No response body. Storing it copied every visible command and its payload
+            // into the device doc on every 15-second poll, up to MAX_RECENT_RESULTS times;
+            // a backed-up queue could push the doc past Firestore's 1 MiB limit, after
+            // which this PATCH failed and poll returned 500 forever, so the device could
+            // never drain the backlog that caused it.
             'enrollment.recentResults': rememberIdempotentResult(
-              enrollment, env, CANONICAL_PATH, 200, responseBody,
+              enrollment, env, CANONICAL_PATH, 200, null,
             ),
           },
           { updateTime: devDoc.updateTime },

@@ -52,7 +52,11 @@ function s24Fields(overrides) {
     batteryLevel: 87,
     networkType: 'wifi',
     lastSeen: isoAgo(45),
+    // An ACK only proves execution when it is a completed one whose queue entry agrees
+    // (s24CommandAckConsistent), so the fixture's ACK points at a completed entry.
     lastCommandAckAt: isoAgo(45),
+    lastCommandAckId: 'cmd-x-done',
+    lastCommandAckStatus: 'completed',
     enrollment: {
       activeKeyId: 'a'.repeat(32),
       keyType: 'android-keystore-p256',
@@ -64,7 +68,7 @@ function s24Fields(overrides) {
     commandQueue: {
       'cmd-z-dial': { action: 'dial_secret +919876543210', status: 'pending', requestedAt: isoAgo(300) },
       'cmd-y-ping': { action: 'ping', status: 'queued', requestedAt: isoAgo(240) },
-      'cmd-x-done': { action: 'ping', status: 'done', requestedAt: isoAgo(600), completedAt: isoAgo(560) },
+      'cmd-x-done': { action: 'ping', status: 'completed', requestedAt: isoAgo(600), completedAt: isoAgo(45) },
     },
     network: {
       ssid: 'AtCoderJunction',
@@ -224,7 +228,7 @@ t('the precise tier adds timestamps and queue entries but still no network ident
   // broker's requestedAt rename — proving the view reuses normalizeCommandQueue
   // rather than a private re-projection that could drift from it.
   assert.ok(preciseJson.includes('dial_secret'), 'the authenticated tier must still see command bodies');
-  assert.ok(precise.commandQueue.some((e) => e.id === 'cmd-x-done' && e.completedAt === isoAgo(560)));
+  assert.ok(precise.commandQueue.some((e) => e.id === 'cmd-x-done' && e.completedAt === isoAgo(45)));
   assert.ok(precise.commandQueue.every((e) => e.queuedAt !== null));
   // ...and even with the extra keys, each never-tier bomb value stays absent:
   for (const secret of ['AtCoderJunction', 'aa:bb', '10.42.0.9', '210.16.82.193', '157.49.23.247', 'private:', 'seenBy', 'callLogs', 'Jayti Pargal']) {

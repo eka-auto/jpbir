@@ -17,6 +17,7 @@ import {
   verifyEnrolledHardware,
   verifyP256,
 } from './broker.js';
+import { S24_DEVICE_ID } from './lib/s24-attestation.js';
 
 export const config = { api: { bodyParser: false } };
 
@@ -38,6 +39,33 @@ export const TELEMETRY_WHITELIST = [
   'local',
   'network',
 ];
+
+// The fields jp-devices and the droplet read as evidence that the S24 itself is running.
+// Any enrolled broker device can send telemetry, and canonicalDeviceId is what makes
+// isS24Document() treat a doc as the phone, so a laptop agent or an off-device bridge with
+// its own key could once mark its own doc as the S24 and assert every one of these about
+// itself. Only the S24's enrolled key may write them.
+export const S24_ONLY_TELEMETRY = [
+  'heartbeatAuth',
+  'liveDeviceVerified',
+  'sourceType',
+  'runtimeIsAndroid',
+  'installationEvidence',
+];
+
+/** The device-doc fields a verified heartbeat from `deviceId` may write from its telemetry. */
+export function heartbeatTelemetryFields(deviceId, telemetry) {
+  const fields = {};
+  for (const key of TELEMETRY_WHITELIST) {
+    if (telemetry[key] === undefined) continue;
+    if (S24_ONLY_TELEMETRY.includes(key) && deviceId !== S24_DEVICE_ID) continue;
+    fields[key] = telemetry[key];
+  }
+  // Identity comes from the verified key, never from the body.
+  fields.deviceId = deviceId;
+  fields.canonicalDeviceId = deviceId;
+  return fields;
+}
 
 export function brokerHeartbeatEvidence(env, nowIso) {
   return {
@@ -139,10 +167,8 @@ export default async function handler(req, res) {
         lastSeen: nowIso,
         online: true,
         updatedAt: nowIso,
+        ...heartbeatTelemetryFields(deviceId, telemetry),
       };
-      for (const key of TELEMETRY_WHITELIST) {
-        if (telemetry[key] !== undefined) fields[key] = telemetry[key];
-      }
 
       try {
         await fsPatch(`/devices/${deviceId}`, fields, { updateTime: devDoc.updateTime });

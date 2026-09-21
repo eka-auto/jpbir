@@ -16,6 +16,7 @@ import { readFile } from 'node:fs/promises';
 import {
   SAFE_DEVICE_ACTIONS, normalizeAction, actionGateError, commandItem, RESERVED_COMMAND_PARAMS,
 } from '../../Server/jp-agent/device-health.mjs';
+import { runPython } from './python-harness.mjs';
 
 let pass = 0, total = 0;
 function t(name, fn) {
@@ -71,8 +72,8 @@ t('commandItem rejects reserved params and, since 2026-09-20, handler credential
   assert.throws(() => commandItem('echo', 'NORMAL', { wipeToken: 'x' }, 'now'));
   assert.throws(() => commandItem('echo', 'NORMAL', { newPassword: 'x' }, 'now'));
   assert.deepEqual(commandItem('echo', 'NORMAL', { tag: 'ok' }, 'now'),
-    { tag: 'ok', action: 'echo', status: 'pending', priority: 'NORMAL', requestedAt: 'now',
-      requestedBy: 'jp-agent-s24-tools', source: 'commandQueue' });
+    { action: 'echo', status: 'pending', priority: 'NORMAL', requestedAt: 'now',
+      requestedBy: 'jp-agent-s24-tools', source: 'commandQueue', payload: { tag: 'ok' } });
   assert.ok(RESERVED_COMMAND_PARAMS.includes('wipeToken'));
   assert.equal(commandItem('sync', 'NORMAL', {}, 'now').action, 'sync-now',
     'accepted aliases must be canonicalized before reaching the mailbox');
@@ -132,6 +133,62 @@ t('every Python and sandbox writer mirrors the runtime contract without drift', 
   }
 });
 
+t('queued params become the payload the broker actually delivers, never top-level entry fields', () => {
+  // poll and claim hand the device `entry.payload` and nothing else. Spread at the top level,
+  // a queued timeout_seconds never reached the phone, and a param named leaseUntil or
+  // claimToken sat beside the lease fields the broker writes onto the same entry.
+  const item = commandItem('wa-media-push', 'NORMAL', { timeout_seconds: 900, leaseUntil: 'x' }, 'now');
+  assert.deepEqual(item.payload, { timeout_seconds: 900, leaseUntil: 'x' });
+  assert.equal(Object.hasOwn(item, 'timeout_seconds'), false);
+  assert.equal(Object.hasOwn(item, 'leaseUntil'), false);
+});
+
+t('both Python queue writers quote hyphenated command ids and queue params as the payload', () => {
+  // firestore_mcp.py put `commandQueue.mcp_<ts>_wa-push` into updateMask unquoted, so
+  // Firestore answered 400 and trigger_wa_sync failed on every call.
+  const out = runPython(`
+legacy = load("Database/firestore_mcp.py")
+connect = load("Integrations/s24-connect-mcp/server.py")
+calls = []
+def record(method, path, body=None):
+    calls.append({"path": path, "body": body})
+    return {}
+legacy._fs_request = record
+connect._fs_request = record
+legacy.trigger_wa_sync()
+legacy.s24_queue_command("sync", '{"timeout_seconds": 600}')
+connect.device_send("wa-media-push", params_json='{"timeout_seconds": 900}')
+print(json.dumps({
+    "calls": calls,
+    "legacyMask": legacy._mask_path("commandQueue.fresh-sync-1.status"),
+}))
+`);
+  assert.equal(out.legacyMask, 'commandQueue.`fresh-sync-1`.status');
+  assert.equal(out.calls.length, 3);
+  for (const call of out.calls) {
+    const query = new URLSearchParams(call.path.split('?')[1]);
+    for (const fieldPath of query.getAll('updateMask.fieldPaths')) {
+      for (const segment of fieldPath.split('.')) {
+        assert.match(segment, /^(?:[A-Za-z_][A-Za-z0-9_]*|`[^`]+`)$/,
+          `unquoted Firestore field-path segment ${segment} in ${fieldPath}`);
+      }
+    }
+    const queued = Object.values(call.body.fields.commandQueue.mapValue.fields)[0].mapValue.fields;
+    assert.equal(Object.hasOwn(queued, 'timeout_seconds'), false, 'params must not sit at the top level');
+    assert.ok(queued.payload && queued.payload.mapValue, 'every queued command carries a payload map');
+  }
+  assert.equal(out.calls[0].body.fields.commandQueue.mapValue.fields[
+    Object.keys(out.calls[0].body.fields.commandQueue.mapValue.fields)[0]].mapValue.fields.action.stringValue, 'wa-push');
+  const payloadOf = (call) => Object.values(call.body.fields.commandQueue.mapValue.fields)[0]
+    .mapValue.fields.payload.mapValue.fields;
+  // Firestore REST accepts integerValue as a number or its canonical string form.
+  const timeoutOf = (call) => Number(payloadOf(call).timeout_seconds.integerValue);
+  assert.deepEqual(Object.keys(payloadOf(out.calls[1])), ['timeout_seconds']);
+  assert.equal(timeoutOf(out.calls[1]), 600);
+  assert.deepEqual(Object.keys(payloadOf(out.calls[2])), ['timeout_seconds']);
+  assert.equal(timeoutOf(out.calls[2]), 900);
+});
+
 t('the jp-agent tool imports the shared gate instead of its own judgement', async () => {
   const js = await readFile(new URL('../../Server/jp-agent/s24-tools.mjs', import.meta.url), 'utf8');
   assert.match(js, /device-health\.mjs(?:'[^']*|[^']*?)actionGateError/);
@@ -145,6 +202,8 @@ t('the standalone jp-agent MCP uses the same shared gate before writing', async 
     'standalone MCP must import device-health.mjs');
   assert.match(js, /const gate = actionGateError\(action\);/, 'standalone device_send must gate before writing');
   assert.match(js, /action: item\.action/, 'standalone response must report the canonical queued action');
+  assert.doesNotMatch(js, /'start-ssh'\)?\. Queued/, 'standalone device_send must stop advertising start-ssh');
+  assert.doesNotMatch(js, /e\.g\. 'sync-now', 'status-only', 'start-ssh'/, 'standalone description still advertises start-ssh');
 });
 
 t('the hardened daemon copy has no lock-screen or inbound-network capability left', async () => {

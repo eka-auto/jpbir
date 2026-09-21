@@ -28,7 +28,7 @@ log = logging.getLogger("channel_sandbox.agent")
 
 _SW = {'creationflags': 0x08000000} if platform.system() == 'Windows' else {}
 S24_DEVICE_ID = "samsung-s24-ultra"
-S24_AGENT_VERSION = "s24-termux-broker-2026-09-21.1"
+S24_AGENT_VERSION = "s24-termux-broker-2026-09-21.2"
 S24_ALLOWED_COMMANDS = (
     "status-only",
     "ping",
@@ -37,6 +37,10 @@ S24_ALLOWED_COMMANDS = (
     "wa-media-push",
     "sync-now",
 )
+# EX_TEMPFAIL: another agent holds this device's guard. Distinct from a failed run (2) and a
+# rejected key (3) so the installer can tell "try again once that agent is stopped" apart
+# from a real failure.
+GUARD_HELD_EXIT = 75
 
 
 def collect_hardware_identity():
@@ -340,7 +344,9 @@ def run(config_path, device_id, single_iteration=False, enroll_only=False):
     hb_interval = cfg["heartbeat_interval_seconds"]
     poll_interval = cfg["command_poll_interval_seconds"]
     allowed = cfg.get("allowed_commands", [])
-    if device_id == S24_DEVICE_ID and tuple(allowed) != S24_ALLOWED_COMMANDS:
+    # A set, not a sequence: the contract is which actions, and a hand-edited config listing
+    # the same six in another order once exited here at every JobScheduler relaunch.
+    if device_id == S24_DEVICE_ID and set(allowed) != set(S24_ALLOWED_COMMANDS):
         raise SystemExit("S24 allowed_commands must exactly match the runtime contract")
     collection = cfg["collection"]
 
@@ -387,7 +393,9 @@ def run_broker(cfg, config_dir, device_id, device_cfg, single_iteration, enroll_
     hb_interval = cfg["heartbeat_interval_seconds"]
     poll_interval = cfg["command_poll_interval_seconds"]
     allowed = cfg.get("allowed_commands", [])
-    if device_id == S24_DEVICE_ID and tuple(allowed) != S24_ALLOWED_COMMANDS:
+    # A set, not a sequence: the contract is which actions, and a hand-edited config listing
+    # the same six in another order once exited here at every JobScheduler relaunch.
+    if device_id == S24_DEVICE_ID and set(allowed) != set(S24_ALLOWED_COMMANDS):
         raise SystemExit("S24 allowed_commands must exactly match the runtime contract")
     worker_session = f"{socket.gethostname()}-{os.getpid()}-{int(time.time())}"
 
@@ -408,6 +416,18 @@ def run_broker(cfg, config_dir, device_id, device_cfg, single_iteration, enroll_
         log.info("enrolled with broker: keyId=%s", result.get("keyId"))
 
     if enroll_only:
+        # Local state saying "enrolled" is not proof the broker still accepts the key. A
+        # reinstall over a revoked, superseded or expired (180-day) key used to report
+        # "enrollment verified" without any request, get boot persistence installed, and
+        # leave a daemon that exited 3 every 15 minutes. A signed poll proves the key end
+        # to end without publishing a heartbeat, which must wait for installation evidence.
+        try:
+            client.poll()
+        except BrokerAuthError as e:
+            raise SystemExit(
+                f"broker rejected the enrolled key for {device_id} ({e}); remove {state_path} "
+                "and re-run the installer with a fresh enrollment code"
+            ) from e
         log.info("broker enrollment verified for %s", device_id)
         return
 
@@ -597,19 +617,21 @@ def main():
     if args.once and args.enroll_only:
         p.error("--once and --enroll-only are mutually exclusive")
 
-    guarded = not (args.once or args.enroll_only)
-    if guarded:
-        try:
-            acquire_guard(args.device_id, str(pidfile))
-        except GuardHeldError as e:
-            log.error("%s", e)
-            sys.exit(1)
-        atexit.register(release_guard, str(pidfile))
+    # Every mode signs requests that advance the one persisted seq counter, so every mode
+    # takes the guard. --once used to skip it, and the installer's final heartbeat raced the
+    # daemon its own JobScheduler job had just started: both signed seq K+1, and whichever
+    # arrived second got 401 "sequence replay rejected" -- the installer aborting after
+    # persistence was installed, or the daemon logging a false "key revoked" and exiting 3.
+    try:
+        acquire_guard(args.device_id, str(pidfile))
+    except GuardHeldError as e:
+        log.error("%s", e)
+        sys.exit(GUARD_HELD_EXIT)
+    atexit.register(release_guard, str(pidfile))
 
     def _shutdown(signum, frame):
         log.info("signal %s received, exiting", signum)
-        if guarded:
-            release_guard(str(pidfile))
+        release_guard(str(pidfile))
         sys.exit(0)
 
     signal.signal(signal.SIGINT, _shutdown)
@@ -623,8 +645,7 @@ def main():
         log.exception("agent failed: %s", e)
         sys.exit(2)
     finally:
-        if guarded:
-            release_guard(str(pidfile))
+        release_guard(str(pidfile))
 
 
 if __name__ == "__main__":

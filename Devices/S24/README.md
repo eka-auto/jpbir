@@ -21,15 +21,22 @@ The installer targets `https://jaytipargal.tech` and fails closed unless
 Android reports manufacturer `Samsung`, model `SM-S928*`, and a P-256 key
 inside secure hardware. It verifies each bundled artifact against a pinned
 SHA-256 digest and creates an isolated Python environment. Enrollment runs
-without publishing liveness; the installer then verifies the executable
-Termux:Boot launcher and persisted 15-minute JobScheduler entry, records that
-installation evidence, and only then publishes the final signed heartbeat.
-The install also starts the persistent broker process and verifies its PID.
+without publishing liveness and ends with a signed poll, so a reinstall over a
+revoked, superseded or expired key stops here, before any persistence exists.
+The installer then verifies the executable Termux:Boot launcher and persisted
+15-minute JobScheduler entry, records that installation evidence, and only
+then publishes the final signed heartbeat. It finishes by confirming a live
+broker process holds the device guard. Every agent mode takes that guard, so
+the installer's own requests never race a daemon the new job has already
+started (both would sign the same sequence number, and one would be rejected
+as a replay).
 
 The official command surface is exactly `status-only`, `ping`, `echo`,
 `wa-push`, `wa-media-push`, and `sync-now`. Status and ping accept no payload;
 echo returns a JSON-object payload unchanged; the three push/sync actions
-accept only an optional bounded integer `timeout_seconds`. A dashboard LIVE
+accept only an optional bounded integer `timeout_seconds`. The queue tools
+(`device_send`'s `params`, `s24_queue_command`'s `extra`) write these as the
+command's `payload`, which is what poll and claim deliver. A dashboard LIVE
 badge alone is not execution proof; verify a fresh signed heartbeat and a
 command that reaches completed status.
 
