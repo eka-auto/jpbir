@@ -7,12 +7,12 @@ const STATS_KEY = _env['STATS_' + 'KEY'];
 
 export const S24_DEVICE_ID = 'samsung-s24-ultra';
 export const ALLOWED_ACTIONS = new Set([
-  'heartbeat',
-  'sync-now',
-  'wakeup',
   'status-only',
+  'ping',
+  'echo',
   'wa-push',
   'wa-media-push',
+  'sync-now',
 ]);
 
 /**

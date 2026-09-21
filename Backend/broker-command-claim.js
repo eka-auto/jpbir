@@ -6,6 +6,7 @@ import {
   fsGet,
   fsPatch,
   findIdempotentResult,
+  keyIsExpired,
   MAX_CLAIM_ATTEMPTS,
   MAX_RECENT_REQUESTS,
   parseEnvelope,
@@ -60,6 +61,7 @@ export default async function handler(req, res) {
     if (!keyDoc) return sendError(res, 403, 'key not enrolled', 'claim-key-unknown', { keyId: env.keyId });
     const k = dec({ mapValue: { fields: keyDoc.fields } }) || {};
     if (k.status !== 'active') return sendError(res, 403, `key is ${k.status || 'inactive'}`, 'claim-key-inactive', { keyId: env.keyId });
+    if (keyIsExpired(k)) return sendError(res, 403, 'key expired; re-enroll', 'claim-key-expired', { keyId: env.keyId });
     const deviceId = k.deviceId;
 
     if (!verifyP256(k.publicKeyPem, env.canonical, env.signature)) {

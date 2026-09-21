@@ -12,17 +12,26 @@ import {
   expandFieldPaths,
   findIdempotentResult,
   firestoreDocumentName,
+  keyIsExpired,
   normalizeHardwareFingerprint,
   parseEnvelope,
   rememberIdempotentResult,
+  quoteFirestoreFieldPath,
   canonicalString,
   verifyEnrolledHardware,
   verifyP256,
   verifySignerAttestation,
 } from '../../Backend/broker.js';
 import { CANONICAL_PATH as ENROLL_PATH, isP256Pem } from '../../Backend/device-enroll.js';
-import { CANONICAL_PATH as HEARTBEAT_PATH } from '../../Backend/device-heartbeat.js';
-import { CANONICAL_PATH as POLL_PATH } from '../../Backend/device-commands-poll.js';
+import {
+  brokerHeartbeatEvidence,
+  CANONICAL_PATH as HEARTBEAT_PATH,
+  TELEMETRY_WHITELIST,
+} from '../../Backend/device-heartbeat.js';
+import {
+  CANONICAL_PATH as POLL_PATH,
+  pollResponseCommands,
+} from '../../Backend/device-commands-poll.js';
 import { canonicalClaimPath } from '../../Backend/broker-command-claim.js';
 import { canonicalCompletePath } from '../../Backend/broker-command-complete.js';
 
@@ -157,6 +166,15 @@ test('broker v2: conflicting or unsafe Firestore field paths fail closed', () =>
   throws(() => expandFieldPaths({ '__proto__.polluted': true }), /invalid/);
 });
 
+test('broker v2: Firestore masks quote each non-simple map-key segment', () => {
+  strictEqual(quoteFirestoreFieldPath('enrollment.seq'), 'enrollment.seq');
+  strictEqual(quoteFirestoreFieldPath('commandQueue.sync-now_123.status'), 'commandQueue.`sync-now_123`.status');
+  strictEqual(quoteFirestoreFieldPath('commandQueue.550e8400-e29b-41d4-a716-446655440000'),
+    'commandQueue.`550e8400-e29b-41d4-a716-446655440000`');
+  strictEqual(quoteFirestoreFieldPath('map.a`b\\c'), 'map.`a\\`b\\\\c`');
+  throws(() => quoteFirestoreFieldPath('commandQueue..status'), /invalid/);
+});
+
 test('broker v2: enrollment accepts P-256 and rejects other EC curves', () => {
   const p256 = generateKeyPairSync('ec', { namedCurve: 'prime256v1' }).publicKey
     .export({ type: 'spki', format: 'pem' });
@@ -191,7 +209,7 @@ test('broker v2: production signer metadata fails closed', () => {
 });
 
 test('broker v2: command results are idempotent only for the same signed request', () => {
-  const env = { requestId: 'request-1', seq: 8, bodySha256: 'body-hash' };
+  const env = { requestId: 'request-1', seq: 8, timestamp: 10, bodySha256: 'body-hash' };
   const body = { success: true, claimToken: 'token' };
   const recentResults = rememberIdempotentResult({}, env, '/api/device-command-claim/c1', 200, body);
   deepStrictEqual(
@@ -202,4 +220,39 @@ test('broker v2: command results are idempotent only for the same signed request
     findIdempotentResult({ recentResults }, { ...env, bodySha256: 'changed' }, '/api/device-command-claim/c1'),
     { error: 'requestId was reused with a different signed request' },
   );
+  deepStrictEqual(
+    findIdempotentResult({ recentResults }, { ...env, timestamp: 11 }, '/api/device-command-claim/c1'),
+    { error: 'requestId was reused with a different signed request' },
+  );
+});
+
+test('broker v2: heartbeat evidence is server-owned and S24 claims are explicitly whitelisted', () => {
+  deepStrictEqual(brokerHeartbeatEvidence({ keyId: 'a'.repeat(32) }, '2026-09-21T00:00:00.000Z'), {
+    'enrollment.lastHeartbeatAt': '2026-09-21T00:00:00.000Z',
+    'enrollment.lastSignedHeartbeatAt': '2026-09-21T00:00:00.000Z',
+    'enrollment.lastSignedHeartbeatKeyId': 'a'.repeat(32),
+    'enrollment.lastSignedHeartbeatProtocol': '2',
+  });
+  for (const field of ['heartbeatAuth', 'liveDeviceVerified', 'sourceType', 'runtimeIsAndroid', 'installationEvidence']) {
+    strictEqual(TELEMETRY_WHITELIST.includes(field), true, field);
+  }
+  strictEqual(TELEMETRY_WHITELIST.includes('enrollment'), false);
+  strictEqual(TELEMETRY_WHITELIST.includes('lastSeen'), false);
+});
+
+test('broker v2: poll preserves requestedAt as the public queuedAt timestamp', () => {
+  const requestedAt = '2026-09-21T00:00:00.000Z';
+  deepStrictEqual(pollResponseCommands({
+    'sync-now-id': { action: 'sync-now', status: 'pending', requestedAt },
+  }, Date.parse(requestedAt)), [{
+    commandId: 'sync-now-id', action: 'sync-now', payload: {}, queuedAt: requestedAt,
+    state: 'pending', attempt: 0,
+  }]);
+});
+
+test('broker v2: malformed and elapsed key expiries fail closed', () => {
+  strictEqual(keyIsExpired({}), false);
+  strictEqual(keyIsExpired({ expiresAt: 'not-a-date' }, 100), true);
+  strictEqual(keyIsExpired({ expiresAt: '1970-01-01T00:00:01.000Z' }, 1000), true);
+  strictEqual(keyIsExpired({ expiresAt: '1970-01-01T00:00:02.000Z' }, 1000), false);
 });

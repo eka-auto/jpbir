@@ -127,6 +127,11 @@ The emulator config expects a Firestore emulator on `127.0.0.1:8080`:
 firebase emulators:start --only firestore    # separate terminal
 ```
 
+Run `python e2e_engineering_sandbox_test.py` in another terminal to exercise
+dashboard command creation, device-agent execution, and completed queue reads
+for both configured emulator devices. CI wraps this script in
+`firebase-tools emulators:exec` so the emulator lifecycle is deterministic.
+
 Without one running, the pages load and every Firestore-backed card reports
 `live source unavailable` rather than failing silently — which is the state
 worth being able to see locally.

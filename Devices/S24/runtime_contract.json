@@ -1,5 +1,6 @@
 {
-  "schemaVersion": "2",
+  "schemaVersion": "3",
+  "release": "s24-termux-broker-2026-09-21.1",
   "projectId": "intrepid-stage-495117-q1",
   "firestoreDatabase": "eka-agent",
   "deviceId": "samsung-s24-ultra",
@@ -16,11 +17,34 @@
   },
   "transport": {
     "method": "signed-outbound-https",
-    "brokerBaseUrl": "https://agent.jaytipargal.tech",
+    "brokerBaseUrl": "https://jaytipargal.tech",
+    "connectionMethod": "signed-broker-v2",
     "enrollPath": "/api/device-enroll",
     "heartbeatPath": "/api/device-heartbeat",
     "pollPath": "/api/device-commands-poll",
     "inboundListener": false
+  },
+  "heartbeat": {
+    "agentVersionPrefix": "s24-termux-broker-",
+    "heartbeatAuth": "termux-phone",
+    "sourceType": "live_daemon",
+    "runtimeIsAndroid": true,
+    "liveDeviceVerifiedRequires": [
+      "android-termux-runtime",
+      "samsung-sm-s928-hardware",
+      "termux-boot-package",
+      "executable-boot-launcher",
+      "persisted-job-scheduler"
+    ],
+    "installationEvidencePublished": true
+  },
+  "persistence": {
+    "termuxBootPackage": "com.termux.boot",
+    "bootLauncher": "~/.termux/boot/start_eka_s24_broker.sh",
+    "jobSchedulerId": 240619,
+    "jobSchedulerPeriodMs": 900000,
+    "jobSchedulerPersisted": true,
+    "verifiedBeforeFinalHeartbeat": true
   },
   "command": {
     "allowlistedActions": ["status-only", "ping", "echo", "wa-push", "wa-media-push", "sync-now"],

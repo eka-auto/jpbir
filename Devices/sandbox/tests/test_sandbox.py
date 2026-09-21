@@ -326,6 +326,27 @@ class DashboardTests(unittest.TestCase):
         self.firestore.get_doc.assert_not_called()
         self.firestore.update_command_queue.assert_not_called()
 
+    def test_command_writer_accepts_contract_action_and_preserves_payload(self):
+        response = self.http.post(
+            "/api/devices/known/commands",
+            json={"action": "echo", "payload": {"sequence": 7}},
+        )
+        self.assertEqual(response.status_code, 202)
+        args = self.firestore.update_command_queue.call_args.args
+        self.assertEqual(args[:2], ("sandbox_devices", "known"))
+        self.assertEqual(args[3]["action"], "echo")
+        self.assertEqual(args[3]["payload"], {"sequence": 7})
+        self.assertEqual(args[3]["status"], "pending")
+
+    def test_stale_config_cannot_reenable_non_contract_action(self):
+        dashboard_api.app.config["SANDBOX_CFG"]["allowed_commands"] = ["start-ssh"]
+        response = self.http.post(
+            "/api/devices/known/commands", json={"action": "start-ssh"}
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("not allowed", response.get_json()["error"])
+        self.firestore.update_command_queue.assert_not_called()
+
     def test_agent_query_proxies_to_live_agent(self):
         upstream = Mock()
         upstream.ok = True

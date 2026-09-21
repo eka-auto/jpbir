@@ -5,7 +5,8 @@ name: Device Sandbox Tests
 # that every device kit (S24, Lenovo, Vivobook) bundles a byte-identical copy of
 # the canonical agent (tests/test_deploy_kits.py). That drift check runs on no
 # other workflow, so a kit falling out of sync with Devices/sandbox reaches a
-# device unnoticed. This gate fails the build instead.
+# device unnoticed. It also starts an isolated Firestore emulator and drives
+# the dashboard -> queue -> device-agent completion path end to end.
 
 on:
   push:
@@ -50,3 +51,18 @@ jobs:
         env:
           PYTHONPATH: .
         run: python -m pytest tests/ -q
+
+      - name: Setup Java for Firestore emulator
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Run dashboard and agent emulator E2E
+        working-directory: Devices/sandbox
+        run: >-
+          npx --yes firebase-tools@15.30.2 emulators:exec
+          --config firebase.json
+          --project intrepid-stage-495117-q1
+          --only firestore
+          "python e2e_engineering_sandbox_test.py"

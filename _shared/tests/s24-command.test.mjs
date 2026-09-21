@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import { ALLOWED_ACTIONS, S24_DEVICE_ID, isAuthorized, validateCommand } from '../../Backend/s24-command.js';
 
 const validToken = 'owner-dashboard-token';
@@ -8,10 +9,11 @@ function request(headers = {}) {
 }
 
 assert.deepEqual(validateCommand({}), { device: S24_DEVICE_ID, action: 'sync-now' });
-assert.deepEqual(validateCommand({ device: S24_DEVICE_ID, action: 'heartbeat' }), {
+assert.deepEqual(validateCommand({ device: S24_DEVICE_ID, action: 'ping' }), {
   device: S24_DEVICE_ID,
-  action: 'heartbeat',
+  action: 'ping',
 });
+assert.match(validateCommand({ device: S24_DEVICE_ID, action: 'heartbeat' }).error, /action must be one of/);
 assert.equal(ALLOWED_ACTIONS.has('start-ssh'), false);
 assert.equal(ALLOWED_ACTIONS.has('update-and-restart'), false);
 assert.equal(validateCommand({ device: 'jayti-asus-vivobook', action: 'sync-now' }).error, 'device must be samsung-s24-ultra');
@@ -29,9 +31,12 @@ console.log('s24-command contract tests passed');
 // wa-media-push, which maps to one fixed on-device wrapper) can't be dropped,
 // without this test failing. Keep it in lockstep with device_agent.py's
 // handle_command and Devices/S24/runtime_contract.json.
+const runtimeContract = JSON.parse(await readFile(
+  new URL('../../Devices/S24/runtime_contract.json', import.meta.url), 'utf8',
+));
 assert.deepEqual(
   [...ALLOWED_ACTIONS].sort(),
-  ['heartbeat', 'status-only', 'sync-now', 'wa-media-push', 'wa-push', 'wakeup'],
+  [...runtimeContract.command.allowlistedActions].sort(),
   'ALLOWED_ACTIONS drifted — update device_agent.py + runtime_contract.json + this pin together',
 );
 // Extraction/destruction actions must never be remotely triggerable here.

@@ -23,20 +23,11 @@
     }
   ],
   "allowed_commands": [
-    "sync-now",
-    "heartbeat",
     "status-only",
-    "wakeup",
-    "collect-calls",
-    "collect-sms",
-    "collect-contacts",
-    "collect-location",
-    "collect-app-list",
-    "collect-whatsapp",
-    "full-sync",
-    "extract_whatsapp",
-    "debug-calllogs",
-    "start-ssh",
-    "start-daemon"
+    "ping",
+    "echo",
+    "wa-push",
+    "wa-media-push",
+    "sync-now"
   ]
 }

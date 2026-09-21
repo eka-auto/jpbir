@@ -16,7 +16,7 @@ Tools exposed:
     s24_wakeup          -- write forceWakeup=true + CRITICAL priority
     s24_queue_command   -- append an item to commandQueue
     s24_clear_queue     -- remove all pending commandQueue items
-    s24_enable_ssh      -- queue a command that starts sshd in Termux (port 8022)
+    s24_enable_ssh      -- compatibility tool; refuses the forbidden SSH action
     s24_read_calls      -- return call logs stored in Firestore
     s24_read_sms        -- return SMS messages stored in Firestore
     s24_read_location   -- return last known location
@@ -47,6 +47,42 @@ FS_BASE  = f"https://firestore.googleapis.com/v1/projects/{PROJECT_ID}/databases
 _token_cache: dict = {"token": None, "expires_at": 0.0}
 
 mcp = FastMCP("s24-cloud")
+
+# Exact mirror of Devices/S24/runtime_contract.json. This legacy MCP predates
+# the runtime contract and once accepted arbitrary actions plus arbitrary
+# top-level command fields. Keep the trust boundary at the queue writer: an MCP
+# credential may request only a contract action and cannot forge command state
+# or pass credentials consumed by historical dangerous handlers.
+SAFE_DEVICE_ACTIONS = frozenset({
+    "status-only", "ping", "echo", "wa-push", "wa-media-push", "sync-now",
+})
+RESERVED_COMMAND_PARAMS = frozenset({
+    "action", "status", "priority", "requestedAt", "requestedBy", "source",
+    "completedAt", "ackAt", "claimedAt", "processedAt", "result",
+    "wipeToken", "newPassword",
+})
+
+
+def _normalize_action(action: str) -> str:
+    normalized = str(action or "").strip().lower().replace("_", "-")
+    aliases = {
+        "sync": "sync-now",
+        "direct-cloud-sync": "sync-now",
+        "collect-history": "sync-now",
+        "history": "sync-now",
+        "status": "status-only",
+    }
+    return aliases.get(normalized, normalized)
+
+
+def _action_gate(action: str) -> str | None:
+    canonical = _normalize_action(action)
+    if canonical in SAFE_DEVICE_ACTIONS:
+        return None
+    return (
+        f"action {action!r} is refused: it resolves to {canonical or 'unknown'!r}, "
+        f"outside the runtime contract {sorted(SAFE_DEVICE_ACTIONS)}"
+    )
 
 # ---------------------------------------------------------------------------
 # Auth helpers
@@ -240,18 +276,27 @@ def s24_queue_command(action: str, extra: str = "{}") -> str:
     """
     Append a command to the S24 commandQueue in Firestore.
 
-    action: e.g. 'sync-now', 'start-ssh', 'collect-calls', 'collect-sms', 'collect-location'
-    extra:  JSON string with any additional fields, e.g. '{"port": 8022}'
+    action: one of the actions admitted by the S24 runtime contract
+    extra:  JSON object string with non-reserved additional fields
     """
+    gate = _action_gate(action)
+    if gate is not None:
+        return f"Error: {gate}"
     try:
         extra_dict = json.loads(extra)
     except json.JSONDecodeError:
         return f"Error: extra must be valid JSON, got: {extra}"
+    if not isinstance(extra_dict, dict):
+        return "Error: extra must be a JSON object"
+    reserved = sorted(RESERVED_COMMAND_PARAMS.intersection(extra_dict))
+    if reserved:
+        return f"Error: extra may not set reserved command field(s): {', '.join(reserved)}"
 
-    qid = f"mcp_{int(time.time())}_{action.replace(' ', '_')}"
+    canonical_action = _normalize_action(action)
+    qid = f"mcp_{int(time.time())}_{canonical_action.replace(' ', '_')}"
     at  = _now_iso()
     item = {
-        "action": action,
+        "action": canonical_action,
         "status": "pending",
         "requestedAt": at,
         "requestedBy": "claude-mcp-s24-cloud",
@@ -263,7 +308,7 @@ def s24_queue_command(action: str, extra: str = "{}") -> str:
         "forceWakeup": True,
         "wakeupSignal": at,
     })
-    return f"Queued command '{action}' as {qid} at {at}."
+    return f"Queued command '{canonical_action}' as {qid} at {at}."
 
 
 @mcp.tool()
@@ -282,10 +327,9 @@ def s24_clear_queue() -> str:
 @mcp.tool()
 def s24_enable_ssh() -> str:
     """
-    Queue a command that tells the Termux daemon to start sshd on port 8022.
-    Once Termux picks this up, you can SSH in: ssh -p 8022 u0_a<uid>@<s24-ip>
+    Retained for old MCP clients, but the runtime contract forbids inbound SSH.
     """
-    return s24_queue_command("start-ssh", '{"port": 8022, "note": "start sshd in termux"}')
+    return s24_queue_command("start-ssh")
 
 
 @mcp.tool()
@@ -330,105 +374,13 @@ def s24_read_location() -> str:
 @mcp.tool()
 def trigger_wa_sync() -> str:
     """
-    Tell the S24 Termux daemon to export ALL WhatsApp chats + phone call logs
-    to Firestore now. Results land in samsungS24DirectSync.whatsappChats and
-    samsungS24DirectSync.callLogs. After running this, call export_to_desktop.
+    Queue the fixed on-device WhatsApp push wrapper.
+
+    The previous implementation placed an arbitrary multiline Python command
+    in the queue. That bypassed the action gate and violated the pull-only
+    runtime contract even though the script text was locally generated.
     """
-    at  = _now_iso()
-    qid = f"wa_export_{int(time.time())}"
-    termux_script = r"""
-import os, subprocess, json, base64, time
-
-PROJECT = 'intrepid-stage-495117-q1'
-DOC     = 'samsung-s24-ultra'
-FS_BASE = f'https://firestore.googleapis.com/v1/projects/{PROJECT}/databases/eka-agent/documents'
-
-def push_field(field, value_json):
-    url = f'{FS_BASE}/devices/{DOC}?updateMask.fieldPaths=samsungS24DirectSync.{field}'
-    body = json.dumps({'fields': {'samsungS24DirectSync': {'mapValue': {'fields': {
-        field: {'stringValue': value_json if len(value_json)<950000 else value_json[:950000]}
-    }}}}})
-    subprocess.run(['curl','-s','-X','PATCH',url,'-H','Content-Type: application/json','-d',body], timeout=15)
-
-# ── 1. Call logs ──────────────────────────────────────────────────────────────
-calls = []
-try:
-    r = subprocess.run(['termux-call-log','-l','500'], capture_output=True, text=True, timeout=20)
-    if r.stdout.strip(): calls = json.loads(r.stdout)
-except: pass
-if not calls:
-    try:
-        r2 = subprocess.run(['content','query','--uri','content://call_log/calls',
-            '--projection','number,date,duration,type,name','--sort','date DESC','--limit','500'],
-            capture_output=True, text=True, timeout=15)
-        if r2.stdout.strip():
-            for line in r2.stdout.strip().splitlines():
-                row = {}
-                for part in line.split(','):
-                    if '=' in part:
-                        k,v = part.strip().split('=',1)
-                        row[k.strip()] = v.strip()
-                if row: calls.append(row)
-    except: pass
-push_field('callLogs', json.dumps(calls[:500], default=str))
-print(f'Pushed {len(calls)} call logs')
-
-# ── 2. WhatsApp exported txt files ──────────────────────────────────────────
-chats = {}
-wa_dirs = ['/sdcard/WhatsApp','/sdcard/Android/media/com.whatsapp/WhatsApp',
-           '/storage/emulated/0/WhatsApp','/sdcard/Download','/sdcard/Documents']
-for d in wa_dirs:
-    if not os.path.isdir(d): continue
-    for root,dirs,files in os.walk(d):
-        for f in files:
-            if not f.endswith('.txt'): continue
-            if 'chat' not in f.lower() and 'whatsapp' not in f.lower(): continue
-            fp = os.path.join(root, f)
-            try:
-                with open(fp,'r',encoding='utf-8',errors='replace') as fh:
-                    content = fh.read(200000)
-                name = f.replace('WhatsApp Chat with ','').replace('.txt','').strip()
-                chats[name] = content
-            except: pass
-push_field('whatsappChats', json.dumps(chats, ensure_ascii=False, default=str)[:950000])
-print(f'Pushed {len(chats)} WA chat files')
-
-# mark done
-subprocess.run(['curl','-s','-X','PATCH',
-    f'{FS_BASE}/devices/{DOC}?updateMask.fieldPaths=samsungS24DirectSync.waExportDone&updateMask.fieldPaths=samsungS24DirectSync.waExportAt',
-    '-H','Content-Type: application/json',
-    '-d', json.dumps({'fields':{'samsungS24DirectSync':{'mapValue':{'fields':{
-        'waExportDone':{'booleanValue':True},
-        'waExportAt':{'stringValue': str(int(time.time()))}
-    }}}}})], timeout=10)
-print('DONE')
-"""
-    # The script above runs on the S24 itself and had eka-agent baked in. Point
-    # it at the same database this server uses, otherwise the phone would write
-    # its export to one database while we read from another.
-    termux_script = termux_script.replace(
-        "databases/eka-agent/documents", f"databases/{FIRESTORE_DB}/documents"
-    )
-    item = {
-        "action":      "export_whatsapp_and_calls",
-        "status":      "pending",
-        "priority":    "CRITICAL",
-        "type":        "termux",
-        "cmd":         f"python3 - << 'PYEOF'\n{termux_script}\nPYEOF",
-        "requestedAt": at,
-        "requestedBy": "claude-mcp",
-    }
-    _patch_doc(PRIMARY_DOC, {
-        f"commandQueue.{qid}": item,
-        "forceWakeup":     True,
-        "EXECUTE_NOW":     True,
-        "commandPriority": "CRITICAL",
-        "commandId":       qid,
-        "wakeupSignal":    at,
-    })
-    return (f"Sync command queued as {qid}.\n"
-            f"S24 Termux will export WhatsApp chats + call logs to Firestore.\n"
-            f"Wait ~30-60 seconds then call export_to_desktop().")
+    return s24_queue_command("wa-push")
 
 
 @mcp.tool()

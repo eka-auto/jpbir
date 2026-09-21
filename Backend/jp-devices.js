@@ -5,6 +5,8 @@ import {
   S24_ACK_MAX_AGE_SECONDS,
   S24_RUNTIME_EVIDENCE,
   s24AttestationChecks,
+  s24HeartbeatAuthenticated,
+  s24LivenessEvidence,
   firstFailedCheck,
 } from './lib/s24-attestation.js';
 import { requireKey } from './_auth.js';
@@ -149,26 +151,40 @@ function commandAckTimestamp(fields) {
 }
 
 export function strictS24Liveness(fields, heartbeatAgeSeconds, ackAgeSeconds) {
-  // Every field is read top-level here. Server/jp-agent/device-health.mjs reads
-  // liveDeviceVerified and sourceType from the nested samsungS24DirectSync sub-map, and
-  // grants a boot grace this dashboard does not. Those are deliberate per-caller policy
-  // differences passed explicitly at the call site — not drift, and not to be "unified"
-  // without deciding which behaviour is correct first. allowBootGrace defaults to false.
+  const enrollment = fields.enrollment || {};
   const checks = s24AttestationChecks({
     agentVersion: fields.agentVersion,
+    connectionMethod: fields.connectionMethod,
     heartbeatAuth: fields.heartbeatAuth,
     liveDeviceVerified: fields.liveDeviceVerified,
     sourceType: fields.sourceType,
     runtimeIsAndroid: fields[S24_RUNTIME_EVIDENCE],
     heartbeatAgeSeconds,
     ackAgeSeconds,
+    lastSeen: fields.lastSeen,
+    signedHeartbeatAt: enrollment.lastSignedHeartbeatAt,
+    signedHeartbeatKeyId: enrollment.lastSignedHeartbeatKeyId,
+    signedHeartbeatProtocol: enrollment.lastSignedHeartbeatProtocol,
+    activeKeyId: enrollment.activeKeyId,
+    keyType: enrollment.keyType,
   });
-  const failed = firstFailedCheck(checks);
+  const signedBroker = fields.connectionMethod === 'signed-broker-v2';
+  const requiredChecks = signedBroker
+    ? Object.fromEntries(Object.entries(checks).filter(([name]) =>
+      !['commandAckFresh', 'legacyConnection'].includes(name)))
+    : Object.fromEntries(Object.entries(checks).filter(([name]) =>
+      !['signedBrokerHeartbeat', 'androidHardwareKey', 'signedBrokerConnection'].includes(name)));
+  const failed = firstFailedCheck(requiredChecks);
+  const heartbeatAuthenticated = s24HeartbeatAuthenticated(checks);
+  const evidenceMode = s24LivenessEvidence(checks);
   return {
     mode: 'strict-s24-attestation',
-    live: !failed,
+    live: heartbeatAuthenticated,
+    evidenceMode,
+    heartbeatAuthenticated,
+    commandExecutionRecentlyProven: checks.commandAckFresh,
     checks,
-    reason: failed ? `${failed} is missing or stale` : 'authenticated heartbeat and command acknowledgement are fresh',
+    reason: failed ? `${failed} is missing or stale` : 'signed broker heartbeat is authenticated and fresh',
   };
 }
 

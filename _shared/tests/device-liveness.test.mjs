@@ -11,10 +11,19 @@ import { strictS24Liveness } from '../../Backend/jp-devices.js';
 // that encodes a fiction tests the fiction, not the fleet.
 const valid = {
   agentVersion: 's24-direct-cloud-2026-09-07.1',
+  connectionMethod: 'signed-broker-v2',
   heartbeatAuth: 'termux-phone',
   liveDeviceVerified: true,
   sourceType: 'live_termux',
   runtimeIsAndroid: true,
+  lastSeen: '2026-09-21T00:00:00.000Z',
+  enrollment: {
+    activeKeyId: 'a'.repeat(32),
+    keyType: 'android-keystore-p256',
+    lastSignedHeartbeatAt: '2026-09-21T00:00:00.000Z',
+    lastSignedHeartbeatKeyId: 'a'.repeat(32),
+    lastSignedHeartbeatProtocol: '2',
+  },
 };
 
 // What a bridge process running off-device actually writes now. Every one of
@@ -37,10 +46,11 @@ function t(name, fn) {
   catch (e) { console.log('  FAIL ' + name + ' -> ' + e.message); process.exitCode = 1; }
 }
 
-t('S24 is live only when every attestation check and ACK is fresh', () => {
+t('S24 is live when its signed broker heartbeat and telemetry attestation are fresh', () => {
   const result = strictS24Liveness(valid, 30, 120);
   assert.equal(result.live, true);
-  assert.equal(result.reason, 'authenticated heartbeat and command acknowledgement are fresh');
+  assert.equal(result.reason, 'signed broker heartbeat is authenticated and fresh');
+  assert.equal(result.commandExecutionRecentlyProven, true);
 });
 
 t('stored online state cannot replace a missing authenticated agent proof', () => {
@@ -49,10 +59,26 @@ t('stored online state cannot replace a missing authenticated agent proof', () =
   assert.equal(result.checks.authenticatedAgent, false);
 });
 
-t('a stale command ACK makes an otherwise fresh S24 offline', () => {
+t('a stale command ACK is reported separately without making a fresh S24 offline', () => {
   const result = strictS24Liveness(valid, 30, 301);
-  assert.equal(result.live, false);
+  assert.equal(result.live, true);
   assert.equal(result.checks.commandAckFresh, false);
+  assert.equal(result.commandExecutionRecentlyProven, false);
+});
+
+t('client telemetry without a matching server broker stamp fails closed', () => {
+  const unsigned = { ...valid };
+  delete unsigned.enrollment;
+  const result = strictS24Liveness(unsigned, 30, 30);
+  assert.equal(result.live, false);
+  assert.equal(result.checks.signedBrokerHeartbeat, false);
+});
+
+t('legacy direct-cloud evidence remains a strict ACK-gated fallback', () => {
+  const legacy = { ...valid, connectionMethod: 'termux-direct-cloud' };
+  delete legacy.enrollment;
+  assert.equal(strictS24Liveness(legacy, 30, 30).live, true);
+  assert.equal(strictS24Liveness(legacy, 30, 301).live, false);
 });
 
 t('a bridge process acknowledging commands on time is still not the phone', () => {

@@ -129,14 +129,11 @@ _REQUESTED_BY = "s24-connect-mcp"
 # ---------------------------------------------------------------------------
 _SAFE_DEVICE_ACTIONS = frozenset({
     'status-only', 'ping', 'echo', 'wa-push', 'wa-media-push', 'sync-now',
-    'sync', 'direct-cloud-sync', 'collect-history', 'history',
-    'heartbeat', 'wakeup',
 })
 
 _ACTION_ALIASES = {
     'sync': 'sync-now', 'direct-cloud-sync': 'sync-now', 'collect-history': 'sync-now', 'history': 'sync-now',
     'status': 'status-only',
-    'ping': 'heartbeat',
     'start-sshd': 'start-ssh', 'ssh': 'start-ssh',
     'wake': 'wakeup', 'wake-up': 'wakeup',
     'restart': 'update-and-restart', 'pull-and-restart': 'update-and-restart', 'update': 'update-and-restart',
@@ -661,6 +658,7 @@ def device_send(action: str, device_id: str = DEFAULT_DEVICE,
     gate = _action_gate(action)
     if gate is not None:
         return "Error: " + gate
+    canonical_action = _normalize_action(action)
 
     at = _now_iso()
     # Keep the id to [A-Za-z0-9_] so it is a valid Firestore field-path segment
@@ -668,7 +666,7 @@ def device_send(action: str, device_id: str = DEFAULT_DEVICE,
     action_slug = re.sub(r"[^A-Za-z0-9]+", "_", action).strip("_") or "cmd"
     cmd_id = f"connect_{int(time.time()*1000)}_{action_slug}"
     item = {
-        "action": action,
+        "action": canonical_action,
         "status": "pending",
         "priority": priority,
         "requestedAt": at,
@@ -687,7 +685,7 @@ def device_send(action: str, device_id: str = DEFAULT_DEVICE,
     if e:
         return e
     return json.dumps({"queued": True, "device_id": device_id,
-                       "command_id": cmd_id, "action": action,
+                       "command_id": cmd_id, "action": canonical_action,
                        "priority": priority, "at": at,
                        "next": "poll with device_result(command_id=..., device_id=...)"},
                       indent=2)

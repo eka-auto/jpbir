@@ -23,7 +23,7 @@ import { readFileSync } from 'node:fs';
 import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
-import { deviceHealth, commandItem } from '/opt/jp-agent/device-health.mjs';
+import { deviceHealth, commandItem, actionGateError } from '/opt/jp-agent/device-health.mjs';
 
 const PORT = Number(process.env.S24_MCP_PORT || 8792);
 const HOST = '127.0.0.1';
@@ -308,6 +308,8 @@ mcp.registerTool(
   async ({ action, device_id, params, priority }) => {
     const bad = validId(device_id);
     if (bad) return text(bad);
+    const gate = actionGateError(action);
+    if (gate) return text(gate);
     const at = new Date().toISOString();
     const actionSlug = action.replace(/[^A-Za-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'cmd';
     const cmdId = `jpagent_${Date.now()}_${actionSlug}_${randomUUID()}`;
@@ -321,7 +323,7 @@ mcp.registerTool(
     });
     const err = errText(res);
     if (err) return text(err);
-    return json({ queued: true, device_id, command_id: cmdId, action, priority, at, next: 'poll with device_result(command_id=...)' });
+    return json({ queued: true, device_id, command_id: cmdId, action: item.action, priority, at, next: 'poll with device_result(command_id=...)' });
   },
 );
 
