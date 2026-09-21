@@ -48,11 +48,14 @@ for (const counter of [
 }
 
 // Blob is still the right store for media and for the ingest journal itself.
-// This is about the analytics READ paths only.
-const MEDIA_ROUTES = new Set(['wa-blob-upload.js', 'wa-media.js', 'jp-agent.js']);
+// This is about the analytics READ paths only. `jp-stack.js` also touches
+// `@vercel/blob`, but only for a `list({ limit: 1 })` reachability probe from
+// the Product engineering panel — it never reads analytics from the store, so
+// it belongs in the allow-list alongside the media/ingest routes.
+const BLOB_ALLOWED = new Set(['wa-blob-upload.js', 'wa-media.js', 'jp-agent.js', 'jp-stack.js']);
 const { readdirSync } = await import('node:fs');
 const blobReaders = readdirSync(BACKEND)
-  .filter((f) => f.endsWith('.js') && !MEDIA_ROUTES.has(f))
+  .filter((f) => f.endsWith('.js') && !BLOB_ALLOWED.has(f))
   .filter((f) => readFileSync(join(BACKEND, f), 'utf8').includes('@vercel/blob'));
 check('no analytics route reads the blob journal', blobReaders.length === 0,
   `blob readers: ${blobReaders.join(', ')}`);
