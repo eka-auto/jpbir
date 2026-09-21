@@ -95,12 +95,18 @@ test('normalizes command queue entries for the S24 frontend', () => {
   deepStrictEqual(normalizeCommandQueue(null), []);
 });
 
-test('owner dashboard uses the authenticated S24 command endpoint and public device pages stay read-only', async () => {
+test('public device pages stay read-only and never queue S24 commands', async () => {
+  // The owner dashboard's "Sync S24 now" button was removed in the fb851f3
+  // Device Dashboard rebuild, and this test's original assertion that
+  // index.html still fetched /api/s24-command was only passing because the
+  // JavaScript was orphaned in place after the button element was deleted.
+  // That dead handler was the crash that stopped session-id clicks opening
+  // the visitor drawer, so it has now been swept out too. The load-bearing
+  // half of this test — that the public s24 / vivobook pages never queue an
+  // S24 command — is what remains.
   const index = await readFile(new URL('../../Frontend/index.html', import.meta.url), 'utf8');
   const s24 = await readFile(new URL('../../Frontend/s24.html', import.meta.url), 'utf8');
   const vivobook = await readFile(new URL('../../Frontend/vivobook.html', import.meta.url), 'utf8');
-  strictEqual(index.includes("fetch('/api/s24-command', {"), true);
-  strictEqual(index.includes("'Authorization': 'Bearer ' + KEY"), true);
   strictEqual(index.includes("fetch('/api/jp-device', {\n            method: 'POST'"), false);
   strictEqual(s24.includes("fetch('/api/s24-command', {"), false);
   strictEqual(s24.includes("fetch('/api/jp-device', {\n            method: 'POST'"), false);

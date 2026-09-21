@@ -550,14 +550,6 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
                 </div>
 
                 <!-- EXPANDED DEVICE DETAIL (hidden by default) -->
-                <div class="panel" id="deviceDetailPanel" style="display:none">
-                    <div class="panel-head">
-                        <div><h2 id="deviceDetailTitle">Device details</h2><div class="hint" id="deviceDetailHint"></div></div>
-                        <div class="tools"><button id="deviceDetailClose">Close</button></div>
-                    </div>
-                    <div id="deviceDetailContent"></div>
-                </div>
-
                 <!-- BROWSER HISTORY (from DynamoDB) -->
                 <div class="panel">
                     <div class="panel-head">
@@ -2694,94 +2686,15 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
             '<div class="kpi"><div class="v">' + queueTotal + '</div><div class="k">Queued commands</div></div>';
     }
 
-    function loadDeviceDetail(device) {
-        /* open dashboard: no key required */
-        $('deviceDetailTitle').textContent = 'All data — ' + device;
-        $('deviceDetailHint').textContent = 'Loading…';
-        $('deviceDetailPanel').style.display = 'block';
-        fetch('/api/jp-device?' + new URLSearchParams({ days: 30, device: device }).toString(), { headers: authHeaders() })
-            .then(function (r) { return r.json().then(function (j) { return { status: r.status, body: j }; }); })
-            .then(function (res) {
-                if (res.status === 401) { showGate(); return; }
-                if (!res.body.success) throw new Error(res.body.error || 'failed');
-                var tbody = $('deviceDetailTable').querySelector('tbody');
-                tbody.innerHTML = '';
-                var evs = res.body.device_events || [];
-                if (!evs.length) {
-                    tbody.innerHTML = '<tr><td colspan="8" style="padding:14px;color:var(--ink-muted)">No events for this device.</td></tr>';
-                } else {
-                    evs.forEach(function (e) {
-                        var tr = document.createElement('tr');
-                        var loc = [e.city, e.country].filter(Boolean).join(', ');
-                        tr.innerHTML =
-                            '<td>' + esc(fmtTime(e.timestamp)) + '</td>' +
-                            '<td><span class="pill">' + esc(e.event_type || '—') + '</span></td>' +
-                            '<td style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(e.page_url || '—') + '</td>' +
-                            '<td class="mono">' + esc(e.ip || '—') + '</td>' +
-                            '<td>' + esc(loc || '—') + '</td>' +
-                            '<td>' + esc(fmtDur(e.time_on_page)) + '</td>' +
-                            '<td>' + (e.scroll_percent != null ? e.scroll_percent + '%' : '—') + '</td>' +
-                            '<td class="mono">' + esc(e.fingerprint || '—') + '</td>';
-                        tbody.appendChild(tr);
-                    });
-                }
-                var payloadList = $('devicePayloadList');
-                payloadList.innerHTML = '';
-                if (!evs.length) {
-                    $('devicePayloadHint').textContent = 'No complete event payloads in this window.';
-                } else {
-                    evs.forEach(function (e, index) {
-                        payloadList.appendChild(renderDynamoPayload(e, index));
-                    });
-                    $('devicePayloadHint').textContent = evs.length + ' complete DynamoDB rows · open an event to view its readable details';
-                }
-                $('deviceDetailHint').textContent = evs.length + ' events';
-            })
-            .catch(function (e) {
-                $('deviceDetailHint').textContent = 'Error: ' + e.message;
-            });
-    }
-
-        $('deviceRefreshBtn').addEventListener('click', loadDeviceHistory);
-        $('deviceAskBtn').addEventListener('click', function () {
-            /* open dashboard: no key required */
-            var btn = $('deviceAskBtn');
-            btn.disabled = true;
-            btn.textContent = 'Asking…';
-            fetch('/api/s24-command', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + KEY },
-                body: JSON.stringify({ device: 'samsung-s24-ultra', action: 'sync-now' })
-            })
-                .then(function (r) { return r.json().then(function (j) { return { status: r.status, body: j }; }); })
-                .then(function (res) {
-                    if (res.status === 401) { showGate(); return; }
-                    if (!res.body.success) throw new Error(res.body.error || 'failed');
-                    $('deviceHint').textContent = 'Command queued: ' + res.body.action + ' (id ' + res.body.commandId + ') — waiting for the S24 daemon to pick it up.';
-                    setTimeout(loadDeviceHistory, 15000);
-                })
-                .catch(function (e) { $('deviceHint').textContent = 'Ask failed: ' + e.message; })
-                .finally(function () { btn.disabled = false; btn.textContent = 'Sync S24 now'; });
-        });
-    $('deviceDetailClose').addEventListener('click', function () {
-        $('deviceDetailPanel').style.display = 'none';
-        $('deviceNetworkDetail').style.display = 'none';
-        $('deviceNetworkDetail').innerHTML = '';
-        $('devicePayloadList').innerHTML = '';
-        $('devicePayloadHint').textContent = 'Complete DynamoDB rows, organized into readable event sections';
-    });
-    document.addEventListener('click', function (e) {
-        var t = e.target;
-        while (t && t !== document) {
-            if (t.classList && t.classList.contains('clickable') && t.getAttribute('data-device')) {
-                var devId = t.getAttribute('data-device');
-                loadDeviceDetail(devId);
-                renderDeviceNetwork(devId);
-                return;
-            }
-            t = t.parentNode;
-        }
-    });
+    /* The fb851f3 rebuild of the Device Dashboard replaced the #deviceDetailPanel
+       flow with expandable rows (toggleDeviceDetail + closest('.device-row'),
+       further down) but left the old JavaScript behind. On page load, the
+       first orphan - $('deviceRefreshBtn').addEventListener - threw against a
+       null element, which aborted this IIFE before its bottom-of-file click
+       delegation registered. That is why clicking a session id in the
+       Sessions section stopped opening the visitor drawer. The dead handlers,
+       their loadDeviceDetail/renderDeviceNetwork callees, and the invisible
+       #deviceDetailPanel container are all gone now. */
     document.querySelectorAll('.nav-item').forEach(function (btn) {
         btn.addEventListener('click', function () {
             if (btn.getAttribute('data-page') === 'device') { loadDeviceHistory(); loadLiveDevices(); }
@@ -3763,38 +3676,6 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
             }
         });
     });
-    function renderDeviceNetwork(deviceId) {
-        var box = $('deviceNetworkDetail');
-        var d = _liveDevicesCache[deviceId];
-        if (!d || !d.network) {
-            box.style.display = 'none';
-            box.innerHTML = '';
-            return;
-        }
-        var n = d.network;
-        var sig = n.wifiSignal && n.wifiSignal.signal_percent != null ? n.wifiSignal.signal_percent + '%' : '—';
-        var ifaceItems = Object.keys(n.interfaces || {}).map(function (k) {
-            return '<div class="kv-item"><div class="k">' + esc(k) + '</div><div class="v mono">' + esc(n.interfaces[k]) + '</div></div>';
-        }).join('');
-        var connItems = (n.connections || []).map(function (c) {
-            return '<div class="kv-item"><div class="k">Connection</div><div class="v mono">' + esc(c) + '</div></div>';
-        }).join('');
-        var appItems = (n.networkPerApp || []).map(function (a) {
-            return '<div class="kv-item"><div class="k">' + esc(a.name || '—') + '</div><div class="v">' + (a.connections || 0) + ' conns</div></div>';
-        }).join('');
-        box.innerHTML = '<div class="panel" style="box-shadow:none;margin-bottom:14px"><h2>Network</h2><div class="kv-grid">' +
-            '<div class="kv-item"><div class="k">SSID</div><div class="v">' + esc(n.ssid || '—') + '</div></div>' +
-            '<div class="kv-item"><div class="k">WiFi signal</div><div class="v">' + sig + '</div></div>' +
-            '<div class="kv-item"><div class="k">Sent</div><div class="v">' + (n.sent_mb != null ? n.sent_mb + ' MB' : '—') + '</div></div>' +
-            '<div class="kv-item"><div class="k">Received</div><div class="v">' + (n.recv_mb != null ? n.recv_mb + ' MB' : '—') + '</div></div>' +
-            '<div class="kv-item"><div class="k">Updated</div><div class="v">' + (n.updatedAt ? fmtTime(n.updatedAt) : '—') + '</div></div>' +
-            '</div></div>' +
-            '<div class="panel" style="box-shadow:none;margin-bottom:14px"><h2>Interfaces</h2><div class="kv-grid">' + (ifaceItems || '<div class="kv-item"><div class="k">—</div><div class="v">none</div></div>') + '</div></div>' +
-            '<div class="panel" style="box-shadow:none;margin-bottom:14px"><h2>Active connections</h2><div class="kv-grid">' + (connItems || '<div class="kv-item"><div class="k">—</div><div class="v">none</div></div>') + '</div></div>' +
-            '<div class="panel" style="box-shadow:none;margin-bottom:14px"><h2>Connections per app</h2><div class="kv-grid">' + (appItems || '<div class="kv-item"><div class="k">—</div><div class="v">none</div></div>') + '</div></div>';
-        box.style.display = 'block';
-    }
-
     /* ===== AGENT ===== */
     function agentAdd(role, text) {
         var el = $('agentChat');
