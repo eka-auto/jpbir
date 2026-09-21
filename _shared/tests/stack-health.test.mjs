@@ -8,7 +8,7 @@
 // direction.
 
 import assert from 'node:assert/strict';
-import { worst, buildLayers, snapshot } from '../../Backend/jp-stack.js';
+import { worst, buildLayers, snapshot, probeAssets } from '../../Backend/jp-stack.js';
 import { evaluateStack, failureLines, alertBody } from '../../Backend/stack-cron.js';
 import { LAYERS, REQUIRED_ENV, allFiles } from '../../Backend/lib/stack-map.js';
 
@@ -221,6 +221,28 @@ t('a subsystem with genuinely no signal is still left grey', () => {
   assert.ok(stillStatic.length > 0, 'static must survive for what truly cannot be probed');
   for (const p of ['Server/jp-agent/sync-auth-token.py', 'Devices/S24/runtime_contract.json']) {
     assert.ok(stillStatic.includes(p), p + ' has no live signal and must not have been made green');
+  }
+});
+
+// One async case: probeAssets is driven against a stubbed edge rather than the
+// real one, so the suite stays hermetic and does not depend on the network.
+async function ta(name, fn) {
+  total++;
+  try { await fn(); pass++; console.log('  ok  ' + name); }
+  catch (e) { console.log('  FAIL ' + name + ' -> ' + e.message); process.exitCode = 1; }
+}
+
+await ta('a 200 that declares no content-length is served, not empty', async () => {
+  // `content-length` is absent on a chunked or compressed response, and
+  // Number(null) is 0 rather than NaN. Reading it naively reported every
+  // perfectly served page as an empty body — a false red that would have
+  // reached cloud_fail and reddened the health-check gate in CI.
+  globalThis.fetch = async () => new Response(null, { status: 200 });
+  const r = await probeAssets();
+  assert.equal(r.status, 'ok', 'a length nobody declared must not read as zero');
+  for (const [path, v] of Object.entries(r.byPath)) {
+    assert.equal(v.status, 'ok', path + ' was called broken on a 200');
+    assert.doesNotMatch(v.problem || '', /empty body/, path + ' reported an empty body it never saw');
   }
 });
 
