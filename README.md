@@ -89,9 +89,8 @@ npm run dev      # vercel dev — local frontend + serverless functions
 
 | Script | Command | What it does |
 |--------|---------|--------------|
-| `npm run dev` | `vercel dev` | Run the app locally |
+| `npm run dev` | `node scripts/dev-server.mjs` | Serve `Frontend/` locally on port 3000 |
 | `npm run build` | — | No-op; frontend is served statically |
-| `npm run deploy` | `vercel --prod` | Deploy to production (prefer the Git integration; this uploads the working directory, not the committed tree) |
 | `npm test` | `node _shared/tests/run-all.mjs` | Run every `*.test.mjs` suite, each in its own child process |
 | `npm run db:migrate` | `node Database/scripts/migrate.mjs` | Apply Postgres schema migrations |
 | `npm run wa:build` | `node Database/scripts/wa-build-inventory.mjs` | Build the WhatsApp inventory |
