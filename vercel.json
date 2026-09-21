@@ -262,6 +262,10 @@
       "dest": "/Frontend/jteka.html"
     },
     {
+      "src": "/viewer",
+      "dest": "/Frontend/viewer.html"
+    },
+    {
       "src": "/(.*)",
       "dest": "/Frontend/$1"
     }

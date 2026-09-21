@@ -45,6 +45,13 @@
     .topbar button.primary { background: linear-gradient(180deg, var(--amber-glow), var(--amber));
         color: #241505; font-weight: 700; border: none; }
     .topbar .last-updated { font-size: 11px; color: rgba(244,233,220,.55); }
+    /* One-line hint under the topbar, tied to the site selector. Lives outside
+       .topbar so it does not stretch the sticky bar itself. */
+    .topbar-hint { padding: 6px 22px; font-size: 11.5px; color: rgba(244,233,220,.55);
+        border-bottom: 1px solid rgba(240,185,104,.08); background: rgba(20,10,4,.35); }
+    .topbar-hint b { color: rgba(244,233,220,.85); font-weight: 600; }
+    .topbar-hint code { font-family: var(--mono, ui-monospace, Menlo, monospace); font-size: 11px;
+        color: var(--amber-glow); }
 
     /* ===== LAYOUT ===== */
     .layout { display: grid; grid-template-columns: 210px 1fr; min-height: calc(100vh - 57px); }
@@ -346,7 +353,7 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
         <div class="live-pill"><span class="live-dot" id="liveDot"></span><span id="liveLabel">connecting…</span></div>
         <div class="spacer"></div>
         <span class="last-updated" id="lastUpdated"></span>
-        <select id="siteSel" title="Site">
+        <select id="siteSel" title="Which tracked property to show. Beacons from jaytibirthday.in and jaytipargal.com go into DynamoDB via /api/jp-track, then mirror to Postgres.">
             <option value="jbt" selected>jaytibirthday.in</option>
             <option value="jp">jaytipargal.com</option>
         </select>
@@ -359,28 +366,44 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
         <button id="refreshBtn">Refresh</button>
         <button id="lockBtn">Lock</button>
     </div>
+    <!-- One-line data-flow hint under the topbar. Names which properties feed
+         the site selector and where their beacons land, so an operator seeing
+         "jaytibirthday.in" in the dropdown does not have to open the code to
+         learn that the selector switches the whole ANALYZE column between two
+         real, separately-tracked properties. -->
+    <div class="topbar-hint" id="topbarHint">
+        Site selector switches beacons from <b>jaytibirthday.in</b> and <b>jaytipargal.com</b>
+        (<code>/api/jp-track</code> → DynamoDB → Postgres). Every ANALYZE panel below is scoped by it.
+    </div>
 
     <div class="layout">
+        <!-- Sidebar is ordered by data flow: SOURCES push data outbound, it lands
+             in a STORE, ANALYZE panels aggregate over those stores, OPERATE acts
+             on the running system. Every section under ANALYZE is filtered by
+             the top-bar site selector. -->
         <nav class="sidebar" id="sidebar">
-            <div class="section-label">Monitor</div>
-            <button class="nav-item active" data-page="overview"><span class="ico">◈</span> Overview</button>
-            <button class="nav-item" data-page="live"><span class="ico">●</span> Live feed</button>
-            <div class="section-label">Devices</div>
+            <div class="section-label">Sources</div>
             <a class="nav-item" href="/s24"><span class="ico">📱</span> S24 Ultra</a>
             <a class="nav-item" href="/vivobook"><span class="ico">💻</span> VivoBook</a>
+            <a class="nav-item" href="/jteka"><span class="ico">🖥</span> Jteka</a>
+            <button class="nav-item" data-page="live"><span class="ico">●</span> Live feed</button>
+            <div class="section-label">Stores</div>
+            <button class="nav-item" data-page="firestore"><span class="ico">🔥</span> Firestore</button>
+            <a class="nav-item" href="/db"><span class="ico">🗄</span> Database</a>
+            <a class="nav-item" href="/viewer"><span class="ico">🖼</span> Media</a>
+            <button class="nav-item" data-page="vercel"><span class="ico">▲</span> Vercel</button>
             <div class="section-label">Analyze</div>
+            <button class="nav-item active" data-page="overview"><span class="ico">◈</span> Overview</button>
             <button class="nav-item" data-page="audience"><span class="ico">◫</span> Audience</button>
             <button class="nav-item" data-page="geo"><span class="ico">◉</span> Geography</button>
             <button class="nav-item" data-page="sessions"><span class="ico">≡</span> Sessions</button>
             <button class="nav-item" data-page="email"><span class="ico">✉</span> Email opens</button>
             <button class="nav-item" data-page="device"><span class="ico">📋</span> Device Dashboard</button>
-            <button class="nav-item" data-page="firestore"><span class="ico">🔥</span> Firestore</button>
-            <button class="nav-item" data-page="terminal"><span class="ico">▮</span> Terminal</button>
-            <button class="nav-item" data-page="vercel"><span class="ico">▲</span> Vercel</button>
-            <button class="nav-item" data-page="agent"><span class="ico">🤖</span> Ask agent</button>
-            <button class="nav-item" data-page="stack"><span class="ico">⛓</span> Product engineering <span id="stackNavDot" class="lamp lamp-unknown" style="margin-left:6px"></span></button>
-            <div class="section-label">Data</div>
             <button class="nav-item" data-page="whatsapp"><span class="ico">💬</span> WhatsApp</button>
+            <div class="section-label">Operate</div>
+            <button class="nav-item" data-page="agent"><span class="ico">🤖</span> Ask agent</button>
+            <button class="nav-item" data-page="terminal"><span class="ico">▮</span> Terminal</button>
+            <button class="nav-item" data-page="stack"><span class="ico">⛓</span> Product engineering <span id="stackNavDot" class="lamp lamp-unknown" style="margin-left:6px"></span></button>
         </nav>
 
         <main class="content">
