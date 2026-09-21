@@ -195,18 +195,61 @@ function deviceFreshness(firestoreResult) {
 }
 
 /**
- * DynamoDB and Blob are credential-presence checks, not reachability checks.
- * A real Dynamo describe would need a table name this deployment may not have,
- * and a Blob probe would need a known object; both would report FAIL for a
- * healthy store that simply has no fixture. Presence is the honest signal, so
- * a satisfied check returns UNKNOWN-with-detail rather than a green it has not
- * earned — the UI renders that grey, and the rule "grey means unproven" stays
- * true everywhere in the panel.
+ * Real reachability probes for DynamoDB and Vercel Blob.
+ *
+ * These used to be credential-presence checks that returned UNKNOWN even when
+ * the store was healthy - the Product engineering panel then rendered every
+ * dynamo/blob file grey and the operator could not tell "credentials never
+ * configured" from "table gone". Both stores expose a cheap catalog call that
+ * does not depend on any fixture (DescribeTable and list-limit-1), so the
+ * honest signal is now the round trip itself: OK on 200, FAIL on auth /
+ * network error, UNKNOWN only when the credential is unset.
+ *
+ * The SDKs are imported lazily so a deployment with no DynamoDB or no Blob
+ * still boots the handler in the cold path - the packages are optional-at-runtime
+ * from this file's perspective (they are hard deps of jp-track / wa-blob-upload).
  */
-function probeCredential(names, label) {
-  const present = names.some((n) => Boolean(_env[n]));
-  if (!present) return { status: FAIL, problem: label + ' credentials are not set on this deployment' };
-  return { status: UNKNOWN, detail: label + ' credentials present (reachability not probed from a function)' };
+async function probeDynamo() {
+  const accessKeyId = _env['JP_AWS_' + 'ACCESS_KEY_ID'];
+  const secretAccessKey = _env['JP_AWS_' + 'SECRET_ACCESS_KEY'];
+  const region = _env['JP_AWS_' + 'REGION'] || 'us-west-2';
+  const table = _env['JP_TELEMETRY_' + 'TABLE'] || 'jaytipargal_telemetry';
+  if (!accessKeyId || !secretAccessKey) {
+    return { status: UNKNOWN, problem: 'JP_AWS_ACCESS_KEY_ID / JP_AWS_SECRET_ACCESS_KEY not set on this deployment' };
+  }
+  try {
+    const { DynamoDBClient, DescribeTableCommand } = await import('@aws-sdk/client-dynamodb');
+    const client = new DynamoDBClient({ region, credentials: { accessKeyId, secretAccessKey } });
+    const res = await client.send(new DescribeTableCommand({ TableName: table }));
+    const state = res.Table && res.Table.TableStatus;
+    if (state !== 'ACTIVE') {
+      return { status: WARN, problem: 'DynamoDB table ' + table + ' status is ' + (state || 'unknown') };
+    }
+    const items = res.Table && res.Table.ItemCount;
+    return { status: OK, detail: table + ' ACTIVE in ' + region + (typeof items === 'number' ? ' (' + items + ' items)' : '') };
+  } catch (e) {
+    const name = e && e.name ? e.name : 'Error';
+    const msg = String((e && e.message) || e).slice(0, 140);
+    return { status: FAIL, problem: 'DynamoDB DescribeTable(' + table + ') failed: ' + name + ' - ' + msg };
+  }
+}
+
+async function probeBlob() {
+  const token = _env['BLOB_' + 'READ_WRITE_TOKEN'] || _env['BLOB_' + 'TOKEN'];
+  if (!token) {
+    return { status: UNKNOWN, problem: 'BLOB_READ_WRITE_TOKEN is not set on this deployment' };
+  }
+  try {
+    const { list } = await import('@vercel/blob');
+    const res = await list({ token, limit: 1 });
+    const sample = res && res.blobs ? res.blobs.length : 0;
+    const more = res && res.hasMore ? ' (more paginated)' : '';
+    return { status: OK, detail: 'Vercel Blob reachable — sample of ' + sample + more };
+  } catch (e) {
+    const name = e && e.name ? e.name : 'Error';
+    const msg = String((e && e.message) || e).slice(0, 140);
+    return { status: FAIL, problem: 'Vercel Blob list failed: ' + name + ' - ' + msg };
+  }
 }
 
 function probeEnv() {
@@ -266,12 +309,14 @@ export function buildLayers(probes) {
  * place each.
  */
 export async function runProbes() {
-  const [dns, tlsR, agent, postgres, firestore] = await Promise.all([
+  const [dns, tlsR, agent, postgres, firestore, dynamo, blob] = await Promise.all([
     withTimeout('DNS', probeDns()),
     withTimeout('TLS', probeTls()),
     withTimeout('agent', probeAgent()),
     withTimeout('Postgres', probePostgres()),
     withTimeout('Firestore', probeFirestore()),
+    withTimeout('DynamoDB', probeDynamo()),
+    withTimeout('Blob', probeBlob()),
   ]);
 
   const probes = {
@@ -280,8 +325,8 @@ export async function runProbes() {
     agent,
     postgres,
     firestore,
-    dynamo: probeCredential(['JP_AWS_' + 'ACCESS_KEY_ID'], 'DynamoDB'),
-    blob: probeCredential(['BLOB_' + 'READ_WRITE_TOKEN', 'BLOB_' + 'TOKEN'], 'Vercel Blob'),
+    dynamo,
+    blob,
     env: probeEnv(),
     devices: deviceFreshness(firestore),
     static: { status: UNKNOWN, detail: 'no live signal reachable from a serverless function' },

@@ -3244,7 +3244,19 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
         var open = !!_stackOpen[layer.id];
         var bad = layer.files.filter(function (f) { return f.status === 'fail'; }).length;
         var warn = layer.files.filter(function (f) { return f.status === 'warn'; }).length;
-        var count = bad ? bad + ' failing' : warn ? warn + ' warning' : layer.files.length + ' files';
+        // Break out proven vs. unproven when the layer is a mix, so a card whose
+        // border is grey because of one static file still shows how many of its
+        // files DID answer a live probe. Without this split the operator sees
+        // "11 files" on a layer where 10 are ok and one is unprobed and cannot
+        // tell that from a layer where all 11 are unknown.
+        var oks = layer.files.filter(function (f) { return f.status === 'ok'; }).length;
+        var unknowns = layer.files.filter(function (f) { return f.status === 'unknown'; }).length;
+        var count;
+        if (bad) count = bad + ' failing';
+        else if (warn) count = warn + ' warning';
+        else if (oks && unknowns) count = oks + ' proven · ' + unknowns + ' unproven';
+        else if (unknowns) count = unknowns + ' unproven';
+        else count = oks + ' proven';
         return '<button class="stack-card s-' + esc(layer.status) + '" data-layer="' + esc(layer.id) + '" aria-expanded="' + open + '">'
             + '<div class="sc-head">' + lamp(layer.status, 'ok') + lamp(layer.status, 'bad')
             + '<span class="sc-title">' + esc(layer.title) + '</span>'
