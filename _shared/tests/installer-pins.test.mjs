@@ -13,9 +13,8 @@
 // were reached - which is consistent with jayti-asus-vivobook having never written a
 // telemetry field and g4g-lenovo-laptop running a non-kit agent.
 //
-// Devices/sandbox/tests/test_deploy_kits.py did not catch this and cannot: it compares
-// each kit's bytes to Devices/sandbox/'s bytes, and never parses the installers' pin
-// tables. That covers kit-to-kit drift; this covers kit-to-installer drift. The length
+// Devices/sandbox/tests/test_deploy_kits.py now checks both byte relationships and the
+// S24 pin table, while this suite independently parses all three installers. The length
 // assertion alone catches the SHA-1 mistake, which is why it runs before any hashing.
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
@@ -26,11 +25,13 @@ import { fileURLToPath } from 'node:url';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const CANONICAL = join(ROOT, 'Devices', 'sandbox');
 
-// The five broker artifacts every kit bundles; test_deploy_kits.py pins the same set
-// for byte-identity. Not all of them are hash-verified by every installer: S24 installs
+// The broker artifacts every kit bundles. The S24 device agent is now an Android-specific
+// release while the remaining core stays shared. Not all files are hash-verified
+// by every installer: S24 installs
 // its Python dependency inline (`pip install 'requests==2.34.2'`, install_s24.sh:64)
 // rather than verifying requirements-broker.txt, so it pins four, not five.
 const CORE = ['device_agent.py', 'broker_client.py', 'signer.py', 'single_instance.py'];
+const SHARED_CORE = ['broker_client.py', 'signer.py', 'single_instance.py'];
 
 const INSTALLERS = [
   {
@@ -108,23 +109,29 @@ t('every pin matches the bytes actually bundled in that kit', () => {
   }
 });
 
-t('every kit bundles bytes identical to the canonical Devices/sandbox source', () => {
-  // Guards the other direction: a pin can be correct for a kit that has itself drifted
-  // from the canonical agent. test_deploy_kits.py asserts this too, but from Python and
-  // only on Devices/** changes; this runs on every push.
+t('shared broker files and the S24 release match their canonical Devices/sandbox sources', () => {
+  // The S24 agent now carries Android liveness and installation evidence. Windows
+  // kits remain byte-identical to each other until their next separately pinned
+  // release; the protocol/signer/guard files remain common to all three kits.
   for (const installer of INSTALLERS) {
     for (const name of pins(installer).keys()) {
+      if (name === 'device_agent.py' && installer.kit !== 'S24') continue;
       assert.equal(
         sha256(join(ROOT, 'Devices', installer.kit, name)),
         sha256(join(CANONICAL, name)),
         `${installer.kit}/${name} differs from Devices/sandbox/${name}`);
     }
   }
+  assert.equal(
+    sha256(join(ROOT, 'Devices', 'Lenovo', 'device_agent.py')),
+    sha256(join(ROOT, 'Devices', 'Vivobook', 'device_agent.py')),
+    'the two Windows kits no longer carry the same pinned agent release',
+  );
 });
 
-t('all three installers agree on every artifact they all pin', () => {
+t('all three installers agree on every shared artifact they all pin', () => {
   const parsed = INSTALLERS.map((i) => ({ kit: i.kit, pins: pins(i) }));
-  for (const name of CORE) {
+  for (const name of SHARED_CORE) {
     const values = parsed.map((p) => p.pins.get(name).toLowerCase());
     assert.equal(new Set(values).size, 1,
       `${name} is pinned inconsistently across installers: ` +

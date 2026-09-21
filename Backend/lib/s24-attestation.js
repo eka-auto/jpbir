@@ -14,21 +14,13 @@
 // device_online and heartbeat_authenticated, feeding a false "the phone is reachable" into
 // the model's reasoning.
 //
-// So the checks live here once. Callers still compose them, because the two genuinely
-// differ in policy and those differences are deliberate, not drift:
-//
-//   * jp-devices.js reads every field top-level. device-health.mjs reads
-//     liveDeviceVerified and sourceType from the nested samsungS24DirectSync sub-map.
-//   * device-health.mjs additionally requires the stored `online` flag and a known
-//     connectionMethod; jp-devices.js requires neither.
-//   * device-health.mjs grants a boot grace when no command has ever been acknowledged
-//     (allowBootGrace), so a freshly rebooted phone is not reported dead before its first
-//     ACK. jp-devices.js does not.
-//
-// Those are passed in explicitly at the call site so a reader can see them. What is NOT
-// negotiable is the check set itself: androidRuntime is always evaluated, so no caller can
-// silently omit it again. _shared/tests/s24-attestation.test.mjs asserts that, and asserts
-// the droplet's byte-identical copy has not drifted.
+// Broker v2 now supplies the non-self-asserted root of trust: after it verifies the device
+// signature, active key, expiry and enrolled hardware, it stamps the accepted heartbeat
+// time/key/protocol beside the enrollment. The client telemetry below is still checked, but
+// cannot establish liveness without that server stamp. Command acknowledgement freshness is
+// deliberately a separate execution-path diagnostic: commands are scheduled six hours
+// apart, so requiring a five-minute ACK made a healthy heartbeating phone offline for most
+// of every day.
 //
 // Two more implementations exist in Python and are NOT served by this file:
 // Integrations/s24-connect-mcp/server.py and Devices/S24/pull_direct_cloud.py. They are
@@ -48,7 +40,7 @@ export const S24_AGENT_VERSION_PREFIXES = ['s24-termux-', 's24-direct-cloud-'];
 export const S24_RUNTIME_EVIDENCE = 'runtimeIsAndroid';
 export const S24_HEARTBEAT_AUTH = 'termux-phone';
 export const S24_SOURCE_TYPES = new Set(['live_termux', 'live_daemon']);
-export const S24_CONNECTION_METHODS = ['termux-direct-cloud', 'direct-daemon'];
+export const S24_CONNECTION_METHODS = ['signed-broker-v2', 'termux-direct-cloud', 'direct-daemon'];
 export const S24_ACK_MAX_AGE_SECONDS = 300;
 
 export function isS24AgentVersion(agentVersion) {
@@ -67,28 +59,60 @@ const isFresh = (seconds) =>
  * Evaluate every attestation check. Key order is load-bearing: callers report the first
  * failing key as the reason, so do not reorder without reading the tests.
  *
- * `allowBootGrace` makes commandAckFresh pass when no acknowledgement has ever existed
- * (ackAgeSeconds === null). It does not weaken any other check.
+ * `commandAckFresh` is returned alongside heartbeat attestation, but consumers must use
+ * s24HeartbeatAuthenticated() for basic liveness rather than requiring every value here.
  */
 export function s24AttestationChecks({
   agentVersion,
+  connectionMethod,
   heartbeatAuth,
   liveDeviceVerified,
   sourceType,
   runtimeIsAndroid,
   heartbeatAgeSeconds,
   ackAgeSeconds,
-  allowBootGrace = false,
+  lastSeen,
+  signedHeartbeatAt,
+  signedHeartbeatKeyId,
+  signedHeartbeatProtocol,
+  activeKeyId,
+  keyType,
 }) {
   return {
     heartbeatFresh: isFresh(heartbeatAgeSeconds),
+    signedBrokerHeartbeat: isFresh(heartbeatAgeSeconds) &&
+      typeof signedHeartbeatAt === 'string' && signedHeartbeatAt === lastSeen &&
+      typeof activeKeyId === 'string' && activeKeyId.length > 0 &&
+      signedHeartbeatKeyId === activeKeyId && signedHeartbeatProtocol === '2',
+    androidHardwareKey: keyType === 'android-keystore-p256',
+    signedBrokerConnection: connectionMethod === 'signed-broker-v2',
+    legacyConnection: ['termux-direct-cloud', 'direct-daemon'].includes(connectionMethod),
     authenticatedAgent: isS24AgentVersion(agentVersion),
     heartbeatAuth: heartbeatAuth === S24_HEARTBEAT_AUTH,
     liveDeviceVerified: liveDeviceVerified === true,
     liveSource: S24_SOURCE_TYPES.has(sourceType),
     androidRuntime: runtimeIsAndroid === true,
-    commandAckFresh: isFresh(ackAgeSeconds) || (allowBootGrace && ackAgeSeconds === null),
+    commandAckFresh: isFresh(ackAgeSeconds),
   };
+}
+
+export function s24LivenessEvidence(checks) {
+  const common = checks.heartbeatFresh && checks.authenticatedAgent &&
+    checks.heartbeatAuth && checks.liveDeviceVerified && checks.liveSource &&
+    checks.androidRuntime;
+  if (checks.signedBrokerConnection) {
+    return common && checks.signedBrokerHeartbeat && checks.androidHardwareKey
+      ? 'signed-broker-v2'
+      : null;
+  }
+  if (checks.legacyConnection) {
+    return common && checks.commandAckFresh ? 'legacy-strict' : null;
+  }
+  return null;
+}
+
+export function s24HeartbeatAuthenticated(checks) {
+  return s24LivenessEvidence(checks) !== null;
 }
 
 /** The first failing check name, or null when every check passed. */

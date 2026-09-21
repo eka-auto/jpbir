@@ -293,7 +293,7 @@ const deviceSend = tool(
     return {
       content: [{
         type: 'text',
-        text: JSON.stringify({ queued: true, device_id, command_id: cmdId, action, priority, at, next: 'poll with device_result(command_id=...)' }, null, 2),
+        text: JSON.stringify({ queued: true, device_id, command_id: cmdId, action: item.action, priority, at, next: 'poll with device_result(command_id=...)' }, null, 2),
       }],
     };
   },

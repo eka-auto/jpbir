@@ -157,7 +157,8 @@ Five GitHub Actions workflows run from [`.github/workflows/`](./.github/workflow
   deployment
 - **Device Sandbox Tests** (`device-sandbox-tests.yml`) — the channel-sandbox
   pytest suite, including the check that every device kit bundles a
-  byte-identical copy of the canonical agent
+  byte-identical copy of the canonical agent, plus a dashboard-to-agent E2E
+  run against an isolated Firestore emulator
 - **Sync keys to Vercel** (`sync-keys-to-vercel.yml`) — dispatch-only; add-only
   across the keys the deployed code reads, then rebuilds production
 

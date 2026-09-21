@@ -11,7 +11,6 @@ import urllib.request
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-PY = r"C:\Users\abcom\AppData\Local\Programs\Python\Python312\python.exe"
 PORT = 5056
 sys.path.insert(0, str(HERE))
 
@@ -32,7 +31,7 @@ def request_json(method, path, body=None, timeout=5):
 
 def run_agent(config_path, device_id):
     result = subprocess.run(
-        [PY, str(HERE / "device_agent.py"), str(config_path), device_id, "--once"],
+        [sys.executable, str(HERE / "device_agent.py"), str(config_path), device_id, "--once"],
         cwd=str(HERE),
         capture_output=True,
         text=True,
@@ -69,7 +68,7 @@ def make_client(cfg):
 
 
 def main():
-    config_path = HERE / "devices.json"
+    config_path = HERE / "devices.emulator.json"
     cfg = json.loads(config_path.read_text(encoding="utf-8"))
     if cfg.get("mode") != "emulator" or cfg.get("collection") == "devices":
         raise RuntimeError("e2e requires emulator mode and a non-production collection")
@@ -84,7 +83,7 @@ def main():
     log_handle = (log_dir / "dashboard.e2e.log").open("ab")
     dashboard = subprocess.Popen(
         [
-            PY,
+            sys.executable,
             str(HERE / "dashboard_api.py"),
             "--config",
             str(config_path),
@@ -105,7 +104,7 @@ def main():
             run_agent(config_path, device_id)
             expected[device_id] = []
             for action, payload in (
-                ("ping", {"sequence": index * 2 + 1}),
+                ("ping", {}),
                 ("echo", {"sequence": index * 2 + 2}),
             ):
                 status, response = request_json(
@@ -134,7 +133,7 @@ def main():
             assert len(queue) == 2
             for command_id, action, payload, queued_at in commands:
                 entry = queue[command_id]
-                assert entry["status"] == "ok"
+                assert entry["status"] == "ok", entry
                 assert entry["action"] == action
                 assert entry["payload"] == payload
                 assert entry["queuedAt"] == queued_at

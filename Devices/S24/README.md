@@ -8,23 +8,30 @@ control service.
 
 ## Install With The Phone In Hand
 
-1. Install Termux and the matching Termux:API app from the same trusted
-   distribution source, then grant the API app access when Android prompts.
+1. Install Termux, Termux:API, and Termux:Boot from the same trusted
+   distribution source. Open Termux:Boot once so Android enables its boot
+   receiver, then grant Termux:API access when Android prompts.
 2. From the admin machine, mint a short-lived code:
-   `python channel-sandbox/mint_enrollment_code.py mint samsung-s24-ultra`
+   `python Devices/sandbox/mint_enrollment_code.py mint samsung-s24-ultra`
 3. Transfer this complete directory to the phone and immediately run:
    `bash install_s24.sh`
 4. Enter the one-time code when prompted.
 
-The installer fails closed unless Android reports manufacturer `Samsung`,
-model `SM-S928*`, and a P-256 key inside secure hardware. It verifies each
-bundled artifact against a pinned SHA-256 digest, creates an isolated Python
-environment, proves enrollment with a signed heartbeat, and only then adds
-Termux boot/watchdog startup.
+The installer targets `https://jaytipargal.tech` and fails closed unless
+Android reports manufacturer `Samsung`, model `SM-S928*`, and a P-256 key
+inside secure hardware. It verifies each bundled artifact against a pinned
+SHA-256 digest and creates an isolated Python environment. Enrollment runs
+without publishing liveness; the installer then verifies the executable
+Termux:Boot launcher and persisted 15-minute JobScheduler entry, records that
+installation evidence, and only then publishes the final signed heartbeat.
+The install also starts the persistent broker process and verifies its PID.
 
-The command surface is intentionally limited to `status-only`, `ping`, and
-`echo`. A dashboard LIVE badge alone is not an operational proof; verify a
-fresh signed heartbeat and a command that reaches completed status.
+The official command surface is exactly `status-only`, `ping`, `echo`,
+`wa-push`, `wa-media-push`, and `sync-now`. Status and ping accept no payload;
+echo returns a JSON-object payload unchanged; the three push/sync actions
+accept only an optional bounded integer `timeout_seconds`. A dashboard LIVE
+badge alone is not execution proof; verify a fresh signed heartbeat and a
+command that reaches completed status.
 
 ## Direct-cloud data sync with a local checkpoint
 

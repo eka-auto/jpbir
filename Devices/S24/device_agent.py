@@ -27,6 +27,16 @@ from single_instance import GuardHeldError, acquire_guard, release_guard
 log = logging.getLogger("channel_sandbox.agent")
 
 _SW = {'creationflags': 0x08000000} if platform.system() == 'Windows' else {}
+S24_DEVICE_ID = "samsung-s24-ultra"
+S24_AGENT_VERSION = "s24-termux-broker-2026-09-21.1"
+S24_ALLOWED_COMMANDS = (
+    "status-only",
+    "ping",
+    "echo",
+    "wa-push",
+    "wa-media-push",
+    "sync-now",
+)
 
 
 def collect_hardware_identity():
@@ -154,6 +164,64 @@ def collect_local_status():
     }
 
 
+def _android_termux_runtime():
+    prefix = os.environ.get("PREFIX", "")
+    return bool(os.environ.get("ANDROID_ROOT")) and prefix.startswith("/data/data/com.termux/")
+
+
+def _load_installation_evidence(cfg, config_dir):
+    evidence_file = cfg.get("installation_evidence_file")
+    if not evidence_file:
+        return {}
+    evidence_path = Path(evidence_file).expanduser()
+    if not evidence_path.is_absolute():
+        evidence_path = config_dir / evidence_path
+    try:
+        evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError) as exc:
+        log.warning("installation evidence unavailable: %s", exc)
+        return {}
+    return evidence if isinstance(evidence, dict) else {}
+
+
+def _s24_runtime_evidence(hardware, installation):
+    runtime_is_android = _android_termux_runtime()
+    hardware_matches = (
+        str(hardware.get("manufacturer", "")).lower().startswith("samsung")
+        and str(hardware.get("model", "")).startswith("SM-S928")
+    )
+    persistence_verified = all(
+        installation.get(field) is True
+        for field in ("termuxBootPackageVerified", "bootLauncherVerified", "jobSchedulerVerified")
+    )
+    verified = runtime_is_android and hardware_matches and persistence_verified
+    return {
+        "heartbeatAuth": "termux-phone" if verified else "unverified-runtime",
+        "liveDeviceVerified": verified,
+        "sourceType": "live_daemon" if verified else "unverified",
+        "runtimeIsAndroid": runtime_is_android,
+    }
+
+
+def _validated_payload(action, payload):
+    if payload is None:
+        payload = {}
+    if not isinstance(payload, dict):
+        raise ValueError("payload must be a JSON object")
+    if action == "echo":
+        return payload
+    allowed_keys = {"timeout_seconds"} if action in ("sync-now", "wa-push", "wa-media-push") else set()
+    unexpected = sorted(set(payload) - allowed_keys)
+    if unexpected:
+        raise ValueError(f"payload fields not allowed for {action}: {', '.join(unexpected)}")
+    if "timeout_seconds" in payload:
+        timeout = payload["timeout_seconds"]
+        maximum = 900 if action == "wa-media-push" else 600
+        if isinstance(timeout, bool) or not isinstance(timeout, int) or not 1 <= timeout <= maximum:
+            raise ValueError(f"timeout_seconds for {action} must be an integer from 1 to {maximum}")
+    return payload
+
+
 def _run_wa_push(payload, started):
     """Run the on-device WhatsApp push wrapper once and return its outcome.
 
@@ -217,12 +285,16 @@ def _run_wa_media_push(payload, started):
 def handle_command(action, payload):
     started = datetime.now(timezone.utc).isoformat()
     try:
+        payload = _validated_payload(action, payload)
+    except ValueError as exc:
+        return {"status": "rejected", "result": {"error": str(exc)}, "completed_at": started}
+    try:
         if action == "status-only":
             return {"status": "ok", "result": {"echo": "ok", "ts": started}, "completed_at": started}
         if action == "ping":
             return {"status": "ok", "result": {"pong": True, "ts": started}, "completed_at": started}
         if action == "echo":
-            return {"status": "ok", "result": {"echoed": payload or {}, "ts": started}, "completed_at": started}
+            return {"status": "ok", "result": {"echoed": payload, "ts": started}, "completed_at": started}
         # 'wa-push' (alias 'sync-now') runs the device's own WhatsApp push wrapper.
         # No arbitrary shell: the action name maps to one fixed local script.
         if action in ("wa-push", "sync-now"):
@@ -235,7 +307,7 @@ def handle_command(action, payload):
     except Exception as e:
         return {"status": "error", "result": {"error": str(e)}, "completed_at": started}
 
-def run(config_path, device_id, single_iteration=False):
+def run(config_path, device_id, single_iteration=False, enroll_only=False):
     with open(config_path, encoding="utf-8") as f:
         cfg = json.load(f)
     device_cfg = next((d for d in cfg["devices"] if d["id"] == device_id), None)
@@ -249,6 +321,7 @@ def run(config_path, device_id, single_iteration=False):
             device_id,
             device_cfg,
             single_iteration,
+            enroll_only,
         )
         return
 
@@ -267,6 +340,8 @@ def run(config_path, device_id, single_iteration=False):
     hb_interval = cfg["heartbeat_interval_seconds"]
     poll_interval = cfg["command_poll_interval_seconds"]
     allowed = cfg.get("allowed_commands", [])
+    if device_id == S24_DEVICE_ID and tuple(allowed) != S24_ALLOWED_COMMANDS:
+        raise SystemExit("S24 allowed_commands must exactly match the runtime contract")
     collection = cfg["collection"]
 
     log.info("starting device=%s hb=%ss poll=%ss", device_id, hb_interval, poll_interval)
@@ -303,7 +378,7 @@ def _find_enrollment_code(cfg, config_dir):
     return None, None
 
 
-def run_broker(cfg, config_dir, device_id, device_cfg, single_iteration):
+def run_broker(cfg, config_dir, device_id, device_cfg, single_iteration, enroll_only=False):
     signer = make_signer(cfg)
     state_path = Path(cfg.get("broker_state_file") or f"{device_id}.broker-state.json")
     if not state_path.is_absolute():
@@ -312,6 +387,8 @@ def run_broker(cfg, config_dir, device_id, device_cfg, single_iteration):
     hb_interval = cfg["heartbeat_interval_seconds"]
     poll_interval = cfg["command_poll_interval_seconds"]
     allowed = cfg.get("allowed_commands", [])
+    if device_id == S24_DEVICE_ID and tuple(allowed) != S24_ALLOWED_COMMANDS:
+        raise SystemExit("S24 allowed_commands must exactly match the runtime contract")
     worker_session = f"{socket.gethostname()}-{os.getpid()}-{int(time.time())}"
 
     if not client.enrolled:
@@ -330,21 +407,34 @@ def run_broker(cfg, config_dir, device_id, device_cfg, single_iteration):
                 pass
         log.info("enrolled with broker: keyId=%s", result.get("keyId"))
 
+    if enroll_only:
+        log.info("broker enrollment verified for %s", device_id)
+        return
+
     log.info("starting broker device=%s hb=%ss poll=%ss", device_id, hb_interval, poll_interval)
 
     def one_heartbeat():
         hardware = collect_hardware_identity()
+        installation = _load_installation_evidence(cfg, config_dir)
         telemetry = {
             "deviceId": device_id,
             "canonicalDeviceId": device_id,
             "deviceDisplayName": device_cfg.get("display_name", device_id),
             "deviceRole": device_cfg.get("role", "unknown"),
             "deviceType": device_cfg.get("type", "laptop"),
-            "connectionMethod": "channel-sandbox-broker",
-            "agentVersion": "channel-sandbox-2.0",
+            "connectionMethod": "signed-broker-v2" if device_id == S24_DEVICE_ID else "channel-sandbox-broker",
+            "agentVersion": S24_AGENT_VERSION if device_id == S24_DEVICE_ID else "channel-sandbox-2.0",
             "heartbeatIntervalSeconds": hb_interval,
             "local": collect_local_status(),
         }
+        if device_id == S24_DEVICE_ID:
+            runtime_evidence = _s24_runtime_evidence(hardware, installation)
+            telemetry.update(runtime_evidence)
+            telemetry["installationEvidence"] = installation
+            # `local` remains a compatibility carrier for servers deployed before
+            # the dedicated top-level evidence fields were whitelisted.
+            telemetry["local"]["installationEvidence"] = installation
+            telemetry["local"].update(runtime_evidence)
         try:
             telemetry["network"] = collect_network()
         except Exception as e:
@@ -486,6 +576,7 @@ def main():
     p.add_argument("config", help="path to devices.json")
     p.add_argument("device_id", help="device id from the config")
     p.add_argument("--once", action="store_true", help="run one heartbeat+poll iteration then exit")
+    p.add_argument("--enroll-only", action="store_true", help="enroll and exit without publishing a heartbeat")
     p.add_argument("--log-file", help="append logs to this file in addition to stderr")
     args = p.parse_args()
 
@@ -503,7 +594,10 @@ def main():
 
     pidfile = guard_pidfile(args.config, args.device_id)
 
-    guarded = not args.once
+    if args.once and args.enroll_only:
+        p.error("--once and --enroll-only are mutually exclusive")
+
+    guarded = not (args.once or args.enroll_only)
     if guarded:
         try:
             acquire_guard(args.device_id, str(pidfile))
@@ -522,7 +616,7 @@ def main():
     signal.signal(signal.SIGTERM, _shutdown)
 
     try:
-        run(args.config, args.device_id, single_iteration=args.once)
+        run(args.config, args.device_id, single_iteration=args.once, enroll_only=args.enroll_only)
     except SystemExit:
         raise
     except Exception as e:

@@ -142,6 +142,22 @@ export function expandFieldPaths(values) {
   return expanded;
 }
 
+/**
+ * Firestore field masks use their own path grammar. Map keys such as a command
+ * ID containing `-` are not simple identifiers and must be backtick-quoted;
+ * URL encoding the unquoted path does not make it valid.
+ */
+export function quoteFirestoreFieldPath(fieldPath) {
+  const parts = String(fieldPath || '').split('.');
+  if (parts.some((part) => !part || ['__proto__', 'prototype', 'constructor'].includes(part))) {
+    throw new Error(`invalid Firestore field path: ${fieldPath}`);
+  }
+  return parts.map((part) => {
+    if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(part)) return part;
+    return '`' + part.replace(/([\\`])/g, '\\$1') + '`';
+  }).join('.');
+}
+
 export function dec(v) {
   if (!v) return null;
   if ('stringValue' in v) return v.stringValue;
@@ -192,7 +208,9 @@ export async function fsPatch(path, fields, precondition) {
   // The mask names every path, deletions included; the body carries only the
   // ones being written. A path in the mask but absent from the body is exactly
   // Firestore's delete instruction.
-  const mask = Object.keys(fields).map((f) => `updateMask.fieldPaths=${encodeURIComponent(f)}`).join('&');
+  const mask = Object.keys(fields)
+    .map((f) => `updateMask.fieldPaths=${encodeURIComponent(quoteFirestoreFieldPath(f))}`)
+    .join('&');
   const writes = {};
   for (const [k, v] of Object.entries(fields)) {
     if (v !== DELETE_FIELD) writes[k] = v;
@@ -251,7 +269,7 @@ export async function fsCommit(transaction, writes) {
       name: firestoreDocumentName(projectId, db, w.path),
       fields: encodeDocumentFields(expandFieldPaths(w.fields)),
     };
-    if (w.updateMask) out.updateMask = { fieldPaths: w.updateMask };
+    if (w.updateMask) out.updateMask = { fieldPaths: w.updateMask.map(quoteFirestoreFieldPath) };
     if (w.precondition && w.precondition.updateTime) {
       out.currentDocument = { updateTime: w.precondition.updateTime };
     } else if (w.precondition && w.precondition.exists === false) {
@@ -436,11 +454,33 @@ export function verifySignerAttestation(keyType, attestation) {
   return null;
 }
 
+export function keyIsExpired(key, now = Date.now()) {
+  if (!key || !key.expiresAt) return false;
+  const expiresAt = Date.parse(key.expiresAt);
+  return !Number.isFinite(expiresAt) || expiresAt <= now;
+}
+
+function signedRequestHash(env, canonicalPath) {
+  const canonical = typeof env.canonical === 'string'
+    ? env.canonical
+    : JSON.stringify({
+      keyId: env.keyId || '',
+      seq: env.seq,
+      timestamp: env.timestamp,
+      requestId: env.requestId,
+      path: canonicalPath,
+      bodySha256: env.bodySha256,
+    });
+  return crypto.createHash('sha256').update(canonical).digest('hex');
+}
+
 export function findIdempotentResult(enrollment, env, canonicalPath) {
   const records = Array.isArray(enrollment && enrollment.recentResults) ? enrollment.recentResults : [];
   const record = records.find((item) => item && item.requestId === env.requestId);
   if (!record) return null;
-  if (record.seq !== env.seq || record.path !== canonicalPath || record.bodySha256 !== env.bodySha256) {
+  if (record.seq !== env.seq || record.path !== canonicalPath ||
+      record.bodySha256 !== env.bodySha256 ||
+      record.signedRequestHash !== signedRequestHash(env, canonicalPath)) {
     return { error: 'requestId was reused with a different signed request' };
   }
   return { status: record.status, body: record.body };
@@ -453,6 +493,7 @@ export function rememberIdempotentResult(enrollment, env, canonicalPath, status,
     seq: env.seq,
     path: canonicalPath,
     bodySha256: env.bodySha256,
+    signedRequestHash: signedRequestHash(env, canonicalPath),
     status,
     body,
   }, ...existing.filter((item) => item && item.requestId !== env.requestId)].slice(0, MAX_RECENT_RESULTS);

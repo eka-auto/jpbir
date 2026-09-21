@@ -3,7 +3,7 @@
 Queue a benign command on a device via the Firestore direct-cloud commandQueue,
 authenticated with the Firebase service account.
 
-Only non-extraction actions are allowed here (status/heartbeat/wakeup/sync).
+Only actions in the S24 runtime contract are allowed here.
 The command executes on the device only when its daemon polls the queue.
 
 Usage:
@@ -23,9 +23,11 @@ except ImportError:
     print("[ERROR] firebase_admin not installed. Run: pip install firebase-admin")
     sys.exit(1)
 
-# Benign, non-extraction actions only. Extraction actions (collect-*,
-# extract_whatsapp, full_*) are deliberately NOT offered here.
-ALLOWED_ACTIONS = {"status-only", "heartbeat", "wakeup", "sync-now"}
+# Exact mirror of Devices/S24/runtime_contract.json command.allowlistedActions.
+# _shared/tests/s24-action-gate.test.mjs fails if this writer drifts.
+ALLOWED_ACTIONS = {
+    "status-only", "ping", "echo", "wa-push", "wa-media-push", "sync-now"
+}
 
 FIREBASE_SA_ENV = "FIREBASE_SERVICE_ACCOUNT_JSON"
 

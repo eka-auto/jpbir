@@ -59,7 +59,7 @@ const bridgeDoc = () => {
     lastSeen: at,
     agentVersion: 's24-direct-cloud-2026-09-07.1',
     heartbeatAuth: 'termux-phone',
-    connectionMethod: 'termux-direct-cloud',
+    connectionMethod: 'signed-broker-v2',
     liveDeviceVerified: true,
     sourceType: 'live_termux',
     runtimeIsAndroid: false, // the tell
@@ -67,6 +67,13 @@ const bridgeDoc = () => {
     lastCommandAckId: 'c1',
     lastCommandAckStatus: 'completed',
     commandQueue: { c1: { status: 'completed', completedAt: at } },
+    enrollment: {
+      activeKeyId: 'a'.repeat(32),
+      keyType: 'android-keystore-p256',
+      lastSignedHeartbeatAt: at,
+      lastSignedHeartbeatKeyId: 'a'.repeat(32),
+      lastSignedHeartbeatProtocol: '2',
+    },
     samsungS24DirectSync: {
       liveDeviceVerified: true,
       heartbeatAuth: 'termux-phone',
@@ -171,26 +178,40 @@ t('both callers treat a stale heartbeat the same way', () => {
 
 // --------------------------- the two deliberate asymmetries, pinned so they stay deliberate --
 
-t('only the droplet grants a boot grace, and that stays intentional', () => {
+t('both callers keep command execution proof separate from heartbeat liveness', () => {
   const doc = phoneDoc();
   delete doc.lastCommandAckAt;
   delete doc.commandQueue;
   delete doc.lastCommandAckId;
   delete doc.lastCommandAckStatus;
 
-  assert.equal(strictS24Liveness(doc, fresh, null).live, false,
-    'the dashboard must NOT grant a boot grace - a phone that never acknowledged a command is unproven');
+  const dashboard = strictS24Liveness(doc, fresh, null);
+  assert.equal(dashboard.live, true);
+  assert.equal(dashboard.commandExecutionRecentlyProven, false);
   assert.equal(deviceHealth('samsung-s24-ultra', doc).device_online, true,
-    'the droplet must grant it, so a freshly rebooted phone is not reported dead before its first ACK');
+    'a fresh signed heartbeat is basic liveness even before command execution');
+  assert.equal(deviceHealth('samsung-s24-ultra', doc).command_execution_recently_proven, false);
 });
 
-t('the droplet reads liveDeviceVerified and sourceType from the nested sub-map', () => {
-  // Documented divergence, not drift: emptying the sub-map must fail the droplet even though
-  // the top-level fields the dashboard reads are still valid.
+t('both callers read the signed top-level telemetry rather than a legacy nested copy', () => {
   const doc = { ...phoneDoc(), samsungS24DirectSync: {} };
+  assert.equal(deviceHealth('samsung-s24-ultra', doc).device_online, true);
+  assert.equal(strictS24Liveness(doc, fresh, fresh).live, true);
+});
+
+t('both callers reject self-asserted telemetry without the server broker stamp', () => {
+  const doc = phoneDoc();
+  delete doc.enrollment;
+  assert.equal(strictS24Liveness(doc, fresh, fresh).live, false);
   assert.equal(deviceHealth('samsung-s24-ultra', doc).device_online, false);
-  assert.equal(strictS24Liveness(doc, fresh, fresh).live, true,
-    'the dashboard reads those fields top-level, so it is unaffected by the sub-map');
+});
+
+t('both callers retain the ACK-gated legacy direct-cloud fallback', () => {
+  const doc = { ...phoneDoc(), connectionMethod: 'termux-direct-cloud' };
+  delete doc.enrollment;
+  assert.equal(strictS24Liveness(doc, fresh, fresh).live, true);
+  assert.equal(deviceHealth('samsung-s24-ultra', doc).device_online, true);
+  assert.equal(strictS24Liveness(doc, fresh, 301).live, false);
 });
 
 // --------------------------------------------- all four implementations stay in step --
