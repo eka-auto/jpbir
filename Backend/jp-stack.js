@@ -277,9 +277,32 @@ async function probeBlob() {
  * "some other page is missing" is the same lie as a green one that means
  * nothing — so `byPath` gives each file its own status and buildLayers prefers
  * it when present.
+ *
+ * The target is the production apex, never VERCEL_URL. Preview deployments sit
+ * behind Vercel's deployment protection and answer 302 to vercel.com/sso-api on
+ * every path, so a probe pointed at its own deployment would paint the whole
+ * tier red on each preview while production was serving perfectly well.
+ *
+ * Cached for ASSETS_TTL_MS: the panel polls every 10 s, and this is the one
+ * probe whose answer cannot change between deploys — a page served now is
+ * served until the next one, unlike a database connection that can drop at any
+ * moment. Without it every open dashboard tab would put a steady 1 req/s of
+ * HEADs on the origin to re-learn a constant.
  */
 const ASSETS_TTL_MS = 30000;
 let _assetsCache = null;
+
+/**
+ * `content-length` is absent on a chunked or compressed response, and
+ * `Number(null)` is 0, not NaN — so reading it naively makes a perfectly well
+ * served page report itself as an empty body, which would redden the file and,
+ * through `cloud_fail`, the health-check gate in CI. A length nobody declared
+ * has to stay unknown rather than collapse to zero.
+ */
+function declaredLength(res) {
+  const raw = res.headers.get('content-length');
+  return raw === null ? NaN : Number(raw);
+}
 
 async function fetchStatus(url) {
   const opts = {
@@ -292,14 +315,14 @@ async function fetchStatus(url) {
   // calling a served page broken; cancel the body so nothing is downloaded.
   if (res.status === 405) {
     res = await fetch(url, opts);
-    const len = Number(res.headers.get('content-length'));
+    const length = declaredLength(res);
     if (res.body) await res.body.cancel().catch(() => {});
-    return { status: res.status, length: len };
+    return { status: res.status, length };
   }
-  return { status: res.status, length: Number(res.headers.get('content-length')) };
+  return { status: res.status, length: declaredLength(res) };
 }
 
-async function probeAssets() {
+export async function probeAssets() {
   if (_assetsCache && Date.now() - _assetsCache.at < ASSETS_TTL_MS) return _assetsCache.result;
 
   const origin = 'https://' + HOSTS.apex;
