@@ -6,7 +6,11 @@ const now = Date.parse('2026-09-18T00:00:00Z');
 const at = new Date(now - 10000).toISOString();
 const valid = () => ({ online: true, lastSeen: at, agentVersion: 's24-termux-test',
   runtimeIsAndroid: true,
-  connectionMethod: 'termux-direct-cloud', heartbeatAuth: 'termux-phone',
+  connectionMethod: 'signed-broker-v2', heartbeatAuth: 'termux-phone',
+  liveDeviceVerified: true, sourceType: 'live_termux',
+  enrollment: { activeKeyId: 'a'.repeat(32), keyType: 'android-keystore-p256',
+    lastSignedHeartbeatAt: at, lastSignedHeartbeatKeyId: 'a'.repeat(32),
+    lastSignedHeartbeatProtocol: '2' },
   samsungS24DirectSync: { liveDeviceVerified: true, heartbeatAuth: 'termux-phone', sourceType: 'live_termux' },
   lastCommandAckAt: at, lastCommandAckId: 'test', lastCommandAckStatus: 'completed',
   commandQueue: { test: { status: 'completed', completedAt: at } } });
@@ -33,7 +37,7 @@ test('accept the version string the shipped collector actually writes', () => {
 test('reject stale, future, laptop-origin and unauthenticated heartbeat', () => {
   for (const change of [{ lastSeen: new Date(now - 301000).toISOString() },
     { lastSeen: new Date(now + 10000).toISOString() }, { agentVersion: 's24-laptop-keepalive' },
-    { heartbeatAuth: 'laptop' }, { samsungS24DirectSync: {} }, { online: false }]) {
+    { heartbeatAuth: 'laptop' }, { sourceType: 'bridge_process' }, { online: false }]) {
     assert.equal(health({ ...valid(), ...change }).device_online, false);
   }
 });
@@ -60,25 +64,53 @@ test('an off-device bridge asserting every other field is still not the phone', 
   assert.equal(health(absent).device_online, false, 'an absent field must not pass');
   assert.equal(health(valid()).device_online, true, 'and a genuine true still must');
 });
-test('queue deletion and mismatched acknowledgement do not prove online', () => {
-  assert.equal(health({ ...valid(), commandQueue: {} }).device_online, false);
-  assert.equal(health({ ...valid(), lastCommandAckAt: new Date(now - 20000).toISOString() }).device_online, false);
+test('queue deletion and mismatched acknowledgement do not prove command execution', () => {
+  for (const doc of [
+    { ...valid(), commandQueue: {} },
+    { ...valid(), lastCommandAckAt: new Date(now - 20000).toISOString() },
+  ]) {
+    assert.equal(health(doc).device_online, true);
+    assert.equal(health(doc).command_execution_recently_proven, false);
+  }
 });
-test('boot grace requires fresh attestation without a prior acknowledgement', () => {
+test('fresh signed heartbeat remains live without a prior acknowledgement', () => {
   const doc = valid();
   delete doc.lastCommandAckAt;
   delete doc.commandQueue;
   assert.equal(health(doc).device_online, true);
+  assert.equal(health(doc).command_execution_recently_proven, false);
   assert.equal(health({ ...doc, heartbeatAuth: null }).device_online, false);
+});
+test('a legacy doc needs a completed ACK its queue entry agrees with, not just a fresh timestamp', () => {
+  // Dropping the ack-triple check let a legacy writer look online again with nothing but a
+  // fresh lastCommandAckAt pointing at no queue entry.
+  const legacy = { ...valid(), connectionMethod: 'termux-direct-cloud' };
+  delete legacy.enrollment;
+  assert.equal(health(legacy).device_online, true);
+  for (const change of [
+    { lastCommandAckId: 'gone', commandQueue: {} },
+    { lastCommandAckStatus: 'rejected' },
+    { commandQueue: { test: { status: 'rejected', completedAt: at } } },
+  ]) {
+    assert.equal(health({ ...legacy, ...change }).device_online, false, JSON.stringify(change));
+  }
+});
+test('self-asserted phone telemetry without server broker evidence fails closed', () => {
+  const doc = valid();
+  delete doc.enrollment;
+  assert.equal(health(doc).device_online, false);
+  assert.equal(health(doc).heartbeat_authenticated, false);
 });
 test('stored flag alone is never current connectivity', () => {
   assert.equal(health({ online: true, updatedAt: at }).device_online, false);
   assert.equal(deviceHealth('jayti-asus-vivobook', { online: true }, now).device_online, false);
 });
-test('preserve permitted parameters, reject forged lifecycle metadata', () => {
+test('preserve permitted parameters as the payload, reject forged lifecycle metadata', () => {
+  // poll and claim deliver entry.payload only; a top-level param never reached the device.
   const item = commandItem('sync-now', 'HIGH', { detail: 'test' }, at);
   assert.equal(item.status, 'pending');
-  assert.equal(item.detail, 'test');
+  assert.deepEqual(item.payload, { detail: 'test' });
+  assert.equal(Object.hasOwn(item, 'detail'), false);
   for (const key of ['status', 'action', 'completedAt', 'requestedBy']) {
     assert.throws(() => commandItem('sync-now', 'HIGH', { [key]: 'forged' }, at), /Reserved/);
   }

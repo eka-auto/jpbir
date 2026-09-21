@@ -35,14 +35,14 @@ command completion. It does not use cloud credentials or contact Firestore.
 
 ### Legacy Firestore emulator scaffold
 
-  1. Install dependencies with `C:\Users\abcom\AppData\Local\Programs\Python\Python312\python.exe -m pip install -r requirements.txt`.
+  1. Install dependencies with `python -m pip install -r requirements.txt`.
   2. Start the Firestore emulator on `127.0.0.1:8080`.
-  3. Start the dashboard: start_dashboard.bat
-  4. Start each device agent (one terminal per device):
-       run_agent.bat devices.json test-scaffold-1
-       run_agent.bat devices.json test-scaffold-2
-  5. Run the end-to-end test:
-       C:\Users\abcom\AppData\Local\Programs\Python\Python312\python.exe e2e_engineering_sandbox_test.py
+  3. Start the dashboard with `python dashboard_api.py`.
+  4. Start each device agent with `devices.emulator.json` (one terminal per device).
+  5. Run the end-to-end test with `python e2e_engineering_sandbox_test.py`.
+
+CI runs the same path with `firebase-tools emulators:exec`, which starts and
+stops the isolated emulator around the E2E script.
 
 ## Vercel deployment
 

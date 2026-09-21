@@ -8,23 +8,37 @@ control service.
 
 ## Install With The Phone In Hand
 
-1. Install Termux and the matching Termux:API app from the same trusted
-   distribution source, then grant the API app access when Android prompts.
+1. Install Termux, Termux:API, and Termux:Boot from the same trusted
+   distribution source. Open Termux:Boot once so Android enables its boot
+   receiver, then grant Termux:API access when Android prompts.
 2. From the admin machine, mint a short-lived code:
-   `python channel-sandbox/mint_enrollment_code.py mint samsung-s24-ultra`
+   `python Devices/sandbox/mint_enrollment_code.py mint samsung-s24-ultra`
 3. Transfer this complete directory to the phone and immediately run:
    `bash install_s24.sh`
 4. Enter the one-time code when prompted.
 
-The installer fails closed unless Android reports manufacturer `Samsung`,
-model `SM-S928*`, and a P-256 key inside secure hardware. It verifies each
-bundled artifact against a pinned SHA-256 digest, creates an isolated Python
-environment, proves enrollment with a signed heartbeat, and only then adds
-Termux boot/watchdog startup.
+The installer targets `https://jaytipargal.tech` and fails closed unless
+Android reports manufacturer `Samsung`, model `SM-S928*`, and a P-256 key
+inside secure hardware. It verifies each bundled artifact against a pinned
+SHA-256 digest and creates an isolated Python environment. Enrollment runs
+without publishing liveness and ends with a signed poll, so a reinstall over a
+revoked, superseded or expired key stops here, before any persistence exists.
+The installer then verifies the executable Termux:Boot launcher and persisted
+15-minute JobScheduler entry, records that installation evidence, and only
+then publishes the final signed heartbeat. It finishes by confirming a live
+broker process holds the device guard. Every agent mode takes that guard, so
+the installer's own requests never race a daemon the new job has already
+started (both would sign the same sequence number, and one would be rejected
+as a replay).
 
-The command surface is intentionally limited to `status-only`, `ping`, and
-`echo`. A dashboard LIVE badge alone is not an operational proof; verify a
-fresh signed heartbeat and a command that reaches completed status.
+The official command surface is exactly `status-only`, `ping`, `echo`,
+`wa-push`, `wa-media-push`, and `sync-now`. Status and ping accept no payload;
+echo returns a JSON-object payload unchanged; the three push/sync actions
+accept only an optional bounded integer `timeout_seconds`. The queue tools
+(`device_send`'s `params`, `s24_queue_command`'s `extra`) write these as the
+command's `payload`, which is what poll and claim deliver. A dashboard LIVE
+badge alone is not execution proof; verify a fresh signed heartbeat and a
+command that reaches completed status.
 
 ## Direct-cloud data sync with a local checkpoint
 

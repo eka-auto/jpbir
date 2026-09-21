@@ -5,7 +5,8 @@ import {
   S24_ACK_MAX_AGE_SECONDS,
   S24_RUNTIME_EVIDENCE,
   s24AttestationChecks,
-  firstFailedCheck,
+  s24CommandAckConsistent,
+  s24LivenessVerdict,
 } from './lib/s24-attestation.js';
 import { requireKey } from './_auth.js';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
@@ -148,27 +149,41 @@ function commandAckTimestamp(fields) {
     lastAck.completedAt || lastAck.at || null;
 }
 
+const LIVE_REASONS = {
+  'signed-broker-v2': 'signed broker heartbeat is authenticated and fresh',
+  'legacy-strict': 'legacy heartbeat and completed command acknowledgement are authenticated and fresh',
+};
+
 export function strictS24Liveness(fields, heartbeatAgeSeconds, ackAgeSeconds) {
-  // Every field is read top-level here. Server/jp-agent/device-health.mjs reads
-  // liveDeviceVerified and sourceType from the nested samsungS24DirectSync sub-map, and
-  // grants a boot grace this dashboard does not. Those are deliberate per-caller policy
-  // differences passed explicitly at the call site — not drift, and not to be "unified"
-  // without deciding which behaviour is correct first. allowBootGrace defaults to false.
+  const enrollment = fields.enrollment || {};
   const checks = s24AttestationChecks({
     agentVersion: fields.agentVersion,
+    connectionMethod: fields.connectionMethod,
     heartbeatAuth: fields.heartbeatAuth,
     liveDeviceVerified: fields.liveDeviceVerified,
     sourceType: fields.sourceType,
     runtimeIsAndroid: fields[S24_RUNTIME_EVIDENCE],
     heartbeatAgeSeconds,
     ackAgeSeconds,
+    ackConsistent: s24CommandAckConsistent(fields),
+    lastSeen: fields.lastSeen,
+    signedHeartbeatAt: enrollment.lastSignedHeartbeatAt,
+    signedHeartbeatKeyId: enrollment.lastSignedHeartbeatKeyId,
+    signedHeartbeatProtocol: enrollment.lastSignedHeartbeatProtocol,
+    activeKeyId: enrollment.activeKeyId,
+    keyType: enrollment.keyType,
   });
-  const failed = firstFailedCheck(checks);
+  // Which checks a mode requires is the shared module's decision, not this file's: a local
+  // copy of those lists is how `live` and `reason` could come to disagree.
+  const { evidenceMode, failedCheck } = s24LivenessVerdict(checks);
   return {
     mode: 'strict-s24-attestation',
-    live: !failed,
+    live: evidenceMode !== null,
+    evidenceMode,
+    heartbeatAuthenticated: evidenceMode !== null,
+    commandExecutionRecentlyProven: checks.commandAckFresh,
     checks,
-    reason: failed ? `${failed} is missing or stale` : 'authenticated heartbeat and command acknowledgement are fresh',
+    reason: failedCheck ? `${failedCheck} is missing or stale` : LIVE_REASONS[evidenceMode],
   };
 }
 
@@ -182,8 +197,8 @@ export function strictS24Liveness(fields, heartbeatAgeSeconds, ackAgeSeconds) {
 // the droplet and dashboard copies drifted twice in one day, and the second
 // drift let a Windows bridge claim to be the phone). Pure function: no I/O, no
 // module state; pass the decoded fields and a frozen `nowMs`. Note that key
-// order inside s24AttestationChecks is load-bearing (firstFailedCheck reports
-// the first false key as the reason) — reordering it here or there is a
+// order inside s24AttestationChecks is load-bearing (s24LivenessVerdict reports
+// the first false required key as the reason) — reordering it here or there is a
 // contract change, not a tidy-up.
 export function computeS24Liveness(fields, nowMs) {
   const DEFAULT_INTERVAL_SECONDS = { 'android-phone': 900 };

@@ -9,14 +9,15 @@
 // this file did not check at all — so device_ping reported an off-device Windows bridge as
 // both device_online and heartbeat_authenticated while the dashboard correctly refused it.
 // The Python implementations (Integrations/s24-connect-mcp/server.py and
-// Devices/S24/pull_direct_cloud.py) are kept in step by s24-source-mirrors.test.mjs.
+// Devices/S24/pull_direct_cloud.py) are executed against it by s24-attestation.test.mjs.
 import {
   S24_DEVICE_ID,
   S24_CONNECTION_METHODS,
-  S24_HEARTBEAT_AUTH,
   S24_ACK_MAX_AGE_SECONDS,
   S24_RUNTIME_EVIDENCE,
   s24AttestationChecks,
+  s24CommandAckConsistent,
+  s24LivenessVerdict,
 } from './s24-attestation.js';
 
 export function deviceHealth(deviceId, doc, now = Date.now()) {
@@ -28,41 +29,43 @@ export function deviceHealth(deviceId, doc, now = Date.now()) {
   const lastSeenAge = age(doc.lastSeen);
   const ackAge = age(doc.lastCommandAckAt);
   const fresh = value => value !== null && value >= 0 && value <= S24_ACK_MAX_AGE_SECONDS;
-  const sync = doc.samsungS24DirectSync || {};
-  const ack = doc.commandQueue?.[doc.lastCommandAckId];
+  const enrollment = doc.enrollment || {};
 
-  // Deliberate divergences from the dashboard, stated here rather than left implicit:
-  // liveDeviceVerified and sourceType come from the nested samsungS24DirectSync sub-map
-  // (jp-devices.js reads them top-level), and allowBootGrace lets a freshly rebooted phone
-  // pass before its first command acknowledgement. jp-devices.js grants no such grace.
-  // Neither difference is drift, and neither should be "unified" without first deciding
-  // which behaviour is correct — that is a policy call, not a refactor.
   const checks = s24AttestationChecks({
     agentVersion: doc.agentVersion,
+    connectionMethod: doc.connectionMethod,
     heartbeatAuth: doc.heartbeatAuth,
-    liveDeviceVerified: sync.liveDeviceVerified,
-    sourceType: sync.sourceType,
+    liveDeviceVerified: doc.liveDeviceVerified,
+    sourceType: doc.sourceType,
     runtimeIsAndroid: doc[S24_RUNTIME_EVIDENCE],
     heartbeatAgeSeconds: lastSeenAge,
     ackAgeSeconds: ackAge,
-    allowBootGrace: true,
+    // The ack triple — completed status, a completed queue entry, matching completedAt — is
+    // part of commandAckFresh itself, so the legacy path (which requires it) cannot pass on a
+    // bare lastCommandAckAt with no queue entry behind it, as it briefly did when this caller
+    // dropped its own triple check.
+    ackConsistent: s24CommandAckConsistent(doc),
+    lastSeen: doc.lastSeen,
+    signedHeartbeatAt: enrollment.lastSignedHeartbeatAt,
+    signedHeartbeatKeyId: enrollment.lastSignedHeartbeatKeyId,
+    signedHeartbeatProtocol: enrollment.lastSignedHeartbeatProtocol,
+    activeKeyId: enrollment.activeKeyId,
+    keyType: enrollment.keyType,
   });
 
-  // Conditions this caller adds on top of the shared set. The stored online flag and the
-  // connection method are extra evidence the dashboard does not require; sync.heartbeatAuth
-  // and the ack triple are the droplet's stricter proof that a recorded acknowledgement
-  // really belongs to the command it claims to complete.
-  const ackConsistent = doc.lastCommandAckStatus === 'completed' && ack?.status === 'completed'
-    && ack.completedAt === doc.lastCommandAckAt;
-  const authenticated = Object.values(checks).every(Boolean)
+  // Conditions this caller adds on top of the shared verdict: the stored online flag and a
+  // known connection method are extra evidence the dashboard does not require.
+  const authenticated = s24LivenessVerdict(checks).evidenceMode !== null
     && doc.online === true
-    && S24_CONNECTION_METHODS.includes(doc.connectionMethod)
-    && sync.heartbeatAuth === S24_HEARTBEAT_AUTH
-    && (ackConsistent || ackAge === null);
+    && S24_CONNECTION_METHODS.includes(doc.connectionMethod);
+  const commandExecutionRecentlyProven = checks.commandAckFresh;
   return {
     device_online: deviceId === S24_DEVICE_ID ? authenticated
       : Boolean(doc.online || doc.effectiveOnline) && fresh(lastSeenAge),
     heartbeat_authenticated: deviceId === S24_DEVICE_ID ? authenticated : false,
+    command_execution_recently_proven: deviceId === S24_DEVICE_ID
+      ? commandExecutionRecentlyProven
+      : false,
     stored_online: Boolean(doc.online || doc.effectiveOnline),
     last_command_ack_at: doc.lastCommandAckAt ?? null,
     last_command_ack_age_seconds: ackAge,
@@ -88,23 +91,17 @@ export function deviceHealth(deviceId, doc, now = Date.now()) {
  *
  * 'secure-wipe' is intentionally refused here: it stays reachable only
  * through the audited bootstrap/emergency token path the daemon verifies
- * itself — not through anything a tool token can touch. 'wakeup' and
- * 'heartbeat' are permitted because the 2026-09-20 daemon copy reduces them
- * to a wake-lock, a notification and an immediate status publish; permitting
- * 'wakeup' also lets the three commands parked since 2026-09-17 drain
- * harmlessly when the real phone daemon is finally installed.
+ * itself — not through anything a tool token can touch. The exported set is
+ * deliberately the exact runtime_contract.json allowlist. Safe historical
+ * aliases may resolve to one of those canonical values, but commandItem always
+ * writes the canonical value so the mailbox itself cannot drift from contract.
  *
  * The MCP server (Integrations/s24-connect-mcp/server.py) mirrors this exact
  * table; _shared/tests/s24-action-gate.test.mjs fails if the two lists, or
  * the hardened daemon copy, drift apart.
  */
 export const SAFE_DEVICE_ACTIONS = new Set([
-  // contract (runtime_contract.json allowlistedActions)
   'status-only', 'ping', 'echo', 'wa-push', 'wa-media-push', 'sync-now',
-  // daemon aliases that resolve to the above
-  'sync', 'direct-cloud-sync', 'collect-history', 'history',
-  // safe queue-only verbs implemented by the 2026-09-20 daemon
-  'heartbeat', 'wakeup',
 ]);
 
 /** Mirrors normalize_runtime_action() in the daemon, gate before queueing. */
@@ -113,7 +110,6 @@ export function normalizeAction(action) {
   const aliases = {
     'sync': 'sync-now', 'direct-cloud-sync': 'sync-now', 'collect-history': 'sync-now', 'history': 'sync-now',
     'status': 'status-only',
-    'ping': 'heartbeat', // daemon maps 'ping' to heartbeat; 'test-ping' stays test-ping
     'start-sshd': 'start-ssh', 'ssh': 'start-ssh',
     'wake': 'wakeup', 'wake-up': 'wakeup',
     'restart': 'update-and-restart', 'pull-and-restart': 'update-and-restart', 'update': 'update-and-restart',
@@ -144,11 +140,19 @@ export const RESERVED_COMMAND_PARAMS = Object.freeze([
 ]);
 
 export function commandItem(action, priority, params, requestedAt) {
-  // Extra parameters must never forge a completed command or change its action.
+  const gate = actionGateError(action);
+  if (gate) throw new Error(gate);
+  // Reserved names stay refused even though params no longer sit beside them: wipeToken and
+  // newPassword were read by historical handlers, and none of these is a payload field.
   const reserved = RESERVED_COMMAND_PARAMS;
   for (const key of reserved) {
     if (Object.hasOwn(params, key)) throw new Error(`Reserved command parameter: ${key}`);
   }
-  return { ...params, action, status: 'pending', priority, requestedAt,
-    requestedBy: 'jp-agent-s24-tools', source: 'commandQueue' };
+  // Params travel as the command's `payload`, which is the only place the broker's poll and
+  // claim hand them to the device (Devices/S24/README.md documents timeout_seconds there).
+  // Spread at the top level of the entry they never reached the phone — a queued
+  // timeout_seconds was silently replaced by the default — and they sat beside the lease
+  // fields the broker writes onto the same entry (claimToken, leaseUntil, attempt).
+  return { action: normalizeAction(action), status: 'pending', priority, requestedAt,
+    requestedBy: 'jp-agent-s24-tools', source: 'commandQueue', payload: { ...params } };
 }

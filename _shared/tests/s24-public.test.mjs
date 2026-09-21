@@ -48,16 +48,27 @@ function s24Fields(overrides) {
     status: 'online',
     uptimeSeconds: 112233,
     heartbeatIntervalSeconds: 900,
-    connectionMethod: 'termux-direct-cloud',
+    connectionMethod: 'signed-broker-v2',
     batteryLevel: 87,
     networkType: 'wifi',
     lastSeen: isoAgo(45),
+    // An ACK only proves execution when it is a completed one whose queue entry agrees
+    // (s24CommandAckConsistent), so the fixture's ACK points at a completed entry.
     lastCommandAckAt: isoAgo(45),
+    lastCommandAckId: 'cmd-x-done',
+    lastCommandAckStatus: 'completed',
+    enrollment: {
+      activeKeyId: 'a'.repeat(32),
+      keyType: 'android-keystore-p256',
+      lastSignedHeartbeatAt: isoAgo(45),
+      lastSignedHeartbeatKeyId: 'a'.repeat(32),
+      lastSignedHeartbeatProtocol: '2',
+    },
     ...ATTESTED,
     commandQueue: {
       'cmd-z-dial': { action: 'dial_secret +919876543210', status: 'pending', requestedAt: isoAgo(300) },
       'cmd-y-ping': { action: 'ping', status: 'queued', requestedAt: isoAgo(240) },
-      'cmd-x-done': { action: 'ping', status: 'done', requestedAt: isoAgo(600), completedAt: isoAgo(560) },
+      'cmd-x-done': { action: 'ping', status: 'completed', requestedAt: isoAgo(600), completedAt: isoAgo(45) },
     },
     network: {
       ssid: 'AtCoderJunction',
@@ -161,8 +172,12 @@ t('a fully attested, freshly-heartbeating, freshly-acking phone reads live throu
   assert.equal(keyless.live, true);
   assert.equal(keyless.deviceId, 'samsung-s24-ultra');
   assert.equal(keyless.liveness.mode, 'strict-s24-attestation');
-  assert.equal(Object.keys(keyless.liveness.checks).length, 7, 'exactly the 7 attestation booleans');
-  assert.ok(Object.values(keyless.liveness.checks).every((v) => typeof v === 'boolean' && v === true));
+  assert.equal(Object.keys(keyless.liveness.checks).length, 11, 'exactly the 11 attestation/diagnostic booleans');
+  assert.equal(keyless.liveness.checks.legacyConnection, false,
+    'the inactive compatibility path stays visible but must not pass on a broker document');
+  assert.ok(Object.entries(keyless.liveness.checks)
+    .filter(([name]) => name !== 'legacyConnection')
+    .every(([, value]) => typeof value === 'boolean' && value === true));
   assert.equal(keyless.lastSeenCoarse, '<1m');
   assert.equal(keyless.lastCommandAckCoarse, '<1m');
   assert.equal(keyless.heartbeatIntervalSeconds, 900);
@@ -213,7 +228,7 @@ t('the precise tier adds timestamps and queue entries but still no network ident
   // broker's requestedAt rename — proving the view reuses normalizeCommandQueue
   // rather than a private re-projection that could drift from it.
   assert.ok(preciseJson.includes('dial_secret'), 'the authenticated tier must still see command bodies');
-  assert.ok(precise.commandQueue.some((e) => e.id === 'cmd-x-done' && e.completedAt === isoAgo(560)));
+  assert.ok(precise.commandQueue.some((e) => e.id === 'cmd-x-done' && e.completedAt === isoAgo(45)));
   assert.ok(precise.commandQueue.every((e) => e.queuedAt !== null));
   // ...and even with the extra keys, each never-tier bomb value stays absent:
   for (const secret of ['AtCoderJunction', 'aa:bb', '10.42.0.9', '210.16.82.193', '157.49.23.247', 'private:', 'seenBy', 'callLogs', 'Jayti Pargal']) {
@@ -249,9 +264,12 @@ function expectDead(overrides, failedCheck) {
   return v;
 }
 
-t('a 301-second-old command ack makes an otherwise fully attested phone dead on the public page', () => {
-  const v = expectDead({ lastCommandAckAt: isoAgo(301) }, 'commandAckFresh');
-  assert.equal(v.lastCommandAckCoarse, '<15m', 'the coarse ack bucket keeps telling the visitor the ack is old even in its honest non-live state');
+t('a 301-second-old command ack is a diagnostic and does not negate a fresh signed heartbeat', () => {
+  const v = publicS24View(s24Fields({ lastCommandAckAt: isoAgo(301) }), NOW, false);
+  assert.equal(v.live, true);
+  assert.equal(v.liveness.checks.commandAckFresh, false);
+  assert.equal(v.liveness.commandExecutionRecentlyProven, false);
+  assert.equal(v.lastCommandAckCoarse, '<15m', 'the coarse ack bucket keeps telling the visitor the execution proof is old');
 });
 
 t('a bridge process asserting the STRING "true" for runtimeIsAndroid is still not the phone: ===true is the only Android evidence', () => {
@@ -282,7 +300,7 @@ t('live:false on the public view still names its failed check: visitors see WHY 
   assert.equal(v.live, false);
   assert.equal(typeof v.liveness.reason, 'string');
   assert.match(v.liveness.reason, /heartbeatAuth/);
-  assert.equal(Object.keys(v.liveness.checks).length, 7);
+  assert.equal(Object.keys(v.liveness.checks).length, 11);
 });
 
 t('coarseAge hugs its real boundaries: 59s is <1m, 60s is <5m, 300s is <15m, 900s is <1h, 3600s is <6h, 21600s is <24h, and 86400s is >1d', () => {

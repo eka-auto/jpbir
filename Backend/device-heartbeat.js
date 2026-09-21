@@ -3,17 +3,21 @@ import {
   dec,
   fsGet,
   fsPatch,
+  findIdempotentResult,
   HARDWARE_RULES,
+  keyIsExpired,
   MAX_RECENT_REQUESTS,
   parseEnvelope,
   rateLimitOk,
   readRawBody,
+  rememberIdempotentResult,
   sendError,
   slog,
   verifyHardwareFingerprint,
   verifyEnrolledHardware,
   verifyP256,
 } from './broker.js';
+import { S24_DEVICE_ID } from './lib/s24-attestation.js';
 
 export const config = { api: { bodyParser: false } };
 
@@ -27,9 +31,50 @@ export const TELEMETRY_WHITELIST = [
   'connectionMethod',
   'agentVersion',
   'heartbeatIntervalSeconds',
+  'heartbeatAuth',
+  'liveDeviceVerified',
+  'sourceType',
+  'runtimeIsAndroid',
+  'installationEvidence',
   'local',
   'network',
 ];
+
+// The fields jp-devices and the droplet read as evidence that the S24 itself is running.
+// Any enrolled broker device can send telemetry, and canonicalDeviceId is what makes
+// isS24Document() treat a doc as the phone, so a laptop agent or an off-device bridge with
+// its own key could once mark its own doc as the S24 and assert every one of these about
+// itself. Only the S24's enrolled key may write them.
+export const S24_ONLY_TELEMETRY = [
+  'heartbeatAuth',
+  'liveDeviceVerified',
+  'sourceType',
+  'runtimeIsAndroid',
+  'installationEvidence',
+];
+
+/** The device-doc fields a verified heartbeat from `deviceId` may write from its telemetry. */
+export function heartbeatTelemetryFields(deviceId, telemetry) {
+  const fields = {};
+  for (const key of TELEMETRY_WHITELIST) {
+    if (telemetry[key] === undefined) continue;
+    if (S24_ONLY_TELEMETRY.includes(key) && deviceId !== S24_DEVICE_ID) continue;
+    fields[key] = telemetry[key];
+  }
+  // Identity comes from the verified key, never from the body.
+  fields.deviceId = deviceId;
+  fields.canonicalDeviceId = deviceId;
+  return fields;
+}
+
+export function brokerHeartbeatEvidence(env, nowIso) {
+  return {
+    'enrollment.lastHeartbeatAt': nowIso,
+    'enrollment.lastSignedHeartbeatAt': nowIso,
+    'enrollment.lastSignedHeartbeatKeyId': env.keyId,
+    'enrollment.lastSignedHeartbeatProtocol': '2',
+  };
+}
 
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
@@ -64,7 +109,7 @@ export default async function handler(req, res) {
     if (!keyDoc) return sendError(res, 403, 'key not enrolled', 'heartbeat-key-unknown', { keyId: env.keyId });
     const k = dec({ mapValue: { fields: keyDoc.fields } }) || {};
     if (k.status !== 'active') return sendError(res, 403, `key is ${k.status || 'inactive'}`, 'heartbeat-key-inactive', { keyId: env.keyId });
-    if (k.expiresAt && Date.parse(k.expiresAt) < Date.now()) {
+    if (keyIsExpired(k)) {
       return sendError(res, 403, 'key expired; re-enroll', 'heartbeat-key-expired', { keyId: env.keyId });
     }
     const deviceId = k.deviceId;
@@ -93,6 +138,14 @@ export default async function handler(req, res) {
       if (enrollment.activeKeyId !== env.keyId) {
         return sendError(res, 403, 'key is not the active device key', 'heartbeat-key-superseded', { keyId: env.keyId, deviceId });
       }
+      const priorResult = findIdempotentResult(enrollment, env, CANONICAL_PATH);
+      if (priorResult && priorResult.error) {
+        return sendError(res, 401, priorResult.error, 'heartbeat-reqid-reused', { keyId: env.keyId, deviceId });
+      }
+      if (priorResult) {
+        slog('heartbeat-idempotent-replay', { keyId: env.keyId, deviceId, seq: env.seq });
+        return res.status(priorResult.status).json(priorResult.body);
+      }
       if (env.seq <= (enrollment.seq || 0)) {
         return sendError(res, 401, 'sequence replay rejected', 'heartbeat-seq-replay', { keyId: env.keyId, deviceId, seq: env.seq });
       }
@@ -102,23 +155,25 @@ export default async function handler(req, res) {
       }
 
       const nowIso = new Date().toISOString();
+      const responseBody = { success: true, deviceId, at: nowIso, seq: env.seq };
       const fields = {
         'enrollment.seq': env.seq,
         'enrollment.lastRequestIds': [env.requestId, ...recent].slice(0, MAX_RECENT_REQUESTS),
-        'enrollment.lastHeartbeatAt': nowIso,
+        ...brokerHeartbeatEvidence(env, nowIso),
         'enrollment.lastHardware': hardware,
+        'enrollment.recentResults': rememberIdempotentResult(
+          enrollment, env, CANONICAL_PATH, 200, responseBody,
+        ),
         lastSeen: nowIso,
         online: true,
         updatedAt: nowIso,
+        ...heartbeatTelemetryFields(deviceId, telemetry),
       };
-      for (const key of TELEMETRY_WHITELIST) {
-        if (telemetry[key] !== undefined) fields[key] = telemetry[key];
-      }
 
       try {
         await fsPatch(`/devices/${deviceId}`, fields, { updateTime: devDoc.updateTime });
         slog('heartbeat-ok', { keyId: env.keyId, deviceId, seq: env.seq });
-        return res.status(200).json({ success: true, deviceId, at: nowIso, seq: env.seq });
+        return res.status(200).json(responseBody);
       } catch (e) {
         if (!e.conflict) throw e;
       }

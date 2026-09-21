@@ -166,7 +166,7 @@ t('a device that has never acked reports null rather than a fabricated age', () 
 
 // ── the wire format: mask names a deletion, body omits it ───────────────
 
-await ta('fsPatch puts a deleted field in the update mask and leaves it out of the body, which is how Firestore deletes', async () => {
+await ta('fsPatch quotes hyphenated command IDs while preserving Firestore delete semantics', async () => {
   // A real RSA key and a real signed assertion: the point is to drive the
   // actual fsPatch code path, not a reimplementation of it.
   const { privateKey } = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
@@ -192,8 +192,8 @@ await ta('fsPatch puts a deleted field in the update mask and leaves it out of t
     // Fresh module instance so the token cache and env are the ones set above.
     const broker = await import('../../Backend/broker.js?fsPatchDeleteCase');
     await broker.fsPatch('/devices/samsung-s24-ultra', {
-      'commandQueue.keep': { action: 'sync-now', status: 'pending' },
-      'commandQueue.drop': broker.DELETE_FIELD,
+      'commandQueue.sync-now_123': { action: 'sync-now', status: 'pending' },
+      'commandQueue.550e8400-e29b-41d4-a716-446655440000': broker.DELETE_FIELD,
     }, { updateTime: '2026-09-20T11:59:00.000000Z' });
   } finally {
     globalThis.fetch = realFetch;
@@ -201,12 +201,15 @@ await ta('fsPatch puts a deleted field in the update mask and leaves it out of t
 
   assert.equal(seen.length, 1, 'expected exactly one PATCH');
   const { url, body } = seen[0];
-  assert.ok(url.includes('updateMask.fieldPaths=commandQueue.keep'), 'written path must be in the mask');
-  assert.ok(url.includes('updateMask.fieldPaths=commandQueue.drop'), 'DELETED path must also be in the mask');
+  assert.ok(url.includes('updateMask.fieldPaths=commandQueue.%60sync-now_123%60'),
+    'hyphenated written path must be quoted in the mask');
+  assert.ok(url.includes('updateMask.fieldPaths=commandQueue.%60550e8400-e29b-41d4-a716-446655440000%60'),
+    'hyphenated DELETED path must also be quoted in the mask');
   assert.ok(url.includes('currentDocument.updateTime='), 'the precondition must be on the wire');
   const queue = body.fields.commandQueue.mapValue.fields;
-  assert.ok(queue.keep, 'the written entry belongs in the body');
-  assert.equal('drop' in queue, false, 'the deleted entry must NOT be in the body — that is what makes it a delete');
+  assert.ok(queue['sync-now_123'], 'the written entry belongs in the body');
+  assert.equal('550e8400-e29b-41d4-a716-446655440000' in queue, false,
+    'the deleted entry must NOT be in the body — that is what makes it a delete');
 });
 
 console.log(`\n${pass}/${total} checks passed`);
