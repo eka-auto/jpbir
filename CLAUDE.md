@@ -254,7 +254,11 @@ GitHub authors as the GitHub account, is the one that fails. The fix is in
 Vercel → Account Settings → Authentication: connect GitHub `jaytipargal` to a
 team member (the owner), then Redeploy the blocked production deployment or
 merge the next PR. Nothing in git config, CI or `vercel.json` can unblock it;
-do not add a deploy workflow to route around it.
+do not add a deploy workflow to route around it. Resolved the same day: with
+the connection restored, the merge of PR #104 (`main@977af01`) deployed on its
+own at 19:18 UTC as `dpl_9Fj7JUemtGQ7V2WAaRgn4sJzuwXU`, credited to
+`jaytipargal`, and took the `jaytipargal.tech` alias. Nothing in the repo
+changed to make that happen.
 
 **"password authentication failed for user 'neondb_owner'" means the Neon
 password was rotated and this project was not told.** The Neon project
