@@ -268,11 +268,19 @@ and from 17:44 UTC every dashboard Postgres call failed with SQLSTATE 28P01
 thing happened on 2026-09-20 (reset 17:08 UTC, strings pasted 17:23 UTC, healed
 by the next deploy). Fix: put the new pooled string in `DATABASE_URL` and
 `POSTGRES_URL` and the direct one in `DATABASE_URL_UNPOOLED` and
-`POSTGRES_URL_NON_POOLING` on `jayti-dashboard`, then Redeploy production.
-Nothing is lost meanwhile: `jp-track` still journals to DynamoDB and `db-push`
-re-imports with ON CONFLICT DO NOTHING. Never paste a connection string into a
-transcript, PR or commit. The `GATE_*` variables on this project belong to
-`private-file-gate-db` and are unused here.
+`POSTGRES_URL_NON_POOLING` on `jayti-dashboard`, then rebuild production with
+`vercel redeploy <production-url> --scope jayti` or the dashboard's Redeploy
+button — both rebuild the existing deployment from git and upload nothing.
+Never run `vercel` or `vercel --prod` in a working directory for this: it
+uploads that directory (a run from a home directory on 2026-09-22 was stopped
+only by an unreadable Docker socket). The CLI's "Value starts with whitespace"
+warning is real: a leading space makes the parser read the host as `base`.
+Resolved 2026-09-22: variables re-set 19:02–19:05 UTC, production rebuilt as
+`dpl_GDAzXNH83ZFL65sMgZfB6Sphqk3Y` at 19:06 UTC, `/api/verify-db` green at
+19:09 UTC. Nothing is lost meanwhile: `jp-track` still journals to DynamoDB and
+`db-push` re-imports with ON CONFLICT DO NOTHING. Never paste a connection
+string into a transcript, PR or commit. The `GATE_*` variables on this project
+belong to `private-file-gate-db` and are unused here.
 
 `.vercelignore` exists because of point 3: it keeps untracked local trees —
 including a live GCP service-account private key and `app/shared/.env.local`
