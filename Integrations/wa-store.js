@@ -268,14 +268,16 @@ export async function upsertChats(query, records, meta = {}) {
 
 /** Upsert messages in chunks. A message whose chat is unknown is dropped by the FK, not the whole batch. */
 export async function upsertMessages(query, records, meta = {}) {
+  const list = records || [];
   const rows = new Map(); // same rule as chats: one row per msg_id in a statement
   let skipped = 0, duplicates = 0;
-  for (const rec of records || []) {
+  for (const rec of list) {
     const m = normalizeMessage(rec, meta.chatId);
     if (!m) { skipped++; continue; }
     if (rows.has(m.msg_id)) duplicates++;
     rows.set(m.msg_id, { ...m, raw: JSON.stringify(rec) });
   }
+  const normalized = rows.size;
   const col = (batch, k) => batch.map((r) => r[k]);
   let upserted = 0;
   for (const batch of chunks([...rows.values()], CHUNK * 2)) {
@@ -306,7 +308,15 @@ export async function upsertMessages(query, records, meta = {}) {
     // WHERE EXISTS drops messages for chats never ingested — report what was stored, not what was sent
     upserted += Number.isInteger(result && result.rowCount) ? result.rowCount : 0;
   }
-  return { upserted, skipped, duplicates };
+  // A normalized message whose chat_id is not in wa_chats is dropped by the
+  // WHERE EXISTS guard above — the same silent path upsertAttachments surfaces
+  // as `orphaned`. It is not a skip (nothing was wrong with the record), so
+  // `upserted` alone could not tell "the S24 chat-export arrived" from "every
+  // line was thrown away because its chat_id did not byte-match the
+  // recovered-dump jid" — the most common reason a chat still reads 0-readable
+  // after an export was run, and until now it left no trace anywhere.
+  const orphaned = Math.max(0, normalized - upserted);
+  return { received: list.length, normalized, upserted, skipped, duplicates, orphaned };
 }
 
 const ATT_KINDS = new Set(['image', 'video', 'audio', 'ptt', 'document', 'sticker', 'other']);
@@ -451,6 +461,17 @@ export async function ingestBatch(query, body, meta = {}) {
   // batch's discards (rejected + orphaned); there is no table to recount it
   // from, so it overwrites rather than adds, which keeps the idempotent retry
   // stable and, for the common single-batch run, is exact.
+  // A chat-export message whose chat_id is not yet in wa_chats is dropped by
+  // upsertMessages' WHERE EXISTS guard (m.orphaned). wa_sync_runs grows no
+  // messages_orphaned column here: the run INSERT's positional params are
+  // asserted (attachments_skipped must stay the last one), so the count rides
+  // in `note` — which the dashboard already renders — merged with any caller
+  // note. Without this, a mismatched export mapping failed in total silence:
+  // the run just showed fewer msgs and said nothing about why.
+  const orphanNote = m.orphaned > 0
+    ? `${m.orphaned} message${m.orphaned === 1 ? '' : 's'} dropped: chat_id not in wa_chats — the chat-export mapping does not match an ingested chat`
+    : null;
+  const runNote = [str(b.note) || null, orphanNote].filter(Boolean).join(' · ') || null;
   await query(
     `INSERT INTO wa_sync_runs (run_id, device_id, chats_seen, messages_seen, attachments_seen, status, note, finished_at, attachments_skipped)
      VALUES ($1, $2,
@@ -467,7 +488,7 @@ export async function ingestBatch(query, body, meta = {}) {
        note                = COALESCE(EXCLUDED.note, wa_sync_runs.note),
        finished_at         = COALESCE(EXCLUDED.finished_at, wa_sync_runs.finished_at),
        attachments_skipped = EXCLUDED.attachments_skipped`,
-    [runId, device, b.done ? 'done' : 'running', str(b.note) || null,
+    [runId, device, b.done ? 'done' : 'running', runNote,
       b.done ? new Date().toISOString() : null, a.skipped + a.orphaned]
   );
 

@@ -2811,13 +2811,19 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
         var host = $('waRuns'); if (!host) return;
         if (!runs || !runs.length) { host.innerHTML = '<div class="hint">No sync runs recorded yet.</div>'; return; }
         var rows = runs.map(function (r) {
-            return '<div style="display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid var(--border-light);font-size:12.5px">'
+            /* The run note carries the ingest's silent-drop signal (e.g. an S24
+               chat-export whose chat_id matched no ingested chat). Surface it,
+               warn-coloured when it reports a drop, so a broken export mapping
+               stops hiding behind a lower msgs count. */
+            var note = r.note ? '<div style="margin-top:4px;font-size:11px;color:' + (/dropped/.test(r.note) ? 'var(--warn)' : 'var(--ink-muted)') + '">' + esc(r.note) + '</div>' : '';
+            return '<div style="padding:8px 0;border-bottom:1px solid var(--border-light);font-size:12.5px">'
+                + '<div style="display:flex;justify-content:space-between;gap:10px">'
                 + '<div><div style="font-weight:600">' + esc(r.device_id || '—') + '</div>'
                 + '<div style="color:var(--ink-muted);font-size:11px">' + esc(r.run_id || '') + '</div></div>'
                 + '<div style="text-align:right">'
                 + '<div>' + fmt(r.chats_seen) + ' chats · ' + fmt(r.messages_seen) + ' msgs</div>'
                 + '<div style="color:var(--ink-muted);font-size:11px">' + esc(r.status || '—') + ' · ' + timeAgo(r.finished_at || r.started_at) + '</div>'
-                + '</div></div>';
+                + '</div></div>' + note + '</div>';
         }).join('');
         host.innerHTML = rows;
     }
@@ -3008,7 +3014,22 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
                 }
                 $('waMsgHint').textContent = fmt(j.count) + ' records · ' + fmt(j.readable_count || 0) + ' readable · '
                     + fmt(j.encrypted_count || 0) + ' encrypted metadata' + (q ? ' matching "' + esc(q) + '"' : '') + ', newest first.';
-                list.innerHTML = j.messages.map(waMsgRow).join('');
+                /* Every row here is sealed-dump metadata — no text ever existed
+                   for it. Say so once, with the exact fix, instead of leaving a
+                   wall of identical "Encrypted message" bubbles that reads like
+                   a bug. The chat's own id is shown copy-selectable because the
+                   export mapping must match it byte-for-byte or every imported
+                   line is dropped on ingest (see the run-panel warning). */
+                var stubBanner = '';
+                if ((j.messages || []).length && !(j.readable_count > 0)) {
+                    stubBanner = '<div style="margin:0 0 12px;padding:12px 14px;border:1px solid rgba(240,185,104,.35);border-radius:10px;background:rgba(240,185,104,.08);line-height:1.55">'
+                        + '<div style="font-weight:600;margin-bottom:5px">Metadata only — no message text is stored for this chat</div>'
+                        + '<div style="color:var(--ink-muted);font-size:12.5px">These rows were recovered from a sealed dump. WhatsApp bodies are end-to-end encrypted, so the text was never present here and cannot be reconstructed cloud-side. To import the real text, on the S24: WhatsApp &rarr; open this chat &rarr; &#8942; &rarr; More &rarr; <b>Export chat &rarr; Without Media</b>, drop the .txt into <code>~/wa-exports/</code>, then run <code>wa_export_import.py</code> (the every-30-min cron picks it up).</div>'
+                        + '<div style="color:var(--ink-muted);font-size:12.5px;margin-top:7px">Map the file to this chat\'s exact id, or every line is dropped on ingest:</div>'
+                        + '<div style="margin-top:4px"><code style="user-select:all;background:rgba(255,248,238,.08);padding:3px 7px;border-radius:5px;font-size:12px">' + esc(waMsgState.chatId || chatId) + '</code></div>'
+                        + '</div>';
+                }
+                list.innerHTML = stubBanner + j.messages.map(waMsgRow).join('');
             })
             .catch(function (e) { if (waMsgState.reqId !== token) return; list.innerHTML = ''; $('waMsgHint').textContent = 'Load failed: ' + e.message; });
     }
