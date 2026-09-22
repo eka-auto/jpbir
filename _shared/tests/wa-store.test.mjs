@@ -111,6 +111,8 @@ function stub(messageRowCount = null) {
     { chat_id: 'g1@g.us', id: 'M1', text: 'x' }, { chat_id: 'ghost', id: 'M2', text: 'y' }, { chat_id: 'ghost', id: 'M3', text: 'z' },
   ], { runId: 'r1' });
   check('messages report what was stored, not what was sent', r.upserted === 1 && r.skipped === 0, JSON.stringify(r));
+  check('a message whose chat was never ingested is orphaned, not silently lost',
+    r.received === 3 && r.normalized === 3 && r.orphaned === 2, JSON.stringify(r));
   check('message statement is guarded by the chat existing', /WHERE EXISTS \(SELECT 1 FROM wa_chats/.test(s.calls[0].text), s.calls[0].text.slice(0, 120));
 }
 {
@@ -155,6 +157,18 @@ function stub(messageRowCount = null) {
   check('empty batch still records a run with a unique id', s2.calls.length === 1 && /^run_[0-9a-f-]{36}$/.test(r2.run_id) && r2.done === false, JSON.stringify(r2));
   const r3 = await ingestBatch(stub().query, {}, {});
   check('two id-less batches get different runs', r2.run_id !== r3.run_id, `${r2.run_id} vs ${r3.run_id}`);
+
+  // A real S24 chat-export whose chat_id matches no ingested chat: every line is
+  // dropped by the FK guard. That used to vanish; now it rides in the run note
+  // (and the note stays the last-but-one param, so attachments_skipped is last).
+  const so = stub(0);
+  const ro = await ingestBatch(so.query, {
+    run_id: 'rx', messages: [{ chat_id: 'ghost@c.us', id: 'M1', text: 'hi' }, { chat_id: 'ghost@c.us', id: 'M2', text: 'yo' }],
+  }, {});
+  const runo = so.calls[so.calls.length - 1];
+  check('an orphaned chat-export is reported in the run note, not silently dropped',
+    ro.messages.orphaned === 2 && runo.params.length === 6 && /2 messages dropped: chat_id not in wa_chats/.test(runo.params[3] || ''),
+    JSON.stringify({ messages: ro.messages, note: runo.params[3], len: runo.params.length }));
 }
 
 /* ---------- attachment path (normalizeAttachment / upsertAttachments) ----------
