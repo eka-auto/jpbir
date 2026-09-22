@@ -24,7 +24,7 @@ import { requireKey } from './_auth.js';
 import { cronAuthorized, secretEquals } from './lib/cron-auth.js';
 import { verifyPostgres } from './verify-db.js';
 import { getFirestoreToken } from './jp-devices.js';
-import { LAYERS, REQUIRED_ENV, HOSTS, TLS_WARN_DAYS, PROBE_TIMEOUT_MS, DEVICES_NOTE } from './lib/stack-map.js';
+import { LAYERS, REQUIRED_ENV, HOSTS, TLS_WARN_DAYS, PROBE_TIMEOUT_MS, DEVICES_NOTE, allFiles } from './lib/stack-map.js';
 import { promises as dnsp } from 'node:dns';
 import tls from 'node:tls';
 
@@ -252,6 +252,137 @@ async function probeBlob() {
   }
 }
 
+/**
+ * Are the dashboard's own pages actually reaching a browser?
+ *
+ * These nine files used to be `static` — permanently grey — on the reasoning in
+ * stack-map.js that a function cannot prove a file exists, because Vercel
+ * traces each handler into a bundle and `fs` inside one sees that bundle, not
+ * the repo. That is true, and it was answering the wrong question. Nobody cares
+ * whether those bytes sit on a disk; they care whether the page loads. That is
+ * a request, and a request is exactly what this function can make — the same
+ * class of evidence as `probeAgent`, which believes the droplet only when nginx
+ * answers it.
+ *
+ * So each file carries the URL the edge serves it at and the probe HEADs it:
+ * 200 with a non-empty body is the light, anything else is reported with the
+ * status it actually returned. Six of those paths are rewrites declared in
+ * vercel.json (/s24, /vivobook, /agent, /db, /jteka, /viewer). Drop the routing
+ * table and those 404 while /template.html still answers through the catch-all,
+ * which is why vercel.json takes its light from the rewrites rather than from a
+ * fetch of its own.
+ *
+ * Failures are per path, not per probe. One layer-wide verdict would paint all
+ * nine red because /viewer 404'd, and a red light on index.html that means
+ * "some other page is missing" is the same lie as a green one that means
+ * nothing — so `byPath` gives each file its own status and buildLayers prefers
+ * it when present.
+ *
+ * The target is the production apex, never VERCEL_URL. Preview deployments sit
+ * behind Vercel's deployment protection and answer 302 to vercel.com/sso-api on
+ * every path, so a probe pointed at its own deployment would paint the whole
+ * tier red on each preview while production was serving perfectly well.
+ *
+ * Cached for ASSETS_TTL_MS: the panel polls every 10 s, and this is the one
+ * probe whose answer cannot change between deploys — a page served now is
+ * served until the next one, unlike a database connection that can drop at any
+ * moment. Without it every open dashboard tab would put a steady 1 req/s of
+ * HEADs on the origin to re-learn a constant.
+ */
+const ASSETS_TTL_MS = 30000;
+let _assetsCache = null;
+
+/**
+ * `content-length` is absent on a chunked or compressed response, and
+ * `Number(null)` is 0, not NaN — so reading it naively makes a perfectly well
+ * served page report itself as an empty body, which would redden the file and,
+ * through `cloud_fail`, the health-check gate in CI. A length nobody declared
+ * has to stay unknown rather than collapse to zero.
+ */
+function declaredLength(res) {
+  const raw = res.headers.get('content-length');
+  return raw === null ? NaN : Number(raw);
+}
+
+async function fetchStatus(url) {
+  const opts = {
+    redirect: 'follow',
+    signal: AbortSignal.timeout(PROBE_TIMEOUT_MS - 200),
+    headers: { 'user-agent': 'jpbir-stack-probe' },
+  };
+  let res = await fetch(url, { ...opts, method: 'HEAD' });
+  // A 405 is a verdict on the method, not on the asset. Re-ask with GET before
+  // calling a served page broken; cancel the body so nothing is downloaded.
+  if (res.status === 405) {
+    res = await fetch(url, opts);
+    const length = declaredLength(res);
+    if (res.body) await res.body.cancel().catch(() => {});
+    return { status: res.status, length };
+  }
+  return { status: res.status, length: declaredLength(res) };
+}
+
+export async function probeAssets() {
+  if (_assetsCache && Date.now() - _assetsCache.at < ASSETS_TTL_MS) return _assetsCache.result;
+
+  const origin = 'https://' + HOSTS.apex;
+  const targets = allFiles().filter((f) => f.probe === 'assets' && f.url);
+  const byPath = {};
+
+  const checked = await Promise.all(
+    targets.map(async (f) => {
+      try {
+        const { status, length } = await fetchStatus(origin + f.url);
+        if (status !== 200) {
+          return { f, status: FAIL, problem: origin + f.url + ' returned HTTP ' + status };
+        }
+        // A 200 that carries nothing is a broken deploy wearing a success code.
+        if (Number.isFinite(length) && length === 0) {
+          return { f, status: FAIL, problem: origin + f.url + ' served 200 with an empty body' };
+        }
+        const size = Number.isFinite(length) ? ' (' + Math.max(1, Math.round(length / 1024)) + ' KB)' : '';
+        return { f, status: OK, detail: 'HTTP 200 from ' + f.url + size };
+      } catch (e) {
+        const msg = String((e && e.message) || e).slice(0, 140);
+        return { f, status: FAIL, problem: 'GET ' + origin + f.url + ' failed: ' + msg };
+      }
+    })
+  );
+
+  for (const c of checked) {
+    byPath[c.f.path] = { status: c.status, problem: c.problem || '', detail: c.detail || '' };
+  }
+
+  // vercel.json has no URL of its own — the rewrites resolving IS its evidence.
+  const rewrites = checked.filter((c) => c.f.rewrite);
+  const brokenRewrites = rewrites.filter((c) => c.status !== OK);
+  byPath['vercel.json'] = brokenRewrites.length
+    ? {
+        status: FAIL,
+        problem:
+          brokenRewrites.length +
+          ' of ' +
+          rewrites.length +
+          ' routed paths did not resolve (' +
+          brokenRewrites.map((c) => c.f.url).join(', ') +
+          ') — check the routes table',
+        detail: '',
+      }
+    : { status: OK, problem: '', detail: rewrites.length + ' rewritten paths resolve' };
+
+  const statuses = Object.values(byPath).map((v) => v.status);
+  const failed = statuses.filter((s) => s !== OK).length;
+  const result = {
+    status: worst(statuses),
+    detail: statuses.length - failed + '/' + statuses.length + ' served by ' + HOSTS.apex,
+    problem: failed ? failed + ' of ' + statuses.length + ' paths did not serve — see each file' : '',
+    byPath,
+  };
+
+  _assetsCache = { at: Date.now(), result };
+  return result;
+}
+
 function probeEnv() {
   const missing = REQUIRED_ENV.filter((v) => !_env[v.name] && !(v.alt && _env[v.alt]));
   if (missing.length) {
@@ -276,7 +407,11 @@ export function worst(statuses) {
 export function buildLayers(probes) {
   return LAYERS.map((layer) => {
     const files = layer.files.map((f) => {
-      const p = probes[f.probe] || { status: UNKNOWN, problem: 'no probe registered for "' + f.probe + '"' };
+      const registered = probes[f.probe] || { status: UNKNOWN, problem: 'no probe registered for "' + f.probe + '"' };
+      // A probe may answer per file rather than with one verdict for all of
+      // them (`assets` does). Where it has, that entry is the more specific
+      // truth — one 404 must not repaint the eight pages that are being served.
+      const p = (registered.byPath && registered.byPath[f.path]) || registered;
       return {
         path: f.path,
         why: f.why,
@@ -309,7 +444,7 @@ export function buildLayers(probes) {
  * place each.
  */
 export async function runProbes() {
-  const [dns, tlsR, agent, postgres, firestore, dynamo, blob] = await Promise.all([
+  const [dns, tlsR, agent, postgres, firestore, dynamo, blob, assets] = await Promise.all([
     withTimeout('DNS', probeDns()),
     withTimeout('TLS', probeTls()),
     withTimeout('agent', probeAgent()),
@@ -317,6 +452,7 @@ export async function runProbes() {
     withTimeout('Firestore', probeFirestore()),
     withTimeout('DynamoDB', probeDynamo()),
     withTimeout('Blob', probeBlob()),
+    withTimeout('assets', probeAssets()),
   ]);
 
   const probes = {
@@ -327,6 +463,7 @@ export async function runProbes() {
     firestore,
     dynamo,
     blob,
+    assets,
     env: probeEnv(),
     devices: deviceFreshness(firestore),
     static: { status: UNKNOWN, detail: 'no live signal reachable from a serverless function' },
