@@ -126,6 +126,11 @@
   .kv{display:grid;grid-template-columns:150px 1fr;gap:3px 12px;font-size:12px;margin-bottom:14px}
   .kv dt{color:var(--ink-faint)}
   .kv dd{font-family:var(--mono);font-size:11.5px;word-break:break-all}
+  /* Nested objects render as indented labeled sub-trees, not a raw JSON blob. */
+  .kv dd>.kv{margin:5px 0 7px;grid-template-columns:130px 1fr;border-left:2px solid var(--line);padding-left:10px}
+  .kv-arr{margin:2px 0;padding-left:18px}
+  .kv-arr>li{margin:1px 0;font-family:var(--mono);font-size:11.5px}
+  .kv-empty{color:var(--ink-faint);font-family:var(--mono)}
 
   svg .axis{stroke:var(--line);stroke-width:1}
   svg .gl{stroke:rgba(35,43,52,.65);stroke-width:1}
@@ -514,14 +519,38 @@
   $('backdrop').addEventListener('click', closeDrawer);
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeDrawer(); });
 
+  // Render any value — nested objects and arrays included — as labeled, built
+  // UI (key/value trees and lists), never a raw JSON dump. This is the same
+  // principle the main dashboard's renderLiveDevicePayload follows: the operator
+  // reads structured rows, not a <pre> blob they have to parse by eye. Timestamp
+  // keys (…_at) are humanised, empties are stated, and pathological nesting is
+  // capped so a cyclic-looking payload can't run the recursion away.
+  function treeHtml(value, keyName, depth) {
+    depth = depth || 0;
+    if (value === null || value === undefined || value === '') return '<span class="kv-empty">—</span>';
+    if (typeof value !== 'object') {
+      if (keyName && /_at$/.test(keyName)) { var w = when(value); if (w) return esc(w); }
+      return esc(String(value));
+    }
+    if (depth >= 6) return esc(String(JSON.stringify(value)));
+    if (Array.isArray(value)) {
+      if (!value.length) return '<span class="kv-empty">empty list</span>';
+      return '<ol class="kv-arr">' + value.map(function (item) {
+        return '<li>' + treeHtml(item, null, depth + 1) + '</li>';
+      }).join('') + '</ol>';
+    }
+    var keys = Object.keys(value);
+    if (!keys.length) return '<span class="kv-empty">empty</span>';
+    return '<dl class="kv">' + keys.map(function (k) {
+      return '<dt>' + esc(k) + '</dt><dd>' + treeHtml(value[k], k, depth + 1) + '</dd>';
+    }).join('') + '</dl>';
+  }
+
   function kvList(obj, skip) {
     return '<dl class="kv">' + Object.keys(obj).filter(function (k) {
       return !(skip || []).includes(k) && obj[k] !== null && obj[k] !== undefined && obj[k] !== '';
     }).map(function (k) {
-      var v = obj[k];
-      if (typeof v === 'object') v = JSON.stringify(v);
-      if (/_at$/.test(k)) v = when(obj[k]);
-      return '<dt>' + esc(k) + '</dt><dd>' + esc(v) + '</dd>';
+      return '<dt>' + esc(k) + '</dt><dd>' + treeHtml(obj[k], k, 1) + '</dd>';
     }).join('') + '</dl>';
   }
 
@@ -712,9 +741,9 @@
           openDrawer(row.event_type + ' · ' + when(row.occurred_at),
             kvList(full || row, ['raw_payload', 'event_data']) +
             '<h3 style="font-size:11px;letter-spacing:.7px;text-transform:uppercase;color:var(--ink-dim);margin:14px 0 7px">event_data</h3>' +
-            '<pre>' + esc(JSON.stringify((full && full.event_data) || {}, null, 2)) + '</pre>' +
+            treeHtml((full && full.event_data) || {}) +
             '<h3 style="font-size:11px;letter-spacing:.7px;text-transform:uppercase;color:var(--ink-dim);margin:14px 0 7px">raw_payload</h3>' +
-            '<pre>' + esc(JSON.stringify((full && full.raw_payload) || {}, null, 2)) + '</pre>');
+            treeHtml((full && full.raw_payload) || {}));
         }).catch(fail);
       });
     });
@@ -765,7 +794,9 @@
         '<div class="pager">Freshness is computed from last_seen_at. The online flag is what the device claims — when the two disagree, believe the timestamp.</div></div>';
       wireRows(el, rows, function (row) {
         openDrawer('Device ' + row.device_id,
-          kvList(row, ['info']) + '<pre>' + esc(JSON.stringify(row.info || {}, null, 2)) + '</pre>');
+          kvList(row, ['info']) +
+          '<h3 style="font-size:11px;letter-spacing:.7px;text-transform:uppercase;color:var(--ink-dim);margin:14px 0 7px">info</h3>' +
+          treeHtml(row.info || {}));
       });
     });
   };
@@ -1010,7 +1041,7 @@
         openDrawer((row.dataset || selectedLabel) + ' · ' + label,
           kvList(row, ['payload', 'content']) +
           '<h3 style="font-size:11px;letter-spacing:.7px;text-transform:uppercase;color:var(--ink-dim);margin:14px 0 7px">Complete source record</h3>' +
-          '<pre>' + esc(JSON.stringify(row.payload || {}, null, 2)) + '</pre>');
+          treeHtml(row.payload || {}));
       });
     }).catch(function (error) {
       // Only an auth failure clears the key; a store outage surfaces as an
@@ -1053,7 +1084,7 @@
         openDrawer('Letter ' + row.token,
           kvList(row, ['body']) +
           '<h3 style="font-size:11px;letter-spacing:.7px;text-transform:uppercase;color:var(--ink-dim);margin:14px 0 7px">Letter body</h3>' +
-          '<pre>' + esc(JSON.stringify(row.body || {}, null, 2)) + '</pre>');
+          treeHtml(row.body || {}));
       });
     });
   };
@@ -1079,7 +1110,7 @@
         openDrawer('Open · ' + row.email,
           kvList(row, ['payload']) +
           '<h3 style="font-size:11px;letter-spacing:.7px;text-transform:uppercase;color:var(--ink-dim);margin:14px 0 7px">payload</h3>' +
-          '<pre>' + esc(JSON.stringify(row.payload || {}, null, 2)) + '</pre>');
+          treeHtml(row.payload || {}));
       });
     });
   };
