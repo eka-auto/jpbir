@@ -14,6 +14,7 @@
 import {
   normalizeChat, normalizeMessage, normalizeSender, whatsappAddress, messageSenderLabel, displayMessageBody,
   chatIdFor, assignChatIds, idlessChats, upsertChats, upsertMessages, ingestBatch,
+  normalizeAttachment, attachmentSkipReason, upsertAttachments,
   galaxyPayload, redactChats, toCompact, CHUNK,
 } from '../../Integrations/wa-store.js';
 
@@ -143,13 +144,79 @@ function stub(messageRowCount = null) {
   check('run row marks done with a finish time', run.params[2] === 'done' && typeof run.params[4] === 'string', JSON.stringify(run.params));
   check('run tallies are recomputed from rows, not added per batch',
     /\(SELECT COUNT\(\*\)::int FROM wa_chats\s+WHERE run_id = \$1\)/.test(run.text)
-    && /\(SELECT COUNT\(\*\)::int FROM wa_messages WHERE run_id = \$1\)/.test(run.text)
-    && !/wa_sync_runs\.chats_seen \+/.test(run.text) && run.params.length === 5, run.text.replace(/\s+/g, ' ').slice(0, 300));
+    && /\(SELECT COUNT\(\*\)::int FROM wa_messages\s+WHERE run_id = \$1\)/.test(run.text)
+    && /\(SELECT COUNT\(\*\)::int FROM wa_attachments\s+WHERE run_id = \$1\)/.test(run.text)
+    && !/wa_sync_runs\.chats_seen \+/.test(run.text) && run.params.length === 6, run.text.replace(/\s+/g, ' ').slice(0, 360));
+  check('attachments_skipped rides as the last param so status/finish keep their positions',
+    run.params[2] === 'done' && typeof run.params[4] === 'string' && run.params[5] === 0,
+    JSON.stringify(run.params));
   const s2 = stub();
   const r2 = await ingestBatch(s2.query, {}, {});
   check('empty batch still records a run with a unique id', s2.calls.length === 1 && /^run_[0-9a-f-]{36}$/.test(r2.run_id) && r2.done === false, JSON.stringify(r2));
   const r3 = await ingestBatch(stub().query, {}, {});
   check('two id-less batches get different runs', r2.run_id !== r3.run_id, `${r2.run_id} vs ${r3.run_id}`);
+}
+
+/* ---------- attachment path (normalizeAttachment / upsertAttachments) ----------
+   Entirely untested until now while wa_attachments backs two deployed routes,
+   and every rejection was a silent `return null`. Pin that a bad record is
+   rejected WITH a reason and COUNTED, never dropped in silence. */
+{
+  check('attachmentSkipReason names each reason and passes a valid record',
+    attachmentSkipReason(null) === 'not-an-object'
+    && attachmentSkipReason({ blob_url: 'https://b/x', kind: 'image' }) === 'missing-chat-id'
+    && attachmentSkipReason({ chat_id: 'c1', kind: 'image' }) === 'missing-blob-url'
+    && attachmentSkipReason({ chat_id: 'c1', blob_url: 'https://b/x', kind: 'nope' }) === 'unknown-kind'
+    && attachmentSkipReason({ chat_id: 'c1', blob_url: 'https://b/x', kind: 'image' }) === null,
+    'reason classifier changed');
+
+  check('normalizeAttachment drops a record with no blob_url (bytes must be in Blob first)',
+    normalizeAttachment({ chat_id: 'c1', kind: 'image' }) === null
+    && normalizeAttachment({ chat_id: 'c1', blob_url: 'https://b/x', kind: 'image' }) !== null,
+    'missing blob_url must reject');
+
+  // The exact failure mode found in production: the producer sends media
+  // metadata but never uploaded the bytes, so every record lacks blob_url.
+  // Nothing lands — and it is all COUNTED, with reasons, not vanished.
+  const s = stub();
+  const noBlob = await upsertAttachments(s.query, [
+    { chat_id: 'c1', kind: 'image' }, { chat_id: 'c2', kind: 'video' }, null,
+  ], { runId: 'r1' });
+  check('a run that drops every attachment reports it, does not look perfect',
+    noBlob.received === 3 && noBlob.upserted === 0 && noBlob.skipped === 3
+    && noBlob.skippedReasons['missing-blob-url'] === 2 && noBlob.skippedReasons['not-an-object'] === 1
+    && s.calls.length === 0,
+    JSON.stringify(noBlob));
+
+  // Valid records, but the chat-exists guard (stubbed to keep one) filters the
+  // other: it is orphaned, surfaced rather than lost between normalized/upserted.
+  const orphanStub = (() => {
+    const calls = [];
+    const query = async (text, params) => { calls.push({ text, params }); return { rows: [], rowCount: 1 }; };
+    return { calls, query };
+  })();
+  const twoValid = await upsertAttachments(orphanStub.query, [
+    { chat_id: 'c1', blob_url: 'https://b/1', kind: 'image', msg_id: 'm1' },
+    { chat_id: 'ghost', blob_url: 'https://b/2', kind: 'video', msg_id: 'm2' },
+  ], { runId: 'r1' });
+  check('an attachment whose chat was never ingested is orphaned, not silently lost',
+    twoValid.received === 2 && twoValid.normalized === 2 && twoValid.upserted === 1
+    && twoValid.orphaned === 1 && twoValid.skipped === 0,
+    JSON.stringify(twoValid));
+
+  // ingestBatch runs the attachment upsert and carries its skip tally to the run.
+  const bs = stub();
+  const rb = await ingestBatch(bs.query, {
+    run_id: 'runA', chats: [], messages: [],
+    attachments: [{ chat_id: 'c1', kind: 'image' }, { chat_id: 'c2', blob_url: 'https://b/2', kind: 'video' }],
+  }, {});
+  const attCall = bs.calls.find((c) => /INSERT INTO wa_attachments/.test(c.text));
+  const runCall = bs.calls.find((c) => /INSERT INTO wa_sync_runs/.test(c.text));
+  check('ingestBatch runs the attachment upsert and carries its tally to the run',
+    Boolean(attCall) && Boolean(runCall)
+    && rb.attachments.skipped === 1 && rb.attachments.upserted === 1
+    && runCall.params[5] === 1,   // attachments_skipped = 1 rejected + 0 orphaned
+    `${JSON.stringify(rb.attachments)} runParam5=${runCall && runCall.params[5]}`);
 }
 
 /* ---------- galaxy payload ---------- */

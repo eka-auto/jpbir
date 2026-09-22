@@ -93,7 +93,12 @@ export default async function handler(req, res) {
     const items = scan.items;
     const inWindow = items.filter((i) => {
       if (!i.epoch || i.epoch < cutoff) return false;
-      if (!site) return true;
+      // The cross-property ("all") view still excludes non-properties: rows
+      // that resolve to no property are the `*.v0.build` / `*.vercel.run` /
+      // `device://` junk siteFor now rejects, and counting them here would
+      // reinflate exactly what the ingest guard stopped writing. Nothing is
+      // deleted — the rows stay in DynamoDB, they just do not display.
+      if (!site) return effectiveSite(i) !== null;
       return effectiveSite(i) === site;
     });
 

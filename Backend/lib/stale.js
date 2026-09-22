@@ -1,25 +1,73 @@
 /**
  * Pure staleness evaluator — no I/O, unit-tested independently of the endpoint.
  *
- * device: { lastSeen: ISO string | null, staleAlertState: 'healthy'|'alerted'|undefined }
- * Returns { action: 'none'|'down'|'recovered', newState: 'healthy'|'alerted'|null, changed: bool }.
+ * device: {
+ *   lastSeen: ISO string | null,
+ *   staleAlertState: 'healthy'|'alerted'|undefined,
+ *   staleAlertNotifiedAt: ISO string | undefined,  // when we last emailed
+ *   enrolledAt: ISO string | undefined,            // doc.createTime, for never-seen
+ * }
+ * opts: { reminderMs?: number }  // 0/absent = edge-triggered only (no reminders)
+ * Returns { action: 'none'|'down'|'never-seen'|'reminder'|'recovered',
+ *           newState: 'healthy'|'alerted'|null, changed: bool }.
+ *   - changed=true means the stored state string flipped (patch it).
+ *   - a 'reminder' notifies WITHOUT changing state (changed=false).
+ *   - the caller emails on any action other than 'none'.
  *
- * - A device with no (or unparseable) lastSeen is skipped: a never-seen device
- *   isn't "stale", which is what keeps the offline S24 from alerting until it
- *   actually starts heartbeating.
- * - Edge-triggered: only healthy<->alerted transitions produce an action, so
- *   nothing re-emails while the state is unchanged.
+ * Two behaviours were missing and are the reason a dead fleet went unnoticed
+ * for ~8 days:
+ *
+ * - never-seen. A device with no lastSeen used to be skipped outright ("a
+ *   never-seen device isn't stale"), which meant `jayti-asus-vivobook` —
+ *   enrolled and never once heartbeating — was invisible forever. It is now
+ *   `never-seen` (a down variant) ONCE it has been enrolled longer than the
+ *   threshold. Before that it is genuinely new, not down; and with no
+ *   enrolment time at all we still cannot tell the two apart, so we skip
+ *   exactly as before.
+ * - reminders. Alerting was a single edge trigger: one email on
+ *   healthy→alerted, then silence for a week. With a reminder window a daily
+ *   nudge fires while a device stays down, so the anti-spam intent (not every
+ *   10-minute tick) is kept without the outage being forgotten after one mail.
  */
-export function evaluate(device, nowMs, thresholdMs) {
-  const lastSeen = device && device.lastSeen;
-  if (!lastSeen) return { action: 'none', newState: null, changed: false };
-  const t = Date.parse(lastSeen);
-  if (Number.isNaN(t)) return { action: 'none', newState: null, changed: false };
-  const stale = nowMs - t > thresholdMs;
-  const prev = device.staleAlertState === 'alerted' ? 'alerted' : 'healthy';
-  if (stale && prev === 'healthy') return { action: 'down', newState: 'alerted', changed: true };
-  if (!stale && prev === 'alerted') return { action: 'recovered', newState: 'healthy', changed: true };
-  return { action: 'none', newState: prev, changed: false };
+export function evaluate(device, nowMs, thresholdMs, opts = {}) {
+  const d = device || {};
+  const reminderMs = Number(opts.reminderMs) > 0 ? Number(opts.reminderMs) : 0;
+  const prev = d.staleAlertState === 'alerted' ? 'alerted' : 'healthy';
+
+  let down = false;
+  let neverSeen = false;
+  const t = Date.parse(d.lastSeen);
+  if (Number.isFinite(t)) {
+    down = nowMs - t > thresholdMs;
+  } else {
+    const enrolled = Date.parse(d.enrolledAt);
+    if (Number.isFinite(enrolled) && nowMs - enrolled > thresholdMs) {
+      down = true;
+      neverSeen = true;
+    } else {
+      // Unjudgeable (never seen and either just enrolled or no enrolment time).
+      // Preserve the old skip contract: newState null when we have never
+      // alerted, so nothing is written and no email goes out.
+      return { action: 'none', newState: prev === 'alerted' ? 'alerted' : null, changed: false };
+    }
+  }
+
+  if (down && prev === 'healthy') {
+    return { action: neverSeen ? 'never-seen' : 'down', newState: 'alerted', changed: true };
+  }
+  if (down && prev === 'alerted') {
+    if (reminderMs) {
+      const last = Date.parse(d.staleAlertNotifiedAt);
+      if (!Number.isFinite(last) || nowMs - last > reminderMs) {
+        return { action: 'reminder', newState: 'alerted', changed: false };
+      }
+    }
+    return { action: 'none', newState: 'alerted', changed: false };
+  }
+  if (!down && prev === 'alerted') {
+    return { action: 'recovered', newState: 'healthy', changed: true };
+  }
+  return { action: 'none', newState: 'healthy', changed: false };
 }
 
 /**
