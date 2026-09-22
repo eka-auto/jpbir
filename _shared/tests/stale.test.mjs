@@ -63,6 +63,60 @@ t('fresh + no state -> none, defaults healthy', () => {
 });
 
 
+// ── never-seen and reminders (the two gaps that hid an 8-day outage) ────
+const REMIND = 24 * 3600 * 1000; // 1 day
+const OPT = { reminderMs: REMIND };
+
+// 9. Enrolled past the threshold, never a heartbeat -> never-seen (alerts once).
+t('enrolled long ago and never seen -> never-seen/alerted', () => {
+  const r = evaluate({ lastSeen: null, enrolledAt: iso(3 * 86400_000) }, NOW, THRESH, OPT);
+  assert.deepStrictEqual(r, { action: 'never-seen', newState: 'alerted', changed: true });
+});
+
+// 10. Just enrolled, no heartbeat yet -> not down; it is new, not dead.
+t('just enrolled, no heartbeat yet -> none (new, not down)', () => {
+  const r = evaluate({ lastSeen: null, enrolledAt: iso(2 * 60_000) }, NOW, THRESH, OPT);
+  assert.deepStrictEqual(r, { action: 'none', newState: null, changed: false });
+});
+
+// 11. No lastSeen AND no enrolment time -> unjudgeable, skip (old contract).
+t('no lastSeen and no enrolment time -> none/null even with reminders on', () => {
+  const r = evaluate({ lastSeen: null }, NOW, THRESH, OPT);
+  assert.deepStrictEqual(r, { action: 'none', newState: null, changed: false });
+});
+
+// 12. Down, already alerted, last emailed longer than the window -> reminder.
+t('still down past the reminder window -> reminder (notifies, state unchanged)', () => {
+  const r = evaluate(
+    { lastSeen: iso(8 * 86400_000), staleAlertState: 'alerted', staleAlertNotifiedAt: iso(25 * 3600_000) },
+    NOW, THRESH, OPT);
+  assert.deepStrictEqual(r, { action: 'reminder', newState: 'alerted', changed: false });
+});
+
+// 13. Down, already alerted, emailed recently -> silent until the window passes.
+t('still down but reminded recently -> none (no per-tick spam)', () => {
+  const r = evaluate(
+    { lastSeen: iso(8 * 86400_000), staleAlertState: 'alerted', staleAlertNotifiedAt: iso(2 * 3600_000) },
+    NOW, THRESH, OPT);
+  assert.deepStrictEqual(r, { action: 'none', newState: 'alerted', changed: false });
+});
+
+// 14. Reminders are opt-in: with no window, still-down stays edge-triggered.
+t('reminders off (no window) -> still-down is none, as before', () => {
+  const r = evaluate(
+    { lastSeen: iso(8 * 86400_000), staleAlertState: 'alerted', staleAlertNotifiedAt: iso(25 * 3600_000) },
+    NOW, THRESH);
+  assert.deepStrictEqual(r, { action: 'none', newState: 'alerted', changed: false });
+});
+
+// 15. A never-seen device recovers the first time it heartbeats.
+t('a never-seen device that finally heartbeats -> recovered', () => {
+  const r = evaluate(
+    { lastSeen: iso(30_000), enrolledAt: iso(3 * 86400_000), staleAlertState: 'alerted' },
+    NOW, THRESH, OPT);
+  assert.deepStrictEqual(r, { action: 'recovered', newState: 'healthy', changed: true });
+});
+
 // ── the EXPORT PIPELINE, which fails independently of the device ────────
 // The device evaluator above cannot see these: the phone can heartbeat
 // perfectly while the Firestore-export -> signed-push half has been dead for

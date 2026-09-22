@@ -10,6 +10,10 @@ const FIREBASE_SA_JSON = _env['FIREBASE_' + 'SERVICE_ACCOUNT_JSON'];
 const FIRESTORE_DB = _env['FIRESTORE_' + 'DB'] || 'eka-agent';
 const GMAIL_APP_PASSWORD = _env['GMAIL_APP_' + 'PASSWORD'];
 const STALE_ALERT_SECONDS = Number(_env['STALE_ALERT_SECONDS']) || 600;
+// While a device stays down, one reminder per this window (default a day), so a
+// week-long outage is not silently forgotten after the single edge-triggered
+// email — without spamming every 10-minute tick. Set 0 to disable reminders.
+const STALE_REMINDER_SECONDS = Number(_env['STALE_REMINDER_SECONDS'] ?? 24 * 3600);
 
 // Freshness thresholds for the EXPORT PIPELINE, which fails independently of
 // the device (see evaluateSyncPipeline in lib/stale.js).
@@ -115,12 +119,25 @@ function enc(v) {
 function alertBody(action, d) {
   const age = d.lastSeenAgeSeconds;
   const mins = age === null || age === undefined ? '?' : Math.round(age / 60);
-  if (action === 'down') {
+  const thresholdMin = Math.round(STALE_ALERT_SECONDS / 60);
+  if (action === 'never-seen') {
     return {
-      subject: `⚠️ Device DOWN: ${d.displayName}`,
-      text: `${d.displayName} (${d.deviceId}) has stopped checking in.\n\n`
-        + `Last seen: ${d.lastSeen} (${mins} min ago)\n`
-        + `Threshold: ${Math.round(STALE_ALERT_SECONDS / 60)} min of silence.\n\n`
+      subject: `⚠️ Device NEVER SEEN: ${d.displayName}`,
+      text: `${d.displayName} (${d.deviceId}) is enrolled but has never checked in.\n\n`
+        + `Enrolled: ${d.enrolledAt || 'unknown'}\n`
+        + `Threshold: ${thresholdMin} min after enrollment with no heartbeat.\n\n`
+        + `Its daemon has not started, or cannot reach the API. You will get one RECOVERED email when it first heartbeats.`,
+    };
+  }
+  if (action === 'down' || action === 'reminder') {
+    const seen = d.lastSeen ? `Last seen: ${d.lastSeen} (${mins} min ago)` : 'Never reported since enrollment';
+    return {
+      subject: action === 'reminder'
+        ? `⏰ Still down: ${d.displayName}`
+        : `⚠️ Device DOWN: ${d.displayName}`,
+      text: `${d.displayName} (${d.deviceId}) ${action === 'reminder' ? 'is STILL down' : 'has stopped checking in'}.\n\n`
+        + `${seen}\n`
+        + `Threshold: ${thresholdMin} min of silence.\n\n`
         + `You will get one RECOVERED email when it starts heartbeating again.`,
     };
   }
@@ -170,6 +187,7 @@ export default async function handler(req, res) {
     const nowMs = Date.now();
     const nowIso = new Date().toISOString();
     const thresholdMs = STALE_ALERT_SECONDS * 1000;
+    const reminderMs = STALE_REMINDER_SECONDS * 1000;
     const transitions = [];
     let checked = 0;
 
@@ -178,17 +196,28 @@ export default async function handler(req, res) {
       for (const [k, v] of Object.entries(doc.fields || {})) f[k] = dec(v);
       const deviceId = doc.name.split('/').pop();
       checked++;
+      const priorAlert = (f.staleAlert && typeof f.staleAlert === 'object') ? f.staleAlert : {};
       const device = {
         lastSeen: f.lastSeen || null,
-        staleAlertState: f.staleAlert && f.staleAlert.state,
+        staleAlertState: priorAlert.state,
+        // Anchors the reminder cadence. Fall back to `since` for docs written
+        // before notifiedAt existed, so the first reminder is a day after the
+        // outage began, not the instant this ships.
+        staleAlertNotifiedAt: priorAlert.notifiedAt || priorAlert.since || null,
+        // Firestore stamps every document with createTime — the enrolment
+        // moment — so never-seen detection needs no new field on the device.
+        enrolledAt: doc.createTime || null,
       };
-      const result = evaluate(device, nowMs, thresholdMs);
-      if (!result.changed) continue;
+      const result = evaluate(device, nowMs, thresholdMs, { reminderMs });
+      // Act on any real signal now, not just a state change: a reminder emails
+      // while `changed` stays false, so gating on `changed` would suppress it.
+      if (result.action === 'none') continue;
 
       const d = {
         deviceId,
         displayName: f.deviceDisplayName || deviceId,
         lastSeen: f.lastSeen || null,
+        enrolledAt: doc.createTime || null,
         lastSeenAgeSeconds: f.lastSeen ? Math.round((nowMs - new Date(f.lastSeen).getTime()) / 1000) : null,
       };
       // Send email first when configured; only persist the new state if the
@@ -196,8 +225,12 @@ export default async function handler(req, res) {
       // the next tick instead of going silent.
       try {
         if (emailEnabled) await sendAlert(result.action, d);
+        // `since` marks when THIS state began: preserved across a reminder
+        // (state unchanged), reset on a real transition. `notifiedAt` is bumped
+        // every time we email, so the next reminder is a full window out.
+        const since = result.changed ? nowIso : (priorAlert.since || nowIso);
         const patchUrl = `${base}/devices/${deviceId}?updateMask.fieldPaths=${encodeURIComponent('staleAlert')}`;
-        const body = JSON.stringify({ fields: { staleAlert: enc({ state: result.newState, since: nowIso }) } });
+        const body = JSON.stringify({ fields: { staleAlert: enc({ state: result.newState, since, notifiedAt: nowIso }) } });
         const pr = await fetch(patchUrl, {
           method: 'PATCH',
           headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -327,7 +360,7 @@ export default async function handler(req, res) {
       }
     }
 
-    return res.status(200).json({ success: true, checked, transitions, neonSweep, syncPipeline, emailEnabled, thresholdSeconds: STALE_ALERT_SECONDS, syncThresholdSeconds: S24_SYNC_MAX_AGE_SECONDS, at: nowIso });
+    return res.status(200).json({ success: true, checked, transitions, neonSweep, syncPipeline, emailEnabled, thresholdSeconds: STALE_ALERT_SECONDS, reminderSeconds: STALE_REMINDER_SECONDS, syncThresholdSeconds: S24_SYNC_MAX_AGE_SECONDS, at: nowIso });
   } catch (err) {
     return res.status(500).json({ success: false, error: err.message || 'check-stale failed' });
   }
