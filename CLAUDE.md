@@ -239,6 +239,23 @@ statuses), never a relaxed schedule. Production stayed READY throughout. If a
 `Vercel – <name>` context appears that team `jayti` does not own, find and
 remove that project; do not edit the crons to appease it.
 
+**"Git author jaytipargal must have access to the project" / "Deployment was
+blocked" is an account link, not code.** A Pro-team project deploys a commit
+only if the commit author's GitHub login is connected to a Vercel account that
+is a member of team `jayti`. On 2026-09-22 at 01:54 UTC the merge of PR #103
+(`main@c21193f`) was blocked on both projects with "the github user jaytipargal
+who initiated the deployment does not have an account on Vercel". At 01:17 UTC
+the same author had deployed `fa5a461` fine, credited to the developer account
+`go4garageofficial-1587`; that GitHub connection disappeared between 01:18 and
+01:54 UTC, the window in which the stray `g4-g` scope was cleaned up. PR heads
+authored as `Claude <noreply@anthropic.com>` kept deploying (credited to the
+team owner), which is why previews stay green while the merge commit, which
+GitHub authors as the GitHub account, is the one that fails. The fix is in
+Vercel → Account Settings → Authentication: connect GitHub `jaytipargal` to a
+team member (the owner), then Redeploy the blocked production deployment or
+merge the next PR. Nothing in git config, CI or `vercel.json` can unblock it;
+do not add a deploy workflow to route around it.
+
 `.vercelignore` exists because of point 3: it keeps untracked local trees —
 including a live GCP service-account private key and `app/shared/.env.local`
 that once sat under `app/` — out of a laptop-run `vercel --prod`. It also
