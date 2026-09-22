@@ -12,7 +12,7 @@ agent runtime lives on a **DigitalOcean** droplet that Vercel proxies to.
 
 ## Architecture
 
-The repository is organized into a five-layer structure. For the full rationale
+The repository is organized into an eight-layer structure. For the full rationale
 and a file-by-file account of how it was arranged, see
 [`INTEGRATION.md`](./INTEGRATION.md) and the machine-readable
 [`RESTRUCTURE_STATE.json`](./RESTRUCTURE_STATE.json).
@@ -23,7 +23,7 @@ and a file-by-file account of how it was arranged, see
 | Backend | [`Backend/`](./Backend/) | Vercel serverless functions — the API |
 | Database | [`Database/`](./Database/) | Schemas, Firestore helpers, DB tooling |
 | Server | [`Server/`](./Server/) | The `jp-agent` droplet runtime, deploy scripts, nginx/systemd config |
-| Integrations | [`Integrations/`](./Integrations/) | Third-party clients (Firebase, telemetry) |
+| Integrations | [`Integrations/`](./Integrations/) | Shared store clients (`postgres.js`, `wa-store.js`, `s24-store.js`) |
 | _shared | [`_shared/`](./_shared/) | Project-wide config, docs, and tests |
 | Devices | [`Devices/`](./Devices/) | Self-contained per-device installer bundles |
 | archive | [`archive/`](./archive/) | Cold storage: superseded or regenerable files |
@@ -49,6 +49,12 @@ Static HTML served by Vercel from `Frontend/`.
 | `/` | `index.html` | Analytics dashboard |
 | `/s24` | `s24.html` | Samsung S24 Ultra device view |
 | `/vivobook` | `vivobook.html` | ASUS Vivobook device view |
+| `/jteka` | `jteka.html` | JTEKA fleet status |
+| `/agent` | `agent.html` | Ask the `jp-agent` runtime (via `/agent/query`) |
+| `/db` | `db.html` | Data browser over the Postgres warehouse |
+| `/viewer` | `viewer.html` | Chrome data browser (synced browser media/history) |
+
+`template.html` is the page scaffold the others are built from and has no route.
 
 ## API
 
@@ -79,13 +85,19 @@ browser never holds the droplet token. Full detail and deploy steps are in
 
 ## Getting started
 
-Requires **Node ≥ 18** and the [Vercel CLI](https://vercel.com/docs/cli) (pinned
-as a dev dependency).
+Requires **Node 24** (`engines` in `package.json`). There is no build step and
+no dev dependencies: the Vercel CLI was dropped in #96 because nothing in the
+repo shells out to it and its transitive tree was the entire `npm audit` report.
 
 ```bash
 npm install
-npm run dev      # vercel dev — local frontend + serverless functions
+npm run dev      # scripts/dev-server.mjs — static Frontend/ on :3000, no API
 ```
+
+`npm run dev` serves only the static pages. The `Backend/*.js` handlers need
+Vercel's runtime and are exercised in preview and production deploys, which
+come from Vercel's Git integration — every push gets a preview, `main` goes to
+production.
 
 | Script | Command | What it does |
 |--------|---------|--------------|
@@ -130,7 +142,9 @@ credential. Only a small allowlist of non-credential identifiers carries a
 `sha256_12` fingerprint, which is enough to detect a BOM, a truncation or a
 re-save without disclosing anything.
 
-Regenerate it after changing any environment variable (needs `vercel` auth):
+Regenerate it after changing any environment variable. The script shells out to
+the Vercel CLI, which is no longer a dev dependency, so install it globally and
+log in first (`npm i -g vercel && vercel login`):
 
 ```bash
 node _shared/tools/generate-env-manifest.mjs

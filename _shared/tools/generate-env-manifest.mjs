@@ -30,7 +30,13 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
-const VERCEL = path.join(ROOT, 'node_modules', '.bin', 'vercel');
+// #96 dropped `vercel` from devDependencies: nothing in the deployed app used
+// it and its transitive tree was the whole `npm audit` report. That left this
+// script pointing at a bin that no longer gets installed. Prefer the local bin
+// when a contributor happens to have one, otherwise resolve `vercel` from PATH
+// (`npm i -g vercel && vercel login`).
+const LOCAL_VERCEL = path.join(ROOT, 'node_modules', '.bin', 'vercel');
+const VERCEL = fs.existsSync(LOCAL_VERCEL) ? LOCAL_VERCEL : 'vercel';
 const OUT = path.join(ROOT, '_shared', 'config', 'vercel-env.manifest.json');
 const TEAM = 'team_pbbZItTCyIkGsw6LeGrcWx0c';
 
@@ -53,6 +59,7 @@ const FINGERPRINT_ALLOWLIST = [
 
 function run(args, opts = {}) {
   const r = spawnSync(VERCEL, args, { encoding: 'utf8', timeout: 240000, maxBuffer: 128 * 1024 * 1024, ...opts });
+  if (r.error) throw new Error(`could not run ${VERCEL}: ${r.error.message} — install the Vercel CLI (npm i -g vercel) and log in`);
   if (r.status !== 0) throw new Error(`vercel ${args.join(' ')} failed (${r.status}): ${(r.stderr || r.stdout || '').slice(0, 300)}`);
   return r.stdout || '';
 }
