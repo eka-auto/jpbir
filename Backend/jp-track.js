@@ -1,7 +1,7 @@
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, BatchWriteCommand, PutCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
 import { decodeOne } from './lib/geo.js';
-import { siteFor, recordEvent } from './lib/warehouse.js';
+import { siteFor, recordEvent, botLike } from './lib/warehouse.js';
 import { isConfigured } from '../Integrations/postgres.js';
 
 const _env = (typeof process !== 'undefined' ? process : globalThis['proc' + 'ess']).env;
@@ -21,6 +21,11 @@ const ALLOWED_ORIGINS = new Set([
   'https://jaytipargal.tech',
   'https://www.jaytipargal.tech',
   'https://agent.jaytipargal.tech',
+  // jaytibirthday.in is the largest real property (the sibling site writes most
+  // of the warehouse's live rows) yet its origin was absent here, so its own
+  // beacons got the wrong Access-Control-Allow-Origin echoed back.
+  'https://jaytibirthday.in',
+  'https://www.jaytibirthday.in',
 ]);
 
 function getClientIP(req) {
@@ -88,7 +93,11 @@ async function prunePreviousHistory(client, currentId, visitorId) {
 
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
-  const origin = req.headers.origin || req.headers.referer || '';
+  // Origin only, never Referer: Origin is scheme+host (what ALLOWED_ORIGINS
+  // holds), but Referer is a full URL (scheme+host+path), so a referer-only
+  // request could never match this Set and only ever echoed back the wrong
+  // default — the fallback was dead weight that read like a real gate.
+  const origin = req.headers.origin || '';
   res.setHeader('Access-Control-Allow-Origin', ALLOWED_ORIGINS.has(origin) ? origin : 'https://jaytipargal.com');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -181,6 +190,11 @@ export default async function handler(req, res) {
     let warehouse;
     if (!item.site) {
       warehouse = { mirrored: false, reason: 'no site could be derived from page_url or origin' };
+    } else if (botLike(item.userAgent)) {
+      // The raw event is already journalled to DynamoDB above; it just does not
+      // reach `events`, because visitors/sessions are recomputed from that
+      // table and a crawler counted there inflates every rollup off it.
+      warehouse = { mirrored: false, site: item.site, reason: 'user agent is an automated client; not mirrored to the warehouse' };
     } else if (!isConfigured()) {
       warehouse = { mirrored: false, reason: 'DATABASE_URL not set on this deployment' };
     } else {

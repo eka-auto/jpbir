@@ -2,9 +2,12 @@
 //
 // Everything else on this dashboard reads our own Firestore/Blob telemetry.
 // This endpoint is the one place that reads VERCEL's own view of the same
-// traffic, so the two can be compared: Vercel counts at the edge and sees
-// requests our tracker never records (bots it filters, visitors with JS off,
-// beacons that failed to send).
+// traffic, so the two can be compared. They will not agree, and that is the
+// point. Our tracker only records browsers that run its beacon (and jp-track
+// now drops obviously automated user agents at ingest); Vercel counts at the
+// edge and sees requests our beacon never fires for — visitors with JS off,
+// beacons that failed to send. Neither side filters bots on the other's behalf,
+// so the gap between the two is the signal, not a defect in either.
 //
 // Each panel is fetched and reported independently. One failing surface -
 // most likely Web Analytics, which is only enabled per-project - must not
