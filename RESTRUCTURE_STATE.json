@@ -85,18 +85,22 @@
     "reclaimable": "479.5 KiB",
     "duplicates_note": "Down from 34/49 at the 2026-09-14 refresh; nothing was collapsed by the restructurer. The previously-flagged Server/ installer copies, _shared/docs/DAEMON_ARCHITECTURE.md and Devices/S24/daemon/legacy/* are all still present. Per-device installer bundles are SHA-256-pinned — do NOT collapse them. See open_questions[0].",
     "live_deploy_check": {
-      "checked": "2026-09-19",
+      "checked": "2026-09-22",
       "vercel_team": "jayti (team_pbbZItTCyIkGsw6LeGrcWx0c)",
       "projects_in_team": [
         "jayti-dashboard",
-        "jaytibirthday-site"
+        "jaytibirthday-site",
+        "channel-sandbox",
+        "globaldevices"
       ],
       "git_linked_to_repo": [
-        "jayti-dashboard"
+        "jayti-dashboard",
+        "channel-sandbox"
       ],
       "jpbir_restructured": "deleted (URL: DEPLOYMENT_NOT_FOUND)",
-      "channel_sandbox": "deleted (API 404 'Project not found'; https://channel-sandbox-one.vercel.app/ -> DEPLOYMENT_NOT_FOUND)",
-      "production": "https://jaytipargal.tech/ -> 200; /api/stats -> 401 without a key"
+      "channel_sandbox": "re-created 2026-09-19 as prj_hRRe8dOt2F3mYU721Qk9lFAG9V92 (Root Directory Devices/sandbox); production deployment of main@fa5a461 READY on 2026-09-22",
+      "stray_g4g_jpbir": "deleted 2026-09-22. A `jpbir` project in the Hobby-plan scope `g4-g` (outside team jayti) was Git-linked to this repo. Hobby allows only daily crons and vercel.json schedules */5, */10 and 6-hourly, so every build failed there and posted the red `Vercel – jpbir` status (Details -> vercel.com/docs/cron-jobs/usage-and-pricing) on each commit, last on main@fa5a461. Probe commit 4cb53e3, pushed after the deletion, carries only the two team statuses. The crons are the stale-device detection; do not relax them for a Hobby scope.",
+      "production": "2026-09-19: https://jaytipargal.tech/ -> 200; /api/stats -> 401 without a key. 2026-09-22: jayti-dashboard production deployment of main@fa5a461 is READY (dpl_DUJKKSEZq18TqLf7PFRGJZEid2tW); HTTP not re-probed from the sandbox"
     }
   },
   "moves": [

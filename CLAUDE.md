@@ -224,6 +224,21 @@ block at the foot of `.github/workflows/ci-cd.yml`). Reasons, in order of cost:
 **Do not re-add a CLI deploy step to CI.** `.github/workflows/ci-cd.yml` lints
 and tests only.
 
+**A red `Vercel – jpbir` commit status is not this repo's failure.** On
+2026-09-22 every commit (PR #102's head `fc8f214`, then `main@fa5a461`) carried
+a third Vercel status, `Vercel – jpbir → Deployment failed.`, beside the two
+green ones team `jayti` posts (`jayti-dashboard`, `channel-sandbox`). Its
+Details link resolves to Vercel's cron-jobs pricing page: a stray `jpbir`
+project in the **Hobby-plan** scope `g4-g` had been Git-linked to this repo,
+and Hobby rejects any cron that runs more than once a day, so its build failed
+before it started. `vercel.json` schedules `check-stale` every 10 min,
+`stack-cron` every 5 min and `s24-sync-cron` every 6 h on purpose — that
+cadence *is* the device-offline detection — so the fix was on Vercel (the
+project was deleted; probe commit `4cb53e3` then carried only the two team
+statuses), never a relaxed schedule. Production stayed READY throughout. If a
+`Vercel – <name>` context appears that team `jayti` does not own, find and
+remove that project; do not edit the crons to appease it.
+
 `.vercelignore` exists because of point 3: it keeps untracked local trees —
 including a live GCP service-account private key and `app/shared/.env.local`
 that once sat under `app/` — out of a laptop-run `vercel --prod`. It also
