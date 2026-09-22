@@ -8,7 +8,7 @@
 // direction.
 
 import assert from 'node:assert/strict';
-import { worst, buildLayers, snapshot } from '../../Backend/jp-stack.js';
+import { worst, buildLayers, snapshot, probeAssets } from '../../Backend/jp-stack.js';
 import { evaluateStack, failureLines, alertBody } from '../../Backend/stack-cron.js';
 import { LAYERS, REQUIRED_ENV, allFiles } from '../../Backend/lib/stack-map.js';
 
@@ -167,6 +167,83 @@ t('a stopped device daemon reddens the panel but never the cloud verdict', () =>
   probes.postgres = { status: 'fail', problem: 'schema incomplete — missing wa_messages' };
   const broken = snapshot(probes);
   assert.ok(broken.cloud_fail > dead.cloud_fail, 'a failing Neon does gate CI');
+});
+
+t('a per-file probe result overrides the probe-wide one, in both directions', () => {
+  // `assets` HEADs nine separate URLs, so it answers per path. One 404 must
+  // redden exactly the page that 404'd: a layer-wide verdict would either
+  // paint eight served pages red or hide the missing one behind them, and
+  // both are the "light that tells you nothing" this panel exists to avoid.
+  const probes = allOk();
+  // As the real probe answers: every governed path present, one of them down.
+  const byPath = {};
+  for (const f of allFiles().filter((f) => f.probe === 'assets')) {
+    byPath[f.path] = { status: 'ok', detail: 'HTTP 200 from ' + (f.url || 'rewrites') };
+  }
+  byPath['Frontend/viewer.html'] = { status: 'fail', problem: 'https://jaytipargal.tech/viewer returned HTTP 404' };
+  probes.assets = { status: 'fail', problem: '1 of 10 paths did not serve — see each file', byPath };
+  const files = buildLayers(probes).flatMap((l) => l.files).filter((f) => f.probe === 'assets');
+  const viewer = files.find((f) => f.path === 'Frontend/viewer.html');
+  const index = files.find((f) => f.path === 'Frontend/index.html');
+  assert.equal(viewer.status, 'fail', 'the 404 page must carry the failure');
+  assert.match(viewer.problem, /HTTP 404/, 'and the status it actually returned');
+  assert.equal(index.status, 'ok', 'a page that is served must not inherit another page\'s 404');
+
+  // A path the probe did not get to has no per-file truth, so it must fall
+  // back to the probe-wide verdict rather than defaulting to green.
+  delete probes.assets.byPath['Frontend/index.html'];
+  const unreported = buildLayers(probes).flatMap((l) => l.files).find((f) => f.path === 'Frontend/index.html');
+  assert.notEqual(unreported.status, 'ok', 'an unreported path must not be assumed served');
+});
+
+t('the pages the browser loads are attested by a request, not assumed', () => {
+  // These nine were `static` — permanently grey — because a function cannot
+  // stat the repo. It never needed to: whether a page reaches a browser is a
+  // question a fetch answers, so they are probed like the droplet is.
+  const served = allFiles().filter((f) => f.probe === 'assets' && f.url);
+  assert.ok(served.length >= 9, 'every dashboard page should be fetched, got ' + served.length);
+  for (const f of served) {
+    assert.ok(f.url.startsWith('/'), f.path + ' needs the path the edge serves it at, not its repo path');
+  }
+  // vercel.json is the routing table, so it cannot verify itself with a URL —
+  // the rewrites resolving is its evidence, and some must actually be marked.
+  const routing = allFiles().find((l) => l.layer === 'web' && l.path === 'vercel.json');
+  assert.equal(routing.probe, 'assets');
+  assert.ok(!routing.url, 'the routing table must not claim a green from one fetch of its own');
+  assert.ok(served.some((f) => f.rewrite), 'no rewritten path is marked, so vercel.json has nothing to stand on');
+});
+
+t('a subsystem with genuinely no signal is still left grey', () => {
+  // The point of the assets probe was to stop overusing `static`, not to
+  // abolish it. A token piped over stdin on a droplet has no cloud-side
+  // signal, and inventing one would be the exact lie rule 1 forbids.
+  const stillStatic = allFiles().filter((f) => f.probe === 'static').map((f) => f.path);
+  assert.ok(stillStatic.length > 0, 'static must survive for what truly cannot be probed');
+  for (const p of ['Server/jp-agent/sync-auth-token.py', 'Devices/S24/runtime_contract.json']) {
+    assert.ok(stillStatic.includes(p), p + ' has no live signal and must not have been made green');
+  }
+});
+
+// One async case: probeAssets is driven against a stubbed edge rather than the
+// real one, so the suite stays hermetic and does not depend on the network.
+async function ta(name, fn) {
+  total++;
+  try { await fn(); pass++; console.log('  ok  ' + name); }
+  catch (e) { console.log('  FAIL ' + name + ' -> ' + e.message); process.exitCode = 1; }
+}
+
+await ta('a 200 that declares no content-length is served, not empty', async () => {
+  // `content-length` is absent on a chunked or compressed response, and
+  // Number(null) is 0 rather than NaN. Reading it naively reported every
+  // perfectly served page as an empty body — a false red that would have
+  // reached cloud_fail and reddened the health-check gate in CI.
+  globalThis.fetch = async () => new Response(null, { status: 200 });
+  const r = await probeAssets();
+  assert.equal(r.status, 'ok', 'a length nobody declared must not read as zero');
+  for (const [path, v] of Object.entries(r.byPath)) {
+    assert.equal(v.status, 'ok', path + ' was called broken on a 200');
+    assert.doesNotMatch(v.problem || '', /empty body/, path + ' reported an empty body it never saw');
+  }
 });
 
 console.log('\n  ' + pass + '/' + total + ' passed');

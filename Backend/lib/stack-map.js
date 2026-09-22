@@ -36,8 +36,16 @@ export const DEVICES_NOTE =
  * Probe ids. Each file below names the probe that governs its light.
  * `static` means "no live signal reachable from a function" — deliberately
  * never green.
+ *
+ * `assets` is the narrow exception to the walk-is-dishonest rule above. It does
+ * not ask the filesystem anything; it asks the public edge for the file over
+ * HTTPS and believes only the response. That is the same class of evidence as
+ * `agent` (an HTTP round trip to the droplet), so the files it governs carry a
+ * `url` — the path the edge serves them at, not the path they live at. Six of
+ * those URLs are rewrites that exist only because `vercel.json` says so, which
+ * is what lets that file leave `static` too.
  */
-export const PROBES = ['dns', 'tls', 'agent', 'postgres', 'firestore', 'dynamo', 'blob', 'env', 'devices', 'static'];
+export const PROBES = ['dns', 'tls', 'agent', 'postgres', 'firestore', 'dynamo', 'blob', 'env', 'devices', 'assets', 'static'];
 
 export const LAYERS = [
   {
@@ -62,15 +70,17 @@ export const LAYERS = [
     subtitle: 'Browser',
     kind: 'flow',
     files: [
-      { path: 'Frontend/index.html', probe: 'static', why: 'This dashboard' },
-      { path: 'Frontend/s24.html', probe: 'static', why: 'S24 device page' },
-      { path: 'Frontend/vivobook.html', probe: 'static', why: 'VivoBook device page' },
-      { path: 'Frontend/agent.html', probe: 'static', why: 'Agent console' },
-      { path: 'Frontend/db.html', probe: 'static', why: 'Database browser' },
-      { path: 'Frontend/jteka.html', probe: 'static', why: 'Jteka page' },
-      { path: 'Frontend/viewer.html', probe: 'static', why: 'Media viewer' },
-      { path: 'Frontend/template.html', probe: 'static', why: 'Page template' },
-      { path: 'Frontend/jp-tracker.js', probe: 'static', why: 'Analytics beacon → DynamoDB' },
+      // `rewrite: true` marks a URL that only resolves because vercel.json
+      // routes it — the evidence that file's own light is built from.
+      { path: 'Frontend/index.html', probe: 'assets', url: '/', why: 'This dashboard' },
+      { path: 'Frontend/s24.html', probe: 'assets', url: '/s24', rewrite: true, why: 'S24 device page' },
+      { path: 'Frontend/vivobook.html', probe: 'assets', url: '/vivobook', rewrite: true, why: 'VivoBook device page' },
+      { path: 'Frontend/agent.html', probe: 'assets', url: '/agent', rewrite: true, why: 'Agent console' },
+      { path: 'Frontend/db.html', probe: 'assets', url: '/db', rewrite: true, why: 'Database browser' },
+      { path: 'Frontend/jteka.html', probe: 'assets', url: '/jteka', rewrite: true, why: 'Jteka page' },
+      { path: 'Frontend/viewer.html', probe: 'assets', url: '/viewer', rewrite: true, why: 'Media viewer' },
+      { path: 'Frontend/template.html', probe: 'assets', url: '/template.html', why: 'Page template' },
+      { path: 'Frontend/jp-tracker.js', probe: 'assets', url: '/jp-tracker.js', why: 'Analytics beacon → DynamoDB' },
     ],
   },
   {
@@ -89,7 +99,10 @@ export const LAYERS = [
     subtitle: 'Vercel edge / nginx',
     kind: 'flow',
     files: [
-      { path: 'vercel.json', probe: 'static', why: 'Vercel edge routing table' },
+      // No `url` of its own: this file IS the routing table, so what attests it
+      // is that the clean paths it invents (/s24, /db, /viewer …) resolve at all.
+      // `probeAssets` derives this entry from those rewritten fetches.
+      { path: 'vercel.json', probe: 'assets', why: 'Vercel edge routing table' },
       { path: 'Server/jp-agent/nginx-jp-agent.conf', probe: 'agent', why: 'Sole ingress to the droplet' },
     ],
   },

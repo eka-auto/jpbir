@@ -880,14 +880,21 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
     var navItems = document.querySelectorAll('.nav-item');
     navItems.forEach(function (btn) {
         btn.addEventListener('click', function () {
+            // Sources and Stores are <a href> links to other pages (/s24, /db,
+            // /viewer …), not in-page sections, so they carry no data-page.
+            // Without this guard the click blanked every .page, then threw on
+            // $('page-null').classList — so the content area went empty for as
+            // long as the browser took to navigate, and stopFirestorePolling()
+            // below never ran.
+            var pageName = btn.getAttribute('data-page');
+            if (!pageName) return;
             navItems.forEach(function (b) { b.classList.remove('active'); });
             btn.classList.add('active');
             document.querySelectorAll('.page').forEach(function (p) { p.classList.remove('active'); });
-            $('page-' + btn.getAttribute('data-page')).classList.add('active');
+            $('page-' + pageName).classList.add('active');
             // Firestore page: only poll while it's the active view. Starting a
             // 10 s interval while the user is on Overview would waste requests
             // and burn the STATS_KEY-gated Firestore read quota.
-            var pageName = btn.getAttribute('data-page');
             if (pageName === 'firestore') startFirestorePolling();
             else stopFirestorePolling();
         });
