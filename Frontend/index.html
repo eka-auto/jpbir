@@ -548,6 +548,13 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
                     <div id="deviceSummary" class="kpis" style="margin-top:12px"></div>
                 </div>
 
+                <!-- All-devices-offline banner. loadLiveDevices() shows this when
+                     every enrolled device is offline: queued commands cannot run
+                     against a dead daemon (devices are outbound-only — see
+                     Devices/S24/runtime_contract.json), so a green-looking queue
+                     depth would be a lie. Hidden until the data proves it. -->
+                <div id="allDevicesStaleBanner" role="alert" style="display:none;margin:0 0 12px;padding:14px 16px;border-radius:10px;background:rgba(200,60,60,.12);border:1px solid rgba(200,60,60,.4);color:#c83c3c;font-size:13px;line-height:1.5"></div>
+
                 <!-- MAIN DEVICES TABLE -->
                 <div class="panel">
                     <div class="panel-head">
@@ -848,6 +855,24 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
             if (ms > newestMs) { newestMs = ms; newest = d.lastSeen; }
         });
         return newest;
+    }
+    // Shown only when EVERY enrolled device is offline. A per-device queue depth
+    // still renders in the table, but with no live daemon anywhere those queued
+    // commands will not run — devices are outbound-only, so nothing cloud-side
+    // can wake them (Devices/S24/runtime_contract.json). Say that plainly rather
+    // than let a non-zero queue read as progress.
+    function renderAllStaleBanner(devices) {
+        var banner = $('allDevicesStaleBanner');
+        if (!banner) return;
+        var list = devices || [];
+        var allStale = list.length > 0 && list.every(function (d) { return !(d && d.live); });
+        if (!allStale) { banner.style.display = 'none'; banner.innerHTML = ''; return; }
+        var newest = newestLastSeen(list);
+        banner.innerHTML =
+            '<strong>All ' + list.length + ' device' + (list.length === 1 ? '' : 's') + ' offline.</strong> ' +
+            'Queued commands cannot execute: devices are outbound-only, so nothing on the cloud side can wake a dead daemon. ' +
+            'Newest device heartbeat ' + (newest ? esc(fmtAgo(newest)) : 'never') + ' — the devices’ own sync time, not this page’s fetch time.';
+        banner.style.display = 'block';
     }
     function fmtDur(ms) {
         if (ms == null) return '–';
@@ -3585,6 +3610,12 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
                 $('deviceDashHint').textContent = devices.length + ' devices · ' + (res.body.database || 'eka-agent') +
                     ' · synced ' + fmtTime(res.body.generated_at) +
                     (liveSync ? ' · newest device ' + fmtAgo(liveSync) : '');
+
+                /* All-devices-offline banner. Uses each device's own `live`
+                   verdict (same one the table renders) and its real lastSeen,
+                   never generated_at, so the figure shown is the devices' sync
+                   time and not this poll's fetch time. */
+                renderAllStaleBanner(devices);
                 
                 /* Video relay banner */
                 renderVideoRelay(res.body);
