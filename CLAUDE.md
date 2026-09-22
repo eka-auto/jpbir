@@ -239,6 +239,49 @@ statuses), never a relaxed schedule. Production stayed READY throughout. If a
 `Vercel – <name>` context appears that team `jayti` does not own, find and
 remove that project; do not edit the crons to appease it.
 
+**"Git author jaytipargal must have access to the project" / "Deployment was
+blocked" is an account link, not code.** A Pro-team project deploys a commit
+only if the commit author's GitHub login is connected to a Vercel account that
+is a member of team `jayti`. On 2026-09-22 at 01:54 UTC the merge of PR #103
+(`main@c21193f`) was blocked on both projects with "the github user jaytipargal
+who initiated the deployment does not have an account on Vercel". At 01:17 UTC
+the same author had deployed `fa5a461` fine, credited to the developer account
+`go4garageofficial-1587`; that GitHub connection disappeared between 01:18 and
+01:54 UTC, the window in which the stray `g4-g` scope was cleaned up. PR heads
+authored as `Claude <noreply@anthropic.com>` kept deploying (credited to the
+team owner), which is why previews stay green while the merge commit, which
+GitHub authors as the GitHub account, is the one that fails. The fix is in
+Vercel → Account Settings → Authentication: connect GitHub `jaytipargal` to a
+team member (the owner), then Redeploy the blocked production deployment or
+merge the next PR. Nothing in git config, CI or `vercel.json` can unblock it;
+do not add a deploy workflow to route around it.
+
+**"password authentication failed for user 'neondb_owner'" means the Neon
+password was rotated and this project was not told.** The Neon project
+`jaytibirthday-db` (`fancy-cloud-99501540`, role `neondb_owner`) is shared with
+the `jaytibirthday-site` Vercel project. A password reset there invalidates the
+connection strings on **both** projects, and Vercel bakes env vars in at deploy
+time. On 2026-09-22 the role was reset at 17:44 UTC and fresh strings went only
+into `jaytibirthday-site` (17:50 UTC); `/api/verify-db` had passed at 16:47 UTC,
+and from 17:44 UTC every dashboard Postgres call failed with SQLSTATE 28P01
+(`jp-track`'s warehouse mirror, then the 18:30 UTC `db-push` cron). The same
+thing happened on 2026-09-20 (reset 17:08 UTC, strings pasted 17:23 UTC, healed
+by the next deploy). Fix: put the new pooled string in `DATABASE_URL` and
+`POSTGRES_URL` and the direct one in `DATABASE_URL_UNPOOLED` and
+`POSTGRES_URL_NON_POOLING` on `jayti-dashboard`, then rebuild production with
+`vercel redeploy <production-url> --scope jayti` or the dashboard's Redeploy
+button — both rebuild the existing deployment from git and upload nothing.
+Never run `vercel` or `vercel --prod` in a working directory for this: it
+uploads that directory (a run from a home directory on 2026-09-22 was stopped
+only by an unreadable Docker socket). The CLI's "Value starts with whitespace"
+warning is real: a leading space makes the parser read the host as `base`.
+Resolved 2026-09-22: variables re-set 19:02–19:05 UTC, production rebuilt as
+`dpl_GDAzXNH83ZFL65sMgZfB6Sphqk3Y` at 19:06 UTC, `/api/verify-db` green at
+19:09 UTC. Nothing is lost meanwhile: `jp-track` still journals to DynamoDB and
+`db-push` re-imports with ON CONFLICT DO NOTHING. Never paste a connection
+string into a transcript, PR or commit. The `GATE_*` variables on this project
+belong to `private-file-gate-db` and are unused here.
+
 `.vercelignore` exists because of point 3: it keeps untracked local trees —
 including a live GCP service-account private key and `app/shared/.env.local`
 that once sat under `app/` — out of a laptop-run `vercel --prod`. It also
