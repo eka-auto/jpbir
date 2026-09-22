@@ -256,6 +256,24 @@ team member (the owner), then Redeploy the blocked production deployment or
 merge the next PR. Nothing in git config, CI or `vercel.json` can unblock it;
 do not add a deploy workflow to route around it.
 
+**"password authentication failed for user 'neondb_owner'" means the Neon
+password was rotated and this project was not told.** The Neon project
+`jaytibirthday-db` (`fancy-cloud-99501540`, role `neondb_owner`) is shared with
+the `jaytibirthday-site` Vercel project. A password reset there invalidates the
+connection strings on **both** projects, and Vercel bakes env vars in at deploy
+time. On 2026-09-22 the role was reset at 17:44 UTC and fresh strings went only
+into `jaytibirthday-site` (17:50 UTC); `/api/verify-db` had passed at 16:47 UTC,
+and from 17:44 UTC every dashboard Postgres call failed with SQLSTATE 28P01
+(`jp-track`'s warehouse mirror, then the 18:30 UTC `db-push` cron). The same
+thing happened on 2026-09-20 (reset 17:08 UTC, strings pasted 17:23 UTC, healed
+by the next deploy). Fix: put the new pooled string in `DATABASE_URL` and
+`POSTGRES_URL` and the direct one in `DATABASE_URL_UNPOOLED` and
+`POSTGRES_URL_NON_POOLING` on `jayti-dashboard`, then Redeploy production.
+Nothing is lost meanwhile: `jp-track` still journals to DynamoDB and `db-push`
+re-imports with ON CONFLICT DO NOTHING. Never paste a connection string into a
+transcript, PR or commit. The `GATE_*` variables on this project belong to
+`private-file-gate-db` and are unused here.
+
 `.vercelignore` exists because of point 3: it keeps untracked local trees —
 including a live GCP service-account private key and `app/shared/.env.local`
 that once sat under `app/` — out of a laptop-run `vercel --prod`. It also
