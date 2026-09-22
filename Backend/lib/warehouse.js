@@ -41,21 +41,28 @@ function normaliseHost(host) {
   return clean || null;
 }
 
-// Deployment hosts are not properties.
+// The properties this dashboard reports on. Everything else is not one.
 //
-// Deriving `site` from the page URL is right for a deployment that serves
-// several domains, but Vercel also serves every build on a generated
-// *.vercel.app host, and the dashboard's tracker fires there too. Within hours
-// of the mirror going live the property selector had grown an entry for
-// `jayti-dashboard-a8ajkprgy-jayti.vercel.app` — a preview build someone opened
-// once — sitting beside the three real properties. Every future preview would
-// add another, and `SELECT DISTINCT site` is what fills that selector.
+// This started as a one-line deny-list: `!host.endsWith('.vercel.app')`. It was
+// written to stop Vercel preview builds inventing a property per deployment —
+// within hours of the mirror going live the selector had grown an entry for
+// `jayti-dashboard-a8ajkprgy-jayti.vercel.app`, a preview someone opened once,
+// beside the real properties. But a single-suffix deny-list accepts every host
+// in the universe except that one suffix, and `site` is client-supplied
+// (jp-tracker.js is served publicly and pasted into v0 chats and sandboxes), so
+// the warehouse filled with `*.v0.build` and `*.vercel.run` junk and even a
+// device id (`samsung-s24-ultra`) filed as a website. An allow-list cannot
+// drift that way: a host is a property only if it IS one of ours or a subdomain
+// of one. This is the single choke point every derivation site routes through
+// (jp-track ingest, db-push mirror, jp-stats read), so widening the fleet is a
+// one-line edit here and nowhere else.
 //
-// A beacon from a vercel.app host records nothing: the mirror skips it, and
-// DynamoDB still journals the raw event, so nothing is destroyed — it simply
-// stops inventing a property per build. The custom domains are the properties.
+// A beacon from any other host records nothing: the mirror skips it, DynamoDB
+// still journals the raw event, so nothing is destroyed.
+const PROPERTIES = ['jaytibirthday.in', 'jaytipargal.tech', 'jaytipargal.com'];
 function isProperty(host) {
-  return Boolean(host) && !host.endsWith('.vercel.app');
+  if (!host) return false;
+  return PROPERTIES.some((p) => host === p || host.endsWith('.' + p));
 }
 
 /**
@@ -70,7 +77,15 @@ function isProperty(host) {
 export function siteFor(pageUrl, fallback) {
   if (typeof pageUrl === 'string' && pageUrl) {
     try {
-      const host = normaliseHost(new URL(pageUrl).hostname);
+      const u = new URL(pageUrl);
+      // Only web pages are properties. `device://samsung-s24-ultra` parses
+      // cleanly — `device:` is a non-special scheme, so new URL() hands back
+      // hostname 'samsung-s24-ultra' — and the old code filed it as a website.
+      // A parseable page URL is authoritative: http(s) gets its host's verdict,
+      // anything else is not a property and must NOT fall through to the request
+      // fallback, or a device beacon lands under whatever domain served the API.
+      if (u.protocol !== 'http:' && u.protocol !== 'https:') return null;
+      const host = normaliseHost(u.hostname);
       if (host) return isProperty(host) ? host : null;
     } catch {
       // Relative or malformed page_url; fall through to the request's own host.
@@ -79,13 +94,30 @@ export function siteFor(pageUrl, fallback) {
   if (typeof fallback === 'string' && fallback) {
     let host;
     try {
-      host = normaliseHost(new URL(fallback).hostname);
+      const u = new URL(fallback);
+      if (u.protocol !== 'http:' && u.protocol !== 'https:') return null;
+      host = normaliseHost(u.hostname);
     } catch {
+      // A bare Host header (no scheme) throws here; take it as-is.
       host = normaliseHost(fallback);
     }
     return isProperty(host) ? host : null;
   }
   return null;
+}
+
+// Obvious automated clients, dropped at INGEST (see jp-track.js) so a crawler
+// never reaches the warehouse. It has to be the write path: `visitors` and
+// `sessions` are rollups recomputed from `events` (rollupVisitors/rollupSessions
+// below), so a read-side filter would leave those counts inflated. The token
+// list is deliberately conservative — a false positive silently discards a real
+// visit — so it matches only self-identifying crawlers and headless/CLI agents,
+// never "this UA looks unusual". A missing UA is not proof of a bot (privacy
+// tools strip it), so it is not dropped on that alone.
+const BOT_UA = /(bot|crawl|spider|slurp|mediapartners|adsbot|bingpreview|facebookexternalhit|embedly|pinterest|redditbot|telegrambot|slackbot|discordbot|headless|phantomjs|puppeteer|playwright|python-requests|python-urllib|node-fetch|axios\/|go-http-client|java\/|okhttp|libwww|curl\/|wget\/|scrapy|semrush|ahrefs|mj12bot|dotbot|dataforseo|petalbot|gptbot|ccbot|claudebot|bytespider|amazonbot|applebot)/i;
+export function botLike(userAgent) {
+  if (!userAgent) return false;
+  return BOT_UA.test(String(userAgent));
 }
 
 // The two trackers feeding this table name the same event differently:

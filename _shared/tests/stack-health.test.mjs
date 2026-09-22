@@ -8,9 +8,12 @@
 // direction.
 
 import assert from 'node:assert/strict';
-import { worst, buildLayers, snapshot, probeAssets } from '../../Backend/jp-stack.js';
+import { worst, buildLayers, snapshot, probeAssets, deviceFreshness } from '../../Backend/jp-stack.js';
 import { evaluateStack, failureLines, alertBody } from '../../Backend/stack-cron.js';
 import { LAYERS, REQUIRED_ENV, allFiles } from '../../Backend/lib/stack-map.js';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
 
 let pass = 0, total = 0;
 function t(name, fn) {
@@ -244,6 +247,66 @@ await ta('a 200 that declares no content-length is served, not empty', async () 
     assert.equal(v.status, 'ok', path + ' was called broken on a 200');
     assert.doesNotMatch(v.problem || '', /empty body/, path + ' reported an empty body it never saw');
   }
+});
+
+// ── deviceFreshness must judge per device, never fleet-max ──────────────
+// The old code took the single newest lastSeen across the whole fleet, so one
+// live device painted the tier green while three were dead for days. These pin
+// that a fresh device can never hide a stale one again.
+function fsDocs(entries) {
+  // entries: [id, minutesAgo|null]. Shapes the Firestore REST doc deviceFreshness reads.
+  const now = Date.now();
+  const _docs = entries.map(([id, minAgo]) => ({
+    name: 'projects/x/databases/eka-agent/documents/devices/' + id,
+    fields: minAgo == null ? {} : { lastSeen: { timestampValue: new Date(now - minAgo * 60000).toISOString() } },
+  }));
+  return { status: 'ok', _docs };
+}
+
+t('one fresh device does not mask three dead ones', () => {
+  const r = deviceFreshness(fsDocs([
+    ['jayti-asus-vivobook', null],       // never reported
+    ['samsung-s24-ultra', 11000],        // ~7.6 days
+    ['g4g-lenovo-laptop', 16000],
+    ['eka-cloud-sandbox', 3],            // the one live device
+  ]));
+  assert.equal(r.status, 'fail', 'a live device must not green the tier while others are dead');
+  assert.match(r.problem, /samsung-s24-ultra/, 'the dead devices are named, not just counted');
+  assert.match(r.problem, /jayti-asus-vivobook/, 'a never-reported device is surfaced too');
+  assert.equal(r.byDevice['eka-cloud-sandbox'].status, 'ok', 'the live device is still individually green');
+  assert.equal(r.byDevice['samsung-s24-ultra'].status, 'fail');
+});
+
+t('an all-fresh fleet is green and reports the newest heartbeat', () => {
+  const r = deviceFreshness(fsDocs([['a', 2], ['b', 5]]));
+  assert.equal(r.status, 'ok');
+  assert.match(r.detail, /newest heartbeat 2 min/);
+});
+
+t('a device seen 20 min ago warns but does not fail', () => {
+  const r = deviceFreshness(fsDocs([['a', 2], ['b', 20]]));
+  assert.equal(r.status, 'warn', '15<age<=60 min is a warn, not a hard fail');
+});
+
+t('an unreadable Firestore probe leaves devices unknown, never green', () => {
+  const r = deviceFreshness({ status: 'fail' });
+  assert.equal(r.status, 'unknown');
+});
+
+// ── the dashboard's all-offline banner is wired, not just declared ──────
+// Frontend is tested by source assertion here, the same way wa-message-view
+// and stats-session-parity pin the index.html contract without a browser.
+const INDEX = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'Frontend', 'index.html'), 'utf8');
+
+t('index.html carries the all-devices-offline banner element', () => {
+  assert.match(INDEX, /id="allDevicesStaleBanner"/, 'the banner element is missing');
+});
+
+t('the banner is driven by every device being offline and named as such', () => {
+  assert.match(INDEX, /function renderAllStaleBanner/, 'the toggle function is missing');
+  assert.match(INDEX, /\.every\(function \(d\) \{ return !\(d && d\.live\); \}\)/, 'the all-offline predicate changed shape');
+  assert.match(INDEX, /Queued commands cannot execute/, 'the banner no longer states the operational consequence');
+  assert.match(INDEX, /renderAllStaleBanner\(devices\)/, 'loadLiveDevices no longer calls the banner');
 });
 
 console.log('\n  ' + pass + '/' + total + ' passed');

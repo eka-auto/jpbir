@@ -28,7 +28,7 @@ const check = (label, ok, detail) => {
 delete process.env.DATABASE_URL;
 delete process.env.POSTGRES_URL;
 
-const { siteFor, insertEvent, recordEvent, rollupVisitors, rollupSessions } =
+const { siteFor, botLike, insertEvent, recordEvent, rollupVisitors, rollupSessions } =
   await import('../../Backend/lib/warehouse.js');
 
 // Records every statement instead of running it.
@@ -72,9 +72,43 @@ for (const [pageUrl, fallback, want, why] of [
     'a deployment host is rejected as a fallback too, not just as a page URL'],
   ['https://jaytipargal.tech/db', 'https://x-abc-jayti.vercel.app', 'jaytipargal.tech',
     'a real page URL still wins over a deployment-host fallback'],
+  // The allow-list, driven directly. A single-suffix deny-list let all of these
+  // into the warehouse; each is the actual junk the Neon query surfaced.
+  ['https://jaytibirthday.in/', null, 'jaytibirthday.in',
+    'the largest real property is accepted'],
+  ['https://agent.jaytipargal.tech/x', null, 'agent.jaytipargal.tech',
+    'a subdomain of a property is itself a property'],
+  ['https://my-app-xyz.v0.build/', null, null,
+    'a v0.build sandbox is not a property — the deny-list let it through'],
+  ['https://something.vercel.run/', null, null,
+    'a vercel.run sandbox is not a property either'],
+  ['device://samsung-s24-ultra', null, null,
+    'a device id filed as a page URL is not a website — device: is not http(s)'],
+  ['device://samsung-s24-ultra', 'https://jaytipargal.tech', null,
+    'a non-http(s) page URL is final: it does not fall through to the request host'],
+  ['https://evil.example.com/jaytipargal.tech', null, null,
+    'the property name in a path does not make an unrelated host a property'],
 ]) {
   const got = siteFor(pageUrl, fallback);
   check(`siteFor: ${why}`, got === want, `siteFor(${JSON.stringify(pageUrl)}, ${JSON.stringify(fallback)}) = ${JSON.stringify(got)}, wanted ${JSON.stringify(want)}`);
+}
+
+// botLike gates the warehouse WRITE, because visitors/sessions are recomputed
+// from events — a crawler counted there inflates every rollup off it. A false
+// positive silently discards a real visit, so the contract cuts both ways:
+// self-identifying automation is dropped, ordinary browsers never are, and a
+// missing UA is not treated as proof of a bot.
+for (const [ua, want, why] of [
+  ['Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)', true, 'a self-identifying crawler is a bot'],
+  ['curl/8.4.0', true, 'a CLI client is a bot'],
+  ['python-requests/2.31.0', true, 'a scripting library is a bot'],
+  ['GPTBot/1.0', true, 'an AI crawler is a bot'],
+  ['Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36', false, 'a real desktop browser is not a bot — even Desktop/Linux, which the junk data over-reported'],
+  ['Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Safari/604.1', false, 'a real mobile browser is not a bot'],
+  ['', false, 'an empty UA is not proof of a bot (privacy tools strip it) — do not discard a real visit on absence alone'],
+  [null, false, 'a missing UA is not a bot'],
+]) {
+  check(`botLike: ${why}`, botLike(ua) === want, `botLike(${JSON.stringify(ua)}) = ${botLike(ua)}, wanted ${want}`);
 }
 
 {
@@ -197,10 +231,26 @@ check('the tracking response reports whether the mirror ran',
   /warehouse,/.test(trackSrc) && /mirrored: (true|false)/.test(trackSrc),
   'no warehouse field on the 200 response');
 
-for (const origin of ['https://jaytipargal.tech', 'https://www.jaytipargal.tech']) {
+for (const origin of ['https://jaytipargal.tech', 'https://www.jaytipargal.tech', 'https://jaytibirthday.in']) {
   check(`${origin} is an allowed origin`, trackSrc.includes(`'${origin}'`),
     'beacons from this deployment\'s own pages would be dropped by the browser');
 }
+
+// The ACAO pick reads Origin, never Referer: Origin is scheme+host (what the
+// Set holds) while Referer is a full URL, so a referer-only request could never
+// match and the fallback only ever echoed the wrong default. Assert the dead
+// fallback is gone rather than trusting the comment beside it.
+check('the Access-Control-Allow-Origin pick does not fall back to Referer',
+  /const origin = req\.headers\.origin \|\| '';/.test(trackSrc) && !/const origin = req\.headers\.origin \|\| req\.headers\.referer/.test(trackSrc),
+  'jp-track still ORs req.headers.referer into the origin used for ACAO');
+
+// The write path drops obvious bots. Grep is enough here: the behavioural
+// contract for botLike itself is driven directly in layer 1 above; this only
+// pins that jp-track actually calls it before mirroring, so the guard is wired
+// in and not merely exported.
+check('jp-track gates the warehouse mirror on botLike',
+  /botLike\(item\.userAgent\)/.test(trackSrc),
+  'jp-track imports botLike but never calls it, so crawlers still reach the rollups');
 
 check('db-push no longer stamps every row with one hardcoded site',
   !/`\$\{SITE\}:\$\{it\.id\}`/.test(pushSrc) && /siteFor\(/.test(pushSrc),

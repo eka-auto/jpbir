@@ -161,37 +161,56 @@ async function probeFirestore() {
  * Deliberately separate from the Firestore light: the store being reachable and
  * a daemon still reporting are different facts, and conflating them is how a
  * dead phone hides behind a healthy database.
+ *
+ * Judged PER DEVICE, never fleet-max. The old code took the single newest
+ * lastSeen across every device and reported one verdict, so one live device
+ * painted the whole tier green while the other three were dead for days — the
+ * same masking the `byPath` split fixed for the assets probe. Here each device
+ * earns its own light and the tier takes the worst (`worst()` below), so a dead
+ * daemon can never hide behind a live one. `byDevice` carries the per-device
+ * breakdown for the panel; the top-line `problem` names the ones that are down.
  */
-function deviceFreshness(firestoreResult) {
+export function deviceFreshness(firestoreResult) {
   if (firestoreResult.status !== OK) {
     return { status: UNKNOWN, problem: 'cannot read device docs — Firestore probe did not succeed' };
   }
   const docs = firestoreResult._docs || [];
   if (!docs.length) return { status: WARN, problem: 'no device documents found in the devices collection' };
 
-  let newest = 0;
-  let newestId = null;
-  for (const d of docs) {
+  const now = Date.now();
+  const per = docs.map((d) => {
+    const id = (d.name || '').split('/').pop() || 'unknown';
     const raw = d.fields?.lastSeen?.timestampValue || d.fields?.lastSeen?.stringValue;
     const t = raw ? new Date(raw).getTime() : 0;
-    if (t > newest) {
-      newest = t;
-      newestId = (d.name || '').split('/').pop();
-    }
-  }
-  if (!newest) return { status: WARN, problem: 'no device has a readable lastSeen timestamp' };
+    if (!t) return { id, status: WARN, mins: null, reason: id + ' has no readable lastSeen (never reported)' };
+    const mins = Math.floor((now - t) / 60000);
+    if (mins > 60) return { id, status: FAIL, mins, reason: id + ' heartbeat ' + mins + ' min old' };
+    if (mins > 15) return { id, status: WARN, mins, reason: id + ' heartbeat ' + mins + ' min old' };
+    return { id, status: OK, mins };
+  });
 
-  const mins = Math.floor((Date.now() - newest) / 60000);
-  if (mins > 60) {
+  const byDevice = {};
+  for (const p of per) byDevice[p.id] = { status: p.status, mins: p.mins };
+  const status = worst(per.map((p) => p.status));
+  const down = per.filter((p) => p.status !== OK);
+
+  if (status === FAIL) {
     return {
       status: FAIL,
-      problem: 'newest device heartbeat is ' + mins + ' min old (' + (newestId || 'unknown') + ') — a daemon has stopped; no cloud-side change fixes this',
+      problem: down.length + ' of ' + per.length + ' device(s) not reporting — ' + down.map((p) => p.reason).join('; ')
+        + '; a daemon has stopped and no cloud-side change fixes this',
+      byDevice,
     };
   }
-  if (mins > 15) {
-    return { status: WARN, problem: 'newest heartbeat ' + mins + ' min old — daemon may be throttled or sleeping' };
+  if (status === WARN) {
+    return {
+      status: WARN,
+      problem: down.map((p) => p.reason).join('; ') + ' — may be throttled or sleeping',
+      byDevice,
+    };
   }
-  return { status: OK, detail: 'newest heartbeat ' + mins + ' min ago', newest_last_seen: new Date(newest).toISOString() };
+  const newestMins = per.reduce((a, p) => (p.mins != null && p.mins < a ? p.mins : a), Infinity);
+  return { status: OK, detail: 'all ' + per.length + ' device(s) fresh; newest heartbeat ' + newestMins + ' min ago', byDevice };
 }
 
 /**
@@ -500,7 +519,12 @@ export function snapshot(probes) {
     cloud_fail,
     summary,
     probes: Object.fromEntries(
-      Object.entries(probes).map(([k, v]) => [k, { status: v.status, problem: v.problem || '', detail: v.detail || '' }])
+      // byDevice, when a probe reports per device (deviceFreshness does), rides
+      // along so the panel can show which daemon is down, not just that one is.
+      Object.entries(probes).map(([k, v]) => [k, {
+        status: v.status, problem: v.problem || '', detail: v.detail || '',
+        ...(v.byDevice ? { byDevice: v.byDevice } : {}),
+      }])
     ),
     layers,
   };

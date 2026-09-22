@@ -323,13 +323,26 @@ const isoOrNull = (v) => {
  * att_id is deterministic (chat_id:msg_key:hash) when the S24 daemon supplies
  * it; when absent, hash blob_url so a re-run reuses the same key.
  */
+// Why an attachment record cannot become a row, or null when it can. Split out
+// so the drop is COUNTED with a reason instead of vanishing: every discard here
+// used to be a silent `return null`, which is how wa_attachments stayed empty
+// against 18,232 media messages with nothing in the run summary to show it.
+//   missing-blob-url is the load-bearing one — media bytes must already be in
+//   Vercel Blob before a row can exist, so a producer that sends metadata
+//   without uploading first has every record rejected here.
+export function attachmentSkipReason(rec) {
+  if (!rec || typeof rec !== 'object') return 'not-an-object';
+  if (!str(rec.chat_id)) return 'missing-chat-id';
+  if (!str(rec.blob_url)) return 'missing-blob-url';
+  if (!ATT_KINDS.has(str(rec.kind).toLowerCase())) return 'unknown-kind';
+  return null;
+}
+
 export function normalizeAttachment(rec) {
-  if (!rec || typeof rec !== 'object') return null;
+  if (attachmentSkipReason(rec)) return null;
   const chatId = str(rec.chat_id);
   const blobUrl = str(rec.blob_url);
-  if (!chatId || !blobUrl) return null;
   const kind = str(rec.kind).toLowerCase();
-  if (!ATT_KINDS.has(kind)) return null;
   const attId = str(rec.att_id) || hashId(`${chatId}:${str(rec.msg_id) || blobUrl}`);
   return {
     att_id: attId,
@@ -348,13 +361,21 @@ export function normalizeAttachment(rec) {
 }
 
 export async function upsertAttachments(query, records, meta = {}) {
+  const list = records || [];
   const rows = new Map();
+  const skippedReasons = {};
   let skipped = 0;
-  for (const rec of records || []) {
+  for (const rec of list) {
+    const reason = attachmentSkipReason(rec);
+    if (reason) {
+      skipped++;
+      skippedReasons[reason] = (skippedReasons[reason] || 0) + 1;
+      continue;
+    }
     const a = normalizeAttachment(rec);
-    if (!a) { skipped++; continue; }
     rows.set(a.att_id, { ...a, raw: JSON.stringify(rec) });
   }
+  const normalized = rows.size;
   const col = (batch, k) => batch.map((r) => r[k]);
   let upserted = 0;
   for (const batch of chunks([...rows.values()], CHUNK)) {
@@ -393,7 +414,12 @@ export async function upsertAttachments(query, records, meta = {}) {
     );
     upserted += Number.isInteger(result && result.rowCount) ? result.rowCount : 0;
   }
-  return { upserted, skipped };
+  // A normalized attachment whose chat_id is not in wa_chats is dropped by the
+  // WHERE EXISTS guard above — a THIRD silent path, distinct from a skip. It is
+  // not counted in `skipped` (nothing was wrong with the record), so surface it
+  // as `orphaned` rather than let normalized > upserted go unexplained.
+  const orphaned = Math.max(0, normalized - upserted);
+  return { received: list.length, normalized, upserted, skipped, orphaned, skippedReasons };
 }
 
 /**
@@ -413,26 +439,36 @@ export async function ingestBatch(query, body, meta = {}) {
 
   const c = await upsertChats(query, chats, { device, runId, source });
   const m = await upsertMessages(query, messages, { device, runId, source, chatId: b.chat_id });
-  const a = attachments.length ? await upsertAttachments(query, attachments, { device, runId, source }) : { upserted: 0, skipped: 0 };
+  const a = attachments.length
+    ? await upsertAttachments(query, attachments, { device, runId, source })
+    : { received: 0, normalized: 0, upserted: 0, skipped: 0, orphaned: 0, skippedReasons: {} };
 
-  // Non-additive accounting: the tallies are the rows that carry this run_id
-  // right now, so a retried batch (same run_id, idempotent upserts above)
-  // reports the same numbers instead of doubling them.
+  // Non-additive accounting: the seen tallies are the rows that carry this
+  // run_id right now, so a retried batch (same run_id, idempotent upserts
+  // above) reports the same numbers instead of doubling them. attachments_seen
+  // joins them — a run that landed zero attachments while messages_seen climbed
+  // is now visibly a drop, not a perfect sync. attachments_skipped is this
+  // batch's discards (rejected + orphaned); there is no table to recount it
+  // from, so it overwrites rather than adds, which keeps the idempotent retry
+  // stable and, for the common single-batch run, is exact.
   await query(
-    `INSERT INTO wa_sync_runs (run_id, device_id, chats_seen, messages_seen, status, note, finished_at)
+    `INSERT INTO wa_sync_runs (run_id, device_id, chats_seen, messages_seen, attachments_seen, status, note, finished_at, attachments_skipped)
      VALUES ($1, $2,
-             (SELECT COUNT(*)::int FROM wa_chats    WHERE run_id = $1),
-             (SELECT COUNT(*)::int FROM wa_messages WHERE run_id = $1),
-             $3, $4, $5)
+             (SELECT COUNT(*)::int FROM wa_chats       WHERE run_id = $1),
+             (SELECT COUNT(*)::int FROM wa_messages    WHERE run_id = $1),
+             (SELECT COUNT(*)::int FROM wa_attachments WHERE run_id = $1),
+             $3, $4, $5, $6)
      ON CONFLICT (run_id) DO UPDATE SET
-       device_id     = COALESCE(EXCLUDED.device_id, wa_sync_runs.device_id),
-       chats_seen    = EXCLUDED.chats_seen,
-       messages_seen = EXCLUDED.messages_seen,
-       status        = EXCLUDED.status,
-       note          = COALESCE(EXCLUDED.note, wa_sync_runs.note),
-       finished_at   = COALESCE(EXCLUDED.finished_at, wa_sync_runs.finished_at)`,
+       device_id           = COALESCE(EXCLUDED.device_id, wa_sync_runs.device_id),
+       chats_seen          = EXCLUDED.chats_seen,
+       messages_seen       = EXCLUDED.messages_seen,
+       attachments_seen    = EXCLUDED.attachments_seen,
+       status              = EXCLUDED.status,
+       note                = COALESCE(EXCLUDED.note, wa_sync_runs.note),
+       finished_at         = COALESCE(EXCLUDED.finished_at, wa_sync_runs.finished_at),
+       attachments_skipped = EXCLUDED.attachments_skipped`,
     [runId, device, b.done ? 'done' : 'running', str(b.note) || null,
-      b.done ? new Date().toISOString() : null]
+      b.done ? new Date().toISOString() : null, a.skipped + a.orphaned]
   );
 
   return { run_id: runId, device, chats: c, messages: m, attachments: a, done: Boolean(b.done) };
