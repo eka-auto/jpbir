@@ -58,7 +58,7 @@ install_verified() {
 
 install_verified 'device_agent.py' '7ebaed2f557373f959c1f52e44126ddbfdbd3974772dfd6bcf055a6dbd511519'
 install_verified 'broker_client.py' 'e380867c5843e49c21d7e46704db20607389a9f1faad4b3cf61f9b4eab173bb1'
-install_verified 'signer.py' '8aabf8e5fff25a067b02901ef4798d061a9c2b3d5844d72e59db1419112632f7'
+install_verified 'signer.py' '64c56fa828dc56656ce6e28a116a43386781a1a0f737e5d794bec587db4927fa'
 install_verified 'single_instance.py' '287fe1c114488e847f0252c89170067e6fe5b33650780c72e8a8f00f7b63843a'
 printf '[ok] copied and verified bundled broker artifacts for release %s\n' "$RELEASE_ID"
 

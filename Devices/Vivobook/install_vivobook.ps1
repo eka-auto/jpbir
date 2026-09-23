@@ -28,7 +28,7 @@ $Here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Artifacts = @(
     [pscustomobject]@{ Name = 'device_agent.py'; Hash = '8DEC43C4C25BB7032091042D29C613EEC57F7EF64D0B336354FB5F2FB5428CD7' },
     [pscustomobject]@{ Name = 'broker_client.py'; Hash = 'E380867C5843E49C21D7E46704DB20607389A9F1FAAD4B3CF61F9B4EAB173BB1' },
-    [pscustomobject]@{ Name = 'signer.py'; Hash = '8AABF8E5FFF25A067B02901EF4798D061A9C2B3D5844D72E59DB1419112632F7' },
+    [pscustomobject]@{ Name = 'signer.py'; Hash = '64C56FA828DC56656CE6E28A116A43386781A1A0F737E5D794BEC587DB4927FA' },
     [pscustomobject]@{ Name = 'single_instance.py'; Hash = '287FE1C114488E847F0252C89170067E6FE5B33650780C72E8A8F00F7B63843A' },
     [pscustomobject]@{ Name = 'requirements-broker.txt'; Hash = '37B13C7D746D596E7DA6E73098DFBA792EAB1A49C8ACC7E0A5AB287B56B107D5' }
 )

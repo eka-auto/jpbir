@@ -35,6 +35,18 @@ log = logging.getLogger("channel_sandbox.signer")
 
 _POWERSHELL = shutil.which("powershell") or "powershell"
 
+# CREATE_NO_WINDOW. The Windows kits run the daemon under pythonw.exe, which has no
+# console, so every console child it starts gets a new window of its own. This helper
+# runs for every signed request (a poll every 15 s, a heartbeat every 45 s), and on
+# g4g-lenovo-laptop that put a PowerShell window on the user's screen several times a
+# minute. device_agent.py already passes this flag to its own subprocesses (_SW);
+# the signer was the one that did not. Decided per call so tests can exercise it.
+_CREATE_NO_WINDOW = 0x08000000
+
+
+def _no_console_kwargs():
+    return {"creationflags": _CREATE_NO_WINDOW} if sys.platform == "win32" else {}
+
 _CNG_HELPER = r"""
 $ErrorActionPreference = 'Stop'
 $op = $env:EKA_CNG_OP
@@ -150,6 +162,7 @@ class WindowsCngSigner:
                 capture_output=True,
                 timeout=30,
                 env=env,
+                **_no_console_kwargs(),
             )
         except (OSError, subprocess.SubprocessError) as e:
             raise SignerError(f"CNG helper failed to run: {e}") from e
