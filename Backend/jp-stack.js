@@ -186,7 +186,7 @@ export function deviceFreshness(firestoreResult) {
     return { status: UNKNOWN, problem: 'cannot read device docs — Firestore probe did not succeed' };
   }
   // The fleet, not the collection. The collection also holds a test agent and
-  // an enrolment artifact (DEVICE_IDS in broker.js says why neither is a
+  // a stray watcher doc (DEVICE_IDS in broker.js says why neither is a
   // device), and judging every document made this verdict speak of five
   // devices when there are three. Each fleet device is judged even with no
   // document at all, so an enrolment that never happened reads as never

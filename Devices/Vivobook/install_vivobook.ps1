@@ -26,7 +26,7 @@ $Here = Split-Path -Parent $MyInvocation.MyCommand.Path
 # _shared/tests/installer-pins.test.mjs re-hashes every pin against the kit bytes and
 # fails on a wrong length, so neither mistake can recur silently.
 $Artifacts = @(
-    [pscustomobject]@{ Name = 'device_agent.py'; Hash = 'BE75C4D8E8817BB45B8DFF32AD5D1C642DB7808EA1EE4A89C7B0DCF058B9296B' },
+    [pscustomobject]@{ Name = 'device_agent.py'; Hash = '8DEC43C4C25BB7032091042D29C613EEC57F7EF64D0B336354FB5F2FB5428CD7' },
     [pscustomobject]@{ Name = 'broker_client.py'; Hash = 'E380867C5843E49C21D7E46704DB20607389A9F1FAAD4B3CF61F9B4EAB173BB1' },
     [pscustomobject]@{ Name = 'signer.py'; Hash = '8AABF8E5FFF25A067B02901EF4798D061A9C2B3D5844D72E59DB1419112632F7' },
     [pscustomobject]@{ Name = 'single_instance.py'; Hash = '287FE1C114488E847F0252C89170067E6FE5B33650780C72E8A8F00F7B63843A' },
