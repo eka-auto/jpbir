@@ -567,19 +567,27 @@ export function snapshot(probes) {
  * Error level only when a cloud probe failed. A stopped daemon is a device
  * fault no deploy can fix (see cloud_fail in snapshot), CI already reports it
  * as a warning, and paging on it at error level is how real errors get ignored.
+ *
+ * The summary counts are stack-map files, not devices: six files are bound to
+ * the devices probe, so one stopped daemon reads fail=6. Printed as a bare
+ * `fail=6` beside a list of three devices, that invites "six devices", so the
+ * counts are named files_* and the device tally is its own field,
+ * `devices_not_ok=<n>/<fleet size>`, which states the fleet size on every line.
  */
 export function logVerdict(snap, log = console) {
   if (snap.overall === OK) return;
   const probes = snap.probes || {};
   const ids = (status) => Object.keys(probes).filter((k) => probes[k].status === status).join(',') || '-';
   const byDevice = (probes.devices && probes.devices.byDevice) || {};
-  const devices = Object.keys(byDevice)
-    .filter((id) => byDevice[id].status !== OK)
+  const fleet = Object.keys(byDevice);
+  const notOk = fleet.filter((id) => byDevice[id].status !== OK);
+  const devices = notOk
     .map((id) => id.replace(/[^\w.-]/g, '?') + ':' + (byDevice[id].mins == null ? 'never' : byDevice[id].mins + 'm'));
   log[snap.cloud_fail ? 'error' : 'warn']('[jp-stack] health verdict ' + snap.overall
     + ' cloud_fail=' + snap.cloud_fail
-    + ' fail=' + snap.summary.fail + ' warn=' + snap.summary.warn + ' unknown=' + snap.summary.unknown
+    + ' files_fail=' + snap.summary.fail + ' files_warn=' + snap.summary.warn + ' files_unknown=' + snap.summary.unknown
     + ' failing=' + ids(FAIL) + ' warning=' + ids(WARN)
+    + (fleet.length ? ' devices_not_ok=' + notOk.length + '/' + fleet.length : '')
     + (devices.length ? ' devices=' + devices.join(',') : ''));
 }
 
