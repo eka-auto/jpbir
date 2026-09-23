@@ -212,6 +212,39 @@ through `splitFleet()`: the health verdict, `check-stale`, the
 `Server/jp-agent/device-health.mjs`). `_shared/tests/device-fleet.test.mjs`
 pins all of it. Never count the collection.
 
+### Before calling any device offline: are you running on it?
+
+Sessions run on the fleet's own laptops. On 2026-09-23 a session reported
+`g4g-lenovo-laptop` "offline 12 days" while running on that laptop. First run
+`hostname` (PowerShell: `$env:COMPUTERNAME`) and
+`Get-CimInstance Win32_ComputerSystem | Select Manufacturer,Model`:
+
+| Device id | Hardware | Hostname | Agent install on the device |
+|-----------|----------|----------|-----------------------------|
+| `g4g-lenovo-laptop` | LENOVO 82KA | `G4G-LAPTOP` | `C:\eka-agent\broker`, log `logs\g4g-lenovo-laptop.log` |
+| `jayti-asus-vivobook` | ASUS VivoBook | `JAYAT-LAPTOP` / `JAYTI` | `C:\eka-agent\broker` (not installed as of 2026-09-23) |
+| `samsung-s24-ultra` | Samsung SM-S928B | (phone, Termux) | `$HOME/.local/share/eka-broker`, log `logs/samsung-s24-ultra.log`, JobScheduler job `240619` (15 min) |
+
+Hostnames come from `KNOWN_DEVICE_IDS` in the laptop-side
+`site-video-event-watcher.py`. If you are on one of these machines, the
+question is not "is it offline" but "why is its daemon not running here":
+go straight to the checklist below and look at the process and its log.
+
+"Offline" must be stated from evidence, not from the dashboard alone. Where
+device activity actually lands, newest first to check:
+
+- Firestore `devices/<id>.lastSeen`: only the broker heartbeat writes the
+  3-decimal ISO form (`…36.284Z`); a 6-decimal value (`…36.284217Z`) was
+  written by a Python script or copied by a restore, not by a live daemon.
+- Postgres `s24_records` / `s24_device_snapshots` / `device_telemetry`: the
+  phone's own data. `s24_sync_runs` and `s24_agents` are written by the CI
+  export job on a GitHub-hosted runner (`host = runnervm…`, no ADB). A
+  successful run there re-uploads the last snapshot and is not phone activity;
+  its `notes` state the phone's attestation result.
+- `deviceKeys`: a device with no key there has never enrolled with the broker,
+  whatever `devices/<id>` says. As of 2026-09-23 only `g4g-lenovo-laptop` had
+  one.
+
 ### A Windows device that shows offline: check these, in order
 
 On 2026-09-23 the dashboard showed `g4g-lenovo-laptop` offline for 12 days
