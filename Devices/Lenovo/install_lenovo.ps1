@@ -15,6 +15,104 @@ $LogPath = Join-Path $Target "logs\$DeviceId.log"
 $PinnedCommit = '183e600d0acd7e6171e35be904c657e7fe967384'
 $Here = Split-Path -Parent $MyInvocation.MyCommand.Path
 
+function Remove-LegacyFleetStartup {
+    # The retired fleet agent writes directly to Firestore. Retire its exact
+    # launcher only after the signed broker has proved it is live; otherwise a
+    # cleanup error could leave this laptop without either agent.
+    $LegacyRoot = 'C:\eka-fleet-agent'
+    $LegacyPython = Join-Path $LegacyRoot '.venv\Scripts\python.exe'
+    $LegacyModule = '-m ekagent'
+    $LegacyVbsName = 'EKA-Fleet-Agent.vbs'
+
+    function Invoke-LegacyCleanup {
+        param([string]$Description, [scriptblock]$Action)
+        try {
+            & $Action
+            Write-Host "[ok] $Description"
+        } catch {
+            # Broker recovery is already proven. A locked vbs or an admin-only
+            # machine startup folder must not convert that success into a failed install.
+            Write-Warning "Could not ${Description}: $($_.Exception.Message)"
+        }
+    }
+
+    $LegacyProcesses = @()
+    try {
+        $LegacyProcesses = @(Get-CimInstance Win32_Process -ErrorAction Stop | Where-Object {
+            $_.CommandLine -and
+            $_.CommandLine.IndexOf($LegacyPython, [StringComparison]::OrdinalIgnoreCase) -ge 0 -and
+            $_.CommandLine.IndexOf($LegacyModule, [StringComparison]::OrdinalIgnoreCase) -ge 0
+        })
+    } catch {
+        Write-Warning "Could not inspect legacy fleet processes: $($_.Exception.Message)"
+    }
+    foreach ($Process in $LegacyProcesses) {
+        Invoke-LegacyCleanup "stopped legacy fleet process $($Process.ProcessId)" {
+            Stop-Process -Id $Process.ProcessId -Force -ErrorAction Stop
+        }
+    }
+
+    foreach ($StartupFolder in @(
+        [Environment]::GetFolderPath([Environment+SpecialFolder]::Startup),
+        [Environment]::GetFolderPath([Environment+SpecialFolder]::CommonStartup)
+    )) {
+        $LegacyVbs = Join-Path $StartupFolder $LegacyVbsName
+        if (Test-Path -LiteralPath $LegacyVbs -PathType Leaf) {
+            Invoke-LegacyCleanup "removed legacy Startup launcher $LegacyVbs" {
+                Remove-Item -LiteralPath $LegacyVbs -Force -ErrorAction Stop
+            }
+        }
+    }
+
+    foreach ($RunKey in @(
+        'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run',
+        'HKLM:\Software\Microsoft\Windows\CurrentVersion\Run'
+    )) {
+        if (-not (Test-Path -LiteralPath $RunKey)) { continue }
+        try {
+            $RunProperties = (Get-ItemProperty -LiteralPath $RunKey -ErrorAction Stop).PSObject.Properties
+            $LegacyValues = @($RunProperties | Where-Object {
+                $_.MemberType -eq 'NoteProperty' -and
+                ([string]$_.Value).IndexOf($LegacyRoot, [StringComparison]::OrdinalIgnoreCase) -ge 0 -and
+                ([string]$_.Value).IndexOf($LegacyModule, [StringComparison]::OrdinalIgnoreCase) -ge 0
+            })
+        } catch {
+            Write-Warning "Could not inspect legacy Run entries at ${RunKey}: $($_.Exception.Message)"
+            continue
+        }
+        foreach ($Value in $LegacyValues) {
+            Invoke-LegacyCleanup "removed legacy Run entry $RunKey\$($Value.Name)" {
+                Remove-ItemProperty -LiteralPath $RunKey -Name $Value.Name -ErrorAction Stop
+            }
+        }
+    }
+
+    try {
+        $LegacyTasks = @(Get-ScheduledTask -ErrorAction Stop | Where-Object {
+            ($_.Actions | Where-Object {
+                "$($_.Execute) $($_.Arguments)".IndexOf($LegacyRoot, [StringComparison]::OrdinalIgnoreCase) -ge 0 -and
+                "$($_.Execute) $($_.Arguments)".IndexOf($LegacyModule, [StringComparison]::OrdinalIgnoreCase) -ge 0
+            }).Count -gt 0
+        })
+    } catch {
+        Write-Warning "Could not inspect legacy scheduled tasks: $($_.Exception.Message)"
+        $LegacyTasks = @()
+    }
+    foreach ($Task in $LegacyTasks) {
+        Invoke-LegacyCleanup "removed legacy scheduled task $($Task.TaskPath)$($Task.TaskName)" {
+            Stop-ScheduledTask -TaskName $Task.TaskName -TaskPath $Task.TaskPath -ErrorAction SilentlyContinue
+            Unregister-ScheduledTask -TaskName $Task.TaskName -TaskPath $Task.TaskPath -Confirm:$false -ErrorAction Stop
+        }
+    }
+
+    $LegacyKey = Join-Path $LegacyRoot 'serviceAccountKey.json'
+    if (Test-Path -LiteralPath $LegacyKey -PathType Leaf) {
+        Invoke-LegacyCleanup "removed legacy service-account key $LegacyKey" {
+            Remove-Item -LiteralPath $LegacyKey -Force -ErrorAction Stop
+        }
+    }
+}
+
 # Hash is the SHA-256 of the bundled file's BYTES - 64 hex characters, exactly what
 # (Get-FileHash -Algorithm SHA256).Hash returns below. It is NOT a git object id.
 # This table once carried `git hash-object` output for single_instance.py: a
@@ -202,4 +300,5 @@ if (-not $LiveAgent -or [int64]$StateAfterStart.seq -le $SeqBeforeStart) {
     throw "Persistent broker startup did not prove a signed request. Review $LogPath."
 }
 
+Remove-LegacyFleetStartup
 Write-Host "[ok] broker is running via $Persistence with no service-account key on the device"
