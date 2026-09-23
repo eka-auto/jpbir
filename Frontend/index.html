@@ -26,9 +26,18 @@
     ::selection { background: rgba(200,122,30,.4); color: #FFF8EE; }
 
     /* ===== TOP BAR ===== */
+    /* One row at every width. Squeezed, the bar wrapped its "fetched …" label
+       until the sticky bar was 95px tall on a phone and up to 148px on a tablet
+       (with "(cached) · … · PARTIAL"), deep enough to cover whatever
+       scrollIntoView() puts at the top of the viewport (the WhatsApp chat
+       detail heading, see #waDetail), and on a phone it pushed the page out to
+       712px on every section. Now only the label gives up width, with an
+       ellipsis; when even that is not enough, the bar scrolls sideways instead
+       of the page, as .sidebar does on a phone. */
     .topbar { position: sticky; top: 0; z-index: 50; display: flex; align-items: center; gap: 16px;
         padding: 12px 22px; background: rgba(28,16,7,.92); backdrop-filter: blur(10px);
-        border-bottom: 1px solid rgba(240,185,104,.15); }
+        border-bottom: 1px solid rgba(240,185,104,.15); overflow-x: auto; }
+    .topbar > * { flex-shrink: 0; }
     .topbar .brand { font-family: var(--serif); font-weight: 700; font-size: 17px; color: #FBF3E9; }
     .topbar .brand .dot { color: var(--amber-glow); }
     .topbar .spacer { flex: 1; }
@@ -44,7 +53,8 @@
     .topbar select:hover, .topbar button:hover { border-color: var(--amber-glow); }
     .topbar button.primary { background: linear-gradient(180deg, var(--amber-glow), var(--amber));
         color: #241505; font-weight: 700; border: none; }
-    .topbar .last-updated { font-size: 11px; color: rgba(244,233,220,.55); }
+    .topbar .last-updated { font-size: 11px; color: rgba(244,233,220,.55);
+        flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     /* One-line hint under the topbar, tied to the site selector. Lives outside
        .topbar so it does not stretch the sticky bar itself. */
     .topbar-hint { padding: 6px 22px; font-size: 11.5px; color: rgba(244,233,220,.55);
@@ -67,7 +77,12 @@
     .sidebar .section-label { font-size: 10px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase;
         color: rgba(244,233,220,.35); margin: 16px 14px 6px; }
 
-    .content { padding: 22px; max-width: 1400px; }
+    /* min-width: 0 lets the 1fr column shrink below its widest table. A grid
+       item's automatic minimum is its min-content width, so the WhatsApp chat
+       table's nine nowrap columns stretched this whole column to 783px on a
+       390px phone (1009px in an 800px window), and the overflow:auto box that
+       holds the table grew with it instead of scrolling inside itself. */
+    .content { padding: 22px; max-width: 1400px; min-width: 0; }
     .page { display: none; }
     .page.active { display: block; animation: fadeIn .25s ease; }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
@@ -135,6 +150,10 @@
     .panel-head .tools input:focus { border-color: var(--amber); }
 
     .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+    /* Same reason as .content's min-width: 0. The Vercel runtime-log table's
+       nowrap 120-character messages sized its 1fr column to ~1,450px and pushed
+       the page sideways at every width, so its box never scrolled on its own. */
+    .grid2 > * { min-width: 0; }
     @media (max-width: 900px) { .grid2 { grid-template-columns: 1fr; } }
 
     /* ===== CHARTS ===== */
@@ -171,6 +190,22 @@
     th { color: var(--ink-muted); font-weight: 700; text-transform: uppercase; font-size: 10px; letter-spacing: 1px;
         cursor: pointer; user-select: none; position: sticky; top: 0; background: var(--panel); }
     th:hover { color: var(--amber-deep); }
+    /* Scroll box for tables that run to hundreds of rows (WhatsApp chats,
+       browser history, Vercel runtime logs). Uncapped, 862 chats made the
+       WhatsApp page ~35,000px tall and 500 history entries made the Device page
+       ~20,000px: opening a chat jumped ~30,000px down to its detail, and
+       full-page screenshots came back blank (Chromium cannot capture past
+       ~16,384px). Viewport-relative like .term-out (58vh) and #agentChat (52vh).
+       Every th is already position: sticky, so inside the box the header stays
+       pinned while the rows scroll. Each box also carries tabindex="0" and
+       role="region": Safari never puts a scroll box in the tab order, so rows
+       that page scrolling used to reach would be out of a keyboard's reach. */
+    .capped { overflow: auto; max-height: 60vh; }
+    /* Under border-collapse the table paints the collapsed border where the row
+       was, so a stuck th lost its bottom edge and rows slid under it
+       unseparated. The inset shadow is the cell's own and moves with it; the
+       border itself is dropped so the edge is one 1px line at rest as well. */
+    .capped th { border-bottom: 0; box-shadow: inset 0 -1px 0 var(--border); }
     th .arrow { font-size: 9px; margin-left: 3px; }
     td.mono { font-family: var(--mono); font-size: 11px; color: var(--ink-muted); }
 
@@ -589,7 +624,7 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
                             <button id="historyRefreshBtn">Refresh</button>
                         </div>
                     </div>
-                    <div class="table-wrap">
+                    <div class="table-wrap capped" tabindex="0" role="region" aria-label="Browser history entries">
                         <table id="browserHistoryTable">
                             <thead><tr>
                                 <th>Visited</th>
@@ -694,26 +729,29 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
                 </div>
                 <div class="grid2">
                     <div class="panel"><h2>By kind</h2><div id="waByKind"></div></div>
-                    <div class="panel"><h2>Recent sync runs</h2><div id="waRuns"><div class="hint">No runs recorded yet.</div></div></div>
+                    <!-- 360px cap: 20 runs, some with a drop-warning note, made this
+                         panel ~1,100px tall and stretched "By kind" beside it.
+                         tabindex/role for keyboard scrolling, as on .capped. -->
+                    <div class="panel"><h2>Recent sync runs</h2><div id="waRuns" tabindex="0" role="region" aria-label="Recent sync runs" style="max-height:360px;overflow-y:auto"><div class="hint">No runs recorded yet.</div></div></div>
                 </div>
                 <div class="panel">
                     <div class="panel-head"><div><h2>Chats</h2><div class="hint" id="waChatsHint">Ordered by message count. Click a row to see its raw entry.</div></div>
                         <input id="waFilter" type="text" placeholder="Filter by name…" style="padding:8px 12px;border:1px solid var(--border);border-radius:9px;background:var(--panel2);color:var(--ink);font-family:var(--sans);font-size:12.5px;outline:none;width:220px">
                     </div>
-                    <div id="waChatsWrap" style="overflow-x:auto">
+                    <div id="waChatsWrap" class="capped" tabindex="0" role="region" aria-label="WhatsApp chats">
                         <div id="waChatsEmpty" class="hint">Loading…</div>
                         <table id="waChatsTable" style="display:none;width:100%;border-collapse:collapse;font-size:13px">
                             <thead>
                                 <tr>
-                                    <th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--border);font-weight:600">Name</th>
-                                    <th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--border);font-weight:600">Kind</th>
-                                    <th style="text-align:right;padding:8px 10px;border-bottom:1px solid var(--border);font-weight:600">Messages</th>
-                                    <th style="text-align:right;padding:8px 10px;border-bottom:1px solid var(--border);font-weight:600">Media</th>
-                                    <th style="text-align:right;padding:8px 10px;border-bottom:1px solid var(--border);font-weight:600">Audio</th>
-                                    <th style="text-align:right;padding:8px 10px;border-bottom:1px solid var(--border);font-weight:600">Calls</th>
-                                    <th style="text-align:right;padding:8px 10px;border-bottom:1px solid var(--border);font-weight:600">Members</th>
-                                    <th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--border);font-weight:600">First</th>
-                                    <th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--border);font-weight:600">Last</th>
+                                    <th style="text-align:left;padding:8px 10px;font-weight:600">Name</th>
+                                    <th style="text-align:left;padding:8px 10px;font-weight:600">Kind</th>
+                                    <th style="text-align:right;padding:8px 10px;font-weight:600">Messages</th>
+                                    <th style="text-align:right;padding:8px 10px;font-weight:600">Media</th>
+                                    <th style="text-align:right;padding:8px 10px;font-weight:600">Audio</th>
+                                    <th style="text-align:right;padding:8px 10px;font-weight:600">Calls</th>
+                                    <th style="text-align:right;padding:8px 10px;font-weight:600">Members</th>
+                                    <th style="text-align:left;padding:8px 10px;font-weight:600">First</th>
+                                    <th style="text-align:left;padding:8px 10px;font-weight:600">Last</th>
                                 </tr>
                             </thead>
                             <tbody id="waChatsBody"></tbody>
@@ -721,7 +759,10 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
                     </div>
                 </div>
 
-                <div class="panel" id="waDetail" style="margin-top:14px;display:none">
+                <!-- scroll-margin-top: loadWaChat() scrolls this panel to the top of
+                     the viewport, where the sticky .topbar (one ~57px row at every
+                     width) covered its heading and Close button. -->
+                <div class="panel" id="waDetail" style="margin-top:14px;display:none;scroll-margin-top:70px">
                     <div class="panel-head">
                         <div><h2 id="waDetailName">Chat</h2><div class="hint" id="waDetailHint"></div></div>
                         <div class="tools"><button id="waDetailClose" style="font-family:var(--sans);font-size:12px;color:#F4E9DC;background:rgba(255,248,238,.07);border:1px solid rgba(240,185,104,.3);border-radius:9px;padding:7px 12px;cursor:pointer">Close</button></div>
@@ -3174,7 +3215,12 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
     }
     (function () {
         var refresh = $('waRefreshBtn'); if (refresh) refresh.addEventListener('click', function () { loadWhatsApp(true); });
-        var filter = $('waFilter'); if (filter) filter.addEventListener('input', function () { WA_STATE.filter = filter.value; renderWaChats(); });
+        var filter = $('waFilter'); if (filter) filter.addEventListener('input', function () {
+            WA_STATE.filter = filter.value; renderWaChats();
+            /* The list scrolls inside its own box now, so a new filter would
+               otherwise open wherever the box was left, not at the first match. */
+            var wrap = $('waChatsWrap'); if (wrap) wrap.scrollTop = 0;
+        });
     })();
 
     /* ===== TERMINAL (agent host, via /api/agent-run) =====
@@ -3531,8 +3577,10 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
                     var dep = (lg.data && lg.data.deployment) || {};
                     $('vercelLogsHint').textContent = 'Production deployment ' + (dep.uid || '?');
                     var ev = (lg.data && lg.data.events) || [];
+                    /* Up to 100 events, ~3,900px of rows: .capped scrolls them
+                       in their own box instead of stretching the page. */
                     $('vercelLogs').innerHTML = ev.length
-                        ? '<div class="table-wrap"><table><thead><tr><th>When</th><th>Lvl</th><th>Status</th><th>Path</th><th>IP</th><th>Message</th></tr></thead><tbody>' +
+                        ? '<div class="table-wrap capped" tabindex="0" role="region" aria-label="Runtime log events"><table><thead><tr><th>When</th><th>Lvl</th><th>Status</th><th>Path</th><th>IP</th><th>Message</th></tr></thead><tbody>' +
                           ev.map(function (e) {
                               return '<tr><td>' + (e.created ? fmtTime(new Date(e.created).toISOString()) : '—') +
                                      '</td><td>' + esc(e.level || '—') +
