@@ -196,6 +196,21 @@ is just a Firestore REST GET/PATCH against a device doc. The agent and the MCP
 server are **mailbox clients** — they can queue a command and read back a
 result, and nothing more. Queued ≠ executed; always check `device_result`.
 
+### The fleet is three devices, not the `devices` collection
+
+`HARDWARE_RULES` in `Backend/broker.js` names the only three devices:
+`samsung-s24-ultra`, `g4g-lenovo-laptop` and `jayti-asus-vivobook`. The broker
+refuses enrolment and heartbeats from any other id. Firestore's `devices`
+collection also holds `eka-cloud-sandbox` (the channel-sandbox test agent) and
+`g4g-laptop` (an empty enrolment artifact), and until 2026-09-23 every reader
+counted the collection: the health verdict and stale alerts said five devices,
+the dashboard four. Every device count now goes through `splitFleet()`: the
+health verdict, `check-stale`, the `/api/jp-devices` roster (which names the
+rest in `other_documents`), `verify-db`, and the droplet's `list_devices`
+(via its copy in `Server/jp-agent/device-health.mjs`).
+`_shared/tests/device-fleet.test.mjs` pins all of it. Never count the
+collection.
+
 ### `generated_at` is not a sync time
 
 Every backend response stamps `generated_at: new Date().toISOString()` when it

@@ -172,7 +172,10 @@ jobs:
               ;;
             device_freshness)
               heading="## ⚠️ Cloud Endpoints Healthy — Devices Stale"
-              stack_row="⚠️ ${STACK_REDS:-?} device-freshness red(s); cloud probes green, CI does not gate on it"
+              # STACK_REDS counts stack-map FILES bound to the devices probe (six
+              # of them), not devices; there are three devices. "6
+              # device-freshness red(s)" was read as six stale devices once.
+              stack_row="⚠️ ${STACK_REDS:-?} red file(s) on the device-freshness probe (files, not devices); cloud probes green, CI does not gate on it"
               ;;
             *)
               heading="## ❓ Stack Probe Recorded No Status"
