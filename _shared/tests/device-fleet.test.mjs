@@ -5,7 +5,7 @@
 // samsung-s24-ultra. The Firestore devices collection holds more. On
 // 2026-09-23 it held five documents, the other two being `eka-cloud-sandbox`
 // (the channel-sandbox test agent, silent since 2026-09-08) and `g4g-laptop`
-// (an enrolment artifact with no fields). Every reader counted what the
+// (the Lenovo's video watcher writing under its hostname). Every reader counted what the
 // collection held: the health verdict, its runtime log line and the stale-alert
 // cron said five devices, the dashboard said four (it hid `g4g-laptop` only),
 // verify-db said five, and so did the droplet's list_devices.

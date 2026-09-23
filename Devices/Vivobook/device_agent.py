@@ -28,31 +28,54 @@ log = logging.getLogger("channel_sandbox.agent")
 
 _SW = {'creationflags': 0x08000000} if platform.system() == 'Windows' else {}
 
+# The broker checks manufacturer and model on EVERY heartbeat, answers 403 "hardware
+# mismatch" when either is missing, and a 403 is a BrokerAuthError, which ends the
+# daemon (run_broker exits 3). This agent used to send the heartbeat anyway when the
+# WMI query failed. On g4g-lenovo-laptop at 2026-09-06 03:00:32 +0530 the query timed
+# out after 10 s under load; the next heartbeat went out with no manufacturer, the
+# broker rejected it at 03:00:45, the daemon exited 3, and the Windows task, which
+# restarts a failed run only three times a minute apart, left the laptop offline for
+# weeks while it was in daily use. The fix below: retry with a longer timeout, reuse
+# the last complete reading (manufacturer and model cannot change while the machine
+# runs), and never send a heartbeat without them.
+HARDWARE_QUERY_TIMEOUT_S = 30
+HARDWARE_QUERY_ATTEMPTS = 2
+_IDENTITY_FIELDS = ("manufacturer", "model")
+_last_complete_identity = None
 
-def collect_hardware_identity():
-    """Collect hardware identity for enrollment verification."""
+
+class HardwareIdentityUnavailable(RuntimeError):
+    """The OS could not report manufacturer/model and no earlier reading exists."""
+
+
+def _query_hardware_identity():
     identity = {
         "hostname": socket.gethostname(),
         "os": platform.system(),
     }
     if platform.system() == "Windows":
-        try:
-            out = subprocess.run(
-                ['powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command',
-                 '$c=Get-CimInstance Win32_ComputerSystem | Select-Object -First 1 Manufacturer,Model; '
-                 '$p=Get-CimInstance Win32_ComputerSystemProduct | Select-Object -First 1 UUID; '
-                 '[pscustomobject]@{Manufacturer=$c.Manufacturer;Model=$c.Model;UUID=$p.UUID} | ConvertTo-Json -Compress'],
-                capture_output=True, text=True, timeout=10, encoding='utf-8', errors='replace', **_SW
-            )
-            if out.returncode == 0 and out.stdout.strip():
-                data = json.loads(out.stdout)
-                identity["manufacturer"] = data.get("Manufacturer", "")
-                identity["model"] = data.get("Model", "")
-                stable_id = str(data.get("UUID", "")).strip()
-                if stable_id:
-                    identity["serialHash"] = hashlib.sha256(stable_id.encode("utf-8")).hexdigest()
-        except Exception as e:
-            log.warning("hardware identity collection failed: %s", e)
+        for attempt in range(1, HARDWARE_QUERY_ATTEMPTS + 1):
+            try:
+                out = subprocess.run(
+                    ['powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command',
+                     '$c=Get-CimInstance Win32_ComputerSystem | Select-Object -First 1 Manufacturer,Model; '
+                     '$p=Get-CimInstance Win32_ComputerSystemProduct | Select-Object -First 1 UUID; '
+                     '[pscustomobject]@{Manufacturer=$c.Manufacturer;Model=$c.Model;UUID=$p.UUID} | ConvertTo-Json -Compress'],
+                    capture_output=True, text=True, timeout=HARDWARE_QUERY_TIMEOUT_S,
+                    encoding='utf-8', errors='replace', **_SW
+                )
+                if out.returncode == 0 and out.stdout.strip():
+                    data = json.loads(out.stdout)
+                    identity["manufacturer"] = data.get("Manufacturer", "")
+                    identity["model"] = data.get("Model", "")
+                    stable_id = str(data.get("UUID", "")).strip()
+                    if stable_id:
+                        identity["serialHash"] = hashlib.sha256(stable_id.encode("utf-8")).hexdigest()
+                    break
+                log.warning("hardware identity query attempt %s returned %s with no output",
+                            attempt, out.returncode)
+            except Exception as e:
+                log.warning("hardware identity query attempt %s failed: %s", attempt, e)
     else:
         try:
             for prop, field in (
@@ -70,6 +93,26 @@ def collect_hardware_identity():
         except Exception:
             pass
     return identity
+
+
+def collect_hardware_identity():
+    """Hardware identity for the broker, never missing manufacturer or model.
+
+    Returns a fresh reading when the OS answers, else the last complete reading
+    (hostname and os refreshed). Raises HardwareIdentityUnavailable when there is
+    neither, so the caller can skip the request instead of earning a 403.
+    """
+    global _last_complete_identity
+    identity = _query_hardware_identity()
+    if all(identity.get(field) for field in _IDENTITY_FIELDS):
+        _last_complete_identity = dict(identity)
+        return identity
+    if _last_complete_identity is not None:
+        log.warning("hardware identity query incomplete; reusing the last complete reading")
+        return {**_last_complete_identity, "hostname": identity["hostname"], "os": identity["os"]}
+    raise HardwareIdentityUnavailable(
+        "manufacturer/model unavailable from the OS and no earlier reading to reuse"
+    )
 
 
 def collect_network():
@@ -332,8 +375,17 @@ def run_broker(cfg, config_dir, device_id, device_cfg, single_iteration):
 
     log.info("starting broker device=%s hb=%ss poll=%ss", device_id, hb_interval, poll_interval)
 
-    def one_heartbeat():
-        hardware = collect_hardware_identity()
+    def one_heartbeat(skip_if_identity_unavailable=True):
+        try:
+            hardware = collect_hardware_identity()
+        except HardwareIdentityUnavailable as e:
+            # Sending it anyway would earn the 403 that ends this daemon; skipping one
+            # beat costs 45 s. The installer's --once run passes False so a machine
+            # that cannot report its identity at all fails the install instead.
+            if not skip_if_identity_unavailable:
+                raise
+            log.warning("heartbeat skipped this round: %s", e)
+            return
         telemetry = {
             "deviceId": device_id,
             "canonicalDeviceId": device_id,
@@ -385,7 +437,7 @@ def run_broker(cfg, config_dir, device_id, device_cfg, single_iteration):
                     log.warning("command %s processing failed: %s", cmd_id, e)
 
     if single_iteration:
-        one_heartbeat()
+        one_heartbeat(skip_if_identity_unavailable=False)
         one_poll()
         return
 

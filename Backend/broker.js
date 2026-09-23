@@ -34,8 +34,11 @@ export const HARDWARE_RULES = {
  * definition of "a device" this system has. The Firestore devices collection
  * holds more than that. On 2026-09-23 it held five documents: these three,
  * `eka-cloud-sandbox` (the channel-sandbox test agent, silent since
- * 2026-09-08) and `g4g-laptop` (an enrolment artifact with no fields that
- * never reported). Every reader counted whatever the collection held, so the
+ * 2026-09-08) and `g4g-laptop`, which is not an enrolment artifact: it is the
+ * Lenovo itself (hostname G4G-LAPTOP), created on 2026-09-18 by the site video
+ * watcher on that laptop, which mapped its hostname to the wrong id and wrote
+ * only lastVideoEventAck* there (fixed on the laptop 2026-09-23; the doc stays
+ * until deleted). Every reader counted whatever the collection held, so the
  * health verdict, the stale-alert emails and the droplet's list_devices spoke
  * of five devices, and the dashboard of four (it hid only `g4g-laptop`).
  * Every device count now goes through splitFleet(), so all of them agree with

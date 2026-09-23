@@ -1,6 +1,6 @@
 {
   "transport": "broker",
-  "broker_url": "https://agent.jaytipargal.tech",
+  "broker_url": "https://jaytipargal.tech",
   "signer": "windows-cng",
   "key_name": "EKA-BROKER-G4G-LENOVO-LAPTOP",
   "broker_state_file": "C:\\eka-agent\\broker\\g4g-lenovo-laptop.broker-state.json",

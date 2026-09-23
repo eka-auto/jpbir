@@ -1048,7 +1048,7 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
 
             var fsSync = newestLastSeen(devices);
             // other_documents: ids in the devices collection that are not
-            // fleet devices (a test agent, an empty enrolment artifact).
+            // fleet devices (a test agent, a stray video-watcher doc).
             // Named here so the three-device count is not a silent filter.
             var others = Array.isArray(j.other_documents) ? j.other_documents : [];
             summary.textContent = devices.length + ' device document(s) · database ' + (j.database || '?') +

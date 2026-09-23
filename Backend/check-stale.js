@@ -195,8 +195,8 @@ export default async function handler(req, res) {
     // Only the fleet is watched (DEVICE_IDS in broker.js). Looping over every
     // document raised DOWN / NEVER SEEN alerts, and with email on a daily
     // "Still down", about `eka-cloud-sandbox`, a test agent, and `g4g-laptop`,
-    // an empty enrolment artifact. Neither is a device, so every one of those
-    // alerts was noise beside the three that matter.
+    // a second doc the Lenovo's video watcher wrote under its hostname. Neither
+    // is a fleet id, so every one of those alerts was noise beside the three.
     for (const doc of splitFleet(data.documents).fleet) {
       const f = {};
       for (const [k, v] of Object.entries(doc.fields || {})) f[k] = dec(v);
