@@ -531,6 +531,41 @@ export function snapshot(probes) {
 }
 
 /**
+ * The runtime-log line that says why a health-key verdict was not ok.
+ *
+ * The health-key response is bare on purpose (verdict and counts, see the
+ * handler), and until this line existed nothing else was written either, so
+ * every 503 in Vercel's logs was unexplained: on 2026-09-23 there was one per
+ * health-check run on /api/jp-stack, and nothing to tell a dead cloud
+ * dependency from a stopped phone daemon without opening the key-gated panel.
+ * This names the failing and warning probe ids and
+ * each non-ok device with its heartbeat age, which is enough to point at the
+ * dependency. It still never carries a probe's `problem` or `detail` text:
+ * those name hosts, tables and env vars, and a log drain can ship this line
+ * anywhere. Device ids are Firestore document ids, which any character but "/"
+ * may form, so they are reduced to a safe alphabet before they can forge a
+ * second log line.
+ *
+ * Error level only when a cloud probe failed. A stopped daemon is a device
+ * fault no deploy can fix (see cloud_fail in snapshot), CI already reports it
+ * as a warning, and paging on it at error level is how real errors get ignored.
+ */
+export function logVerdict(snap, log = console) {
+  if (snap.overall === OK) return;
+  const probes = snap.probes || {};
+  const ids = (status) => Object.keys(probes).filter((k) => probes[k].status === status).join(',') || '-';
+  const byDevice = (probes.devices && probes.devices.byDevice) || {};
+  const devices = Object.keys(byDevice)
+    .filter((id) => byDevice[id].status !== OK)
+    .map((id) => id.replace(/[^\w.-]/g, '?') + ':' + (byDevice[id].mins == null ? 'never' : byDevice[id].mins + 'm'));
+  log[snap.cloud_fail ? 'error' : 'warn']('[jp-stack] health verdict ' + snap.overall
+    + ' cloud_fail=' + snap.cloud_fail
+    + ' fail=' + snap.summary.fail + ' warn=' + snap.summary.warn + ' unknown=' + snap.summary.unknown
+    + ' failing=' + ids(FAIL) + ' warning=' + ids(WARN)
+    + (devices.length ? ' devices=' + devices.join(',') : ''));
+}
+
+/**
  * Where the cron records each unattended run.
  *
  * Firestore and not Postgres, deliberately. A new Neon table would have to join
@@ -612,6 +647,10 @@ export default async function handler(req, res) {
   // name internal hosts and env vars.
   if (secretEquals(req.headers['x-health-key'], _env['HEALTH_' + 'CHECK_KEY'])) {
     const snap = snapshot(await runProbes());
+    // Only this branch logs. The dashboard branch below is polled every 10 s
+    // while the panel is open and would bury the line; the health check runs on
+    // a schedule, so one line per run is the useful rate.
+    logVerdict(snap);
     return res.status(snap.overall === FAIL ? 503 : 200).json({
       success: snap.overall !== FAIL,
       overall: snap.overall,
