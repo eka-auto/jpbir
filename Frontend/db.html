@@ -97,6 +97,11 @@
   .pill.info{color:var(--teal);border-color:rgba(57,197,207,.45);background:rgba(57,197,207,.10)}
 
   .empty{padding:22px 14px;text-align:center;color:var(--ink-faint);font-size:12px}
+  /* Secondary text inside a cell ("· running…", a run's duration, an absent
+     attestation). The S24 runs table used this class from the day it was
+     written, but nothing defined it, so those annotations rendered at full
+     ink and read as part of the value beside them. */
+  .muted{color:var(--ink-faint)}
   .err{margin:12px 0;padding:10px 13px;border:1px solid rgba(248,81,73,.4);background:rgba(248,81,73,.08);border-radius:7px;color:#FFB4AE;font-family:var(--mono);font-size:11.5px}
   .pager{display:flex;align-items:center;gap:9px;padding:9px 14px;border-top:1px solid var(--line);font-size:11.5px;color:var(--ink-dim)}
   .pager .btn{padding:3px 9px}
@@ -105,6 +110,7 @@
   .private-gate p{color:var(--ink-dim);margin-bottom:14px}
   .private-gate form{display:flex;gap:8px}
   .private-gate input{min-width:0;flex:1}
+  .private-gate p.gate-note{font-size:11.5px;color:var(--ink-faint);margin-top:-6px}
 
   /* coverage meter on the Health page */
   .cov{display:grid;grid-template-columns:150px 1fr 70px;gap:10px;align-items:center;padding:5px 0}
@@ -121,8 +127,7 @@
   .drawer header{display:flex;align-items:center;gap:10px;padding:13px 16px;border-bottom:1px solid var(--line)}
   .drawer header h3{font-size:13px;font-weight:600;margin-right:auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .drawer .inner{padding:14px 16px 40px;overflow-y:auto;flex:1}
-  .drawer pre{background:var(--bg);border:1px solid var(--line);border-radius:7px;padding:11px;overflow-x:auto;
-    font-family:var(--mono);font-size:11px;color:var(--ink-dim);white-space:pre-wrap;word-break:break-word}
+  .sub-h{font-size:11px;letter-spacing:.7px;text-transform:uppercase;color:var(--ink-dim);margin:14px 0 7px}
   .kv{display:grid;grid-template-columns:150px 1fr;gap:3px 12px;font-size:12px;margin-bottom:14px}
   .kv dt{color:var(--ink-faint)}
   .kv dd{font-family:var(--mono);font-size:11.5px;word-break:break-all}
@@ -131,6 +136,17 @@
   .kv-arr{margin:2px 0;padding-left:18px}
   .kv-arr>li{margin:1px 0;font-family:var(--mono);font-size:11.5px}
   .kv-empty{color:var(--ink-faint);font-family:var(--mono)}
+  /* "…and N more" where treeHtml stops listing a long object or array. */
+  .kv>.kv-more{grid-column:1/-1}
+  .kv-more{color:var(--ink-faint);font-family:var(--mono);font-size:11px}
+  .kv-arr>li.kv-more{list-style:none}
+  /* A stored file that is not JSON: a labelled, wrapped excerpt with its own
+     scroll box, so a 1,000,000-character file cannot run the drawer out. */
+  .content-preview{border:1px solid var(--line);border-radius:7px;background:var(--bg);margin:0 0 14px}
+  .content-preview .h{padding:6px 10px;border-bottom:1px solid var(--line);font-size:10.5px;letter-spacing:.5px;
+    text-transform:uppercase;color:var(--ink-faint)}
+  .content-preview .b{padding:9px 10px;font-family:var(--mono);font-size:11px;color:var(--ink-dim);
+    white-space:pre-wrap;word-break:break-word;max-height:240px;overflow:auto}
 
   svg .axis{stroke:var(--line);stroke-width:1}
   svg .gl{stroke:rgba(35,43,52,.65);stroke-width:1}
@@ -289,26 +305,52 @@
     });
   }
   function num(n) { return n == null ? '—' : Number(n).toLocaleString('en-IN'); }
-  function when(v) {
+  // Two forms of one formatter, because they go to two kinds of sink. when()
+  // is HTML: table cells and panels concatenate it straight into innerHTML, so
+  // a value that is not a date is escaped here. whenText() is plain text, for
+  // callers that escape for themselves (kpi(), treeHtml()) or never parse HTML
+  // at all (the drawer title is set through textContent). With only when(),
+  // those callers escaped an already-escaped fallback, and an unparseable
+  // timestamp such as "n/a <unknown>" printed as "n/a &lt;unknown&gt;".
+  function whenText(v) {
     if (!v) return '—';
     var d = new Date(v);
-    if (isNaN(d)) return esc(v);
+    if (isNaN(d)) return String(v);
     return d.toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' });
   }
+  function when(v) { return esc(whenText(v)); }
   function ago(v) {
     if (!v) return '—';
-    var s = (Date.now() - new Date(v).getTime()) / 1000;
+    var t = new Date(v).getTime();
+    // An unparseable value made every comparison below false and fell through
+    // to the last line, which printed "NaNd ago".
+    if (isNaN(t)) return '—';
+    var s = (Date.now() - t) / 1000;
     if (s < 0) return 'in the future';
     if (s < 60) return Math.round(s) + 's ago';
     if (s < 3600) return Math.round(s / 60) + 'm ago';
     if (s < 86400) return Math.round(s / 3600) + 'h ago';
     return Math.round(s / 86400) + 'd ago';
   }
+  // Takes SECONDS. Rounded once, up front: rounding each part on its own turned
+  // 119.6 s into "1m 60s", and 7,170 s into "1h 60m".
   function secs(n) {
-    if (n == null) return '—';
-    if (n < 60) return Math.round(n) + 's';
-    if (n < 3600) return Math.floor(n / 60) + 'm ' + Math.round(n % 60) + 's';
-    return Math.floor(n / 3600) + 'h ' + Math.round((n % 3600) / 60) + 'm';
+    if (n == null || n === '' || !isFinite(Number(n))) return '—';
+    n = Math.round(Number(n));
+    if (n < 60) return n + 's';
+    if (n < 3600) return Math.floor(n / 60) + 'm ' + (n % 60) + 's';
+    return Math.floor(n / 3600) + 'h ' + Math.floor((n % 3600) / 60) + 'm';
+  }
+  // time_on_page is MILLISECONDS: jp-tracker.js sends Date.now() - startTime,
+  // db-api divides it by 1000 for its own median/longest figures, and
+  // index.html's fmtDur() takes ms. Passed to secs() raw, a 30-second read
+  // printed "8h 20m" in all three places this page shows it. The true-seconds
+  // fields (duration_seconds, median_seconds_on_page, duration_sec) still go
+  // to secs() directly.
+  function msSecs(ms) {
+    // null / 1000 and '' / 1000 are both 0, which would read as "0s".
+    if (ms == null || ms === '') return '—';
+    return secs(Number(ms) / 1000);
   }
   function shortUrl(u) {
     if (!u) return '—';
@@ -316,11 +358,42 @@
     catch (e) { return String(u).slice(0, 60); }
   }
 
-  // Every draw carries a token. A response whose token is stale is dropped,
-  // so two fast Next clicks cannot render page 1 on top of page 2.
+  // Every draw carries a token, and a response belonging to a superseded draw is
+  // dropped, so two fast Next clicks cannot render page 1 on top of page 2.
+  //
+  // The token used to be compared only in draw()'s error handler. Renderers
+  // write the page inside their own .then, so a slow SUCCESSFUL response still
+  // painted over the newer one: click Next twice, have the first request come
+  // back last, and the page ended on the earlier offset under a pager that had
+  // moved on. get() now drops a stale response before any renderer sees it.
+  //
+  // renderingToken is the draw whose renderer is being CALLED right now; draw()
+  // sets it around that synchronous call and get() captures it, so every
+  // request a renderer starts belongs to its draw without each renderer having
+  // to thread a token through. Requests made at any other time -- a drawer
+  // opening, the nav-badge refresh, the property list -- capture 0, so a newer
+  // draw never drops them (only a lock does; see lockEpoch). A renderer that
+  // chained a second get() inside a .then would start it untagged; none does.
   var drawToken = 0;
+  var renderingToken = 0;
+  // Bumped by lockDashboard(). A response to a request sent before the lock
+  // carries the unlocked key's data and must not be painted afterwards.
+  var lockEpoch = 0;
+  // Whether the server has rejected a key since the operator last typed one.
+  // Only a request that actually CARRIED a key can have its key rejected; see
+  // the 401 branch in get().
+  var keyRejected = false;
+
+  function staleError() {
+    var stale = new Error('superseded by a newer request');
+    stale.handled = true;
+    stale.stale = true;
+    return stale;
+  }
 
   function get(view, extra) {
+    var token = renderingToken, epoch = lockEpoch;
+    var isStale = function () { return (token && token !== drawToken) || epoch !== lockEpoch; };
     if (state.s24Key && !isHeaderSafeDashboardKey(state.s24Key)) {
       state.s24Key = '';
       clearDashboardKey();
@@ -333,10 +406,15 @@
       { view: view, site: state.site, days: state.days }, state.noise ? { noise: '1' } : {}, extra || {}));
     // Every view is key-gated now, not just s24, so the key rides on every
     // request rather than only the archive's.
-    var headers = state.s24Key ? { 'x-stats-key': state.s24Key } : {};
+    var sentKey = state.s24Key;
+    var headers = sentKey ? { 'x-stats-key': sentKey } : {};
     return fetch(API + '?' + q.toString(), { cache: 'no-store', headers: headers })
       .then(function (r) { return r.json().then(function (j) { return { status: r.status, json: j }; }); })
       .then(function (result) {
+        // Checked before anything else, including the auth branch: a stale 401
+        // must not redraw the gate over whatever the operator is looking at
+        // now. The newer request carries the same key and will say the same.
+        if (isStale()) throw staleError();
         // A 503 is only an auth problem when _auth.js says so. Since the
         // store-backed handlers adopted 503 for "not configured", an unset
         // DATABASE_URL reaches here too — and dropping a valid key over a
@@ -350,12 +428,28 @@
           throw outage;
         }
         if (authFailed) {
+          // A refusal speaks only for the key it was sent with. A keyless boot
+          // request still in flight when the operator types a key, or a second
+          // request with a key an earlier refusal already dropped, would
+          // otherwise delete whatever key is current -- a freshly typed, valid
+          // one included -- and put the gate back up calling it rejected.
+          if (sentKey !== state.s24Key) throw staleError();
           // Drop the bad key and put the gate in front of whichever view asked,
           // so any page can unlock the dashboard — not only the archive.
+          //
+          // A 401 has two causes the old text did not tell apart: a key that
+          // was sent and refused, and no key at all. A first visit, with
+          // nothing ever typed, was greeted with "That dashboard key was
+          // rejected." -- blaming a key that did not exist. keyRejected
+          // outlives this request because boot fires three of them: once the
+          // first has cleared a refused key, the next two go out keyless, and
+          // without the flag they would repaint the gate with the first-visit
+          // text and hide the real reason.
+          if (result.status === 401 && sentKey) keyRejected = true;
           state.s24Key = '';
           clearDashboardKey();
           renderKeyGate(result.status === 401
-            ? 'That dashboard key was rejected.'
+            ? (keyRejected ? 'That dashboard key was rejected.' : 'Enter the dashboard key to load this page.')
             : ((result.json && result.json.error) || 'The dashboard key is not configured on the server.'));
           var locked = new Error('locked');
           locked.status = result.status;
@@ -368,10 +462,14 @@
           error.status = result.status;
           throw error;
         }
-        return j;
-      })
-      .then(function (j) {
         return j.data;
+      })
+      .catch(function (e) {
+        // The failure path too: a network error or a non-JSON 502 page from a
+        // superseded request would otherwise still reach fail() and put its
+        // banner over the newer page, or over the locked screen.
+        if (isStale()) throw staleError();
+        throw e;
       });
   }
 
@@ -383,12 +481,18 @@
   }
   function clearErr() { $('err').innerHTML = ''; }
 
+  // Where the key lives, stated on both gates. The old text said it "stays in
+  // this browser tab"; since /db moved to the shared jbt_stats_key slot it is
+  // written to localStorage, survives the tab, and unlocks every gated page.
+  var KEY_STORAGE_NOTE = 'The key is saved in this browser, unlocks every page of this dashboard, and is sent only as a request header.';
+
   // The key gate, drawn in front of whichever view is active. Since db-api
   // gates every view, any page can be the one that finds the key missing.
   function renderKeyGate(message) {
     var el = document.querySelector('.page.on') || $('page-overview');
     el.innerHTML = '<div class="private-gate"><h3>Dashboard key required</h3>' +
-      '<p>' + esc(message || 'Enter the dashboard key to view this data. The key stays in this browser tab and is sent only as a request header.') + '</p>' +
+      '<p>' + esc(message || 'Enter the dashboard key to load this page.') + '</p>' +
+      '<p class="gate-note">' + esc(KEY_STORAGE_NOTE) + '</p>' +
       '<form id="dbUnlock"><input id="dbKeyInput" type="password" autocomplete="current-password" placeholder="Dashboard key" aria-label="Dashboard key">' +
       '<button class="btn" type="submit">Unlock</button></form></div>';
     $('dbUnlock').addEventListener('submit', function (event) {
@@ -403,7 +507,7 @@
       writeDashboardKey(value);
       el.innerHTML = '<div class="empty">Checking key…</div>';
       clearErr();
-      draw();
+      reloadAfterUnlock();
     });
   }
 
@@ -437,7 +541,10 @@
     }).join('') + '</tr>';
     var body = rows.map(function (r, i) {
       return '<tr class="' + (opts.onRow ? 'clickable' : '') + '" data-i="' + i + '">' + cols.map(function (c) {
-        return '<td' + (c.num ? ' class="num"' : '') + '>' + (c.render ? c.render(r) : esc(r[c.key])) + '</td>';
+        // A { key } column goes through briefHtml(), not esc(): esc() of an
+        // object or array is "[object Object]", which is what the sessions
+        // drawer's Interactions column printed for every interaction batch.
+        return '<td' + (c.num ? ' class="num"' : '') + '>' + (c.render ? c.render(r) : briefHtml(r[c.key])) + '</td>';
       }).join('') + '</tr>';
     }).join('');
     return '<div class="scroll"><table><thead>' + head + '</thead><tbody>' + body + '</tbody></table></div>';
@@ -505,13 +612,33 @@
   }
 
   // ---------- drawer ----------
+  // Drawer fetches race the same way page draws do: open row A, whose detail
+  // request is slow, then row B, whose is fast, and A's late response replaced
+  // B under A's title -- the operator reading the wrong record with nothing to
+  // say so. Every drawer that opens, and every detail request that starts,
+  // moves drawerToken on; a detail response that finds it moved is dropped.
+  var drawerToken = 0;
   function openDrawer(title, html) {
+    drawerToken++;
     $('drawerTitle').textContent = title;
     $('drawerBody').innerHTML = html;
     $('drawer').classList.add('on');
     $('backdrop').classList.add('on');
   }
+  function drawerGet(view, extra) {
+    var token = ++drawerToken;
+    return get(view, extra).then(function (data) {
+      if (token !== drawerToken) throw staleError();
+      return data;
+    }, function (e) {
+      if (token !== drawerToken) throw staleError();
+      throw e;
+    });
+  }
   function closeDrawer() {
+    // Closing supersedes a detail request still in flight; otherwise its late
+    // response reopened the drawer the operator had just dismissed.
+    drawerToken++;
     $('drawer').classList.remove('on');
     $('backdrop').classList.remove('on');
   }
@@ -519,39 +646,278 @@
   $('backdrop').addEventListener('click', closeDrawer);
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeDrawer(); });
 
+  function subHead(text) { return '<h3 class="sub-h">' + esc(text) + '</h3>'; }
+
+  // ---------- structured values ----------
+  // Limits for treeHtml. Depth stops runaway nesting; the per-container cap and
+  // the per-render node budget stop runaway SIZE. The size limits were not
+  // needed while trees only ever held database JSON columns, but a string that
+  // holds JSON is parsed into a tree now (see parseJsonText), and one such
+  // string is s24_files.content: up to 1,000,000 characters of a phone file
+  // (Integrations/s24-store.js). Unbounded, a file of that size is tens of
+  // thousands of rows in one drawer. The cap alone is not enough -- a 90 x 90 x
+  // 90 array never trips a 200-entry cap and still renders 729,000 rows -- so
+  // the whole render also shares one node budget.
+  var TREE_MAX_DEPTH = 6;
+  var TREE_MAX_ENTRIES = 200;
+  var TREE_MAX_NODES = 2500;
+
+  // Several text columns hold JSON: events.screen (Backend/lib/warehouse.js
+  // normaliseScreen writes JSON.stringify({width, height, dpr, raw})),
+  // events.network, and s24_files.content. A TEXT column arrives as a string,
+  // so the tree printed it as one line of raw JSON. Only a string that is a
+  // whole JSON object or array is taken; a scalar ("42", "true") stays the
+  // text it was stored as.
+  function parseJsonText(text) {
+    if (typeof text !== 'string') return undefined;
+    var t = text.trim();
+    var c = t.charAt(0);
+    if (c !== '{' && c !== '[') return undefined;
+    try {
+      var v = JSON.parse(t);
+      return v && typeof v === 'object' ? v : undefined;
+    } catch (e) { return undefined; }
+  }
+  // Text that is plainly the start of a JSON document yet does not parse --
+  // usually cut short, since s24-store truncates content at 1,000,000
+  // characters. It is summarised rather than printed: the rule for this page is
+  // that raw JSON text never reaches the screen, and a truncated dump is still
+  // one. Narrow on purpose: only {" {} [{ [[ [" and [] count. A bracket before
+  // a digit or a dash is how log lines and messages start ("[2026-09-22 10:00]
+  // daemon started", "[123456] is your OTP", "[-] failed"), and hiding those
+  // behind "does not parse" would lose real text to a wrong reason.
+  var LOOKS_JSON_RE = /^\s*(\{\s*["}]|\[\s*[\[{"\]])/;
+  function unreadableJson(text) {
+    return '<span class="kv-empty">JSON text that does not parse · ' + num(String(text).length) + ' characters</span>';
+  }
+
+  // Timestamps are shown as dates, with the stored value on hover. PR #107
+  // humanised only `…_at` keys, so last_seen / first_seen (every S24 record),
+  // camelCase createdAt / startTime / timestamp (every Firestore payload) and
+  // ISO strings under any other name still printed as raw machine time.
+  //
+  // A number -- or a string of digits, which is how a number often arrives from
+  // a JSON payload -- counts only under a time-named key AND inside a
+  // plausible epoch window (2001-2286, in ms or s): a loadTime of 1234 or
+  // "1500" is a duration, not 1 Jan 1970 or the year 1500. Any other string
+  // under a time-named key must read like a written-out date (a month or zone
+  // name beside a four-digit year, "Tue, 22 Sep 2026 10:00:00 GMT") and land
+  // in the same window, because new Date() will turn almost anything with
+  // four digits in it into some year.
+  var TIME_KEY_RE = /_at$|^(last|first)(_seen|Seen)$|[a-z0-9](At|Time|Timestamp)$|^timestamp$/;
+  var ISO_TS_RE = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}(:?\d{2})?)?$/;
+  var ISO_DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
+  function timeHtml(value, keyName) {
+    var timeKey = TIME_KEY_RE.test(keyName || '');
+    var raw = String(value);
+    var d = null;
+    if (typeof value === 'number' || /^\d+(\.\d+)?$/.test(raw)) {
+      var n = Number(value);
+      if (!timeKey) return null;
+      if (n >= 1e12 && n < 1e13) d = new Date(n);
+      else if (n >= 1e9 && n < 1e10) d = new Date(n * 1000);
+      else return null;
+    } else if (typeof value === 'string') {
+      if (ISO_DAY_RE.test(raw)) {
+        // A bare date is a calendar day, not midnight UTC; formatting it in
+        // local time would print a clock reading nobody recorded.
+        d = new Date(raw + 'T00:00:00Z');
+        if (isNaN(d)) return null;
+        return '<span title="' + esc(raw) + '">' +
+          esc(d.toLocaleDateString('en-IN', { dateStyle: 'medium', timeZone: 'UTC' })) + '</span>';
+      }
+      if (ISO_TS_RE.test(raw)) {
+        d = new Date(raw);
+      } else if (timeKey && /[A-Za-z]{3}/.test(raw) && /\b\d{4}\b/.test(raw)) {
+        d = new Date(raw);
+        var year = isNaN(d) ? 0 : d.getUTCFullYear();
+        if (year < 2001 || year > 2286) return null;
+      } else {
+        return null;
+      }
+    } else {
+      return null;
+    }
+    if (!d || isNaN(d)) return null;
+    // whenText(), not when(): when() escapes, and this escapes once itself.
+    return '<span title="' + esc(raw) + '">' + esc(whenText(d)) + '</span>';
+  }
+
+  function shapeSummary(value) {
+    if (Array.isArray(value)) return '[ ' + num(value.length) + (value.length === 1 ? ' item' : ' items') + ' ]';
+    var n = Object.keys(value).length;
+    return '{ ' + num(n) + (n === 1 ? ' key' : ' keys') + ' }';
+  }
+
   // Render any value — nested objects and arrays included — as labeled, built
   // UI (key/value trees and lists), never a raw JSON dump. This is the same
   // principle the main dashboard's renderLiveDevicePayload follows: the operator
-  // reads structured rows, not a <pre> blob they have to parse by eye. Timestamp
-  // keys (…_at) are humanised, empties are stated, and pathological nesting is
-  // capped so a cyclic-looking payload can't run the recursion away.
-  function treeHtml(value, keyName, depth) {
+  // reads structured rows, not a <pre> blob they have to parse by eye. Empties
+  // are stated, and the limits above bound depth and size.
+  //
+  // Past the depth cap a container collapses to its shape ("{ 5 keys }",
+  // "[ 12 items ]"). It used to print esc(JSON.stringify(value)) there -- the
+  // one path left that put raw JSON on the screen.
+  function treeHtml(value, keyName, depth, budget) {
     depth = depth || 0;
+    budget = budget || { left: TREE_MAX_NODES };
     if (value === null || value === undefined || value === '') return '<span class="kv-empty">—</span>';
-    if (typeof value !== 'object') {
-      if (keyName && /_at$/.test(keyName)) { var w = when(value); if (w) return esc(w); }
-      return esc(String(value));
+    if (typeof value === 'string') {
+      var parsed = parseJsonText(value);
+      if (parsed === undefined) {
+        if (LOOKS_JSON_RE.test(value)) return unreadableJson(value);
+        return timeHtml(value, keyName) || esc(value);
+      }
+      value = parsed;
+    } else if (typeof value !== 'object') {
+      return timeHtml(value, keyName) || esc(String(value));
     }
-    if (depth >= 6) return esc(String(JSON.stringify(value)));
-    if (Array.isArray(value)) {
-      if (!value.length) return '<span class="kv-empty">empty list</span>';
-      return '<ol class="kv-arr">' + value.map(function (item) {
-        return '<li>' + treeHtml(item, null, depth + 1) + '</li>';
-      }).join('') + '</ol>';
+    var isList = Array.isArray(value);
+    var keys = isList ? null : Object.keys(value);
+    var n = isList ? value.length : keys.length;
+    if (!n) return '<span class="kv-empty">' + (isList ? 'empty list' : 'empty') + '</span>';
+    if (depth >= TREE_MAX_DEPTH || budget.left <= 0) return '<span class="kv-empty">' + shapeSummary(value) + '</span>';
+    var shown = Math.min(n, TREE_MAX_ENTRIES, budget.left);
+    budget.left -= shown;
+    var more = n - shown ? '…and ' + num(n - shown) + ' more' : '';
+    var out = '', i;
+    if (isList) {
+      // Items inherit the list's key, so a list of timestamps under a
+      // time-named key reads as dates too.
+      for (i = 0; i < shown; i++) out += '<li>' + treeHtml(value[i], keyName, depth + 1, budget) + '</li>';
+      return '<ol class="kv-arr">' + out + (more ? '<li class="kv-more">' + more + '</li>' : '') + '</ol>';
     }
-    var keys = Object.keys(value);
-    if (!keys.length) return '<span class="kv-empty">empty</span>';
-    return '<dl class="kv">' + keys.map(function (k) {
-      return '<dt>' + esc(k) + '</dt><dd>' + treeHtml(value[k], k, depth + 1) + '</dd>';
-    }).join('') + '</dl>';
+    for (i = 0; i < shown; i++) {
+      out += '<dt>' + esc(keys[i]) + '</dt><dd>' + treeHtml(value[keys[i]], keys[i], depth + 1, budget) + '</dd>';
+    }
+    return '<dl class="kv">' + out + (more ? '<dd class="kv-more">' + more + '</dd>' : '') + '</dl>';
   }
 
   function kvList(obj, skip) {
+    // One budget for the whole list, so the size limit covers the drawer, not
+    // each of its rows separately.
+    var budget = { left: TREE_MAX_NODES };
     return '<dl class="kv">' + Object.keys(obj).filter(function (k) {
       return !(skip || []).includes(k) && obj[k] !== null && obj[k] !== undefined && obj[k] !== '';
     }).map(function (k) {
-      return '<dt>' + esc(k) + '</dt><dd>' + treeHtml(obj[k], k, 1) + '</dd>';
+      return '<dt>' + esc(k) + '</dt><dd>' + treeHtml(obj[k], k, 1, budget) + '</dd>';
     }).join('') + '</dl>';
+  }
+
+  // One line for a table cell. The tree is right for a drawer and wrong for a
+  // cell -- one interaction batch would make its row a page tall -- but esc()
+  // of an object is "[object Object]", which is what the sessions drawer's
+  // Interactions column and the Video table's Device column printed. So:
+  // a list of typed items (interactions: [{type, x, y, …}]) is counted by type,
+  // the way index.html's visitor drawer summarises the same field; a list of
+  // scalars is joined; an object shows its first few scalar fields.
+  function briefHtml(value) {
+    if (value === null || value === undefined || value === '') return '—';
+    if (typeof value === 'string') {
+      var parsed = parseJsonText(value);
+      if (parsed === undefined) return LOOKS_JSON_RE.test(value) ? unreadableJson(value) : esc(value);
+      value = parsed;
+    }
+    if (typeof value !== 'object') return esc(String(value));
+    var more = function (n) { return n > 0 ? ' <span class="kv-empty">+' + num(n) + ' more</span>' : ''; };
+    if (Array.isArray(value)) {
+      if (!value.length) return '<span class="kv-empty">none</span>';
+      var typed = value.every(function (x) { return x && typeof x === 'object' && typeof x.type === 'string'; });
+      if (typed) {
+        var counts = {}, order = [];
+        value.forEach(function (x) {
+          if (!counts[x.type]) { counts[x.type] = 0; order.push(x.type); }
+          counts[x.type]++;
+        });
+        order.sort(function (a, b) { return counts[b] - counts[a]; });
+        return num(value.length) + ' · ' + esc(order.slice(0, 3).map(function (t) {
+          return t + ' ×' + counts[t];
+        }).join(', ')) + more(order.length - 3);
+      }
+      if (value.every(function (x) { return x === null || typeof x !== 'object'; })) {
+        return esc(value.slice(0, 4).join(', ')) + more(value.length - 4);
+      }
+      return '<span class="kv-empty">' + shapeSummary(value) + '</span>';
+    }
+    var keys = Object.keys(value);
+    if (!keys.length) return '<span class="kv-empty">empty</span>';
+    var flat = keys.filter(function (k) { var v = value[k]; return v !== null && v !== '' && typeof v !== 'object'; });
+    if (!flat.length) return '<span class="kv-empty">' + shapeSummary(value) + '</span>';
+    return esc(flat.slice(0, 3).map(function (k) { return k + ': ' + value[k]; }).join(' · ')) +
+      more(keys.length - Math.min(flat.length, 3));
+  }
+
+  // s24_files.content is the stored text of a phone file, up to 1,000,000
+  // characters (Integrations/s24-store.js), so the S24 drawer could print a
+  // whole file -- the fixture is result.json -- once as a column and again
+  // inside the payload tree. It is rendered here instead, never as the blob:
+  //   JSON         -> the size-capped tree, under a one-line summary;
+  //   plain text   -> name, type and length, then a labelled excerpt of the
+  //                   first CONTENT_PREVIEW_CHARS characters (a wrapped block,
+  //                   not <pre>);
+  //   binary, or JSON cut short -> the summary only. A PDF or ZIP read as text
+  //                   is noise, and truncated JSON is still raw JSON.
+  var CONTENT_PREVIEW_CHARS = 500;
+  function binaryKind(text) {
+    var head = text.slice(0, 8);
+    if (/^data:/i.test(head)) return 'a data URL';
+    if (/^%PDF-/.test(head)) return 'a PDF document';
+    if (/^PK\u0003\u0004/.test(head)) return 'a ZIP archive';
+    var sample = text.slice(0, 4000);
+    // Control characters other than tab/newline/CR, and U+FFFD (what bytes
+    // that were not UTF-8 decode to), are what binary looks like as text.
+    var odd = (sample.match(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFD]/g) || []).length;
+    if (odd > sample.length / 100) return 'binary data';
+    // base64 of binary is one unbroken line, or lines wrapped at one fixed
+    // width of 60+ (MIME uses 76, PEM 64), and it mixes upper case, lower case
+    // and digits. A list of phone numbers or record ids is also nothing but
+    // letters, digits and newlines, and must still get its excerpt.
+    if (text.length >= 256 && /^[A-Za-z0-9+\/=\r\n]+$/.test(sample) &&
+        /[a-z]/.test(sample) && /[A-Z]/.test(sample) && /\d/.test(sample)) {
+      var lines = sample.replace(/\r/g, '').split('\n').filter(Boolean);
+      var width = lines[0].length;
+      // The sample's last line may be cut mid-way, so it is not measured.
+      if (width >= 60 && lines.slice(0, -1).every(function (l) { return l.length === width; })) return 'base64-encoded data';
+    }
+    return '';
+  }
+  function fileContentHtml(content, meta) {
+    meta = meta || {};
+    var text = String(content);
+    var facts = [
+      ['File', meta.filename || '—'],
+      ['Type', meta.fileType || '—'],
+      ['Length', num(text.length) + ' characters']
+    ];
+    var factsHtml = function () {
+      return '<dl class="kv">' + facts.map(function (f) {
+        return '<dt>' + esc(f[0]) + '</dt><dd>' + esc(f[1]) + '</dd>';
+      }).join('') + '</dl>';
+    };
+    var parsed = parseJsonText(text);
+    if (parsed !== undefined) {
+      var n = Array.isArray(parsed) ? parsed.length : Object.keys(parsed).length;
+      facts.push(['Content', Array.isArray(parsed)
+        ? 'JSON list of ' + num(n) + (n === 1 ? ' item' : ' items')
+        : 'JSON object with ' + num(n) + (n === 1 ? ' key' : ' keys')]);
+      return factsHtml() + treeHtml(parsed, null, 0);
+    }
+    var kind = binaryKind(text);
+    if (kind) {
+      facts.push(['Content', 'Not shown: ' + kind + ' stored as text']);
+      return factsHtml();
+    }
+    if (LOOKS_JSON_RE.test(text)) {
+      facts.push(['Content', 'Not shown: JSON that does not parse' + (text.length >= 1000000
+        ? ' — the store keeps the first 1,000,000 characters of a file, so a larger one arrives cut short'
+        : '')]);
+      return factsHtml();
+    }
+    var excerpt = text.slice(0, CONTENT_PREVIEW_CHARS);
+    return factsHtml() +
+      '<div class="content-preview"><div class="h">Preview · first ' + num(excerpt.length) + ' of ' +
+      num(text.length) + ' characters</div><div class="b">' + esc(excerpt) +
+      (text.length > excerpt.length ? '…' : '') + '</div></div>';
   }
 
   // ---------- pages ----------
@@ -571,7 +937,7 @@
           kpi('Scroll depth', t.avg_session_scroll == null ? '—' : t.avg_session_scroll + '%',
               (t.sessions_that_scrolled || 0) + ' of ' + (t.sessions_measured || 0) + ' sessions scrolled') +
           kpi('Places', num(t.countries) + ' / ' + num(t.cities), 'countries / cities') +
-          kpi('Last event', ago(t.last_event_at), when(t.last_event_at)) +
+          kpi('Last event', ago(t.last_event_at), whenText(t.last_event_at)) +
         '</div>' +
         '<div class="grid" style="margin-bottom:12px">' +
           card('Activity per day', lineChart(d.daily, 'day', [
@@ -617,25 +983,25 @@
             pager('visitors', v) +
           '</div>';
         wireRows(el, v.rows, function (row) {
-          get('visitor', { id: row.visitor_id }).then(function (det) {
+          drawerGet('visitor', { id: row.visitor_id }).then(function (det) {
             openDrawer('Visitor ' + row.visitor_id,
               kvList(det.profile || row, ['site']) +
-              '<h3 style="font-size:11px;letter-spacing:.7px;text-transform:uppercase;color:var(--ink-dim);margin:14px 0 7px">Sessions (' + (det.sessions || []).length + ')</h3>' +
+              subHead('Sessions (' + (det.sessions || []).length + ')') +
               table([
                 { label: 'Session', render: function (r) { return '<span class="mono trunc">' + esc(r.session_id) + '</span>'; } },
                 { label: 'Started', render: function (r) { return when(r.started_at); } },
                 { label: 'Events', key: 'event_count', num: true },
                 { label: 'Entry', render: function (r) { return esc(shortUrl(r.entry_page)); } }
               ], det.sessions) +
-              '<h3 style="font-size:11px;letter-spacing:.7px;text-transform:uppercase;color:var(--ink-dim);margin:14px 0 7px">Recent events (' +
+              subHead('Recent events (' +
                 ((det.eventTotal || 0) > (det.events || []).length
                   ? 'latest ' + num((det.events || []).length) + ' of ' + num(det.eventTotal)
-                  : num((det.events || []).length)) + ')</h3>' +
+                  : num((det.events || []).length)) + ')') +
               table([
                 { label: 'When', render: function (r) { return when(r.occurred_at); } },
                 { label: 'Type', render: function (r) { return '<span class="pill mute">' + esc(r.event_type) + '</span>'; } },
                 { label: 'Page', render: function (r) { return esc(shortUrl(r.page_url)); } },
-                { label: 'Time', render: function (r) { return secs(r.time_on_page); } },
+                { label: 'Time', render: function (r) { return msSecs(r.time_on_page); } },
                 { label: 'Scroll', render: function (r) { return r.scroll_percent == null ? '—' : r.scroll_percent + '%'; } }
               ], det.events));
           }).catch(fail);
@@ -689,16 +1055,18 @@
           { label: 'Exit', render: function (r) { return esc(shortUrl(r.exit_page)); } }
         ], s.rows, { onRow: true }) + '</div>' + pager('sessions', s) + '</div>';
       wireRows(el, s.rows, function (row) {
-        get('session', { id: row.session_id }).then(function (det) {
+        drawerGet('session', { id: row.session_id }).then(function (det) {
           openDrawer('Session ' + row.session_id,
             kvList(det.meta || row, ['site']) +
             table([
               { label: 'When', render: function (r) { return when(r.occurred_at); } },
               { label: 'Type', render: function (r) { return '<span class="pill mute">' + esc(r.event_type) + '</span>'; } },
               { label: 'Page', render: function (r) { return esc(shortUrl(r.page_url)); } },
-              { label: 'Time', render: function (r) { return secs(r.time_on_page); } },
+              { label: 'Time', render: function (r) { return msSecs(r.time_on_page); } },
               { label: 'Scroll', render: function (r) { return r.scroll_percent == null ? '—' : r.scroll_percent + '%'; } },
-              { label: 'Interactions', key: 'interactions', num: true }
+              // An array of {type, x, y, …} per interaction batch, not a count:
+              // esc() printed it as "[object Object],[object Object],…".
+              { label: 'Interactions', render: function (r) { return briefHtml(r.interactions); } }
             ], det.events));
         }).catch(fail);
       });
@@ -727,7 +1095,7 @@
           { label: 'Place', render: function (r) { return esc([r.city, r.country].filter(Boolean).join(', ') || '—'); } },
           { label: 'Tech', render: function (r) { return esc([r.browser, r.os].filter(Boolean).join(' · ') || '—'); } },
           { label: 'Network', render: function (r) { return '<span class="trunc" style="max-width:170px">' + esc(r.asn_org || '—') + '</span>'; } },
-          { label: 'Time', render: function (r) { return secs(r.time_on_page); } }
+          { label: 'Time', render: function (r) { return msSecs(r.time_on_page); } }
         ], e.rows, { onRow: true }) + '</div>' + pager('events', e) + '</div>';
       Array.prototype.forEach.call(el.querySelectorAll('[data-type]'), function (b) {
         b.addEventListener('click', function () {
@@ -737,12 +1105,14 @@
         });
       });
       wireRows(el, e.rows, function (row) {
-        get('event', { id: row.id }).then(function (full) {
-          openDrawer(row.event_type + ' · ' + when(row.occurred_at),
+        drawerGet('event', { id: row.id }).then(function (full) {
+          // whenText: the drawer title is set through textContent, where
+          // when()'s HTML escaping would show up as literal entities.
+          openDrawer(row.event_type + ' · ' + whenText(row.occurred_at),
             kvList(full || row, ['raw_payload', 'event_data']) +
-            '<h3 style="font-size:11px;letter-spacing:.7px;text-transform:uppercase;color:var(--ink-dim);margin:14px 0 7px">event_data</h3>' +
+            subHead('event_data') +
             treeHtml((full && full.event_data) || {}) +
-            '<h3 style="font-size:11px;letter-spacing:.7px;text-transform:uppercase;color:var(--ink-dim);margin:14px 0 7px">raw_payload</h3>' +
+            subHead('raw_payload') +
             treeHtml((full && full.raw_payload) || {}));
         }).catch(fail);
       });
@@ -762,15 +1132,24 @@
             { label: 'Ago', render: function (r) { return ago(r.occurred_at); } },
             { label: 'Clip', render: function (r) { return '<span class="pill info">' + esc(r.video_event) + '</span>'; } },
             { label: 'Place', render: function (r) { return esc([r.city, r.country].filter(Boolean).join(', ') || '—'); } },
-            { label: 'Device', render: function (r) { return esc(r.visitor_device || '—'); } },
+            // visitor_device can be an object; esc() printed "[object Object]".
+            // The cell gets a one-line summary, the row's drawer the full tree.
+            { label: 'Device', render: function (r) {
+                return '<span class="trunc" style="max-width:260px">' + briefHtml(r.visitor_device) + '</span>';
+              } },
             // recorded_by and source_system are different facts: who wrote the
             // Firestore doc, and which pipeline got it into Postgres. Collapsing
             // them into one cell hid source_system on every populated row.
             { label: 'Recorded by', render: function (r) { return '<span class="mono">' + esc(r.recorded_by || '—') + '</span>'; } },
             { label: 'Via', render: function (r) { return '<span class="mono" style="color:var(--ink-faint)">' + esc(r.source_system || '—') + '</span>'; } },
             { label: 'Event id', render: function (r) { return '<span class="mono trunc" style="max-width:200px">' + esc(r.event_id) + '</span>'; } }
-          ], d.rows) + '</div>' + pager('video', d) + '</div>';
-      wireRows($('page-video'), d.rows, function () {});
+          ], d.rows, { onRow: true }) + '</div>' + pager('video', d) + '</div>';
+      wireRows($('page-video'), d.rows, function (row) {
+        openDrawer('Play · ' + (row.video_event || row.event_id),
+          kvList(row, ['visitor_device']) +
+          subHead('visitor_device') +
+          treeHtml(row.visitor_device));
+      });
     });
   };
 
@@ -795,7 +1174,7 @@
       wireRows(el, rows, function (row) {
         openDrawer('Device ' + row.device_id,
           kvList(row, ['info']) +
-          '<h3 style="font-size:11px;letter-spacing:.7px;text-transform:uppercase;color:var(--ink-dim);margin:14px 0 7px">info</h3>' +
+          subHead('info') +
           treeHtml(row.info || {}));
       });
     });
@@ -804,9 +1183,12 @@
   function renderS24Gate(message) {
     var el = $('page-s24');
     el.innerHTML = '<div class="private-gate"><h3>Private phone archive</h3>' +
-      '<p>' + esc(message || 'Enter the dashboard key to view local-first S24 records. The key stays in this browser tab and is sent only as a request header.') + '</p>' +
+      '<p>' + esc(message || 'Enter the dashboard key to view local-first S24 records.') + '</p>' +
+      '<p class="gate-note">' + esc(KEY_STORAGE_NOTE) + '</p>' +
       '<form id="s24Unlock"><input id="s24KeyInput" type="password" autocomplete="current-password" placeholder="Dashboard key" aria-label="Dashboard key">' +
-      '<button class="btn" type="submit">Unlock archive</button></form></div>';
+      // "Unlock", not "Unlock archive": the key is the shared one, so this
+      // form unlocks every page, not only this one.
+      '<button class="btn" type="submit">Unlock</button></form></div>';
     $('s24Unlock').addEventListener('submit', function (event) {
       event.preventDefault();
       var value = normalizeDashboardKey($('s24KeyInput').value);
@@ -818,7 +1200,8 @@
       state.s24Key = value;
       writeDashboardKey(value);
       el.innerHTML = '<div class="empty">Checking key…</div>';
-      draw();
+      clearErr();
+      reloadAfterUnlock();
     });
   }
 
@@ -905,7 +1288,7 @@
 
   RENDER.s24 = function () {
     if (!state.s24Key) {
-      renderS24Gate();
+      renderS24Gate(keyRejected ? 'That dashboard key was rejected.' : '');
       return Promise.resolve();
     }
     return get('s24', Object.assign(
@@ -923,7 +1306,10 @@
         ['overview', 'Overview', counts.all], ['calls', 'Calls', counts.calls],
         ['sms', 'Messages', counts.sms], ['locations', 'Location', counts.locations],
         ['agents', 'Agents', counts.agents], ['commands', 'Commands', counts.commands],
-        ['files', 'Files', counts.files], ['queue', 'Queue', counts.queue], ['all', 'All JSON', counts.all]
+        // "All records", not "All JSON": this section is a table of the
+        // archive's raw records, each opening as a labelled tree. Nothing on
+        // this page shows JSON, so the label should not promise it.
+        ['files', 'Files', counts.files], ['queue', 'Queue', counts.queue], ['all', 'All records', counts.all]
       ];
       var sectionNav = '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">' + sections.map(function (item) {
         return '<button class="btn' + (state.s24Section === item[0] ? ' on' : '') + '" data-s24-section="' + item[0] + '">' +
@@ -996,17 +1382,17 @@
         ], d.runs), null, true) +
         card('Database coverage', '<div class="bars">' + sections.slice(1, 8).map(function (item) {
           return '<div class="row"><div class="lbl">' + esc(item[1]) + '</div><div class="val">' + num(item[2] || 0) + '</div></div>';
-        }).join('') + '</div>', d.normalized ? 'typed + lossless JSON' : 'migration pending', true) +
+        }).join('') + '</div>', d.normalized ? 'typed tables + complete records' : 'migration pending', true) +
         '</div>';
       el.innerHTML =
         sectionNav +
         '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px">' +
           (state.s24Section === 'all' ? '<select id="s24DatasetSel" title="Phone dataset">' + datasetOptions + '</select>' : '') +
-          '<button class="btn" id="s24Lock">Lock archive</button>' +
-          '<span style="color:var(--ink-faint);font-size:11px">phone Termux → Firestore → laptop JSON → signed HTTPS → Neon</span>' +
+          '<button class="btn" id="s24Lock" title="Forgets the shared dashboard key in this browser; every page asks for it again">Lock dashboard</button>' +
+          '<span style="color:var(--ink-faint);font-size:11px">phone Termux → Firestore → laptop export → signed HTTPS → Neon</span>' +
         '</div>' +
         '<div class="grid kpis" style="margin-bottom:12px">' +
-          kpi('Stored records', num(counts.all), 'lossless JSON archive') +
+          kpi('Stored records', num(counts.all), 'complete source records') +
           kpi('Calls', num(counts.calls), 'normalized records') +
           kpi('Messages', num(counts.sms), 'normalized records') +
           kpi('Commands', num(counts.commands), 'control history') +
@@ -1015,7 +1401,7 @@
           // the list length made this tile read "25" forever once 25 runs existed.
           kpi('Sync runs', num(typeof d.runsTotal === 'number' ? d.runsTotal : (d.runs || []).length),
               (latest.upload_status || 'none yet') + ((d.runsTotal || 0) > (d.runs || []).length ? ' · showing latest ' + (d.runs || []).length : '')) +
-          kpi('Last local pull', latest.started_at ? ago(latest.started_at) : '—', when(latest.started_at)) +
+          kpi('Last local pull', latest.started_at ? ago(latest.started_at) : '—', whenText(latest.started_at)) +
           kpi('Phone model', latest.model || '—', latest.android_version ? 'Android ' + latest.android_version : 'not synced') +
           kpi('Signing key', latest.key_id ? latest.key_id.slice(0, 12) + '…' : '—', 'asymmetric upload identity') +
         '</div>' + (state.s24Section === 'overview' ? overviewPanels : '') + recordsCard;
@@ -1031,29 +1417,63 @@
           state.offsets.s24 = 0;
           draw();
         });
-      $('s24Lock').addEventListener('click', function () {
-        state.s24Key = '';
-        clearDashboardKey();
-        renderS24Gate('Archive locked. Enter the dashboard key to unlock it again.');
-      });
+      $('s24Lock').addEventListener('click', lockDashboard);
       wireRows(el, d.rows, function (row) {
         var label = row.contact_name || row.correspondent || row.agent_name || row.action || row.filename || row.label || row.record_id;
+        var payload = row.payload && typeof row.payload === 'object' ? row.payload : {};
+        // A file's text arrives twice: as the typed `content` column (Files
+        // section) and as payload.content inside the source record (Files and
+        // the raw All records / Overview listings). kvList skipped the column,
+        // but the payload tree printed the second copy in full, so one result
+        // file filled the drawer. It is shown once, through fileContentHtml,
+        // and taken out of the tree below it.
+        //
+        // payload.content is preferred to the column: s24-store writes the
+        // column through str(), which cuts it at 1,000,000 characters and
+        // turns a non-string into "[object Object]", while raw_payload keeps
+        // the value whole. A non-string content (a map, a list) is left in the
+        // tree, which already renders it as structure.
+        //
+        // Only a FILE record is treated this way. Overview and All records
+        // list every dataset, and a command or queue item whose payload has a
+        // short text `content` would otherwise open under "File content" with
+        // no file name, and lose that text from its own record.
+        var isFile = row.dataset === 'firestore_files' || Boolean(row.filename || payload.filename);
+        var pc = payload.content;
+        var content = !isFile ? null
+          : typeof pc === 'string' && pc !== '' ? pc
+          : ((pc == null || pc === '') && row.content != null && row.content !== '' ? row.content : null);
+        var source = payload;
+        if (content != null && typeof pc === 'string') {
+          source = {};
+          Object.keys(payload).forEach(function (k) { if (k !== 'content') source[k] = payload[k]; });
+        }
         openDrawer((row.dataset || selectedLabel) + ' · ' + label,
           kvList(row, ['payload', 'content']) +
-          '<h3 style="font-size:11px;letter-spacing:.7px;text-transform:uppercase;color:var(--ink-dim);margin:14px 0 7px">Complete source record</h3>' +
-          treeHtml(row.payload || {}));
+          (content != null
+            ? subHead('File content') + fileContentHtml(content, {
+                filename: row.filename || payload.filename,
+                fileType: row.file_type || payload.type
+              })
+            : '') +
+          subHead('Complete source record') +
+          (source !== payload ? '<p class="muted" style="font-size:11.5px;margin:-3px 0 8px">content — shown under File content above</p>' : '') +
+          treeHtml(source));
       });
     }).catch(function (error) {
+      // get() owns every auth failure, 401 and auth-coded 503 alike: by the
+      // time one lands here it has already cleared the key, drawn the gate
+      // with the reason, and marked the error handled. This handler used to
+      // test only `status`, so an auth 503 (STATS_KEY unset on the server)
+      // fell into the outage branch below and printed "locked Your key is
+      // still stored — this is a server configuration problem." over a key
+      // that had just been deleted. A superseded response (stale) is handled
+      // too, and simply dropped.
+      if (error && error.handled) throw error;
       // Only an auth failure clears the key; a store outage surfaces as an
       // error the caller renders, with the key left alone. get() has already
       // classified this via _auth.js's `code`, so anything still carrying 503
       // here is the non-auth kind.
-      if (error.status === 401) {
-        state.s24Key = '';
-        clearDashboardKey();
-        renderS24Gate('That dashboard key was rejected.');
-        return;
-      }
       if (error.status === 503) {
         renderS24Gate(error.message + ' Your key is still stored — this is a server configuration problem.');
         return;
@@ -1083,7 +1503,7 @@
       wireRows(el, rows, function (row) {
         openDrawer('Letter ' + row.token,
           kvList(row, ['body']) +
-          '<h3 style="font-size:11px;letter-spacing:.7px;text-transform:uppercase;color:var(--ink-dim);margin:14px 0 7px">Letter body</h3>' +
+          subHead('Letter body') +
           treeHtml(row.body || {}));
       });
     });
@@ -1109,7 +1529,7 @@
       wireRows(el, d.rows, function (row) {
         openDrawer('Open · ' + row.email,
           kvList(row, ['payload']) +
-          '<h3 style="font-size:11px;letter-spacing:.7px;text-transform:uppercase;color:var(--ink-dim);margin:14px 0 7px">payload</h3>' +
+          subHead('payload') +
           treeHtml(row.payload || {}));
       });
     });
@@ -1122,7 +1542,7 @@
       el.innerHTML =
         '<div class="grid kpis" style="margin-bottom:12px">' +
           kpi('chats', num(t.chats), t.unresolved ? num(t.unresolved) + ' with no saved contact' : 'threads') +
-          kpi('messages', num(t.messages), t.oldest ? when(t.oldest).split(',')[0] + ' → ' + when(t.newest).split(',')[0] : 'rows') +
+          kpi('messages', num(t.messages), t.oldest ? whenText(t.oldest).split(',')[0] + ' → ' + whenText(t.newest).split(',')[0] : 'rows') +
           kpi('attachments', num(t.attachments), 'media rows') +
           kpi('sync runs', num(t.runs), 'pushes recorded') +
         '</div>' +
@@ -1164,15 +1584,12 @@
         '</div>';
 
       wireRows(el, d.rows, function (row) {
-        get('whatsapp', { id: row.chat_id }).then(function (det) {
-          var sub = function (text) {
-            return '<h3 style="font-size:11px;letter-spacing:.7px;text-transform:uppercase;color:var(--ink-dim);margin:14px 0 7px">' + esc(text) + '</h3>';
-          };
+        drawerGet('whatsapp', { id: row.chat_id }).then(function (det) {
           openDrawer(row.name || row.chat_id,
             kvList(det.chat || row, ['raw']) +
-            sub('Messages by kind') +
+            subHead('Messages by kind') +
             barList(det.byKind, 'label', 'n') +
-            sub('Attachments (' + (det.attachments || []).length + ' kinds)') +
+            subHead('Attachments (' + (det.attachments || []).length + ' kinds)') +
             ((det.attachments || []).length
               ? table([
                   { label: 'Kind', render: function (r) { return '<span class="pill info">' + esc(r.label) + '</span>'; } },
@@ -1180,7 +1597,7 @@
                   { label: 'Size', render: function (r) { return fileSize(r.bytes); }, num: true }
                 ], det.attachments)
               : '<div class="empty">No media rows for this chat</div>') +
-            sub('Latest ' + num((det.messages || []).length) + ' messages') +
+            subHead('Latest ' + num((det.messages || []).length) + ' messages') +
             table([
               { label: 'Sent', render: function (r) { return r.sent_at ? when(r.sent_at) : '—'; } },
               { label: 'From', render: function (r) { return r.from_me ? '<span class="pill ok">me</span>' : esc(r.sender || '—'); } },
@@ -1307,7 +1724,13 @@
     if (!el.innerHTML) el.innerHTML = '<div class="empty">Loading…</div>';
     var token = ++drawToken;
     var render = RENDER[state.page] || function () { return Promise.resolve(); };
-    render().catch(function (e) {
+    var pending;
+    // Tag every get() the renderer starts with this draw's token; see
+    // renderingToken. A renderer that throws before returning its promise is
+    // routed to the same error path instead of escaping draw().
+    renderingToken = token;
+    try { pending = Promise.resolve(render()); } catch (err) { pending = Promise.reject(err); } finally { renderingToken = 0; }
+    pending.catch(function (e) {
       if (token !== drawToken) return;
       // A handled lock has already drawn the unlock form into this very
       // element. Overwriting it with an error view would leave the operator
@@ -1321,25 +1744,92 @@
     });
   }
 
-  function boot() {
-    // Resolve the property list BEFORE the first draw. Drawing first meant that
-    // when the default property had no rows, the first paint showed all-zero
-    // KPIs while the dropdown beside it already named a different, real one.
-    get('sites').then(function (sites) {
+  function loadSites() {
+    return get('sites').then(function (sites) {
       $('siteSel').innerHTML = sites.map(function (s) {
         return '<option value="' + esc(s.site) + '">' + esc(s.site) + ' · ' + num(s.events) + '</option>';
       }).join('');
       if (sites.length && !sites.some(function (s) { return s.site === state.site; })) state.site = sites[0].site;
       $('siteSel').value = state.site;
-    }).catch(fail).then(function () {
+    });
+  }
+
+  // loadSites() settled either way: its failure, if any, as a value, so the
+  // caller can report it AFTER draw(). draw() clears the banner on its way in,
+  // which is how a failed property list used to vanish unexplained, leaving
+  // #siteSel empty beside a page drawn for the default property.
+  function loadSitesSettled() {
+    return loadSites().then(function () { return null; }, function (e) { return e; });
+  }
+
+  function boot() {
+    // Resolve the property list BEFORE the first draw. Drawing first meant that
+    // when the default property had no rows, the first paint showed all-zero
+    // KPIs while the dropdown beside it already named a different, real one.
+    loadSitesSettled().then(function (sitesError) {
       buildNav();
       draw();
+      if (sitesError) fail(sitesError);
       return refreshCounts();
     });
   }
 
+  // Both gates used to call draw() alone after taking a key. On a first visit
+  // boot's other two requests -- the property list and the health counts --
+  // had already failed behind the gate, and nothing ran them again, so after a
+  // successful unlock #siteSel stayed empty and the nav badges and footer
+  // stayed blank until a manual reload. Same order as boot(): the property list
+  // first, because it can change state.site, which every page is drawn for.
+  function reloadAfterUnlock() {
+    keyRejected = false;
+    loadSitesSettled().then(function (sitesError) {
+      // A refused key has already put the gate back up with its reason, and a
+      // draw now would only replace it with the same gate.
+      if (sitesError && sitesError.handled) return;
+      draw();
+      if (sitesError) fail(sitesError);
+      return refreshCounts();
+    });
+  }
+
+  // The S24 page's lock button cleared the SHARED key -- the one every page of
+  // this dashboard reads, and index.html, /s24, /vivobook, /agent and /jteka
+  // with it -- while its label, "Lock archive", promised only the archive. It
+  // is labelled for what it does, and it now locks the whole page the way the
+  // label says: every section keeps the HTML it last drew while hidden, so
+  // after the old lock the next nav click showed that page's data again until
+  // its 401 arrived. Responses still in flight for the unlocked session are
+  // dropped rather than painted behind the gate: lockEpoch covers every
+  // request, and superseding the current draw also silences its error path.
+  function lockDashboard() {
+    state.s24Key = '';
+    keyRejected = false;
+    clearDashboardKey();
+    lockEpoch++;
+    drawToken++;
+    drawerToken++;
+    // Closing only hides the drawer; the record it last showed -- an SMS, a
+    // call, a file -- would still sit in the DOM behind the gate.
+    closeDrawer();
+    $('drawerTitle').textContent = 'Detail';
+    $('drawerBody').innerHTML = '';
+    clearErr();
+    Array.prototype.forEach.call(document.querySelectorAll('.page'), function (p) { p.innerHTML = ''; });
+    $('siteSel').innerHTML = '';
+    state.counts = {};
+    applyCounts();
+    $('foot').textContent = '—';
+    renderS24Gate('Dashboard locked. Enter the dashboard key to unlock it again.');
+  }
+
+  // Tokened like draw(): a property switch and an unlock can each start one,
+  // and the older response arriving last would label the pages with the
+  // previous property's counts.
+  var countsToken = 0;
   function refreshCounts() {
+    var token = ++countsToken;
     return get('health').then(function (h) {
+      if (token !== countsToken) return;
       // Site-scoped, because the pages these badges label are themselves
       // site-filtered. A global total beside a filtered page reads as a bug.
       state.counts = h.countsForSite || h.counts || {};
