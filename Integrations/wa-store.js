@@ -79,11 +79,16 @@ export function messageSenderLabel(message = {}) {
   return message.chat_kind === 'group' ? 'Unknown participant' : 'Unknown sender';
 }
 
+// The body a sealed recovery-dump record is stored with. It is a display hint,
+// not message text, so upsertMessages must never let it replace a body a chat
+// export already supplied (see the ON CONFLICT clause there).
+export const ENCRYPTED_PLACEHOLDER = '[Encrypted — export chat to read]';
+
 /** Explain sealed recovery rows honestly while preserving real imported text. */
 export function displayMessageBody(message = {}) {
   const body = typeof message.body === 'string' ? message.body.trim() : '';
   const placeholders = new Set([
-    '[Encrypted — export chat to read]', '[System message]', '[Media — image/video]',
+    ENCRYPTED_PLACEHOLDER, '[System message]', '[Media — image/video]',
   ]);
   if (body && !placeholders.has(body)) return body;
   if (message.kind === 'system') return 'System event — details were not present in the recovery metadata.';
@@ -202,9 +207,11 @@ export function normalizeMessage(rec, chatId) {
     // Encrypted recovery-dump records that carry no body get a placeholder so
     // the dashboard does not render empty message bubbles. When the export
     // parser later runs with actual chat .txt files, it overwrites these via
-    // the ON CONFLICT clause (or by matching sent_at+sender+direction).
+    // the ON CONFLICT clause (or by matching sent_at+sender+direction). The
+    // reverse never happens: a placeholder arriving after a real body keeps the
+    // real body (upsertMessages).
     body: body == null
-      ? (encrypted ? '[Encrypted — export chat to read]' : null)
+      ? (encrypted ? ENCRYPTED_PLACEHOLDER : null)
       : String(body),
   };
 }
@@ -266,7 +273,22 @@ export async function upsertChats(query, records, meta = {}) {
   return { upserted: rows.size, skipped, duplicates };
 }
 
-/** Upsert messages in chunks. A message whose chat is unknown is dropped by the FK, not the whole batch. */
+// SQL literal for the placeholder. The constant holds no quote, so interpolating
+// it cannot change the statement's shape; it stays out of the parameter list so
+// the positional params callers and tests assert on are unchanged.
+const PLACEHOLDER_SQL = `'${ENCRYPTED_PLACEHOLDER.replace(/'/g, "''")}'`;
+
+/**
+ * Upsert messages in chunks. A message whose chat is unknown is dropped by the FK, not the whole batch.
+ *
+ * body/encrypted on conflict: the recovery dump is re-sent on every S24 sync and
+ * carries no text, so each of its records arrives as ENCRYPTED_PLACEHOLDER.
+ * `body = COALESCE(EXCLUDED.body, wa_messages.body)` took any non-null value, so
+ * that placeholder overwrote the text a chat export had already imported, and
+ * the next sync after an export erased it. A real body now wins over anything;
+ * a placeholder or NULL only fills a row that has no body yet. `encrypted`
+ * follows whichever body is kept, so a restored message is not re-flagged sealed.
+ */
 export async function upsertMessages(query, records, meta = {}) {
   const list = records || [];
   const rows = new Map(); // same rule as chats: one row per msg_id in a statement
@@ -294,8 +316,17 @@ export async function upsertMessages(query, records, meta = {}) {
          from_me   = COALESCE(EXCLUDED.from_me, wa_messages.from_me),
          sender    = COALESCE(EXCLUDED.sender, wa_messages.sender),
          kind      = EXCLUDED.kind,
-         encrypted = EXCLUDED.encrypted,
-         body      = COALESCE(EXCLUDED.body, wa_messages.body),
+         encrypted = CASE
+                       WHEN (EXCLUDED.body IS NULL OR EXCLUDED.body = ${PLACEHOLDER_SQL})
+                        AND wa_messages.body IS NOT NULL AND wa_messages.body <> ${PLACEHOLDER_SQL}
+                       THEN wa_messages.encrypted
+                       ELSE EXCLUDED.encrypted
+                     END,
+         body      = CASE
+                       WHEN EXCLUDED.body IS NULL OR EXCLUDED.body = ${PLACEHOLDER_SQL}
+                       THEN COALESCE(wa_messages.body, EXCLUDED.body)
+                       ELSE EXCLUDED.body
+                     END,
          run_id    = EXCLUDED.run_id,
          raw       = EXCLUDED.raw`,
       [
