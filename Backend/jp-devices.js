@@ -9,6 +9,7 @@ import {
   s24LivenessVerdict,
 } from './lib/s24-attestation.js';
 import { requireKey } from './_auth.js';
+import { splitFleet } from './broker.js';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, ScanCommand } from '@aws-sdk/lib-dynamodb';
 import { scanBounded } from './lib/ddb-scan.js';
@@ -296,6 +297,12 @@ async function handleDevices(req, res) {
       throw new Error('firestore read failed: ' + detail);
     }
     const data = await r.json();
+    // The roster is the fleet (DEVICE_IDS in broker.js), not the collection.
+    // This used to drop one hard-coded ghost id, `g4g-laptop`, and list the
+    // rest, so the channel-sandbox test agent's `eka-cloud-sandbox` document sat
+    // in the table and made "Total devices" 4 when there are three devices. The
+    // documents left out are named in `other_documents`, not silently hidden.
+    const { fleet, other: otherDocuments } = splitFleet(data.documents);
 
     // A stored IP is only worth trusting as "current" while it is fresh. Both
     // IPs on samsung-s24-ultra were stale and neither matched the address the
@@ -312,7 +319,7 @@ async function handleDevices(req, res) {
     };
 
     const now = Date.now();
-    const devices = (data.documents || []).map((d) => {
+    const devices = fleet.map((d) => {
       const f = {};
       for (const [k, v] of Object.entries(d.fields || {})) f[k] = dec(v);
       const deviceId = d.name.split('/').pop();
@@ -419,11 +426,6 @@ async function handleDevices(req, res) {
 
     devices.sort((a, b) => (b.lastSeen || '').localeCompare(a.lastSeen || ''));
 
-    // Filter out ghost documents — devices with zero Firestore fields are
-    // enrollment artifacts that pollute the roster.
-    const ghostIds = new Set(['g4g-laptop']);
-    const filteredDevices = devices.filter(d => !ghostIds.has(d.deviceId));
-
     // Site video-event relay state: last play event from jaytibirthday.in and
     // which devices acknowledged it (seenBy map written by the device watchers).
     let videoEvent = null;
@@ -463,7 +465,7 @@ async function handleDevices(req, res) {
     // don't take down the whole response; that device just gets an empty map.
     if (includeSubcollections) {
       const SUBS = ['whatsappMedia', 'callLogs', 'sms', 'contacts'];
-      await Promise.all(filteredDevices.map(async (d) => {
+      await Promise.all(devices.map(async (d) => {
         const perDevice = {};
         await Promise.all(SUBS.map(async (name) => {
           try {
@@ -491,7 +493,8 @@ async function handleDevices(req, res) {
       source: 'firestore',
       database: FIRESTORE_DB,
       generated_at: new Date().toISOString(),
-      devices: filteredDevices,
+      devices,
+      other_documents: otherDocuments,
       videoEvent,
       videoEventError,
     });

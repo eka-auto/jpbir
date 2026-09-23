@@ -18,6 +18,7 @@ import crypto from 'crypto';
 import { requireKey } from './_auth.js';
 import { query, isConfigured } from '../Integrations/postgres.js';
 import { cronAuthorized, secretEquals } from './lib/cron-auth.js';
+import { splitFleet } from './broker.js';
 
 const _env = (typeof process !== 'undefined' ? process : globalThis['proc' + 'ess']).env;
 const AWS_ACCESS_KEY_ID = _env['JP_AWS_' + 'ACCESS_KEY_ID'];
@@ -138,7 +139,7 @@ async function verifyDynamoDB() {
   }
 }
 
-async function verifyFirestore() {
+export async function verifyFirestore() {
   if (!FIREBASE_SA_JSON) {
     return { ok: false, error: 'FIREBASE_SERVICE_ACCOUNT_JSON not configured' };
   }
@@ -191,7 +192,9 @@ async function verifyFirestore() {
       ok: true,
       project: projectId,
       database: 'eka-agent',
-      devices_found: devicesData.documents?.length || 0,
+      // The fleet, not every document in the collection (see DEVICE_IDS in
+      // broker.js): this said 5 while there are three devices.
+      devices_found: splitFleet(devicesData.documents).fleet.length,
     };
   } catch (error) {
     return { ok: false, error: error.message };
