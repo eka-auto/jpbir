@@ -23,13 +23,55 @@ const TABLE = _env['JP_TELEMETRY_' + 'TABLE'] || 'jaytipargal_telemetry';
 
 let _tokenCache = { token: null, exp: 0 };
 
+// Upstream bodies never go into an Error message. The handler below answers a
+// failure with err.message, jp-stack.js and stack-cron.js put the same message
+// on the dashboard's stack panel, and both throw sites below used to build it
+// around the body Google sent back: OAuth's JSON, Firestore's JSON, or an HTML
+// error page when Google's front end answered. That put raw JSON and HTML on
+// screen, against the dashboard rule that nothing raw reaches it (jteka.html
+// had to scrub it in the browser, #114). What an operator needs is the one
+// sentence inside Google's two error envelopes --
+//   OAuth      {"error":"invalid_grant","error_description":"Invalid JWT Signature."}
+//   Firestore  {"error":{"code":403,"message":"Missing or insufficient permissions.","status":"PERMISSION_DENIED"}}
+// -- and anything without one (HTML, a proxy page, an empty body) is described
+// by its status. A candidate that itself holds braces or markup is refused.
+export function upstreamMessage(body, status) {
+  const o = body && typeof body === 'object' ? body : null;
+  const err = o && o.error;
+  const candidates = o
+    ? [o.error_description, err && typeof err === 'object' ? err.message : null, typeof err === 'string' ? err : null, o.message]
+    : [];
+  for (const c of candidates) {
+    if (typeof c !== 'string') continue;
+    const s = c.replace(/\s+/g, ' ').trim().replace(/\.$/, '');
+    if (s && s.length <= 300 && !/[{}<>]/.test(s)) return s;
+  }
+  return 'HTTP ' + status;
+}
+
+// A malformed secret must not be quoted back. V8's JSON.parse error quotes the
+// text it choked on ('Unexpected token ..., "..." is not valid JSON'), and here
+// that text is a service-account private key; thrown as-is, a fragment of it
+// went out in this route's 500 body. The message names the secret and what is
+// wrong with it, never anything from inside it.
+function serviceAccount() {
+  let sa;
+  try { sa = JSON.parse(FIREBASE_SA_JSON); } catch {
+    throw new Error('FIREBASE_SERVICE_ACCOUNT_JSON is not valid JSON — paste the whole service-account key file into the secret');
+  }
+  if (!sa || typeof sa !== 'object' || !sa.private_key || !sa.client_email || !sa.project_id) {
+    throw new Error('FIREBASE_SERVICE_ACCOUNT_JSON is missing private_key, client_email or project_id');
+  }
+  return sa;
+}
+
 // Exported because `jp-stack.js` probes Firestore reachability for the Product
 // engineering panel and must exercise the *same* credential path this handler
 // uses — a second copy of the JWT exchange could pass while this one fails (or
 // the reverse) and the panel would report health this endpoint does not have.
 export async function getFirestoreToken() {
   if (_tokenCache.token && Date.now() < _tokenCache.exp - 60000) return _tokenCache.token;
-  const sa = JSON.parse(FIREBASE_SA_JSON);
+  const sa = serviceAccount();
   const now = Math.floor(Date.now() / 1000);
   const header = { alg: 'RS256', typ: 'JWT' };
   const claim = {
@@ -53,14 +95,17 @@ export async function getFirestoreToken() {
   });
   const data = await res.json().catch(() => ({}));
   if (!data.access_token) {
-    const detail = JSON.stringify(data).slice(0, 200);
+    const detail = upstreamMessage(data, res.status);
+    // Status and Google's own sentence only: the dashboard's Vercel panel
+    // renders runtime log text, so the body stays out of the log as well.
+    console.error('[jp-devices] token exchange failed', res.status, detail);
     // `invalid_grant` means Google rejected the signed assertion itself — almost
     // always because the FIREBASE_SERVICE_ACCOUNT_JSON key has been revoked or
     // rotated, so its public half no longer matches the service account. The
     // signing above is not at fault; the credential is. Say so, so the fix is a
     // key rotation and not a hunt through this code.
     if (data.error === 'invalid_grant') {
-      throw new Error('token exchange failed (' + detail + '): the FIREBASE_SERVICE_ACCOUNT_JSON key is invalid, revoked, or rotated — generate a fresh service-account key and update the secret.');
+      throw new Error('token exchange failed: ' + detail + ' — the FIREBASE_SERVICE_ACCOUNT_JSON key is invalid, revoked, or rotated; generate a fresh service-account key and update the secret.');
     }
     throw new Error('token exchange failed: ' + detail);
   }
@@ -239,9 +284,17 @@ async function handleDevices(req, res) {
     const includeSubcollections = String(req.query.subcollections || '') === '1';
     const subLimit = Math.max(1, Math.min(parseInt(req.query.sub_limit) || 20, 50));
     const token = await getFirestoreToken();
-    const base = `https://firestore.googleapis.com/v1/projects/${JSON.parse(FIREBASE_SA_JSON).project_id}/databases/${FIRESTORE_DB}/documents`;
+    const base = `https://firestore.googleapis.com/v1/projects/${serviceAccount().project_id}/databases/${FIRESTORE_DB}/documents`;
     const r = await fetch(`${base}/devices`, { headers: { Authorization: `Bearer ${token}` } });
-    if (!r.ok) throw new Error('firestore read failed: ' + (await r.text()).slice(0, 300));
+    if (!r.ok) {
+      // See upstreamMessage(): Google's sentence, never its body.
+      const text = await r.text().catch(() => '');
+      let body = null;
+      try { body = JSON.parse(text); } catch { /* HTML or empty: described by status */ }
+      const detail = upstreamMessage(body, r.status);
+      console.error('[jp-devices] firestore read failed', r.status, detail);
+      throw new Error('firestore read failed: ' + detail);
+    }
     const data = await r.json();
 
     // A stored IP is only worth trusting as "current" while it is fresh. Both
