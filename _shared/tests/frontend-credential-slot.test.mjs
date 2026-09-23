@@ -32,9 +32,11 @@ function t(name, fn) {
   catch (e) { console.log('  FAIL ' + name + ' -> ' + e.message); process.exitCode = 1; }
 }
 
-// Every live page that sends the dashboard key. template.html and viewer.html
-// do not gate, so they are deliberately absent.
-const GATED = ['index.html', 's24.html', 'vivobook.html', 'agent.html', 'jteka.html', 'db.html'];
+// Every live page that sends the dashboard key. template.html does not gate,
+// so it is deliberately absent. viewer.html joined when it stopped being a
+// keyless Chrome-history viewer and became the key-gated Media gallery (PR
+// #109): a page that sends the key is exactly what this contract is for.
+const GATED = ['index.html', 's24.html', 'vivobook.html', 'agent.html', 'jteka.html', 'db.html', 'viewer.html'];
 const SLOT = 'jbt_stats_key';
 
 // Strip // and /* */ comments so a slot name mentioned in an explanation is not
@@ -77,7 +79,7 @@ for (const page of GATED) {
   });
 }
 
-for (const page of ['s24.html', 'vivobook.html', 'agent.html', 'jteka.html']) {
+for (const page of ['s24.html', 'vivobook.html', 'agent.html', 'jteka.html', 'viewer.html']) {
   t(`${page} writes the key to localStorage, not only sessionStorage`, () => {
     const src = code(read(page));
     assert.match(src, /localStorage\.setItem\(\s*(KEY_STORAGE|KEY_STORE)/,
@@ -140,7 +142,7 @@ t('no handler answers 500 for an unconfigured deployment — that split behaviou
   assert.deepEqual(offenders, [], 'these should be 503, like Backend/_auth.js');
 });
 
-for (const page of ['index.html', 'db.html']) {
+for (const page of ['index.html', 'db.html', 'viewer.html']) {
   t(`${page} only clears the stored key when _auth.js says the failure was an auth one`, () => {
     const src = code(read(page));
     assert.match(src, /\/\^auth_\/\.test\(/,
