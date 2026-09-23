@@ -53,6 +53,11 @@ class TestDeployKits(unittest.TestCase):
                 self.assertNotIn("FIRESTORE", config)
                 self.assertNotIn("service_account_key", config)
                 self.assertFalse((kp / "firestore_client.py").exists())
+                # Legacy EKA-Fleet-Agent.vbs must be cleaned up from
+                # the Windows Startup folder to prevent duplicate
+                # direct-to-Firestore writes.
+                self.assertIn("EKA-Fleet-Agent.vbs", installer)
+                self.assertIn("Remove-LegacyStartupVbs", installer)
 
     def test_s24_installer_has_no_inbound_or_key_download_path(self):
         kp = kit_path("s24")
@@ -74,6 +79,15 @@ class TestDeployKits(unittest.TestCase):
         self.assertIn("--once", installer)
         self.assertEqual(contract["transport"]["method"], "signed-outbound-https")
         self.assertFalse(contract["transport"]["inboundListener"])
+
+    def test_s24_daemon_installer_verifies_service_account_key(self):
+        """install_daemon.sh must fail loudly if serviceAccountKey.json
+        is missing so the operator knows immediately why the S24
+        phone daemon cannot connect to Firestore."""
+        kp = kit_path("s24")
+        daemon_installer = (kp / "install_daemon.sh").read_text(encoding="utf-8")
+        self.assertIn("serviceAccountKey.json", daemon_installer)
+        self.assertIn("exit 78", daemon_installer)
 
 
 if __name__ == "__main__":

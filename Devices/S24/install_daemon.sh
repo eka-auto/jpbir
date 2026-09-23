@@ -7,7 +7,19 @@ ENV_FILE="$APP_DIR/.env"
 
 echo "==> Installing packages"
 pkg update -y >/dev/null 2>&1 || true
-pkg install -y nodejs-lts termux-api openssl-tool
+pkg install -y nodejs-lts termux-api openssl-tool python python-cryptography
+
+# Verify the service account key is present before the daemon starts.
+# Without it, the S24 phone daemon cannot authenticate to Firestore
+# and the /api/jp-stack health verdict stays in fail state.
+SERVICE_KEY_PATH="$HOME/serviceAccountKey.json"
+if [ ! -f "$SERVICE_KEY_PATH" ]; then
+  echo "FATAL: serviceAccountKey.json not found at $SERVICE_KEY_PATH" >&2
+  echo "  Copy it from the eka-runner repo or re-provision via the" >&2
+  echo "  boot script (start_s24_direct_cloud.sh) before retrying." >&2
+  exit 78
+fi
+echo "[ok] serviceAccountKey.json found"
 
 echo "==> Preparing $APP_DIR"
 mkdir -p "$APP_DIR" "$HOME/agent-workspace"

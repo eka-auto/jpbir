@@ -15,6 +15,20 @@ $LogPath = Join-Path $Target "logs\$DeviceId.log"
 $PinnedCommit = '183e600d0acd7e6171e35be904c657e7fe967384'
 $Here = Split-Path -Parent $MyInvocation.MyCommand.Path
 
+# Remove the legacy EKA-Fleet-Agent.vbs from the Windows Startup folder.
+# This vbs calls C:\eka-fleet-agent\.venv\Scripts\python.exe -m ekagent
+# which writes directly to Firestore, bypassing the signed broker.
+# Leaving it causes duplicate writes and stale device health verdicts.
+function Remove-LegacyStartupVbs {
+    $StartupFolder = [Environment]::GetFolderPath('StartMenu') + '\Programs\Startup'
+    $LegacyVbs = Join-Path $StartupFolder 'EKA-Fleet-Agent.vbs'
+    if (Test-Path -LiteralPath $LegacyVbs) {
+        Remove-Item -LiteralPath $LegacyVbs -Force
+        Write-Host "[ok] removed legacy EKA-Fleet-Agent.vbs from Startup folder"
+    }
+}
+Remove-LegacyStartupVbs
+
 $Artifacts = @(
     [pscustomobject]@{ Name = 'device_agent.py'; Hash = '70A74469A2E004F671897B30F85A8759F684ACA4CE1F5860BF39C7E12396D2F7' },
     [pscustomobject]@{ Name = 'broker_client.py'; Hash = 'E380867C5843E49C21D7E46704DB20607389A9F1FAAD4B3CF61F9B4EAB173BB1' },
