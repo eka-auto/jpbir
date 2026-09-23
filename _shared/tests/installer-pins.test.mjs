@@ -139,20 +139,59 @@ t('all three installers agree on every shared artifact they all pin', () => {
   }
 });
 
+// The code of Remove-LegacyFleetStartup: from its declaration to the first
+// closing brace at column 0, with full-line comments dropped so a comment can
+// neither satisfy nor trip an assertion. The cleanup assertions below are scoped
+// to it. Matched against the whole file they were satisfied by unrelated code —
+// the running-broker restart already calls Stop-Process, and the $StaleKey
+// removal under C:\eka-agent\broker already names serviceAccountKey.json — so
+// deleting the legacy kill or the legacy key removal left every check green.
+function legacyCleanupBody(source, kit) {
+  const start = source.search(/^function Remove-LegacyFleetStartup \{$/m);
+  assert.notEqual(start, -1, `${kit} does not define legacy startup cleanup`);
+  const end = source.indexOf('\n}\n', start);
+  assert.notEqual(end, -1, `${kit}: Remove-LegacyFleetStartup has no closing brace at column 0`);
+  return source.slice(start, end + 2).split('\n').filter((line) => !/^\s*#/.test(line)).join('\n');
+}
+
 t('Windows installers remove the retired direct-Firestore startup only after a signed broker proves live', () => {
   for (const kit of ['Lenovo', 'Vivobook']) {
     const source = readFileSync(join(ROOT, 'Devices', kit, `install_${kit.toLowerCase()}.ps1`), 'utf8');
-    assert.match(source, /function Remove-LegacyFleetStartup/, `${kit} does not define legacy startup cleanup`);
-    assert.match(source, /EKA-Fleet-Agent\.vbs/, `${kit} does not target the retired startup script`);
-    assert.match(source, /CommonStartup/, `${kit} does not clean the all-users Startup folder`);
-    assert.match(source, /Stop-Process/, `${kit} does not stop an already-running legacy writer`);
-    assert.match(source, /Unregister-ScheduledTask/, `${kit} does not retire a matching legacy scheduled task`);
-    assert.match(source, /serviceAccountKey\.json/, `${kit} leaves the legacy service-account key on the laptop`);
-    assert.match(source, /Write-Warning/, `${kit} makes legacy cleanup failure fatal after broker proof`);
+    const body = legacyCleanupBody(source, kit);
+    assert.match(body, /\$LegacyRoot = 'C:\\eka-fleet-agent'/, `${kit} cleanup does not name the legacy install root`);
+    assert.match(body, /EKA-Fleet-Agent\.vbs/, `${kit} does not target the retired startup script`);
+    assert.match(body, /CommonStartup/, `${kit} does not clean the all-users Startup folder`);
+    assert.match(body, /Stop-Process -Id \$ProcessId/, `${kit} does not stop an already-running legacy writer`);
+    assert.match(body, /Unregister-ScheduledTask/, `${kit} does not retire a matching legacy scheduled task`);
+    assert.match(body, /Join-Path \$LegacyRoot 'serviceAccountKey\.json'[\s\S]*Remove-Item -LiteralPath \$LegacyKey/,
+      `${kit} leaves the legacy service-account key on the laptop`);
+    assert.match(body, /Write-Warning/, `${kit} makes legacy cleanup failure fatal after broker proof`);
     assert.ok(
       source.lastIndexOf('Remove-LegacyFleetStartup') > source.indexOf('Persistent broker startup did not prove a signed request'),
       `${kit} removes the legacy agent before the replacement broker is proven live`,
     );
+  }
+});
+
+t('Windows legacy cleanup survives Set-StrictMode and catches every launcher of the writer', () => {
+  for (const kit of ['Lenovo', 'Vivobook']) {
+    const source = readFileSync(join(ROOT, 'Devices', kit, `install_${kit.toLowerCase()}.ps1`), 'utf8');
+    assert.match(source, /^Set-StrictMode -Version Latest$/m, `${kit} no longer runs under strict mode; re-check this test`);
+    const body = legacyCleanupBody(source, kit);
+    // A COM-handler scheduled-task action (e.g. \Microsoft\Windows\Wininet\CacheTask)
+    // has no Execute or Arguments. Reading $_.Execute threw under strict mode, the
+    // one catch around the filter emptied the list, and no legacy task was removed.
+    assert.doesNotMatch(body, /\$_\.(Execute|Arguments)\b/, `${kit} reads task-action properties that COM-handler actions lack`);
+    assert.match(body, /PSObject\.Properties\[\$Name\]/, `${kit} does not read optional properties through PSObject.Properties`);
+    assert.match(body, /foreach \(\$Task in \$AllTasks\)[\s\S]*?try \{/, `${kit} does not inspect each scheduled task on its own`);
+    // The writer has run as pythonw.exe under a wscript/cscript loop over the .vbs.
+    assert.match(body, /pythonw\?\\\.exe/, `${kit} would miss a pythonw.exe legacy writer`);
+    assert.match(body, /\[wc\]script\\\.exe/, `${kit} would miss the wscript/cscript loop that restarts the writer`);
+    assert.match(body, /-m\\s\+"\?ekagent/, `${kit} no longer matches the ekagent module launch`);
+    assert.match(body, /WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Run/, `${kit} skips the 32-bit Run key`);
+    assert.match(body, /Extension -ieq '\.lnk'/, `${kit} skips Startup shortcuts that point at the legacy launcher`);
+    assert.ok(body.indexOf("foreach ($Kind in @('Host', 'Writer'))") !== -1,
+      `${kit} does not stop the restarting loop before the writer`);
   }
 });
 
@@ -168,8 +207,41 @@ t('the S24 WhatsApp installer requires the signed broker and never requires a se
   assert.match(source, /os\.path\.getsize\(boot_launcher\) > 0/, 'S24 daemon installer accepts an empty boot launcher');
   assert.match(source, /exit 78/, 'S24 daemon installer does not fail loudly when broker recovery is incomplete');
   assert.doesNotMatch(source, /serviceAccountKey/, 'S24 daemon installer must not require a service-account key on the phone');
-  assert.ok(source.indexOf('verify_broker_install') < source.indexOf('pkg update -y'),
-    'S24 daemon installer installs packages before rejecting an incomplete broker recovery');
+  // The CALL, not the definition. `indexOf('verify_broker_install')` found the
+  // function's own declaration on line 21, which precedes `pkg update -y` whether
+  // or not the function is ever invoked, so moving or deleting the call left this
+  // check green while the installer did network package work and installed the
+  // WhatsApp crons on a phone whose signed broker was never enrolled.
+  const definition = source.search(/^verify_broker_install\(\) \{$/m);
+  const call = source.search(/^verify_broker_install$/m);
+  assert.notEqual(call, -1, 'S24 daemon installer defines verify_broker_install but never calls it');
+  assert.ok(definition !== -1 && call > definition, 'verify_broker_install is called before it is defined');
+  for (const later of ['pkg update -y', 'pkg install -y', 'cp "$WA_DIR/wa_push.py"', '| crontab -']) {
+    const at = source.indexOf(later);
+    assert.ok(at !== -1 && call < at,
+      `S24 daemon installer reaches "${later}" before rejecting an incomplete broker recovery`);
+  }
+});
+
+t('the S24 WhatsApp installer provisions no listener beside the signed broker', () => {
+  // runtime_contract.json: transport.inboundListener is false. This installer used
+  // to write package.json, an .env with AGENT_PORT=8787 and run.sh for
+  // s24-agent-daemon.mjs, a Node HTTP server with a run_shell tool, and told the
+  // operator to start it.
+  const source = readFileSync(join(ROOT, 'Devices', 'S24', 'install_daemon.sh'), 'utf8');
+  const contract = JSON.parse(readFileSync(join(ROOT, 'Devices', 'S24', 'runtime_contract.json'), 'utf8'));
+  assert.equal(contract.transport.inboundListener, false);
+  assert.doesNotMatch(source, /cat > "?\$APP_DIR\/run\.sh"?|cat > package\.json|AGENT_TOKEN="\$\(openssl/,
+    'S24 daemon installer still writes the loopback agent launcher, package.json or token');
+  assert.doesNotMatch(source, /^pkg install[^\n]*\b(nodejs|nodejs-lts|openssl-tool)\b/m,
+    'S24 daemon installer still installs the Node runtime the loopback agent needed');
+  const done = source.slice(source.indexOf('Install complete'));
+  assert.doesNotMatch(done, /run\.sh|s24-agent-daemon|loopback-only/,
+    'S24 daemon installer still tells the operator to start a listener');
+  // The WhatsApp pushers the broker's wa-push / wa-media-push commands run must stay.
+  for (const kept of ['wa_push_tick.sh', 'wa_media_tick.sh', 'wa_export_tick.sh']) {
+    assert.ok(source.includes(`"$APP_DIR/${kept}"`), `S24 daemon installer no longer installs ${kept}`);
+  }
 });
 
 t('the Server/ installer copies are still dead, not silently assumed working', () => {

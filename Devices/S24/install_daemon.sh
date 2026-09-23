@@ -1,12 +1,12 @@
 #!/data/data/com.termux/files/usr/bin/bash
-# S24 Agent Daemon — one-shot Termux installer.
-# Also installs the WhatsApp inventory pusher and its 30-min cron entry, so
-# after this runs once the device auto-syncs WA chats/media/audio to
-# jaytipargal.tech alongside the daemon's own telemetry.
+# S24 WhatsApp pushers — one-shot Termux installer, run after install_s24.sh.
+# Installs the WhatsApp inventory, media and chat-export pushers and their
+# cron entries in ~/s24-agent, where the signed broker's `wa-push` and
+# `wa-media-push` commands also find them. It installs no daemon of its own:
+# install_s24.sh's signed broker is the only S24 runtime.
 set -euo pipefail
 
 APP_DIR="$HOME/s24-agent"
-ENV_FILE="$APP_DIR/.env"
 WA_DIR="$(cd "$(dirname "$0")" && pwd)"
 BROKER_ROOT="$HOME/.local/share/eka-broker"
 BROKER_CONFIG_PATH="$BROKER_ROOT/devices.json"
@@ -68,41 +68,54 @@ verify_broker_install
 
 echo "==> Installing packages"
 pkg update -y >/dev/null 2>&1 || true
-# python is needed by wa_push.py; cronie provides the Termux cron.
-pkg install -y nodejs-lts termux-api openssl-tool python cronie
+# python runs the pushers (standard library only); cronie provides the Termux
+# cron. nodejs-lts and openssl-tool are gone with the loopback agent below —
+# nothing else here used them.
+pkg install -y termux-api python cronie
 
 echo "==> Preparing $APP_DIR"
-mkdir -p "$APP_DIR" "$HOME/agent-workspace"
+mkdir -p "$APP_DIR"
 cd "$APP_DIR"
 
-if [ ! -f package.json ]; then
-  cat > package.json <<'JSON'
-{ "name": "s24-agent", "version": "1.0.0", "type": "module", "private": true,
-  "scripts": { "start": "node s24-agent-daemon.mjs" } }
-JSON
-fi
-
-if [ ! -f "$ENV_FILE" ]; then
-  umask 077
-  AGENT_TOKEN="$(openssl rand -hex 32)"
-  cat > "$ENV_FILE" <<ENV
-AGENT_AUTH_TOKEN=$AGENT_TOKEN
-AGENT_PORT=8787
-AGENT_BIND=127.0.0.1
-ENV
-  chmod 600 "$ENV_FILE"
-  echo "==> Generated $ENV_FILE"
-  echo "    A local authentication token was generated; do not share this file."
-fi
-
-cat > "$APP_DIR/run.sh" <<'RUN'
-#!/data/data/com.termux/files/usr/bin/bash
+# ---- Retire the loopback agent earlier releases provisioned ---------------
+# This installer used to write package.json, .env (AGENT_AUTH_TOKEN,
+# AGENT_PORT=8787) and run.sh here for s24-agent-daemon.mjs, a Node HTTP server
+# with a run_shell tool, and told the operator to start it. That is a second,
+# shell-executing listener beside the signed broker, which runtime_contract.json
+# forbids (transport.inboundListener: false). It never worked either: the .mjs
+# was never copied here and ANTHROPIC_API_KEY was never set, so run.sh died on
+# "Cannot find module". Only the exact files those releases generated are
+# removed, so anything the owner put in this directory stays.
+retire_generated_file() {
+  local path="$1" expected="$2"
+  [ -f "$path" ] || return 0
+  if [ "$(cat "$path")" = "$expected" ]; then
+    rm -f "$path"
+    echo "==> Removed $path (retired loopback agent)"
+  else
+    echo "[warn] $path differs from the file earlier releases generated; left in place" >&2
+  fi
+}
+retire_generated_file "$APP_DIR/package.json" '{ "name": "s24-agent", "version": "1.0.0", "type": "module", "private": true,
+  "scripts": { "start": "node s24-agent-daemon.mjs" } }'
+retire_generated_file "$APP_DIR/run.sh" '#!/data/data/com.termux/files/usr/bin/bash
 set -a; . "$HOME/s24-agent/.env"; set +a
-exec node "$HOME/s24-agent/s24-agent-daemon.mjs"
-RUN
-chmod +x "$APP_DIR/run.sh"
+exec node "$HOME/s24-agent/s24-agent-daemon.mjs"'
+# The .env carried a random token, so it is recognised by its shape.
+if [ -f "$APP_DIR/.env" ] && [ "$(grep -c '' "$APP_DIR/.env")" -eq 3 ] \
+  && grep -Eqx 'AGENT_AUTH_TOKEN=[0-9a-f]{64}' "$APP_DIR/.env" \
+  && grep -qx 'AGENT_PORT=8787' "$APP_DIR/.env" \
+  && grep -qx 'AGENT_BIND=127.0.0.1' "$APP_DIR/.env"; then
+  rm -f "$APP_DIR/.env"
+  echo "==> Removed $APP_DIR/.env (retired loopback agent token)"
+fi
+# Started by hand from an old copy of the .mjs, the listener would still be up.
+if command -v pgrep >/dev/null 2>&1 && pgrep -f 's24-agent-daemon\.mjs' >/dev/null 2>&1; then
+  pkill -f 's24-agent-daemon\.mjs' || true
+  echo "==> Stopped a running s24-agent-daemon.mjs (forbidden inbound listener)"
+fi
 
-# keep the daemon alive across screen-off
+# keep crond and the signed broker running across screen-off
 if command -v termux-wake-lock >/dev/null 2>&1; then termux-wake-lock || true; fi
 
 # ---- WhatsApp inventory pusher ----------------------------------------
@@ -224,10 +237,11 @@ if ! pgrep -x crond >/dev/null 2>&1; then
 fi
 
 echo
-echo "==> Install complete."
-echo "    1. bash $APP_DIR/run.sh"
-echo "    2. Use the authenticated loopback-only status-only request in README.md"
-echo "    3. Edit $WA_ENV_FILE and set WA_INGEST_KEY (the same value on Vercel);"
+echo "==> Install complete. The signed broker from install_s24.sh is the only S24 runtime;"
+echo "    nothing here listens for connections."
+echo "    1. Edit $WA_ENV_FILE and set WA_INGEST_KEY (the same value on Vercel);"
 echo "       the cron picks it up on the next tick."
-echo "    4. To test the WhatsApp push now: bash $APP_DIR/wa_push_tick.sh"
+echo "    2. To test the WhatsApp push now: bash $APP_DIR/wa_push_tick.sh"
+echo "    3. To prove the command path end to end, queue one status-only command for"
+echo "       samsung-s24-ultra from the dashboard and confirm its completed result."
 echo
