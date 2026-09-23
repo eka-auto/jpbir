@@ -14,6 +14,12 @@
     --sans:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
   }
   *{box-sizing:border-box}
+  /* The hidden attribute is only the browser's [hidden]{display:none}, and any
+     author display rule beats it: .grid (display:grid) and .meta (display:flex)
+     stayed on screen every time the script "hid" them -- a stale LIVE card left
+     under the key gate after a 401, a Refresh button beside it. The script
+     means hidden when it says hidden. */
+  [hidden]{display:none !important}
   body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);line-height:1.5}
   .wrap{max-width:1100px;margin:0 auto;padding:28px 18px 64px}
   header{display:flex;flex-wrap:wrap;align-items:baseline;gap:12px 16px;border-bottom:1px solid var(--border);padding-bottom:16px}
@@ -104,12 +110,18 @@
     var h = Math.floor(m/60); if (h < 24) return h + "h " + (m%60) + "m ago";
     var d = Math.floor(h/24); return d + "d " + (h%24) + "h ago";
   }
-  function esc(s){ return String(s == null ? "" : s).replace(/[&<>"]/g, function(c){
-    return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c]; }); }
+  // ' -> &#39; too, matching index.html's esc(). Every call site here is element
+  // text today, where a bare ' is inert; the day one of them lands in a
+  // single-quoted attribute, an apostrophe in a device name ("Jayti's S24")
+  // would end the attribute early. One escaper, one contract, on every page.
+  function esc(s){ return String(s == null ? "" : s).replace(/[&<>"']/g, function(c){
+    return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]; }); }
 
   function showGate(msg){
+    // footErr too: "Change key" after a failed poll used to leave "Could not
+    // load fleet status: ..." sitting under a fresh gate.
     el("gate").hidden = false; el("meta").hidden = true; el("grid").hidden = true;
-    el("loading").hidden = true; el("changeWrap").hidden = true;
+    el("loading").hidden = true; el("changeWrap").hidden = true; el("footErr").hidden = true;
     el("gateErr").textContent = msg || "";
     el("key").focus();
   }
@@ -125,7 +137,12 @@
     var liveText  = d.live ? "LIVE" : (d.online ? "REPORTED" : "OFFLINE");
     var rows = [];
     function row(k,v){ if (v !== null && v !== undefined && v !== "") rows.push("<dt>"+esc(k)+"</dt><dd>"+esc(v)+"</dd>"); }
-    row("model", d.model || d.deviceType);
+    // No deviceType fallback for model. The very next row prints deviceType, so
+    // a device that never reported a model (the API sends model: null) showed
+    // one value twice -- "model android-phone / type android-phone" -- and
+    // passed a device class off as a hardware model. row() skips null, so no
+    // model now simply means no model row.
+    row("model", d.model);
     row("type", d.deviceType);
     row("connection", d.connectionMethod);
     row("battery", batteryLabel(d));
@@ -161,6 +178,98 @@
     grid.innerHTML = devices.map(card).join("");
   }
 
+  // The error line. The rule for every page of this dashboard: data is queried
+  // and built into UI, and raw JSON, a raw response body or a raw file never
+  // reaches the screen. This line broke it: load() printed "HTTP " + status +
+  // " " + the first 140 characters of the body, so a deployment without
+  // STATS_KEY met the operator with
+  //   HTTP 503 {"success":false,"code":"auth_not_configured","error":"STATS_KEY is not configured on the server"}
+  // Every failure the API sends itself is JSON with a stable `code` (see
+  // Backend/_auth.js). A body that is not JSON was written by something in
+  // front of the function -- a Vercel error page, a proxy -- and says nothing
+  // this page can use beyond its status. Either way it becomes one sentence.
+
+  // Where someone else's raw text starts inside an error string: a JSON brace
+  // or a markup tag.
+  var RAW = /\{|<[a-z!\/?]/i;
+  // Braces, or a quoted key and its colon: JSON inside a would-be sentence.
+  var JSONISH = /[{}]|"\s*:/;
+  // V8's JSON.parse errors quote the text they choked on -- Unexpected token
+  // 'x', ..."<input>"... is not valid JSON -- and on this route that text is
+  // FIREBASE_SERVICE_ACCOUNT_JSON, a private key, whenever the secret is
+  // malformed. Only that template is matched; a double quote elsewhere is
+  // ordinary prose ((b.lastSeen || "").localeCompare is not a function).
+  var SNIPPET = /(?:\.\.\.)?"[\s\S]*"(?:\.\.\.)?(?=\s+is not valid JSON)/;
+  // A "message" or "error_description" value that survived the backend's cut,
+  // with or without its closing quote -- the cut often lands inside it.
+  var MSG = /"(?:error_description|message)"\s*:\s*"((?:[^"\\]|\\.)*)(")?/;
+
+  function cutRaw(x){ var i = x.search(RAW); return i === -1 ? x : x.slice(0, i); }
+
+  // The one human sentence inside the two Google error envelopes the backend
+  // passes through: OAuth's {"error":"invalid_grant","error_description":"..."}
+  // and Firestore REST's {"error":{"code":403,"message":"...","status":"..."}}.
+  function jsonMessage(o){
+    var c = o && typeof o === "object" ? [o.error_description, o.error && o.error.message, o.message, o.error] : [];
+    for (var i = 0; i < c.length; i++){ if (typeof c[i] === "string" && c[i].trim()) return c[i].trim(); }
+    return "";
+  }
+
+  // j.error with the raw text spliced into it taken back out. On a 500,
+  // Backend/jp-devices.js answers with err.message verbatim, and both throw
+  // sites on this route build that message around an upstream body:
+  //   token exchange failed ({"error":"invalid_grant",...}): the FIREBASE_SERVICE_ACCOUNT_JSON key is invalid, revoked, or rotated -- generate a fresh ...
+  //   firestore read failed: {\n  "error": {\n    "code": 403, ...   (cut at 300 characters; HTML when Google's front end answers)
+  // Printed as-is, that is raw JSON or HTML on screen. Dropped wholesale, it
+  // takes both Google's diagnosis and the remediation the backend wrote on
+  // purpose with it. So the prose before the raw span is kept, and the span is
+  // replaced by the sentence inside it: from the parsed object when it is
+  // whole (with the prose after it), from its quoted "message" when the cut
+  // broke it (the value runs to the end of the string if the cut took its
+  // closing quote, so it is marked unfinished), else by nothing. Whatever is
+  // still JSON-looking after all that is refused, and the caller falls back to
+  // the status. The root cause is the backend pasting bodies into messages;
+  // until that changes, this is the only thing between them and the screen.
+  function plainError(s){
+    if (typeof s !== "string") return "";
+    s = s.replace(SNIPPET, "input");
+    var open = s.search(RAW), out = s;
+    if (open !== -1){
+      var rest = s.slice(open), close = rest.lastIndexOf("}"), o = null, inner = "", tail = "", m, v;
+      if (rest.charAt(0) === "{" && close > 0){ try { o = JSON.parse(rest.slice(0, close + 1)); } catch (e){} }
+      if (o){
+        inner = jsonMessage(o);
+        tail = cutRaw(rest.slice(close + 1));
+      } else if ((m = MSG.exec(rest))){
+        try { v = cutRaw(JSON.parse('"' + m[1] + '"')).trim(); inner = v && !m[2] ? v + "…" : v; } catch (e){}
+      }
+      if (JSONISH.test(inner)) inner = "";
+      out = [s.slice(0, open).replace(/[\s:(,.—-]+$/, ""), inner.replace(/\.$/, ""), tail.replace(/^[\s:),.—-]+/, "")]
+        .filter(function(x){ return x; }).join(": ");
+    }
+    out = out.replace(/\s+/g, " ").trim();
+    return /\{|"\s*:/.test(out) ? "" : out;
+  }
+
+  function failMessage(status, j){
+    var obj = !!j && typeof j === "object";
+    if (obj && j.code === "auth_not_configured") return "The dashboard key isn't configured on the server.";
+    var detail = obj ? plainError(j.error) : "";
+    // A JSON 503 is this API saying the deployment lacks a secret, the
+    // convention Backend/_auth.js documents: STATS_KEY is caught by its code
+    // just above, and on this route the rest is FIREBASE_SERVICE_ACCOUNT_JSON.
+    // Nothing on this page, or the key typed into it, can fix that, so it says
+    // so -- and names the missing piece when the backend did, as index.html and
+    // db.html already show it.
+    if (obj && status === 503) return "The server isn't fully configured right now" + (detail ? " (" + detail + ")" : "") + ".";
+    if (detail) return detail;
+    // "Request failed (HTTP 200)" contradicts itself; a 2xx with nothing usable
+    // in it is an answer, just not a fleet snapshot.
+    return status >= 200 && status < 300
+      ? "The server answered HTTP " + status + " but sent no fleet status."
+      : "Request failed (HTTP " + status + ")";
+  }
+
   var busy = false;
   function load(){
     var key = getKey();
@@ -170,16 +279,59 @@
     el("refresh").disabled = true;
     fetch(ENDPOINT, { headers: { "x-stats-key": key }, cache: "no-store" })
       .then(function(r){
-        if (r.status === 401 || r.status === 403){ clearKey(); showGate("That key was rejected. Try again."); return null; }
-        if (!r.ok) return r.text().then(function(t){ throw new Error("HTTP " + r.status + " " + t.slice(0,140)); });
-        return r.json();
+        // Read as text and parsed under try, never with r.json(). On a body that
+        // is not JSON, r.json() rejects with the engine's SyntaxError, and V8
+        // quotes the body in that message (Unexpected token '<', "<!doctype "...
+        // is not valid JSON): raw response text on screen by the back door.
+        return r.text().then(function(t){
+          // The stored key changed while this request was out -- "Change key",
+          // a new key typed at the gate, another tab. The answer is about a key
+          // the page no longer holds: rendering it put the fleet back up over a
+          // gate the operator had just opened, and a 401 for the old key wiped
+          // the new one. It is dropped; the last step below sends the new key.
+          if (getKey() !== key) return null;
+          var j = null;
+          try { j = JSON.parse(t); } catch (e){}
+          // 401 alone clears the key: it is the only status Backend/_auth.js
+          // rejects a key with, and index.html and db.html clear on every 401
+          // too. This line used to take 403 as well, which the API never sends
+          // -- only something in front of it does (a Vercel firewall rule, bot
+          // protection) -- and so wiped the one key every gated page shares
+          // over a refusal that said nothing about the key.
+          if (r.status === 401){
+            clearKey();
+            showGate(j && j.code === "auth_missing" ? "Enter the dashboard key." : "That key was rejected. Try again.");
+            return null;
+          }
+          // No devices array is not an empty fleet. render() would have said
+          // "No devices enrolled." about a reply that carried no device list.
+          if (!r.ok || !j || typeof j !== "object" || j.success === false || !Array.isArray(j.devices)) throw new Error(failMessage(r.status, j));
+          return j;
+        });
       })
-      .then(function(j){ if (j){ if (j.success === false) throw new Error(j.error || "request failed"); render(j); } })
+      .then(function(j){ if (j) render(j); })
       .catch(function(e){
+        if (getKey() !== key) return;
+        // The gate goes too. A server failure right after Unlock used to leave
+        // "That key was rejected" standing beside a key that was never at fault
+        // and is still being polled with.
+        el("gate").hidden = true;
         el("loading").hidden = true; el("meta").hidden = false; el("changeWrap").hidden = false;
+        // Fail closed: the previous poll's cards go too. Their ages are the
+        // server's, frozen at that fetch, so leaving them up kept a LIVE badge
+        // and "last check-in: 30s ago" on screen for as long as the API stayed
+        // down -- an outage dressed as a healthy fleet, the failure the
+        // liveness rules in Backend/jp-devices.js exist to prevent.
+        el("grid").hidden = true; el("count").textContent = ""; el("gen").textContent = "";
         el("footErr").hidden = false; el("footErr").textContent = "Could not load fleet status: " + e.message;
       })
-      .then(function(){ busy = false; el("refresh").disabled = false; });
+      .then(function(){
+        busy = false; el("refresh").disabled = false;
+        // A key set while this request was out went nowhere -- load() returned
+        // at the busy guard -- so send it now.
+        var now = getKey();
+        if (now && now !== key) load();
+      });
   }
 
   el("unlock").addEventListener("click", function(){
