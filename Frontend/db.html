@@ -743,6 +743,20 @@
     return '<span title="' + esc(raw) + '">' + esc(whenText(d)) + '</span>';
   }
 
+  // time_on_page is milliseconds (see msSecs). The Events table and the
+  // session and visitor drawers print it as "30s", but a drawer's tree printed
+  // the stored number bare, so the event drawer read "time_on_page 30000" under
+  // a table that said "30s" and left the unit to a guess. Same conversion here,
+  // stored value on hover. timeOnPage is the tracker's own name for the field
+  // inside raw_payload (Backend/jp-track.js).
+  var MS_DURATION_KEY_RE = /^(time_on_page|timeOnPage)$/;
+  function durationHtml(value, keyName) {
+    if (!MS_DURATION_KEY_RE.test(keyName || '')) return null;
+    var raw = String(value);
+    if (!/^\d+(\.\d+)?$/.test(raw)) return null;
+    return '<span title="' + esc(raw + ' ms') + '">' + esc(msSecs(raw)) + '</span>';
+  }
+
   function shapeSummary(value) {
     if (Array.isArray(value)) return '[ ' + num(value.length) + (value.length === 1 ? ' item' : ' items') + ' ]';
     var n = Object.keys(value).length;
@@ -766,11 +780,11 @@
       var parsed = parseJsonText(value);
       if (parsed === undefined) {
         if (LOOKS_JSON_RE.test(value)) return unreadableJson(value);
-        return timeHtml(value, keyName) || esc(value);
+        return durationHtml(value, keyName) || timeHtml(value, keyName) || esc(value);
       }
       value = parsed;
     } else if (typeof value !== 'object') {
-      return timeHtml(value, keyName) || esc(String(value));
+      return durationHtml(value, keyName) || timeHtml(value, keyName) || esc(String(value));
     }
     var isList = Array.isArray(value);
     var keys = isList ? null : Object.keys(value);

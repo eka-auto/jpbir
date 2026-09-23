@@ -299,5 +299,50 @@ t('when even 90 days would come back empty, no "Show N days" button pretends oth
   assert.equal(/data-days=/.test(s), false, 'offered a window that cannot reach a 120-day-old attachment');
 });
 
+// ── the same rows on the main dashboard ──────────────────────────────────
+// wa_attachments rows also render in index.html: the Firestore page's live
+// content cards and the WhatsApp chat detail's attachment tiles. Its fmtBytes
+// ran Number.isFinite() on the raw BIGINT string, so every card printed no
+// size, and the card footer named the chat by chat_id.slice(-14): a hash
+// fragment for any chat keyed "h_" + 20 hex (Integrations/wa-store.js). The two
+// helpers are lifted out of the page by brace matching. Neither holds a brace
+// inside a string or regex, which is all this simple matcher needs;
+// ip-grouping.test.mjs has the literal-aware version.
+const indexHtml = readFileSync(join(ROOT, 'Frontend', 'index.html'), 'utf8');
+function lift(src, name) {
+  const start = src.indexOf('function ' + name + '(');
+  assert.ok(start !== -1, `${name}() not found in Frontend/index.html`);
+  let depth = 0;
+  for (let i = src.indexOf('{', start); i < src.length; i++) {
+    if (src[i] === '{') depth++;
+    else if (src[i] === '}' && --depth === 0) return src.slice(start, i + 1);
+  }
+  throw new Error(`unbalanced braces while lifting ${name}()`);
+}
+const dash = new Function(
+  'var WA_STATE = { chats: [], filter: "" }; var _waNameIndex = null, _waNameIndexSrc = null;\n' +
+  lift(indexHtml, 'fmtBytes') + '\n' + lift(indexHtml, 'waChatName') + '\n' +
+  'return { fmtBytes: fmtBytes, waChatName: waChatName, setChats: function (c) { WA_STATE.chats = c; } };')();
+const indexCode = indexHtml.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+
+t('the main dashboard formats the same BIGINT-string sizes — its cards printed none at all', () => {
+  assert.equal(dash.fmtBytes('48213'), '47.1 KB');
+  assert.equal(dash.fmtBytes('15728640'), '15.00 MB');
+  assert.equal(dash.fmtBytes(300), '300 B');
+  for (const v of [null, undefined, '', 'abc', -1]) assert.equal(dash.fmtBytes(v), '', 'no size must mean no text, got one for ' + String(v));
+  assert.equal(/size_bytes \/ 1024/.test(indexCode), false, 'an attachment tile still divides by 1024 itself ("0 KB", "14650 KB")');
+});
+
+t('the main dashboard names an attachment\'s chat from the inventory, never by a slice of its id', () => {
+  assert.equal(dash.waChatName('h_0123456789abcdef0123'), '', 'with no inventory loaded it must say nothing, not print the id');
+  dash.setChats([{ chat_id: 'h_0123456789abcdef0123', name: 'Family', kind: 'group' }, { chat_id: 42, name: 'Maa' }]);
+  assert.equal(dash.waChatName('h_0123456789abcdef0123'), 'Family');
+  assert.equal(dash.waChatName('42'), 'Maa', 'ids compare as strings, as they arrive from JSON');
+  assert.equal(dash.waChatName('h_unknown'), '');
+  dash.setChats([{ chat_id: 'h_0123456789abcdef0123', name: 'Family (renamed)' }]);
+  assert.equal(dash.waChatName('h_0123456789abcdef0123'), 'Family (renamed)', 'a reloaded inventory must not serve the old index');
+  assert.equal(/chat_id\.slice\(/.test(indexCode), false, 'a card still prints a slice of chat_id');
+});
+
 console.log(`\n${pass}/${total} checks passed`);
 if (pass !== total) process.exitCode = 1;
