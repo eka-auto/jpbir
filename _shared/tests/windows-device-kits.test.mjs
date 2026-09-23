@@ -154,5 +154,41 @@ print(json.dumps({"outcome": outcome, "heartbeats": len(CALLS["heartbeat"])}))`)
   });
 }
 
+// The daemon runs under pythonw.exe (no console), so any console child it starts gets
+// its own window. The TPM signer starts PowerShell for every signed request, and on
+// 2026-09-23 that flashed a window on the Lenovo's screen several times a minute.
+const SIGNER_RUN = `
+import subprocess, types
+for name in ("cryptography", "cryptography.hazmat", "cryptography.hazmat.primitives",
+             "cryptography.hazmat.primitives.asymmetric"):
+    _stub(name)
+_stub("cryptography.hazmat.primitives", hashes=None, serialization=None)
+_stub("cryptography.hazmat.primitives.asymmetric", ec=None)
+_stub("cryptography.hazmat.primitives.asymmetric.utils", decode_dss_signature=None, encode_dss_signature=None)
+signer = load(INPUT["kit"])
+SEEN = []
+def _run(cmd, **kw):
+    SEEN.append(kw)
+    return types.SimpleNamespace(returncode=0, stdout=b"exists", stderr=b"")
+signer.subprocess = types.SimpleNamespace(run=_run, SubprocessError=subprocess.SubprocessError)
+s = object.__new__(signer.WindowsCngSigner)
+s.key_name = "EKA-BROKER-TEST"
+out = {}
+for platform in ("win32", "linux"):
+    sys.platform = platform
+    SEEN.clear()
+    s._run("exists")
+    out[platform] = SEEN[0].get("creationflags")
+print(json.dumps(out))
+`;
+
+for (const kit of [...WINDOWS_KITS, 'S24', 'sandbox']) {
+  t(`${kit}: the TPM signer starts its PowerShell helper with no console window on Windows`, () => {
+    const out = runPython(SIGNER_RUN, { kit: `Devices/${kit}/signer.py` });
+    assert.equal(out.win32, 0x08000000, 'CREATE_NO_WINDOW missing: every signed request opens a window');
+    assert.equal(out.linux, null, 'creationflags is Windows-only and must not reach Termux');
+  });
+}
+
 console.log(`\n${pass}/${total} checks passed`);
 if (pass !== total) process.exitCode = 1;
