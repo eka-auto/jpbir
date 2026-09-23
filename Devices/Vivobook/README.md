@@ -7,7 +7,7 @@ dials out to the HTTPS broker. No Google service-account key is installed.
 ## Install
 
 1. From the admin machine, mint a code bound to `jayti-asus-vivobook`:
-   `python channel-sandbox/mint_enrollment_code.py mint jayti-asus-vivobook`
+   `python Devices/sandbox/mint_enrollment_code.py mint jayti-asus-vivobook`
 2. Copy this directory to the VivoBook.
 3. On the VivoBook, run PowerShell as the intended signed-in user:
    `powershell -ExecutionPolicy Bypass -File .\install_vivobook.ps1`
