@@ -119,6 +119,8 @@ class TestDeployKits(unittest.TestCase):
         self.assertIn("broker_state_file", installer)
         self.assertIn("installation_evidence_file", installer)
         self.assertIn("broker_recovery_required", installer)
+        self.assertIn("isinstance(record, dict)", installer)
+        self.assertIn("os.path.getsize(boot_launcher) > 0", installer)
         self.assertIn("exit 78", installer)
         self.assertNotIn("serviceAccountKey", installer)
         self.assertLess(installer.index("verify_broker_install"), installer.index("pkg update -y"))

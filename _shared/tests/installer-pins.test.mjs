@@ -164,6 +164,8 @@ t('the S24 WhatsApp installer requires the signed broker and never requires a se
   assert.match(source, /broker_state_file/, 'S24 daemon installer does not derive the broker state path from config');
   assert.match(source, /installation_evidence_file/, 'S24 daemon installer does not derive the evidence path from config');
   assert.match(source, /broker_recovery_required/, 'S24 daemon installer does not give partial enrollment actionable recovery guidance');
+  assert.match(source, /isinstance\(record, dict\)/, 'S24 daemon installer does not reject non-object broker records');
+  assert.match(source, /os\.path\.getsize\(boot_launcher\) > 0/, 'S24 daemon installer accepts an empty boot launcher');
   assert.match(source, /exit 78/, 'S24 daemon installer does not fail loudly when broker recovery is incomplete');
   assert.doesNotMatch(source, /serviceAccountKey/, 'S24 daemon installer must not require a service-account key on the phone');
   assert.ok(source.indexOf('verify_broker_install') < source.indexOf('pkg update -y'),

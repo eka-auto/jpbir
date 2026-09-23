@@ -35,14 +35,25 @@ try:
     evidence_path = config["installation_evidence_file"]
     state = json.load(open(state_path, encoding="utf-8"))
     evidence = json.load(open(evidence_path, encoding="utf-8"))
+    if not all(isinstance(record, dict) for record in (config, state, evidence)):
+        raise ValueError("signed broker records must be JSON objects")
 except (KeyError, OSError, ValueError, TypeError) as exc:
     raise SystemExit(f"invalid signed broker installation: {exc}")
 
 if state.get("enrolled") is not True or not state.get("keyId"):
     raise SystemExit("signed broker is not enrolled")
 boot_launcher = evidence.get("bootLauncher")
-if not isinstance(boot_launcher, str) or not os.path.isfile(boot_launcher) or not os.access(boot_launcher, os.X_OK):
-    raise SystemExit("Termux:Boot launcher is not executable")
+try:
+    boot_launcher_ready = (
+        isinstance(boot_launcher, str)
+        and os.path.isfile(boot_launcher)
+        and os.access(boot_launcher, os.X_OK)
+        and os.path.getsize(boot_launcher) > 0
+    )
+except OSError:
+    boot_launcher_ready = False
+if not boot_launcher_ready:
+    raise SystemExit("Termux:Boot launcher is missing, empty, or not executable")
 if not all(evidence.get(name) is True for name in (
     "termuxBootPackageVerified", "bootLauncherVerified", "jobSchedulerVerified"
 )):
