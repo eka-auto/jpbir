@@ -139,6 +139,28 @@ t('all three installers agree on every shared artifact they all pin', () => {
   }
 });
 
+t('Windows installers remove the retired direct-Firestore startup only after a signed broker proves live', () => {
+  for (const kit of ['Lenovo', 'Vivobook']) {
+    const source = readFileSync(join(ROOT, 'Devices', kit, `install_${kit.toLowerCase()}.ps1`), 'utf8');
+    assert.match(source, /function Remove-LegacyFleetStartup/, `${kit} does not define legacy startup cleanup`);
+    assert.match(source, /EKA-Fleet-Agent\.vbs/, `${kit} does not target the retired startup script`);
+    assert.ok(
+      source.lastIndexOf('Remove-LegacyFleetStartup') > source.indexOf('Persistent broker startup did not prove a signed request'),
+      `${kit} removes the legacy agent before the replacement broker is proven live`,
+    );
+  }
+});
+
+t('the S24 WhatsApp installer requires the signed broker and never requires a service-account key', () => {
+  const source = readFileSync(join(ROOT, 'Devices', 'S24', 'install_daemon.sh'), 'utf8');
+  assert.match(source, /verify_broker_install/, 'S24 daemon installer does not verify broker recovery prerequisites');
+  assert.match(source, /install_s24\.sh/, 'S24 daemon installer does not direct recovery through the signed broker installer');
+  assert.match(source, /BROKER_STATE_PATH/, 'S24 daemon installer does not check enrollment state');
+  assert.match(source, /BROKER_BOOT_PATH/, 'S24 daemon installer does not check the Termux:Boot launcher');
+  assert.match(source, /exit 78/, 'S24 daemon installer does not fail loudly when broker recovery is incomplete');
+  assert.doesNotMatch(source, /serviceAccountKey/, 'S24 daemon installer must not require a service-account key on the phone');
+});
+
 t('the Server/ installer copies are still dead, not silently assumed working', () => {
   // Server/install_{lenovo,vivobook}.ps1 carry the same broken pins, but repairing them
   // would be cosmetic: $Here is their own directory (line 16) and the source path is

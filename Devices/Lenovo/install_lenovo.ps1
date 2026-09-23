@@ -15,6 +15,16 @@ $LogPath = Join-Path $Target "logs\$DeviceId.log"
 $PinnedCommit = '183e600d0acd7e6171e35be904c657e7fe967384'
 $Here = Split-Path -Parent $MyInvocation.MyCommand.Path
 
+function Remove-LegacyFleetStartup {
+    # The retired fleet agent writes directly to Firestore, so it must not start
+    # beside this signed broker on the next user logon.
+    $LegacyVbs = Join-Path ([Environment]::GetFolderPath([Environment+SpecialFolder]::Startup)) 'EKA-Fleet-Agent.vbs'
+    if (Test-Path -LiteralPath $LegacyVbs -PathType Leaf) {
+        Remove-Item -LiteralPath $LegacyVbs -Force
+        Write-Host '[ok] removed legacy EKA-Fleet-Agent.vbs from Startup'
+    }
+}
+
 # Hash is the SHA-256 of the bundled file's BYTES - 64 hex characters, exactly what
 # (Get-FileHash -Algorithm SHA256).Hash returns below. It is NOT a git object id.
 # This table once carried `git hash-object` output for single_instance.py: a
@@ -202,4 +212,5 @@ if (-not $LiveAgent -or [int64]$StateAfterStart.seq -le $SeqBeforeStart) {
     throw "Persistent broker startup did not prove a signed request. Review $LogPath."
 }
 
+Remove-LegacyFleetStartup
 Write-Host "[ok] broker is running via $Persistence with no service-account key on the device"

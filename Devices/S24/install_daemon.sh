@@ -8,11 +8,36 @@ set -euo pipefail
 APP_DIR="$HOME/s24-agent"
 ENV_FILE="$APP_DIR/.env"
 WA_DIR="$(cd "$(dirname "$0")" && pwd)"
+BROKER_ROOT="$HOME/.local/share/eka-broker"
+BROKER_STATE_PATH="$BROKER_ROOT/samsung-s24-ultra.broker-state.json"
+BROKER_BOOT_PATH="$HOME/.termux/boot/start_eka_s24_broker.sh"
 
 echo "==> Installing packages"
 pkg update -y >/dev/null 2>&1 || true
 # python is needed by wa_push.py; cronie provides the Termux cron.
 pkg install -y nodejs-lts termux-api openssl-tool python cronie
+
+verify_broker_install() {
+  if [ ! -s "$BROKER_STATE_PATH" ] || [ ! -x "$BROKER_BOOT_PATH" ]; then
+    echo "FATAL: the signed S24 broker is not installed or has no boot launcher." >&2
+    echo "  Run: bash $WA_DIR/install_s24.sh" >&2
+    echo "  Complete its AndroidKeyStore enrollment and Termux:Boot checks before retrying." >&2
+    exit 78
+  fi
+  python - "$BROKER_STATE_PATH" <<'PY'
+import json
+import sys
+
+try:
+    state = json.load(open(sys.argv[1], encoding="utf-8"))
+except (OSError, ValueError) as exc:
+    raise SystemExit(f"invalid broker state: {exc}")
+if state.get("enrolled") is not True or not state.get("keyId"):
+    raise SystemExit("broker state is not enrolled")
+PY
+}
+
+verify_broker_install
 
 echo "==> Preparing $APP_DIR"
 mkdir -p "$APP_DIR" "$HOME/agent-workspace"
