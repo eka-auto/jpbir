@@ -31,10 +31,11 @@
     .topbar .brand .dot { color: var(--amber-glow); }
     .topbar .spacer { flex: 1; }
     .topbar .live-pill { display: flex; align-items: center; gap: 7px; font-size: 11px; font-weight: 600;
-        letter-spacing: 1px; color: var(--amber-glow); }
+        letter-spacing: 1px; color: var(--amber-glow); white-space: nowrap; }
     .live-dot { width: 8px; height: 8px; border-radius: 50%; background: #4CAF50;
         box-shadow: 0 0 8px rgba(76,175,80,.9); animation: pulse 1.8s ease-in-out infinite; }
     .live-dot.off { background: #888; box-shadow: none; animation: none; }
+    .live-dot.err { background: #c83c3c; box-shadow: 0 0 6px rgba(200,60,60,.7); animation: none; }
 
     .status-light { width: 22px; height: 22px; border-radius: 50%; flex: none;
         background: #888; box-shadow: none; }
@@ -90,6 +91,8 @@
     .kv-item .v.mono { font-family: var(--mono); font-size: 12.5px; }
 
     .state { padding: 20px; text-align: center; color: var(--ink-muted); font-size: 13px; }
+    .state.err { color: #8c2f2f; }
+    .state-title { font-weight: 700; margin-bottom: 2px; }
     .spinner { width: 28px; height: 28px; border: 3px solid var(--border); border-top-color: var(--amber); border-radius: 50%; animation: spin 0.8s linear infinite; margin: 0 auto 8px; }
     @keyframes spin { to { transform: rotate(360deg); } }
 
@@ -262,7 +265,23 @@
         '<24h': 'under 24h ago',
         '>1d': 'over 1d ago'
     };
-    function coarseAgo(bucket) { return bucket == null ? null : (COARSE_AGE_TEXT[bucket] || bucket); }
+    // coarseAgo(), ageCell() and lastSeenAgeText() return PLAIN TEXT, and every
+    // caller that splices them into innerHTML wraps the result in esc(). A
+    // bucket outside the table falls through verbatim, so an unexpected value
+    // is shown rather than hidden, and until 2026-09-23 that verbatim string
+    // went into innerHTML raw: a lastSeenCoarse of <img src=x onerror=…> ran as
+    // markup on a page any visitor can open. The backend only emits the enum
+    // today; the page must not depend on that. hasOwnProperty stops a bucket
+    // such as "constructor" resolving to an Object.prototype member, and a
+    // non-string is no bucket at all, so it reads "unknown", the backend's own
+    // word for a stamp it cannot trust. esc() is not applied in here because
+    // the Last seen KPI writes this text with textContent, where escaping
+    // would print the entities.
+    function coarseAgo(bucket) {
+        if (bucket == null) return null;
+        if (typeof bucket !== 'string') return 'unknown';
+        return Object.prototype.hasOwnProperty.call(COARSE_AGE_TEXT, bucket) ? COARSE_AGE_TEXT[bucket] : bucket;
+    }
     function ageCell(exactSeconds, bucket) {
         if (exactSeconds != null) return exactSeconds + 's';
         var c = coarseAgo(bucket);
@@ -309,22 +328,116 @@
         };
     }
 
+    // One reading of the queue for every place that shows it. The public body
+    // carries two depths: commandQueueDepth counts every entry, completed and
+    // failed included, and commandQueuePendingDepth only those in the
+    // backend's waiting statuses (pending, queued, requested, claimed). The
+    // Commands queued KPI showed the pending one while the Queued commands row
+    // showed the total, so the same page answered "2" and "5" to one question.
+    // Every place now names both. A depth the body lacks reads "—" rather than
+    // borrowing the other: the old fallback from pending to total labelled
+    // completed entries as pending.
+    function queueCounts(dev) {
+        var pending = dev.commandQueuePendingDepth != null ? dev.commandQueuePendingDepth : '—';
+        var total = dev.commandQueueDepth != null ? dev.commandQueueDepth : '—';
+        return { pending: pending, total: total, text: pending + ' pending · ' + total + ' total' };
+    }
+
+    // The top-bar pill says what the latest poll established, in one of four
+    // words: CHECKING (nothing yet), LIVE, OFFLINE (the API answered and the
+    // phone is not live) or NO DATA (the API gave no answer to judge by, shown
+    // with a red dot). NO DATA rather than UNAVAILABLE because the top bar has
+    // no slack at phone widths: UNAVAILABLE pushed it 5-29px past the viewport
+    // at 384/375/360px, where NO DATA fits wherever OFFLINE already does. The
+    // dot's className is assigned whole, not toggled, so recovering from
+    // NO DATA cannot leave the red error dot beside a LIVE label.
+    function setPill(text, dot) {
+        $('liveDot').className = 'live-dot' + (dot ? ' ' + dot : '');
+        $('liveText').textContent = text;
+    }
+
+    // The KPI row and the Live status, Network and Command queue panels are all
+    // built from ONE /api/s24-public snapshot, so a poll that yields none
+    // withdraws them together. Before this only the 503 branch settled
+    // anything: a 500 or a network error left the Live status spinner turning
+    // under "Loading…" and the pill on CHECKING with its green dot pulsing,
+    // while the diagnostic box above already said the request had failed. A
+    // failed poll after a good one kept a LIVE Status KPI and last-known queue
+    // rows on screen under a red light, and a failed first load left the "No
+    // commands queued." placeholder standing, a claim nothing had queried.
+    // Tracked site activity is its own endpoint and keeps its own states.
+    function withdrawSnapshot(poll, kpiNote, panelNote) {
+        $('kpiStatus').textContent = '—';
+        $('kpiStatus').className = 'value';
+        $('kpiStatusSub').textContent = kpiNote;
+        ['kpiLastSeen', 'kpiQueue', 'kpiWifi'].forEach(function (id) {
+            $(id).textContent = '—';
+            $(id + 'Sub').textContent = '';
+        });
+        $('netDetail').innerHTML = '<div class="state">' + esc(panelNote) + '</div>';
+        $('netHint').textContent = 'WiFi and connection details';
+        netFloor = poll + 1;
+        netWithdrawn = true;
+        $('queueTable').querySelector('tbody').innerHTML = '<tr><td colspan="4" class="state">' + esc(panelNote) + '</td></tr>';
+        $('queueHint').textContent = 'Read-only queue · use the authenticated main dashboard to send S24 commands';
+    }
+
+    // Every poll that ends without a snapshot goes through here, so the pill,
+    // the Live status panel, the withdrawal and the diagnostic box always
+    // settle together. The specifics (status code, error text) live in the
+    // hint and the diagnostic box; the panel only names the state.
+    function showLiveUnavailable(poll, hint, title, diagTitle, diagHtml) {
+        $('liveHint').textContent = hint;
+        setPill('NO DATA', 'err');
+        $('liveDetail').innerHTML = '<div class="state err"><div class="state-title">' + esc(title) + '</div>Retrying every 30 s — or press Refresh.</div>';
+        withdrawSnapshot(poll, 'status unavailable', 'Unavailable — no device snapshot from the status API.');
+        setLight(false, diagTitle, diagHtml);
+    }
+
+    // Polls overlap: the 30 s timer and the Refresh button each start one, and
+    // a slow answer (a function running into its timeout) can land after a
+    // newer one. An answer paints only if no newer poll has painted yet, so a
+    // late stale failure cannot blank a fresh LIVE reading and a late stale
+    // success cannot re-light LIVE over a newer failure. The test is against
+    // the newest PAINTED poll, not the newest started one: when every answer
+    // takes longer than the 30 s interval, each would otherwise be superseded
+    // before it landed and the page would sit on CHECKING for good.
+    var livePoll = 0;       // polls started
+    var livePainted = 0;    // newest poll whose answer is on screen
+
+    // The Network card repaints asynchronously (jp-devices answers after the
+    // snapshot did), so it keeps its own record by the same rule. netFloor is
+    // the oldest poll whose jp-devices answer may still paint the card:
+    // painting from poll N raises it to N, and withdrawing on poll N raises it
+    // to N + 1, because a render error can withdraw after that poll's own
+    // jp-devices request has left, and its late answer must not repaint the
+    // withdrawn card. An answer from a poll older than the snapshot on screen
+    // may still paint the card when nothing newer has: it is still the newest
+    // network reading to arrive, and dropping it is what starved the card
+    // whenever jp-devices ran slower than the polls. The KPI row belongs to
+    // the snapshot, so it only takes the WiFi figure from that snapshot's own
+    // jp-devices answer. netWithdrawn means the card still reads "Unavailable";
+    // the next good snapshot paints its coarse fields straight away instead
+    // of leaving that text beside a LIVE page until jp-devices answers.
+    var netFloor = 0;
+    var netWithdrawn = false;
+
     function loadLive() {
+        var poll = ++livePoll;
         $('liveHint').textContent = 'Loading live device state…';
         fetchJSON('/api/s24-public', AUTH)
             .then(function (res) {
+                if (poll < livePainted) return;
+                livePainted = poll;
                 if (res.status === 503) {
-                    $('liveHint').textContent = 'Not configured — server-side credentials missing (503).';
-                    $('liveDetail').innerHTML = '<div class="state">Status API not configured.</div>';
-                    $('liveDot').classList.add('off');
-                    $('liveText').textContent = 'OFFLINE';
-                    setLight(false, 'API not configured on this deployment',
+                    showLiveUnavailable(poll, 'Not configured — server-side credentials missing (503).',
+                        'Status API not configured', 'API not configured on this deployment',
                         '<code>/api/s24-public</code> returned 503 — the Firestore credentials are missing on this deployment, so no device state can be served. Server-side config problem, not the phone.');
                     return;
                 }
                 if (res.status !== 200 || !res.body || !res.body.success) {
-                    $('liveHint').textContent = 'Unavailable — the status API answered HTTP ' + res.status + '.';
-                    setLight(false, 'Device state unavailable (temporary)',
+                    showLiveUnavailable(poll, 'Unavailable — the status API answered HTTP ' + res.status + '.',
+                        'Live status unavailable', 'Device state unavailable (temporary)',
                         'The status API answered HTTP ' + res.status + ' instead of a device snapshot. This is retryable — the page re-polls every 30 s, or press Refresh.');
                     return;
                 }
@@ -333,8 +446,8 @@
                 if (!pub) {
                     $('liveHint').textContent = 'Firestore · ' + (res.body.database || 'eka-agent') + ' · no device document yet';
                     $('liveDetail').innerHTML = '<div class="state">Device not found in Firestore. Waiting for first heartbeat…</div>';
-                    $('liveDot').classList.add('off');
-                    $('liveText').textContent = 'OFFLINE';
+                    setPill('OFFLINE', 'off');
+                    withdrawSnapshot(poll, 'no device document', 'No device document in Firestore yet.');
                     setLight(false, 'Device not connected',
                         'No document for <code>samsung-s24-ultra</code> in Firestore <code>eka-agent/devices</code>. ' +
                         'Start the phone daemon in Termux, then use the authenticated main dashboard to request a sync.');
@@ -343,8 +456,7 @@
                 var dev = mapPublicDevice(pub, precise);
                 _deviceData = dev;
                 var live = dev.live;
-                $('liveDot').classList.toggle('off', !live);
-                $('liveText').textContent = live ? 'LIVE' : 'OFFLINE';
+                setPill(live ? 'LIVE' : 'OFFLINE', live ? '' : 'off');
 
                 var threshold = dev.heartbeatMaxAgeSeconds || 300;
                 var reason = dev.liveness && dev.liveness.reason ? dev.liveness.reason : 'strict liveness checks did not pass';
@@ -355,8 +467,8 @@
                 var brokerDoc = dev.connectionMethod === 'signed-broker-v2';
                 if (live) {
                     setLight(true, 'Device connected — ONLINE',
-                        'Heartbeat received ' + lastSeenAgeText(dev) +
-                        ' (strict heartbeat window ' + threshold + 's' +
+                        'Heartbeat received ' + esc(lastSeenAgeText(dev)) +
+                        ' (strict heartbeat window ' + esc(threshold) + 's' +
                         (brokerDoc ? '; signed by the phone\'s enrolled hardware key' : '; command ACK window 300s') +
                         '). Green light blinks while the phone daemon keeps heartbeating.');
                 } else if (dev.lastSeenCoarse === 'never') {
@@ -366,27 +478,31 @@
                 } else if (dev.liveness && dev.liveness.mode === 'strict-s24-attestation') {
                     setLight(false, 'Device OFFLINE — strict proof missing',
                         'The dashboard ignores the stored <code>online</code> flag. ' +
-                        esc(reason) + '. Last heartbeat: ' + lastSeenAgeText(dev) + '. ' +
+                        esc(reason) + '. Last heartbeat: ' + esc(lastSeenAgeText(dev)) + '. ' +
                         (brokerDoc
                             ? 'A queued command cannot supply this proof: it needs a fresh heartbeat signed by the phone\'s enrolled key. Check that the broker daemon is running in Termux on the phone and read its log.'
                             : 'Legacy direct-cloud liveness also needs a completed command acknowledgement within 300s. Use the authenticated main dashboard to request a fresh sync.'));
                 } else {
                     setLight(false, 'Device OFFLINE — heartbeat stale',
-                        'Last heartbeat: ' + lastSeenAgeText(dev) + ', which exceeds the ' +
-                        threshold + 's live threshold. The phone daemon stopped checking in. Start it in Termux, then use the authenticated main dashboard to request a fresh sync.');
+                        'Last heartbeat: ' + esc(lastSeenAgeText(dev)) + ', which exceeds the ' +
+                        esc(threshold) + 's live threshold. The phone daemon stopped checking in. Start it in Termux, then use the authenticated main dashboard to request a fresh sync.');
                 }
 
                 $('kpiStatus').textContent = live ? 'LIVE' : 'OFFLINE';
                 $('kpiStatus').className = 'value ' + (live ? 'good' : 'bad');
                 $('kpiStatusSub').textContent = dev.connectionMethod || '—';
 
-                $('kpiLastSeen').textContent = dev.lastSeen ? fmtAgo(dev.lastSeen) : (coarseAgo(dev.lastSeenCoarse) || '—');
+                // Tested on coarseAgo()'s text, not the raw field, so a bucket
+                // that reads "unknown" is never captioned as a real coarse time;
+                // and only a keyless answer is told the key would help.
+                var seenCoarse = coarseAgo(dev.lastSeenCoarse);
+                $('kpiLastSeen').textContent = dev.lastSeen ? fmtAgo(dev.lastSeen) : (seenCoarse || '—');
                 $('kpiLastSeenSub').textContent = dev.lastSeen ? fmtTime(dev.lastSeen)
-                    : (dev.lastSeenCoarse && dev.lastSeenCoarse !== 'never' && dev.lastSeenCoarse !== 'unknown' ? 'exact time needs the dashboard key' : '');
+                    : (!precise && seenCoarse && seenCoarse !== 'never' && seenCoarse !== 'unknown' ? 'exact time needs the dashboard key' : '');
 
-                var pendingCommands = dev.commandQueuePendingDepth != null ? dev.commandQueuePendingDepth : (dev.commandQueueDepth || 0);
-                $('kpiQueue').textContent = pendingCommands;
-                $('kpiQueueSub').textContent = pendingCommands > 0 ? 'pending' : 'empty';
+                var queue = queueCounts(dev);
+                $('kpiQueue').textContent = queue.pending;
+                $('kpiQueueSub').textContent = 'pending · ' + queue.total + ' total';
 
                 $('kpiWifi').textContent = dev.wifiSignalPercent != null ? dev.wifiSignalPercent + '%' : '—';
                 $('kpiWifiSub').textContent = dev.networkType || '';
@@ -395,17 +511,16 @@
                     ? '<span class="pill" style="background:rgba(46,160,67,.15);color:#2ea043">LIVE</span>'
                     : '<span class="pill" style="background:rgba(200,60,60,.12);color:#c83c3c">OFFLINE</span>';
 
-                var lastSeenVal = dev.lastSeen ? fmtTime(dev.lastSeen)
-                    : (coarseAgo(dev.lastSeenCoarse) ? coarseAgo(dev.lastSeenCoarse) + ' (coarse)' : '—');
+                var lastSeenVal = dev.lastSeen ? fmtTime(dev.lastSeen) : (seenCoarse ? seenCoarse + ' (coarse)' : '—');
                 var html = '<div class="kv-grid">' +
                     '<div class="kv-item"><div class="k">Device</div><div class="v">' + esc(dev.deviceDisplayName || dev.deviceId) + '</div></div>' +
                     '<div class="kv-item"><div class="k">Status</div><div class="v">' + badge + '</div></div>' +
-                    '<div class="kv-item"><div class="k">Last seen</div><div class="v">' + lastSeenVal + '</div></div>' +
-                    '<div class="kv-item"><div class="k">Age</div><div class="v">' + (precise ? ageCell(dev.lastSeenAgeSeconds, dev.lastSeenCoarse) : 'Last reported ' + (coarseAgo(dev.lastSeenCoarse) || 'unknown')) + '</div></div>' +
+                    '<div class="kv-item"><div class="k">Last seen</div><div class="v">' + esc(lastSeenVal) + '</div></div>' +
+                    '<div class="kv-item"><div class="k">Age</div><div class="v">' + esc(precise ? ageCell(dev.lastSeenAgeSeconds, dev.lastSeenCoarse) : 'Last reported ' + (seenCoarse || 'unknown')) + '</div></div>' +
                     '<div class="kv-item"><div class="k">Connection</div><div class="v">' + esc(dev.connectionMethod || '—') + '</div></div>' +
                     '<div class="kv-item"><div class="k">Agent proof</div><div class="v">' + esc(dev.agentVersion || '—') + '</div></div>' +
-                    '<div class="kv-item"><div class="k">Last command ACK</div><div class="v">' + (precise ? ageCell(dev.lastCommandAckAgeSeconds, dev.lastCommandAckCoarse) : 'Acknowledged ' + (coarseAgo(dev.lastCommandAckCoarse) || 'unknown')) + '</div></div>' +
-                    '<div class="kv-item"><div class="k">Queued commands</div><div class="v">' + (dev.commandQueueDepth || 0) + '</div></div>' +
+                    '<div class="kv-item"><div class="k">Last command ACK</div><div class="v">' + esc(precise ? ageCell(dev.lastCommandAckAgeSeconds, dev.lastCommandAckCoarse) : 'Acknowledged ' + (coarseAgo(dev.lastCommandAckCoarse) || 'unknown')) + '</div></div>' +
+                    '<div class="kv-item"><div class="k">Queued commands</div><div class="v">' + esc(queue.text) + '</div></div>' +
                     '</div>';
                 $('liveDetail').innerHTML = html;
                 // generated_at resets on every poll, so it may only ever be
@@ -413,13 +528,27 @@
                 // lastSeen is the real update time, never this stamp.
                 $('liveHint').textContent = 'Firestore · ' + res.body.database + ' · strict liveness = ' + (brokerDoc ? 'broker-signed heartbeat + attestation' : 'authenticated heartbeat + attestation + ACK') + ' · status fetched ' + fmtTime(res.body.generated_at) + (precise ? '' : ' · coarse public projection');
 
-                renderNetworkCard(dev);
-                renderQueue(dev, precise);
+                renderNetworkCard(dev, poll);
+                renderQueue(dev, precise, queue);
+            }, function (e) {
+                // No complete answer arrived: offline, DNS, or the connection
+                // dropped before or during the body.
+                if (poll < livePainted) return;
+                livePainted = poll;
+                showLiveUnavailable(poll, 'Error: ' + e.message,
+                    'Live status unavailable', 'Device state unavailable (temporary)',
+                    'No complete answer came back from the status API: <code>' + esc(e.message) + '</code>. This is retryable — the page re-polls every 30 s, or press Refresh.');
             })
+            // Only an exception while painting an answer lands here: a page bug
+            // or a response shape this page does not know. It used to share
+            // the transport handler and be reported as "Could not reach the
+            // status API". It is still withdrawn, because a half-painted
+            // snapshot must not stand, but it is reported as what it is.
             .catch(function (e) {
-                $('liveHint').textContent = 'Error: ' + e.message;
-                setLight(false, 'Device state unavailable (temporary)',
-                    'Could not reach the status API: <code>' + esc(e.message) + '</code>. This is retryable — the page re-polls every 30 s, or press Refresh.');
+                if (poll < livePainted) return;
+                showLiveUnavailable(poll, 'Error: ' + e.message,
+                    'Live status could not be displayed', 'Device state could not be displayed',
+                    'The status API answered, but painting its snapshot failed: <code>' + esc(e.message) + '</code>. The page re-polls every 30 s, or press Refresh.');
             });
     }
 
@@ -427,28 +556,40 @@
     // fields. A stored key fetches /api/jp-devices and feeds the untouched
     // rich renderNetwork(dev) exactly as before; any lesser outcome (401,
     // 403, 500, 503, transport failure, device not in response) degrades
-    // back to the coarse note instead of an error.
-    function renderNetworkCard(dev) {
-        if (!AUTH['x-stats-key']) { renderNetworkCoarse(dev); return; }
+    // back to the coarse note instead of an error. `poll` is the loadLive()
+    // poll this card belongs to; see netFloor for why it is checked.
+    function renderNetworkCard(dev, poll) {
+        var keyed = !!AUTH['x-stats-key'];
+        if (!keyed || netWithdrawn) { netFloor = poll; renderNetworkCoarse(dev); }
+        if (!keyed) return;
         fetchJSON('/api/jp-devices', AUTH)
             .then(function (res) {
+                if (poll < netFloor) return;
+                netFloor = poll;
                 var rich = (res.status === 200 && res.body && res.body.success)
                     ? (res.body.devices || []).find(function (d) { return d.deviceId === DEVICE_ID; })
                     : null;
                 if (rich) {
-                    if (rich.network && rich.network.wifiSignal && rich.network.wifiSignal.signal_percent != null) {
-                        $('kpiWifi').textContent = rich.network.wifiSignal.signal_percent + '%';
+                    if (poll === livePainted) {
+                        if (rich.network && rich.network.wifiSignal && rich.network.wifiSignal.signal_percent != null) {
+                            $('kpiWifi').textContent = rich.network.wifiSignal.signal_percent + '%';
+                        }
+                        if (rich.network && rich.network.ssid) $('kpiWifiSub').textContent = rich.network.ssid;
                     }
-                    if (rich.network && rich.network.ssid) $('kpiWifiSub').textContent = rich.network.ssid;
                     renderNetwork(rich);
                 } else {
                     renderNetworkCoarse(dev);
                 }
             })
-            .catch(function () { renderNetworkCoarse(dev); });
+            .catch(function () {
+                if (poll < netFloor) return;
+                netFloor = poll;
+                renderNetworkCoarse(dev);
+            });
     }
 
     function renderNetworkCoarse(dev) {
+        netWithdrawn = false;
         function kvItem(k, v) {
             return '<div class="kv-item"><div class="k">' + esc(k) + '</div><div class="v">' + esc(v) + '</div></div>';
         }
@@ -461,6 +602,7 @@
     }
 
     function renderNetwork(dev) {
+        netWithdrawn = false;
         var n = dev.network;
         if (!n) { $('netDetail').innerHTML = '<div class="state">No network data reported yet.</div>'; return; }
         var sig = n.wifiSignal && n.wifiSignal.signal_percent != null ? n.wifiSignal.signal_percent + '%' : '—';
@@ -480,44 +622,57 @@
             return '<div class="kv-item"><div class="k">' + esc(label) + (stale ? ' (stale)' : '') + '</div>' +
                    '<div class="v mono">' + esc(ip) + note + '</div></div>';
         }
+        // Signal and traffic figures are telemetry the device doc carries as
+        // written, not numbers the API computed, so they are escaped like the
+        // strings around them.
         $('netDetail').innerHTML = '<div class="kv-grid">' +
             '<div class="kv-item"><div class="k">SSID</div><div class="v">' + esc(n.ssid || '—') + '</div></div>' +
-            '<div class="kv-item"><div class="k">WiFi signal</div><div class="v">' + sig + '</div></div>' +
+            '<div class="kv-item"><div class="k">WiFi signal</div><div class="v">' + esc(sig) + '</div></div>' +
             ipItem('Observed IP', n.observedIp, n.observedIpStale, n.observedIpAt) +
             ipItem('Public IP', n.publicIp, n.publicIpStale, n.publicIpAt) +
-            '<div class="kv-item"><div class="k">Sent</div><div class="v">' + (n.sent_mb != null ? n.sent_mb + ' MB' : '—') + '</div></div>' +
-            '<div class="kv-item"><div class="k">Received</div><div class="v">' + (n.recv_mb != null ? n.recv_mb + ' MB' : '—') + '</div></div>' +
+            '<div class="kv-item"><div class="k">Sent</div><div class="v">' + esc(n.sent_mb != null ? n.sent_mb + ' MB' : '—') + '</div></div>' +
+            '<div class="kv-item"><div class="k">Received</div><div class="v">' + esc(n.recv_mb != null ? n.recv_mb + ' MB' : '—') + '</div></div>' +
             '<div class="kv-item"><div class="k">Updated</div><div class="v">' + (n.updatedAt ? fmtTime(n.updatedAt) : '—') + '</div></div>' +
             ifaceItems + connItems +
             '</div>';
         $('netHint').textContent = n.ssid ? ('Connected to ' + n.ssid + ' · ' + sig + ' signal') : 'No WiFi connection';
     }
 
-    function renderQueue(dev, precise) {
+    function renderQueue(dev, precise, counts) {
         var tbody = $('queueTable').querySelector('tbody');
         var q = precise ? dev.commandQueue : null;
         if (!q || !q.length) {
-            var total = dev.commandQueueDepth || 0;
-            var pending = dev.commandQueuePendingDepth != null ? dev.commandQueuePendingDepth : total;
-            if (!precise && (total > 0 || pending > 0)) {
-                // Keyless visitors get depth counts only — the public body
-                // never carries queue entries, so no action strings render.
-                tbody.innerHTML = '<tr><td colspan="4" class="state">' + pending + ' pending · ' + total + ' total · entries need the dashboard key</td></tr>';
-                $('queueHint').textContent = 'Read-only queue · use the authenticated main dashboard to send S24 commands';
-            } else {
+            // "No commands queued." only when both depths are known zeros;
+            // anything else repeats the counts, so the table never asserts an
+            // empty queue the KPI and Live status row do not also show.
+            // Keyless visitors get depth counts only — the public body never
+            // carries queue entries, so no action strings render. A keyed
+            // answer lands here only when the server counted entries it could
+            // not turn into rows (non-object values, or an array-shaped queue).
+            if (counts.total === 0 && counts.pending === 0) {
                 tbody.innerHTML = '<tr><td colspan="4" class="state">No commands queued.</td></tr>';
                 $('queueHint').textContent = 'No commands queued · use the authenticated main dashboard to send S24 commands.';
+            } else {
+                tbody.innerHTML = '<tr><td colspan="4" class="state">' + esc(counts.text) + ' · ' +
+                    (precise ? 'no entry could be read' : 'entries need the dashboard key') + '</td></tr>';
+                $('queueHint').textContent = 'Read-only queue · use the authenticated main dashboard to send S24 commands';
             }
             return;
         }
         tbody.innerHTML = q.map(function (c) {
-            var status = c.status || 'pending';
+            // The backend passes a stored status through as whatever type it
+            // was written with. A number here used to throw on toUpperCase(),
+            // and a render error now withdraws the whole snapshot, so one odd
+            // queue entry would have blanked the page.
+            var status = String(c.status || 'pending');
             var statusBadge = status === 'completed' ? '<span class="pill" style="background:rgba(46,160,67,.15);color:#2ea043">DONE</span>'
                 : status === 'failed' ? '<span class="pill" style="background:rgba(200,60,60,.12);color:#c83c3c">FAILED</span>'
                 : '<span class="pill" style="background:rgba(185,119,14,.15);color:#B9770E">' + esc(status.toUpperCase()) + '</span>';
             return '<tr><td>' + esc(c.action || '—') + '</td><td>' + statusBadge + '</td><td>' + fmtTime(c.queuedAt) + '</td><td>' + fmtTime(c.completedAt) + '</td></tr>';
         }).join('');
-        $('queueHint').textContent = q.length + ' commands in queue';
+        // Same reading as the KPI; the listed count is added only when the
+        // server counted entries it could not turn into rows.
+        $('queueHint').textContent = counts.text + (q.length !== counts.total ? ' · ' + q.length + ' listed' : '');
     }
 
     function loadHistory() {
