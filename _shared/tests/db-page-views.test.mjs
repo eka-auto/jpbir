@@ -179,6 +179,16 @@ await t('a 30-second time_on_page, which arrives in milliseconds, reads "30s" an
   assert.equal(msSecs(95500), '1m 36s');
 });
 
+await t('a drawer tree reads time_on_page and the tracker\'s timeOnPage as a duration too, the stored ms on hover', () => {
+  // The Events table said "30s" while the event drawer, a tree, printed the
+  // same field as a bare 30000 and left the unit to a guess.
+  const out = treeHtml({ time_on_page: 30000, raw_payload: { timeOnPage: '95500' }, loadTime: 1234 });
+  assert.match(out, /<dt>time_on_page<\/dt><dd><span title="30000 ms">30s<\/span><\/dd>/);
+  assert.match(out, /<dt>timeOnPage<\/dt><dd><span title="95500 ms">1m 36s<\/span><\/dd>/);
+  assert.match(out, /<dt>loadTime<\/dt><dd>1234<\/dd>/, 'only the two millisecond fields are converted');
+  assert.match(treeHtml({ time_on_page: 'n/a' }), /<dt>time_on_page<\/dt><dd>n\/a<\/dd>/, 'a value that is not a number stays as stored');
+});
+
 await t('true-seconds fields still read as seconds, and no part rounds up to 60', () => {
   assert.equal(secs(45), '45s');
   assert.equal(secs(119.6), '2m 0s');

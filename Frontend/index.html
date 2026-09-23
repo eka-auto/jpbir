@@ -145,6 +145,12 @@
     .panel-head .tools button { font-size: 11.5px; padding: 5px 10px; border-radius: 8px; border: 1px solid var(--border);
         background: var(--panel2); color: var(--ink-muted); cursor: pointer; font-family: var(--sans); }
     .panel-head .tools button:hover { border-color: var(--amber); color: var(--amber-deep); }
+    /* A pressed filter pill in a tools row (WhatsApp chat → Media & audio). The
+       pills and the chat's Close button used to carry inline dark-theme colours
+       (#F4E9DC text on a near-transparent fill), which read on the topbar and
+       all but vanished on this light panel; they now take the rule above. */
+    .panel-head .tools button[aria-pressed="true"] { border-color: var(--amber); color: var(--ink);
+        background: rgba(200,122,30,.12); font-weight: 600; }
     .panel-head .tools input { font-size: 12px; padding: 5px 10px; border-radius: 8px; border: 1px solid var(--border);
         background: var(--panel2); color: var(--ink); font-family: var(--sans); outline: none; width: 190px; }
     .panel-head .tools input:focus { border-color: var(--amber); }
@@ -735,7 +741,7 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
                     <div class="panel"><h2>Recent sync runs</h2><div id="waRuns" tabindex="0" role="region" aria-label="Recent sync runs" style="max-height:360px;overflow-y:auto"><div class="hint">No runs recorded yet.</div></div></div>
                 </div>
                 <div class="panel">
-                    <div class="panel-head"><div><h2>Chats</h2><div class="hint" id="waChatsHint">Ordered by message count. Click a row to see its raw entry.</div></div>
+                    <div class="panel-head"><div><h2>Chats</h2><div class="hint" id="waChatsHint">Ordered by message count. Click a row for the chat's details.</div></div>
                         <input id="waFilter" type="text" placeholder="Filter by name…" style="padding:8px 12px;border:1px solid var(--border);border-radius:9px;background:var(--panel2);color:var(--ink);font-family:var(--sans);font-size:12.5px;outline:none;width:220px">
                     </div>
                     <div id="waChatsWrap" class="capped" tabindex="0" role="region" aria-label="WhatsApp chats">
@@ -765,7 +771,7 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
                 <div class="panel" id="waDetail" style="margin-top:14px;display:none;scroll-margin-top:70px">
                     <div class="panel-head">
                         <div><h2 id="waDetailName">Chat</h2><div class="hint" id="waDetailHint"></div></div>
-                        <div class="tools"><button id="waDetailClose" style="font-family:var(--sans);font-size:12px;color:#F4E9DC;background:rgba(255,248,238,.07);border:1px solid rgba(240,185,104,.3);border-radius:9px;padding:7px 12px;cursor:pointer">Close</button></div>
+                        <div class="tools"><button id="waDetailClose" type="button">Close</button></div>
                     </div>
                     <div id="waDetailKpis" class="kv-grid" style="margin-top:12px"></div>
                     <div class="grid2" style="margin-top:14px">
@@ -1067,8 +1073,16 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
     // <video controls>, audio → <audio controls>, document (incl. zip) → a
     // download link that carries file name / size / mime. Everything else
     // shows filename + kind.
+    // size_bytes is a Postgres BIGINT, and node-postgres returns BIGINT as a
+    // STRING ("2204318") so a value past 2^53 is never silently rounded.
+    // Number.isFinite() is false for every string, so this printed nothing on
+    // every live-content card: a document's line ended in a bare "·" and the
+    // footer read "name ·  · …". Coerce first; null, '' and anything that is
+    // not a number stay blank. viewer.html's fmtBytes already does the same.
     function fmtBytes(n) {
-        if (!Number.isFinite(n)) return '';
+        if (n === null || n === undefined || n === '') return '';
+        n = Number(n);
+        if (!Number.isFinite(n) || n < 0) return '';
         if (n < 1024) return n + ' B';
         if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
         return (n / (1024 * 1024)).toFixed(2) + ' MB';
@@ -1081,6 +1095,28 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
     function waMediaSrc(a) {
         if (a && a.att_id) return '/api/wa-media?att_id=' + encodeURIComponent(a.att_id) + '&key=' + encodeURIComponent(KEY);
         return (a && a.blob_url) || '';
+    }
+
+    // Attachment rows carry chat_id only, and that id is the export's own id
+    // or, for a chat exported without one, "h_" + 20 hex digits (chatIdFor in
+    // Integrations/wa-store.js). The card footer printed chat_id.slice(-14),
+    // which is a hash fragment, not a chat. The name lives in the WhatsApp
+    // inventory (WA_STATE.chats, from /api/jp-whatsapp); until that has loaded
+    // the card says nothing about the chat rather than print an id. The index
+    // is rebuilt only when loadWhatsApp() swaps in a new chats array.
+    var _waNameIndex = null, _waNameIndexSrc = null, _waNamesAsked = false;
+    function waChatName(chatId) {
+        if (chatId === null || chatId === undefined || chatId === '') return '';
+        var list = typeof WA_STATE !== 'undefined' && WA_STATE ? WA_STATE.chats : null;
+        if (!list || !list.length) return '';
+        if (_waNameIndexSrc !== list) {
+            _waNameIndex = Object.create(null);
+            list.forEach(function (c) {
+                if (c && c.chat_id != null && c.name) _waNameIndex[String(c.chat_id)] = String(c.name);
+            });
+            _waNameIndexSrc = list;
+        }
+        return _waNameIndex[String(chatId)] || '';
     }
 
     function renderAttachmentCard(a) {
@@ -1139,7 +1175,7 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
             var icon = isZip ? '🗜️' : '📄';
             doc.innerHTML = '<div style="font-size:22px">' + icon + '</div>' +
                 '<div style="margin-top:4px">' + esc(a.file_name || '(unnamed)') + '</div>' +
-                '<div class="hint" style="font-size:10.5px;margin-top:2px">' + esc(mime || 'unknown mime') + ' · ' + esc(fmtBytes(a.size_bytes)) + '</div>' +
+                '<div class="hint" style="font-size:10.5px;margin-top:2px">' + esc([mime || 'unknown mime', fmtBytes(a.size_bytes)].filter(Boolean).join(' · ')) + '</div>' +
                 '<div class="hint" style="font-size:10.5px;margin-top:6px;color:#F0B968">Open / download →</div>';
             body.appendChild(doc);
         } else {
@@ -1151,7 +1187,7 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
         foot.className = 'hint';
         foot.style.cssText = 'font-size:10.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
         var fname = a.file_name || '(unnamed)';
-        foot.textContent = fname + (a.size_bytes ? ' · ' + fmtBytes(a.size_bytes) : '') + (a.chat_id ? ' · ' + a.chat_id.slice(-14) : '');
+        foot.textContent = [fname, fmtBytes(a.size_bytes), waChatName(a.chat_id)].filter(Boolean).join(' · ');
         card.appendChild(foot);
         return card;
     }
@@ -1185,6 +1221,14 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
             (j.attachments || []).forEach(function (a) {
                 grid.appendChild(renderAttachmentCard(a));
             });
+            // The cards name their chat from the WhatsApp inventory, which
+            // otherwise loads only when that page is opened. Ask for it once:
+            // this panel re-renders every 10 s, so the names appear on the next
+            // pass. Once only, so a failing inventory never rides every poll.
+            if ((j.attachments || []).length && !waLoaded && !_waNamesAsked) {
+                _waNamesAsked = true;
+                loadWhatsApp();
+            }
             if (!(j.attachments || []).length) {
                 grid.innerHTML = '<div class="hint">' + emptyLine('media', j.window_days || 7, j.newest_attachment_at) + '</div>';
             }
@@ -2914,7 +2958,9 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
     })();
     function waAttTile(a) {
         var url = waMediaSrc(a);
-        var meta = (a.file_name ? esc(a.file_name) + ' · ' : '') + (a.size_bytes ? Math.round(a.size_bytes / 1024) + ' KB' : '');
+        // fmtBytes, not size / 1024: that read a 300-byte sticker as "0 KB" and
+        // a 15 MB video as "14650 KB", and left "name · " when there was no size.
+        var meta = esc([a.file_name, fmtBytes(a.size_bytes)].filter(Boolean).join(' · '));
         var when = a.sent_at ? new Date(a.sent_at).toISOString().slice(0, 10) : '';
         if (a.kind === 'image' || a.kind === 'sticker') {
             return '<a href="' + esc(url) + '" target="_blank" rel="noopener" style="display:block;text-decoration:none;color:inherit">'
@@ -2936,16 +2982,16 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
         }
         return '<a href="' + esc(url) + '" target="_blank" rel="noopener" style="display:block;padding:10px;border-radius:8px;background:rgba(200,122,30,.08);text-decoration:none;color:inherit">'
             + '<div style="font-size:12px;font-weight:600">' + esc(a.file_name || a.kind) + '</div>'
-            + '<div style="font-size:11px;color:var(--ink-muted);margin-top:4px">' + esc(a.mime || a.kind) + ' · ' + (a.size_bytes ? Math.round(a.size_bytes / 1024) + ' KB' : '') + '</div>'
+            + '<div style="font-size:11px;color:var(--ink-muted);margin-top:4px">' + esc([a.mime || a.kind, fmtBytes(a.size_bytes)].filter(Boolean).join(' · ')) + '</div>'
             + '<div style="font-size:10px;color:var(--ink-muted)">' + when + '</div></a>';
     }
     function renderAttKinds(byKind, current) {
         var host = $('waAttKinds'); if (!host) return;
         var kinds = Object.keys(byKind || {}).sort();
+        // k === '' is the unfiltered pill; it printed a bare count with no label.
         var pill = function (k, n, on) {
-            return '<button class="wa-att-kind" data-kind="' + esc(k) + '" '
-                + 'style="font-family:var(--sans);font-size:11px;color:#F4E9DC;background:' + (on ? 'rgba(240,185,104,.28)' : 'rgba(255,248,238,.06)') + ';border:1px solid rgba(240,185,104,.3);border-radius:9px;padding:5px 10px;cursor:pointer;margin-left:6px">'
-                + esc(k) + ' ' + fmt(n) + '</button>';
+            return '<button type="button" class="wa-att-kind" data-kind="' + esc(k) + '" aria-pressed="' + (on ? 'true' : 'false') + '">'
+                + esc(k || 'all') + ' ' + fmt(n) + '</button>';
         };
         var total = Object.values(byKind).reduce(function (a, b) { return a + (b | 0); }, 0);
         host.innerHTML = pill('', total, !current) + kinds.map(function (k) { return pill(k, byKind[k], current === k); }).join('');
