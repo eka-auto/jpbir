@@ -247,7 +247,7 @@
 ### 🔐 `C:\Users\abcom\.config\eka\s24_device_secret`
 **Purpose:** S24 daemon device secret
 
-**Content:** `local-bridge-secret-2026`
+**Content:** Not documented; treat the file as sensitive.
 
 **Status:** Active (Termux-side daemon auth)
 
