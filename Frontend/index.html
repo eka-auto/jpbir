@@ -648,16 +648,19 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
             </section>
 
             <!-- FIRESTORE -->
-            <!-- Live view of every document in the eka-agent Firestore database.
-                 Polls /api/jp-devices?full=1 every 10 seconds and replaces the
-                 rendered contents in place, so no stale document lingers: what
-                 Firestore currently has is what shows. Same STATS_KEY gate. -->
+            <!-- Live view of the fleet devices' documents in the eka-agent
+                 Firestore database. Polls /api/jp-devices?full=1 every 10
+                 seconds and replaces the rendered contents in place, so no
+                 stale document lingers. The roster is the three-device fleet
+                 (DEVICE_IDS in Backend/broker.js); any other document in the
+                 collection is named in the summary, not shown as a device.
+                 Same STATS_KEY gate. -->
             <section class="page" id="page-firestore">
                 <div class="panel">
                     <div class="panel-head">
                         <div>
                             <h2>Firestore documents</h2>
-                            <div class="hint" id="firestoreHead">Live sync of every document in the eka-agent database. Poll interval 10 s.</div>
+                            <div class="hint" id="firestoreHead">Live sync of each fleet device's document in the eka-agent database. Poll interval 10 s.</div>
                         </div>
                         <div class="tools">
                             <span id="firestoreDot" class="live-dot"></span>
@@ -1044,10 +1047,15 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
             refreshFirestoreContent();
 
             var fsSync = newestLastSeen(devices);
-            summary.textContent = devices.length + ' document(s) · database ' + (j.database || '?') +
+            // other_documents: ids in the devices collection that are not
+            // fleet devices (a test agent, an empty enrolment artifact).
+            // Named here so the three-device count is not a silent filter.
+            var others = Array.isArray(j.other_documents) ? j.other_documents : [];
+            summary.textContent = devices.length + ' device document(s) · database ' + (j.database || '?') +
                 ' · fetched at ' + when.toLocaleTimeString() +
-                ' · newest device sync ' + (fsSync ? fmtTime(fsSync) + ' (' + fmtAgo(fsSync) + ')' : 'never');
-            head.textContent = 'Live sync of every document in the ' + (j.database || 'eka-agent') + ' database. Poll interval 10 s. Old data is replaced on every sync, so nothing clutters the view.';
+                ' · newest device sync ' + (fsSync ? fmtTime(fsSync) + ' (' + fmtAgo(fsSync) + ')' : 'never') +
+                (others.length ? ' · not devices, not shown: ' + others.join(', ') : '');
+            head.textContent = 'Live sync of each fleet device\'s document in the ' + (j.database || 'eka-agent') + ' database. Poll interval 10 s. Old data is replaced on every sync, so nothing clutters the view.';
             if (dot) dot.className = 'live-dot';
         } catch (err) {
             summary.textContent = 'error: ' + (err && err.message ? err.message : String(err));

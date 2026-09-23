@@ -4,6 +4,7 @@ import { evaluate, evaluateSyncPipeline } from './lib/stale.js';
 import { query as pgQuery, isConfigured as pgIsConfigured } from '../Integrations/postgres.js';
 import { requireKey } from './_auth.js';
 import { cronAuthorized } from './lib/cron-auth.js';
+import { splitFleet } from './broker.js';
 
 const _env = (typeof process !== 'undefined' ? process : globalThis['proc' + 'ess']).env;
 const FIREBASE_SA_JSON = _env['FIREBASE_' + 'SERVICE_ACCOUNT_JSON'];
@@ -191,7 +192,12 @@ export default async function handler(req, res) {
     const transitions = [];
     let checked = 0;
 
-    for (const doc of data.documents || []) {
+    // Only the fleet is watched (DEVICE_IDS in broker.js). Looping over every
+    // document raised DOWN / NEVER SEEN alerts, and with email on a daily
+    // "Still down", about `eka-cloud-sandbox`, a test agent, and `g4g-laptop`,
+    // an empty enrolment artifact. Neither is a device, so every one of those
+    // alerts was noise beside the three that matter.
+    for (const doc of splitFleet(data.documents).fleet) {
       const f = {};
       for (const [k, v] of Object.entries(doc.fields || {})) f[k] = dec(v);
       const deviceId = doc.name.split('/').pop();

@@ -12,7 +12,7 @@ import { createSign, randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { z } from 'zod';
 import { tool, createSdkMcpServer } from '@anthropic-ai/claude-agent-sdk';
-import { deviceHealth, commandItem, actionGateError } from './device-health.mjs';
+import { deviceHealth, commandItem, actionGateError, splitFleet } from './device-health.mjs';
 
 const PROJECT_ID = process.env.S24_PROJECT_ID || 'intrepid-stage-495117-q1';
 const DATABASE = process.env.S24_FIRESTORE_DB || 'eka-agent';
@@ -184,7 +184,7 @@ const deviceIdParam = { device_id: z.string().default(DEFAULT_DEVICE).describe('
 
 const listDevices = tool(
   'list_devices',
-  'List every device registered in the global devices/ collection, with online status and how fresh each check-in is.',
+  'List the fleet (the three devices the broker enrols) with online status and how fresh each check-in is. Other documents in devices/ are named in other_documents, not counted as devices.',
   {},
   async () => {
     const documents = [];
@@ -196,7 +196,9 @@ const listDevices = tool(
       documents.push(...(res.documents || []));
       pageToken = res.nextPageToken;
     } while (pageToken);
-    const rows = documents.map((raw) => {
+    // The fleet, not the collection: see FLEET_DEVICE_IDS in device-health.mjs.
+    const { fleet, other } = splitFleet(documents);
+    const rows = fleet.map((raw) => {
       const deviceId = raw.name.split('/').pop();
       const d = parseDoc(raw);
       return {
@@ -207,7 +209,7 @@ const listDevices = tool(
         ...heartbeatFields(d),
       };
     });
-    return { content: [{ type: 'text', text: JSON.stringify({ count: rows.length, devices: rows }, null, 2) }] };
+    return { content: [{ type: 'text', text: JSON.stringify({ count: rows.length, devices: rows, other_documents: other }, null, 2) }] };
   },
 );
 

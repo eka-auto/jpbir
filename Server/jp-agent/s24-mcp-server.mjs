@@ -23,7 +23,7 @@ import { readFileSync } from 'node:fs';
 import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
-import { deviceHealth, commandItem, actionGateError } from '/opt/jp-agent/device-health.mjs';
+import { deviceHealth, commandItem, actionGateError, splitFleet } from '/opt/jp-agent/device-health.mjs';
 
 const PORT = Number(process.env.S24_MCP_PORT || 8792);
 const HOST = '127.0.0.1';
@@ -217,7 +217,7 @@ function buildMcp() {
   mcp.registerTool(
   'list_devices',
   {
-    description: 'List every device registered in the global devices/ collection, with online status and how fresh each check-in is.',
+    description: 'List the fleet (the three devices the broker enrols) with online status and how fresh each check-in is. Other documents in devices/ are named in other_documents, not counted as devices.',
     inputSchema: {},
   },
   async () => {
@@ -230,7 +230,9 @@ function buildMcp() {
       documents.push(...(res.documents || []));
       pageToken = res.nextPageToken;
     } while (pageToken);
-    const rows = documents.map((raw) => {
+    // The fleet, not the collection: see FLEET_DEVICE_IDS in device-health.mjs.
+    const { fleet, other } = splitFleet(documents);
+    const rows = fleet.map((raw) => {
       const deviceId = raw.name.split('/').pop();
       const d = parseDoc(raw);
       return {
@@ -241,7 +243,7 @@ function buildMcp() {
         ...heartbeatFields(d),
       };
     });
-    return json({ count: rows.length, devices: rows });
+    return json({ count: rows.length, devices: rows, other_documents: other });
   },
 );
 

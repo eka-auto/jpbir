@@ -20,6 +20,29 @@ import {
   s24LivenessVerdict,
 } from './s24-attestation.js';
 
+/**
+ * The fleet, for the droplet: a copy of DEVICE_IDS in Backend/broker.js, whose
+ * HARDWARE_RULES make these three the only ids the broker will enrol or accept
+ * a heartbeat from. list_devices counted every document in devices/ and said
+ * five, because the collection also holds a test agent (`eka-cloud-sandbox`)
+ * and an empty enrolment artifact (`g4g-laptop`). deploy.sh ships files flat,
+ * so this side cannot import that one; _shared/tests/device-fleet.test.mjs
+ * fails if the two lists, or the two splitFleet functions, disagree.
+ */
+export const FLEET_DEVICE_IDS = Object.freeze(['g4g-lenovo-laptop', 'jayti-asus-vivobook', 'samsung-s24-ultra']);
+
+/** Listed devices/ documents → the fleet's documents, and the ids of the rest. */
+export function splitFleet(documents) {
+  const fleet = [];
+  const other = [];
+  for (const doc of documents || []) {
+    const id = String((doc && doc.name) || '').split('/').pop();
+    if (FLEET_DEVICE_IDS.includes(id)) fleet.push(doc);
+    else other.push(id);
+  }
+  return { fleet, other };
+}
+
 export function deviceHealth(deviceId, doc, now = Date.now()) {
   const age = value => {
     if (typeof value !== 'string') return null;

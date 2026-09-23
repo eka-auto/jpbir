@@ -26,6 +26,41 @@ export const HARDWARE_RULES = {
   },
 };
 
+/**
+ * The fleet: the devices in HARDWARE_RULES, and nothing else.
+ *
+ * An id with no rules can never enrol or report: verifyHardwareFingerprint
+ * refuses it and device-heartbeat.js answers 403. So HARDWARE_RULES is the only
+ * definition of "a device" this system has. The Firestore devices collection
+ * holds more than that. On 2026-09-23 it held five documents: these three,
+ * `eka-cloud-sandbox` (the channel-sandbox test agent, silent since
+ * 2026-09-08) and `g4g-laptop` (an enrolment artifact with no fields that
+ * never reported). Every reader counted whatever the collection held, so the
+ * health verdict, the stale-alert emails and the droplet's list_devices spoke
+ * of five devices, and the dashboard of four (it hid only `g4g-laptop`).
+ * Every device count now goes through splitFleet(), so all of them agree with
+ * the broker. Server/jp-agent/device-health.mjs carries a copy for the
+ * droplet, which cannot import this file; _shared/tests/device-fleet.test.mjs
+ * fails if the two disagree.
+ */
+export const DEVICE_IDS = Object.freeze(Object.keys(HARDWARE_RULES));
+
+/**
+ * Firestore REST documents listed from devices/ → the fleet's documents, in
+ * listing order, and the ids of every other document, so a caller can say what
+ * it left out rather than hide it.
+ */
+export function splitFleet(documents) {
+  const fleet = [];
+  const other = [];
+  for (const doc of documents || []) {
+    const id = String((doc && doc.name) || '').split('/').pop();
+    if (DEVICE_IDS.includes(id)) fleet.push(doc);
+    else other.push(id);
+  }
+  return { fleet, other };
+}
+
 export const ALLOWED_KEY_TYPES = new Set([
   'tpm-cng-p256',
   'android-keystore-p256',
