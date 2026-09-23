@@ -322,6 +322,11 @@ t('a stopped daemon logs one warning naming the probe and each stale device, nev
   assert.match(line, /samsung-s24-ultra:1500m/, 'each stale device is named with its heartbeat age');
   assert.match(line, /jayti-asus-vivobook:never/, 'a device that never reported says so');
   assert.doesNotMatch(line, /g4g-lenovo-laptop/, 'a fresh device is not noise in the line');
+  // Six stack-map files hang off the devices probe, so the file counts must
+  // say they are files; the device tally is separate and names the fleet size.
+  assert.match(line, / files_fail=6 files_warn=0 files_unknown=\d+ /, 'file counts are labelled as files');
+  assert.doesNotMatch(line, / fail=\d/, 'a bare fail=6 beside three devices reads as six devices');
+  assert.match(line, / devices_not_ok=2\/3 /, 'two of the three fleet devices are down');
 });
 
 t('a failing cloud probe logs at error level, and no problem or detail text reaches the log', () => {
