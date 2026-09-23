@@ -485,14 +485,19 @@
     // Amber is kept for exactly the statuses Backend/jp-devices.js counts in
     // commandQueuePendingDepth, so a row is amber if and only if the KPI counts
     // it; a status none of these lists knows gets a neutral grey.
+    // Own-property lookups: a status such as "constructor" must not resolve to
+    // an Object.prototype member and be drawn as waiting (s24.html's
+    // statusBadge does the same; _shared/tests/device-pages-contract.test.mjs
+    // holds both pages to it).
     var WAITING = { pending: 1, queued: 1, requested: 1, claimed: 1 };
     var SUCCEEDED = { completed: 1, ok: 1 };
     var FAILED = { failed: 1, error: 1, rejected: 1 };
+    function inSet(set, s) { return Object.prototype.hasOwnProperty.call(set, s); }
     function statusBadge(status) {
         var s = String(status || 'pending');
-        var colours = WAITING[s] ? 'background:rgba(185,119,14,.15);color:#B9770E'
-            : SUCCEEDED[s] ? 'background:rgba(46,160,67,.15);color:#2ea043'
-            : FAILED[s] ? 'background:rgba(200,60,60,.12);color:#c83c3c'
+        var colours = inSet(WAITING, s) ? 'background:rgba(185,119,14,.15);color:#B9770E'
+            : inSet(SUCCEEDED, s) ? 'background:rgba(46,160,67,.15);color:#2ea043'
+            : inSet(FAILED, s) ? 'background:rgba(200,60,60,.12);color:#c83c3c'
             : 'background:rgba(108,95,83,.12);color:#6C5F53';
         return '<span class="pill" style="' + colours + '">' + esc(s === 'completed' ? 'DONE' : s.toUpperCase()) + '</span>';
     }
