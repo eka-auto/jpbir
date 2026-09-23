@@ -40,7 +40,7 @@ for (const k of ['GMAIL_APP_' + 'PASSWORD', 'DATABASE_URL', 'POSTGRES_URL', 'CRO
 
 const { DEVICE_IDS, HARDWARE_RULES, splitFleet, verifyHardwareFingerprint } = await import('../../Backend/broker.js');
 const { FLEET_DEVICE_IDS, splitFleet: dropletSplitFleet } = await import('../../Server/jp-agent/device-health.mjs');
-const { deviceFreshness } = await import('../../Backend/jp-stack.js');
+const { deviceFreshness, snapshot, logVerdict } = await import('../../Backend/jp-stack.js');
 const { default: jpDevices } = await import('../../Backend/jp-devices.js');
 const { default: checkStale } = await import('../../Backend/check-stale.js');
 const { verifyFirestore } = await import('../../Backend/verify-db.js');
@@ -119,6 +119,16 @@ await t('the health verdict judges the three devices and never the test agent or
   assert.doesNotMatch(r.problem, /eka-cloud-sandbox|g4g-laptop/);
   assert.deepEqual(r.byDevice['samsung-s24-ultra'], { status: 'fail', mins: 13054 });
   assert.deepEqual(r.byDevice['jayti-asus-vivobook'], { status: 'warn', mins: null }, 'no lastSeen reads as never reported');
+});
+
+await t('the health log line counts devices against the fleet of three', () => {
+  const lines = [];
+  const log = { warn: (m) => lines.push(m), error: (m) => lines.push(m) };
+  logVerdict(snapshot({ devices: deviceFreshness({ status: 'ok', _docs: PRODUCTION }) }), log);
+  assert.equal(lines.length, 1);
+  assert.match(lines[0],
+    / devices_not_ok=3\/3 devices=g4g-lenovo-laptop:17876m,jayti-asus-vivobook:never,samsung-s24-ultra:13054m$/,
+    'at 06:15 UTC on 2026-09-23 this line listed five, the test agent and the artifact among them');
 });
 
 await t('a fleet device with no document is judged as never enrolled, not dropped from the count', () => {
