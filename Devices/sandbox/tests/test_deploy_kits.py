@@ -32,6 +32,20 @@ def kit_path(kit_name: str) -> Path:
     return SANDBOX / KIT_DIR[kit_name]
 
 
+def legacy_cleanup_body(installer: str) -> str:
+    """The code of Remove-LegacyFleetStartup, full-line comments dropped.
+
+    From its declaration to the first closing brace at column 0, so the
+    cleanup assertions cannot be satisfied by code elsewhere in the installer,
+    and a comment can neither satisfy nor trip one.
+    """
+    start = re.search(r"(?m)^function Remove-LegacyFleetStartup \{$", installer)
+    assert start is not None, "Remove-LegacyFleetStartup is not defined"
+    end = installer.index("\n}\n", start.start())
+    body = installer[start.start():end + 2]
+    return "\n".join(line for line in body.split("\n") if not re.match(r"\s*#", line))
+
+
 class TestDeployKits(unittest.TestCase):
     def test_shared_runtime_files_exactly_match_canonical_files(self):
         for kit_name in ("lenovo", "vivobook", "s24"):
@@ -73,17 +87,32 @@ class TestDeployKits(unittest.TestCase):
                 self.assertNotIn("FIRESTORE", config)
                 self.assertNotIn("service_account_key", config)
                 self.assertFalse((kp / "firestore_client.py").exists())
-                self.assertIn("Remove-LegacyFleetStartup", installer)
-                self.assertIn("EKA-Fleet-Agent.vbs", installer)
-                self.assertIn("CommonStartup", installer)
-                self.assertIn("Stop-Process", installer)
-                self.assertIn("Unregister-ScheduledTask", installer)
-                self.assertIn("serviceAccountKey.json", installer)
-                self.assertIn("Write-Warning", installer)
+                # Scoped to the cleanup function's own code. Against the whole
+                # file, Stop-Process and serviceAccountKey.json were already
+                # satisfied by the running-broker restart and the $StaleKey
+                # removal, so deleting the legacy kill or key removal stayed green.
+                body = legacy_cleanup_body(installer)
+                self.assertIn("$LegacyRoot = 'C:\\eka-fleet-agent'", body)
+                self.assertIn("EKA-Fleet-Agent.vbs", body)
+                self.assertIn("CommonStartup", body)
+                self.assertIn("Stop-Process -Id $ProcessId", body)
+                self.assertIn("Unregister-ScheduledTask", body)
+                self.assertRegex(body, r"Join-Path \$LegacyRoot 'serviceAccountKey\.json'[\s\S]*Remove-Item -LiteralPath \$LegacyKey")
+                self.assertIn("Write-Warning", body)
                 self.assertGreater(
                     installer.rindex("Remove-LegacyFleetStartup"),
                     installer.index("Persistent broker startup did not prove a signed request"),
                 )
+                # Set-StrictMode -Version Latest: a COM-handler task action has no
+                # Execute/Arguments, and reading them threw and emptied the list.
+                self.assertRegex(installer, r"(?m)^Set-StrictMode -Version Latest$")
+                self.assertNotRegex(body, r"\$_\.(Execute|Arguments)\b")
+                self.assertIn("PSObject.Properties[$Name]", body)
+                # pythonw.exe writer, wscript/cscript loop, 32-bit Run key, .lnk shortcuts.
+                self.assertIn(r"pythonw?\.exe", body)
+                self.assertIn(r"[wc]script\.exe", body)
+                self.assertIn("WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Run", body)
+                self.assertIn("Extension -ieq '.lnk'", body)
 
     def test_s24_installer_has_no_inbound_or_key_download_path(self):
         kp = kit_path("s24")
@@ -123,7 +152,33 @@ class TestDeployKits(unittest.TestCase):
         self.assertIn("os.path.getsize(boot_launcher) > 0", installer)
         self.assertIn("exit 78", installer)
         self.assertNotIn("serviceAccountKey", installer)
-        self.assertLess(installer.index("verify_broker_install"), installer.index("pkg update -y"))
+        # The call, not the definition: index("verify_broker_install") found the
+        # declaration on line 21, which precedes `pkg update -y` whether or not
+        # the function is ever called.
+        definition = re.search(r"(?m)^verify_broker_install\(\) \{$", installer)
+        call = re.search(r"(?m)^verify_broker_install$", installer)
+        self.assertIsNotNone(call, "verify_broker_install is defined but never called")
+        self.assertIsNotNone(definition)
+        self.assertGreater(call.start(), definition.start())
+        for later in ("pkg update -y", "pkg install -y", 'cp "$WA_DIR/wa_push.py"', "| crontab -"):
+            with self.subTest(later=later):
+                self.assertLess(call.start(), installer.index(later))
+
+    def test_s24_daemon_installer_provisions_no_listener(self):
+        # runtime_contract.json transport.inboundListener is false; this
+        # installer used to provision s24-agent-daemon.mjs, a Node HTTP server
+        # with a run_shell tool, and tell the operator to start it.
+        kp = kit_path("s24")
+        installer = (kp / "install_daemon.sh").read_text(encoding="utf-8")
+        contract = json.loads((kp / "runtime_contract.json").read_text(encoding="utf-8"))
+        self.assertFalse(contract["transport"]["inboundListener"])
+        self.assertNotRegex(installer, r'cat > "?\$APP_DIR/run\.sh"?|cat > package\.json|AGENT_TOKEN="\$\(openssl')
+        self.assertNotRegex(installer, r"(?m)^pkg install[^\n]*\b(nodejs|nodejs-lts|openssl-tool)\b")
+        done = installer[installer.index("Install complete"):]
+        self.assertNotRegex(done, r"run\.sh|s24-agent-daemon|loopback-only")
+        for kept in ("wa_push_tick.sh", "wa_media_tick.sh", "wa_export_tick.sh"):
+            with self.subTest(kept=kept):
+                self.assertIn(f'"$APP_DIR/{kept}"', installer)
 
     def test_s24_release_contract_and_install_order_are_pinned(self):
         kp = kit_path("s24")

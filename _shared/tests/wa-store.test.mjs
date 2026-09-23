@@ -114,6 +114,18 @@ function stub(messageRowCount = null) {
   check('a message whose chat was never ingested is orphaned, not silently lost',
     r.received === 3 && r.normalized === 3 && r.orphaned === 2, JSON.stringify(r));
   check('message statement is guarded by the chat existing', /WHERE EXISTS \(SELECT 1 FROM wa_chats/.test(s.calls[0].text), s.calls[0].text.slice(0, 120));
+  // The recovery dump is re-sent on every S24 sync with no text, so each record
+  // arrives as the encrypted placeholder. With `body = COALESCE(EXCLUDED.body, ...)`
+  // that placeholder replaced the text a chat export had imported. The statement
+  // must let a placeholder or NULL fill only an empty row, and keep `encrypted`
+  // with whichever body survives.
+  const sql = s.calls[0].text.replace(/\s+/g, ' ');
+  check('a placeholder re-sent by the recovery dump never overwrites an imported message body',
+    !/body = COALESCE\(EXCLUDED\.body, wa_messages\.body\)/.test(sql)
+    && /body = CASE WHEN EXCLUDED\.body IS NULL OR EXCLUDED\.body = '\[Encrypted — export chat to read\]' THEN COALESCE\(wa_messages\.body, EXCLUDED\.body\) ELSE EXCLUDED\.body END/.test(sql)
+    && /encrypted = CASE WHEN \(EXCLUDED\.body IS NULL OR EXCLUDED\.body = '\[Encrypted — export chat to read\]'\) AND wa_messages\.body IS NOT NULL AND wa_messages\.body <> '\[Encrypted — export chat to read\]' THEN wa_messages\.encrypted ELSE EXCLUDED\.encrypted END/.test(sql)
+    && s.calls[0].params.length === 12,
+    sql.slice(sql.indexOf('ON CONFLICT'), sql.indexOf('ON CONFLICT') + 600));
 }
 {
   // two id-less "Family" groups plus the same explicit id twice: one statement, three distinct keys

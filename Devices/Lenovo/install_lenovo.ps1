@@ -16,13 +16,34 @@ $PinnedCommit = '183e600d0acd7e6171e35be904c657e7fe967384'
 $Here = Split-Path -Parent $MyInvocation.MyCommand.Path
 
 function Remove-LegacyFleetStartup {
-    # The retired fleet agent writes directly to Firestore. Retire its exact
-    # launcher only after the signed broker has proved it is live; otherwise a
-    # cleanup error could leave this laptop without either agent.
+    # The retired fleet agent writes directly to Firestore with a service-account
+    # key it loads at start. Retire every launcher of it only after the signed
+    # broker has proved it is live; otherwise a cleanup error could leave this
+    # laptop without either agent.
+    #
+    # Launchers are matched by their own text, never by one exact python.exe path.
+    # The writer has run as ...\.venv\Scripts\python.exe and as pythonw.exe (the
+    # windowless form a VBS launcher starts), under a wscript/cscript loop over
+    # EKA-Fleet-Agent.vbs that restarts it, and from Run values and Startup
+    # shortcuts that point at that .vbs. Matching only `python.exe ... -m ekagent`
+    # left the pythonw.exe writer running with the key already in memory, and
+    # deleting the key file does not revoke a credential a live process holds.
+    # The strings are literals, not Join-Path output, so what is compared is
+    # exactly the text Windows stores.
+    #
+    # All of this runs under the script's Set-StrictMode -Version Latest, where
+    # reading a property an object does not have throws. Not every scheduled-task
+    # action is an exec action: COM-handler actions (MSFT_TaskComHandlerAction,
+    # e.g. \Microsoft\Windows\Wininet\CacheTask on a stock install) have no
+    # Execute or Arguments. Reading $_.Execute on the first one threw, the single
+    # catch around the whole filter printed one warning and treated the list as
+    # empty, and no legacy task was ever removed. Properties are read through
+    # PSObject.Properties[...], which yields $null for a missing one, and each
+    # task is inspected on its own, so one odd task cannot hide the others.
     $LegacyRoot = 'C:\eka-fleet-agent'
-    $LegacyPython = Join-Path $LegacyRoot '.venv\Scripts\python.exe'
-    $LegacyModule = '-m ekagent'
     $LegacyVbsName = 'EKA-Fleet-Agent.vbs'
+    $LegacyModulePattern = '(?i)(^|\s)-m\s+"?ekagent\b'
+    $RegistryNoteProperties = @('PSPath', 'PSParentPath', 'PSChildName', 'PSDrive', 'PSProvider')
 
     function Invoke-LegacyCleanup {
         param([string]$Description, [scriptblock]$Action)
@@ -36,72 +57,144 @@ function Remove-LegacyFleetStartup {
         }
     }
 
-    $LegacyProcesses = @()
-    try {
-        $LegacyProcesses = @(Get-CimInstance Win32_Process -ErrorAction Stop | Where-Object {
-            $_.CommandLine -and
-            $_.CommandLine.IndexOf($LegacyPython, [StringComparison]::OrdinalIgnoreCase) -ge 0 -and
-            $_.CommandLine.IndexOf($LegacyModule, [StringComparison]::OrdinalIgnoreCase) -ge 0
-        })
-    } catch {
-        Write-Warning "Could not inspect legacy fleet processes: $($_.Exception.Message)"
+    function Get-OptionalProperty {
+        param($InputObject, [string]$Name)
+        if ($null -eq $InputObject) { return $null }
+        $Property = $InputObject.PSObject.Properties[$Name]
+        if ($Property) { return $Property.Value }
+        return $null
     }
-    foreach ($Process in $LegacyProcesses) {
-        Invoke-LegacyCleanup "stopped legacy fleet process $($Process.ProcessId)" {
-            Stop-Process -Id $Process.ProcessId -Force -ErrorAction Stop
+
+    # True for text that starts the legacy writer: its launcher .vbs, or the
+    # ekagent module run from the legacy install.
+    function Test-LegacyLauncherText {
+        param([string]$Text)
+        if ([string]::IsNullOrWhiteSpace($Text)) { return $false }
+        if ($Text.IndexOf($LegacyVbsName, [StringComparison]::OrdinalIgnoreCase) -ge 0) { return $true }
+        return ($Text.IndexOf($LegacyRoot, [StringComparison]::OrdinalIgnoreCase) -ge 0 -and $Text -match $LegacyModulePattern)
+    }
+
+    # Host: the wscript/cscript loop running the legacy .vbs, which restarts the
+    # writer. Writer: a python.exe / pythonw.exe running the ekagent module.
+    function Get-LegacyProcess {
+        param([ValidateSet('Host', 'Writer')][string]$Kind)
+        @(Get-CimInstance Win32_Process -ErrorAction Stop | Where-Object {
+            $CommandLine = [string](Get-OptionalProperty $_ 'CommandLine')
+            $Name = [string](Get-OptionalProperty $_ 'Name')
+            if ($Kind -eq 'Host') {
+                $Name -match '^(?i)[wc]script\.exe$' -and
+                    $CommandLine.IndexOf($LegacyVbsName, [StringComparison]::OrdinalIgnoreCase) -ge 0
+            } else {
+                $CommandLine -match $LegacyModulePattern -and
+                    ($Name -match '^(?i)pythonw?\.exe$' -or $CommandLine.IndexOf($LegacyRoot, [StringComparison]::OrdinalIgnoreCase) -ge 0)
+            }
+        })
+    }
+
+    function Get-ShortcutCommandLine {
+        param([string]$Path)
+        $Shell = New-Object -ComObject WScript.Shell
+        try {
+            $Shortcut = $Shell.CreateShortcut($Path)
+            return "$($Shortcut.TargetPath) $($Shortcut.Arguments)"
+        } finally {
+            if ([Runtime.InteropServices.Marshal]::IsComObject($Shell)) {
+                [void][Runtime.InteropServices.Marshal]::ReleaseComObject($Shell)
+            }
         }
+    }
+
+    # The loop first, so it cannot start a fresh writer after the writer is
+    # stopped; then the writers, enumerated again.
+    foreach ($Kind in @('Host', 'Writer')) {
+        $LegacyProcesses = @()
+        try {
+            $LegacyProcesses = @(Get-LegacyProcess $Kind)
+        } catch {
+            Write-Warning "Could not inspect legacy fleet processes: $($_.Exception.Message)"
+        }
+        foreach ($Process in $LegacyProcesses) {
+            $ProcessId = Get-OptionalProperty $Process 'ProcessId'
+            Invoke-LegacyCleanup "stopped legacy fleet $($Kind.ToLowerInvariant()) process $ProcessId" {
+                Stop-Process -Id $ProcessId -Force -ErrorAction Stop
+            }
+        }
+        if ($Kind -eq 'Host' -and $LegacyProcesses.Count -gt 0) { Start-Sleep -Milliseconds 500 }
     }
 
     foreach ($StartupFolder in @(
         [Environment]::GetFolderPath([Environment+SpecialFolder]::Startup),
         [Environment]::GetFolderPath([Environment+SpecialFolder]::CommonStartup)
     )) {
-        $LegacyVbs = Join-Path $StartupFolder $LegacyVbsName
-        if (Test-Path -LiteralPath $LegacyVbs -PathType Leaf) {
-            Invoke-LegacyCleanup "removed legacy Startup launcher $LegacyVbs" {
-                Remove-Item -LiteralPath $LegacyVbs -Force -ErrorAction Stop
+        if ([string]::IsNullOrWhiteSpace($StartupFolder) -or -not (Test-Path -LiteralPath $StartupFolder -PathType Container)) { continue }
+        foreach ($Item in @(Get-ChildItem -LiteralPath $StartupFolder -File -ErrorAction SilentlyContinue)) {
+            $IsLegacy = $Item.Name -ieq $LegacyVbsName
+            if (-not $IsLegacy -and $Item.Extension -ieq '.lnk') {
+                try {
+                    $IsLegacy = Test-LegacyLauncherText (Get-ShortcutCommandLine $Item.FullName)
+                } catch {
+                    Write-Warning "Could not read Startup shortcut $($Item.FullName): $($_.Exception.Message)"
+                }
+            }
+            if ($IsLegacy) {
+                $LegacyLauncher = $Item.FullName
+                Invoke-LegacyCleanup "removed legacy Startup launcher $LegacyLauncher" {
+                    Remove-Item -LiteralPath $LegacyLauncher -Force -ErrorAction Stop
+                }
             }
         }
     }
 
     foreach ($RunKey in @(
         'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run',
-        'HKLM:\Software\Microsoft\Windows\CurrentVersion\Run'
+        'HKLM:\Software\Microsoft\Windows\CurrentVersion\Run',
+        'HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Run'
     )) {
         if (-not (Test-Path -LiteralPath $RunKey)) { continue }
+        $LegacyValues = @()
         try {
             $RunProperties = (Get-ItemProperty -LiteralPath $RunKey -ErrorAction Stop).PSObject.Properties
             $LegacyValues = @($RunProperties | Where-Object {
                 $_.MemberType -eq 'NoteProperty' -and
-                ([string]$_.Value).IndexOf($LegacyRoot, [StringComparison]::OrdinalIgnoreCase) -ge 0 -and
-                ([string]$_.Value).IndexOf($LegacyModule, [StringComparison]::OrdinalIgnoreCase) -ge 0
+                $RegistryNoteProperties -notcontains $_.Name -and
+                (Test-LegacyLauncherText ([string]$_.Value))
             })
         } catch {
             Write-Warning "Could not inspect legacy Run entries at ${RunKey}: $($_.Exception.Message)"
             continue
         }
         foreach ($Value in $LegacyValues) {
-            Invoke-LegacyCleanup "removed legacy Run entry $RunKey\$($Value.Name)" {
-                Remove-ItemProperty -LiteralPath $RunKey -Name $Value.Name -ErrorAction Stop
+            $ValueName = $Value.Name
+            Invoke-LegacyCleanup "removed legacy Run entry $RunKey\$ValueName" {
+                Remove-ItemProperty -LiteralPath $RunKey -Name $ValueName -ErrorAction Stop
             }
         }
     }
 
+    $AllTasks = @()
     try {
-        $LegacyTasks = @(Get-ScheduledTask -ErrorAction Stop | Where-Object {
-            ($_.Actions | Where-Object {
-                "$($_.Execute) $($_.Arguments)".IndexOf($LegacyRoot, [StringComparison]::OrdinalIgnoreCase) -ge 0 -and
-                "$($_.Execute) $($_.Arguments)".IndexOf($LegacyModule, [StringComparison]::OrdinalIgnoreCase) -ge 0
-            }).Count -gt 0
-        })
+        $AllTasks = @(Get-ScheduledTask -ErrorAction Stop)
     } catch {
-        Write-Warning "Could not inspect legacy scheduled tasks: $($_.Exception.Message)"
-        $LegacyTasks = @()
+        Write-Warning "Could not list scheduled tasks: $($_.Exception.Message)"
     }
-    foreach ($Task in $LegacyTasks) {
-        Invoke-LegacyCleanup "removed legacy scheduled task $($Task.TaskPath)$($Task.TaskName)" {
-            Stop-ScheduledTask -TaskName $Task.TaskName -TaskPath $Task.TaskPath -ErrorAction SilentlyContinue
-            Unregister-ScheduledTask -TaskName $Task.TaskName -TaskPath $Task.TaskPath -Confirm:$false -ErrorAction Stop
+    foreach ($Task in $AllTasks) {
+        $TaskName = [string](Get-OptionalProperty $Task 'TaskName')
+        $TaskPath = [string](Get-OptionalProperty $Task 'TaskPath')
+        $IsLegacy = $false
+        try {
+            foreach ($TaskAction in @(Get-OptionalProperty $Task 'Actions' | Where-Object { $null -ne $_ })) {
+                $ActionText = "$(Get-OptionalProperty $TaskAction 'Execute') $(Get-OptionalProperty $TaskAction 'Arguments')"
+                if (Test-LegacyLauncherText $ActionText) { $IsLegacy = $true; break }
+            }
+        } catch {
+            Write-Warning "Could not inspect scheduled task ${TaskPath}${TaskName}: $($_.Exception.Message)"
+            continue
+        }
+        if ($IsLegacy) {
+            Invoke-LegacyCleanup "removed legacy scheduled task ${TaskPath}${TaskName}" {
+                Stop-ScheduledTask -TaskName $TaskName -TaskPath $TaskPath -ErrorAction SilentlyContinue
+                Unregister-ScheduledTask -TaskName $TaskName -TaskPath $TaskPath -Confirm:$false -ErrorAction Stop
+            }
         }
     }
 
