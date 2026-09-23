@@ -202,14 +202,40 @@ result, and nothing more. Queued ≠ executed; always check `device_result`.
 `samsung-s24-ultra`, `g4g-lenovo-laptop` and `jayti-asus-vivobook`. The broker
 refuses enrolment and heartbeats from any other id. Firestore's `devices`
 collection also holds `eka-cloud-sandbox` (the channel-sandbox test agent) and
-`g4g-laptop` (an empty enrolment artifact), and until 2026-09-23 every reader
-counted the collection: the health verdict and stale alerts said five devices,
-the dashboard four. Every device count now goes through `splitFleet()`: the
-health verdict, `check-stale`, the `/api/jp-devices` roster (which names the
-rest in `other_documents`), `verify-db`, and the droplet's `list_devices`
-(via its copy in `Server/jp-agent/device-health.mjs`).
-`_shared/tests/device-fleet.test.mjs` pins all of it. Never count the
-collection.
+`g4g-laptop` (the Lenovo's own video watcher writing under its hostname
+instead of `g4g-lenovo-laptop`; fixed on the laptop 2026-09-23), and until
+2026-09-23 every reader counted the collection: the health verdict and stale
+alerts said five devices, the dashboard four. Every device count now goes
+through `splitFleet()`: the health verdict, `check-stale`, the
+`/api/jp-devices` roster (which names the rest in `other_documents`),
+`verify-db`, and the droplet's `list_devices` (via its copy in
+`Server/jp-agent/device-health.mjs`). `_shared/tests/device-fleet.test.mjs`
+pins all of it. Never count the collection.
+
+### A Windows device that shows offline: check these, in order
+
+On 2026-09-23 the dashboard showed `g4g-lenovo-laptop` offline for 12 days
+during a session running on that laptop. Four independent faults, each enough
+on its own; check all four before concluding anything:
+
+1. **Is the daemon running?** `Get-CimInstance Win32_Process | ? CommandLine -match 'device_agent\.py'`.
+   The kit installs to `C:\eka-agent\broker` and persists as the
+   `EKA-Lenovo-Daemon` / `EKA-VivoBook-Daemon` task, or an `HKCU\...\Run` entry
+   when the task cannot be re-registered. `logs\<deviceId>.log` holds its history.
+2. **Does its config reach the broker?** `broker_url` must be
+   `https://jaytipargal.tech`. `agent.jaytipargal.tech` is a different server
+   that answers 404 on every broker route; both Windows kits pointed there.
+3. **Does the device doc still have `enrollment.activeKeyId`?** Every broker
+   route rejects a key that is not the doc's active key. A doc re-created by a
+   restore (`restoredFrom`, `registeredBy: jaytibirthday-site/fleet:register`)
+   has no `enrollment`, so a healthy daemon exits 3 on its first heartbeat.
+   `device-enroll` refuses an already-registered key (409), so re-enrolling the
+   same TPM key does not work: restore the block from `deviceKeys/<keyId>`
+   after proving on the device that the TPM key derives that keyId.
+4. **Did it die on a transient error?** Every 401/403 is fatal (exit 3) by
+   design. Before this date a WMI timeout made the agent send a heartbeat with
+   no manufacturer, the broker answered 403 "hardware mismatch", and the daemon
+   quit for good. `_shared/tests/windows-device-kits.test.mjs` pins the fix.
 
 ### `generated_at` is not a sync time
 
