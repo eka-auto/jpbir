@@ -52,7 +52,7 @@ Static HTML served by Vercel from `Frontend/`.
 | `/jteka` | `jteka.html` | JTEKA fleet status |
 | `/agent` | `agent.html` | Ask the `jp-agent` runtime (via `/agent/query`) |
 | `/db` | `db.html` | Data browser over the Postgres warehouse |
-| `/viewer` | `viewer.html` | Chrome data browser (synced browser media/history) |
+| `/viewer` | `viewer.html` | Media: WhatsApp photos, video, voice notes and documents from every chat (`/api/jp-live-content`, files via the `/api/wa-media` proxy) |
 
 `template.html` is the page scaffold the others are built from and has no route.
 
