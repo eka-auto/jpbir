@@ -158,7 +158,7 @@
         <div class="table-wrap">
             <table id="histTable">
                 <thead><tr><th>Visited</th><th>Title</th><th>URL</th><th>Browser</th></tr></thead>
-                <tbody><tr><td colspan="4" class="state">No tracked site activity yet.</td></tr></tbody>
+                <tbody><tr><td colspan="4" class="state">Loading…</td></tr></tbody>
             </table>
         </div>
     </div>
@@ -638,6 +638,32 @@
         $('netHint').textContent = n.ssid ? ('Connected to ' + n.ssid + ' · ' + sig + ' signal') : 'No WiFi connection';
     }
 
+    // Badge colour by what a status means. Only 'completed' and 'failed' used
+    // to be recognised and everything else fell through to the amber pending
+    // style, but the phone finishes commands as 'ok', 'done', 'error' or
+    // 'rejected' too, so a queue the KPI counts as "0 pending" could still be
+    // drawn as a column of pending-looking pills. Amber is kept for exactly the
+    // statuses Backend/s24-public.js counts in commandQueuePendingDepth
+    // (PENDING_STATUSES), so a row is amber if and only if the KPI counts it;
+    // a status none of these lists knows gets a neutral grey. vivobook.html's
+    // statusBadge draws the same line. The status is stored as whatever type
+    // it was written with, so it is read as a string: a number used to throw
+    // on toUpperCase(), and a render error withdraws the whole snapshot.
+    // Own-property lookups, as in coarseAgo(): a status such as "constructor"
+    // must not resolve to an Object.prototype member and read as waiting.
+    var WAITING = { pending: 1, queued: 1, requested: 1, claimed: 1 };
+    var SUCCEEDED = { completed: 1, ok: 1, done: 1 };
+    var FAILED = { failed: 1, error: 1, rejected: 1 };
+    function inSet(set, s) { return Object.prototype.hasOwnProperty.call(set, s); }
+    function statusBadge(status) {
+        var s = String(status || 'pending');
+        var colours = inSet(WAITING, s) ? 'background:rgba(185,119,14,.15);color:#B9770E'
+            : inSet(SUCCEEDED, s) ? 'background:rgba(46,160,67,.15);color:#2ea043'
+            : inSet(FAILED, s) ? 'background:rgba(200,60,60,.12);color:#c83c3c'
+            : 'background:rgba(108,95,83,.12);color:#6C5F53';
+        return '<span class="pill" style="' + colours + '">' + esc(s === 'completed' ? 'DONE' : s.toUpperCase()) + '</span>';
+    }
+
     function renderQueue(dev, precise, counts) {
         var tbody = $('queueTable').querySelector('tbody');
         var q = precise ? dev.commandQueue : null;
@@ -660,15 +686,7 @@
             return;
         }
         tbody.innerHTML = q.map(function (c) {
-            // The backend passes a stored status through as whatever type it
-            // was written with. A number here used to throw on toUpperCase(),
-            // and a render error now withdraws the whole snapshot, so one odd
-            // queue entry would have blanked the page.
-            var status = String(c.status || 'pending');
-            var statusBadge = status === 'completed' ? '<span class="pill" style="background:rgba(46,160,67,.15);color:#2ea043">DONE</span>'
-                : status === 'failed' ? '<span class="pill" style="background:rgba(200,60,60,.12);color:#c83c3c">FAILED</span>'
-                : '<span class="pill" style="background:rgba(185,119,14,.15);color:#B9770E">' + esc(status.toUpperCase()) + '</span>';
-            return '<tr><td>' + esc(c.action || '—') + '</td><td>' + statusBadge + '</td><td>' + fmtTime(c.queuedAt) + '</td><td>' + fmtTime(c.completedAt) + '</td></tr>';
+            return '<tr><td>' + esc(c.action || '—') + '</td><td>' + statusBadge(c.status) + '</td><td>' + fmtTime(c.queuedAt) + '</td><td>' + fmtTime(c.completedAt) + '</td></tr>';
         }).join('');
         // Same reading as the KPI; the listed count is added only when the
         // server counted entries it could not turn into rows.
@@ -679,20 +697,53 @@
         // Browser history comes from the key-gated jp-device endpoint. With
         // no stored key it is not fetched at all — a keyless 401 would only
         // turn a deliberately hidden panel into an error.
+        var tbody = $('histTable').querySelector('tbody');
         if (!AUTH['x-stats-key']) {
-            $('histTable').querySelector('tbody').innerHTML =
-                '<tr><td colspan="4" class="state">No tracked site activity yet.<br>' +
-                '<span class="hint">Browsing history is only shown to browsers that stored the dashboard key — unlock the main dashboard on this browser, then Reload.</span></td></tr>';
+            // Not "No tracked site activity yet": nothing was looked up.
+            tbody.innerHTML = '<tr><td colspan="4" class="state">Tracked site activity is only shown to browsers that stored the dashboard key.<br>' +
+                '<span class="hint">Unlock the main dashboard on this browser, then Reload.</span></td></tr>';
             $('histHint').textContent = 'Requires the dashboard key on this browser · not fetched.';
             return;
         }
+        // A failed load says so in the table as well as the hint. It used to
+        // rewrite only the hint, so a first load kept the markup's "No tracked
+        // site activity yet." (a claim nothing had checked) and a refresh kept
+        // the previous rows under an error. The body is read as text and
+        // parsed under try: r.json() on an HTML error page rejects with V8's
+        // SyntaxError, which quotes the page ('Unexpected token '<',
+        // "<!DOCTYPE "... is not valid JSON') -- raw text on screen. A server
+        // reason is repeated only when it reads as a sentence.
+        function fail(sentence, hint) {
+            tbody.innerHTML = '<tr><td colspan="4" class="state">' + esc(sentence) + '</td></tr>';
+            $('histHint').textContent = hint;
+        }
+        function serverSentence(b) {
+            var m = b && typeof b.error === 'string' ? b.error.replace(/\s+/g, ' ').trim() : '';
+            return m && m.length <= 180 && !/[{}\[\]<>]/.test(m) ? m : '';
+        }
         $('histHint').textContent = 'Loading tracked site activity…';
         fetch('/api/jp-device?' + new URLSearchParams({ days: 30, device: DEVICE_ID }).toString(), { headers: AUTH })
-            .then(function (r) { return r.json().then(function (j) { return { status: r.status, body: j }; }); })
+            .then(function (r) {
+                return r.text().then(function (t) {
+                    var j = null;
+                    try { j = JSON.parse(t); } catch (e) { /* an HTML error page or an empty body */ }
+                    return { status: r.status, body: j && typeof j === 'object' ? j : null };
+                });
+            })
             .then(function (res) {
-                if (!res.body.success) throw new Error(res.body.error || 'failed');
-                var evs = (res.body.device_events || []).filter(function (e) { return e.event_type === 'pageview'; });
-                var tbody = $('histTable').querySelector('tbody');
+                var b = res.body;
+                if (res.status === 401 && b && /^auth_/.test(b.code || '')) {
+                    fail('The dashboard key this browser holds was refused (HTTP 401), so tracked activity cannot be shown. Unlock the main dashboard again, then Reload.',
+                        'Dashboard key refused · not shown');
+                    return;
+                }
+                if (!b || !b.success) {
+                    var said = serverSentence(b);
+                    fail('Tracked site activity could not be loaded (HTTP ' + res.status + (said ? ': ' + said : '') + '). Press Refresh to try again.',
+                        'Error · HTTP ' + res.status);
+                    return;
+                }
+                var evs = (b.device_events || []).filter(function (e) { return e.event_type === 'pageview'; });
                 if (!evs.length) {
                     tbody.innerHTML = '<tr><td colspan="4" class="state">No tracked site activity found for this device.</td></tr>';
                     $('histHint').textContent = 'No tracked activity yet.';
@@ -702,8 +753,14 @@
                     return '<tr><td>' + fmtTime(e.timestamp || e.ts) + '</td><td>' + esc(e.title || '—') + '</td><td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(e.url || e.page_url || '—') + '</td><td>' + esc(e.browser || '—') + '</td></tr>';
                 }).join('');
                 $('histHint').textContent = evs.length + ' tracked pageviews';
+            }, function () {
+                fail('Could not reach the server for tracked site activity. Press Refresh to try again.', 'Error · no answer from the server');
             })
-            .catch(function (e) { $('histHint').textContent = 'Error: ' + e.message; });
+            // Only an exception while drawing an answer lands here, so it is
+            // not reported as a network failure.
+            .catch(function () {
+                fail('Tracked site activity came back but could not be displayed. Press Refresh to try again.', 'Error · display');
+            });
     }
 
     $('refreshBtn').addEventListener('click', loadLive);
