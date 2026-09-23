@@ -75,6 +75,11 @@ class TestDeployKits(unittest.TestCase):
                 self.assertFalse((kp / "firestore_client.py").exists())
                 self.assertIn("Remove-LegacyFleetStartup", installer)
                 self.assertIn("EKA-Fleet-Agent.vbs", installer)
+                self.assertIn("CommonStartup", installer)
+                self.assertIn("Stop-Process", installer)
+                self.assertIn("Unregister-ScheduledTask", installer)
+                self.assertIn("serviceAccountKey.json", installer)
+                self.assertIn("Write-Warning", installer)
                 self.assertGreater(
                     installer.rindex("Remove-LegacyFleetStartup"),
                     installer.index("Persistent broker startup did not prove a signed request"),
@@ -110,10 +115,13 @@ class TestDeployKits(unittest.TestCase):
         installer = (kit_path("s24") / "install_daemon.sh").read_text(encoding="utf-8")
         self.assertIn("verify_broker_install", installer)
         self.assertIn("install_s24.sh", installer)
-        self.assertIn("BROKER_STATE_PATH", installer)
-        self.assertIn("BROKER_BOOT_PATH", installer)
+        self.assertIn("BROKER_CONFIG_PATH", installer)
+        self.assertIn("broker_state_file", installer)
+        self.assertIn("installation_evidence_file", installer)
+        self.assertIn("broker_recovery_required", installer)
         self.assertIn("exit 78", installer)
         self.assertNotIn("serviceAccountKey", installer)
+        self.assertLess(installer.index("verify_broker_install"), installer.index("pkg update -y"))
 
     def test_s24_release_contract_and_install_order_are_pinned(self):
         kp = kit_path("s24")
