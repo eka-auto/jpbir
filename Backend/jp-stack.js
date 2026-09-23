@@ -24,6 +24,7 @@ import { requireKey } from './_auth.js';
 import { cronAuthorized, secretEquals } from './lib/cron-auth.js';
 import { verifyPostgres } from './verify-db.js';
 import { getFirestoreToken } from './jp-devices.js';
+import { DEVICE_IDS, splitFleet } from './broker.js';
 import { LAYERS, REQUIRED_ENV, HOSTS, TLS_WARN_DAYS, PROBE_TIMEOUT_MS, DEVICES_NOTE, allFiles } from './lib/stack-map.js';
 import { promises as dnsp } from 'node:dns';
 import tls from 'node:tls';
@@ -143,8 +144,11 @@ async function probeFirestore() {
   }
   const token = await getFirestoreToken();
   const projectId = JSON.parse(FIREBASE_SA_JSON).project_id;
+  // One page must hold every document: deviceFreshness looks each fleet device
+  // up by id, and a fleet document pushed onto a second page would read as a
+  // device that never enrolled.
   const url =
-    'https://firestore.googleapis.com/v1/projects/' + projectId + '/databases/' + FIRESTORE_DB + '/documents/devices?pageSize=10';
+    'https://firestore.googleapis.com/v1/projects/' + projectId + '/databases/' + FIRESTORE_DB + '/documents/devices?pageSize=100';
   const res = await fetch(url, {
     headers: { Authorization: 'Bearer ' + token },
     signal: AbortSignal.timeout(PROBE_TIMEOUT_MS - 200),
@@ -152,7 +156,14 @@ async function probeFirestore() {
   if (!res.ok) return { status: FAIL, problem: 'Firestore read returned HTTP ' + res.status };
   const data = await res.json().catch(() => ({}));
   const docs = data.documents || [];
-  return { status: OK, detail: docs.length + ' device docs in ' + FIRESTORE_DB, _docs: docs };
+  // Documents, not devices: the collection holds more than the fleet (see
+  // DEVICE_IDS in broker.js), and this line once said "5 device docs".
+  return {
+    status: OK,
+    detail: docs.length + ' documents in ' + FIRESTORE_DB + '/devices; ' + splitFleet(docs).fleet.length
+      + ' of ' + DEVICE_IDS.length + ' fleet devices present',
+    _docs: docs,
+  };
 }
 
 /**
@@ -174,12 +185,18 @@ export function deviceFreshness(firestoreResult) {
   if (firestoreResult.status !== OK) {
     return { status: UNKNOWN, problem: 'cannot read device docs — Firestore probe did not succeed' };
   }
-  const docs = firestoreResult._docs || [];
-  if (!docs.length) return { status: WARN, problem: 'no device documents found in the devices collection' };
+  // The fleet, not the collection. The collection also holds a test agent and
+  // an enrolment artifact (DEVICE_IDS in broker.js says why neither is a
+  // device), and judging every document made this verdict speak of five
+  // devices when there are three. Each fleet device is judged even with no
+  // document at all, so an enrolment that never happened reads as never
+  // reported instead of dropping out of the count.
+  const docById = new Map(splitFleet(firestoreResult._docs).fleet.map((d) => [d.name.split('/').pop(), d]));
 
   const now = Date.now();
-  const per = docs.map((d) => {
-    const id = (d.name || '').split('/').pop() || 'unknown';
+  const per = DEVICE_IDS.map((id) => {
+    const d = docById.get(id);
+    if (!d) return { id, status: WARN, mins: null, reason: id + ' has no device document (never enrolled)' };
     const raw = d.fields?.lastSeen?.timestampValue || d.fields?.lastSeen?.stringValue;
     const t = raw ? new Date(raw).getTime() : 0;
     if (!t) return { id, status: WARN, mins: null, reason: id + ' has no readable lastSeen (never reported)' };
@@ -542,9 +559,10 @@ export function snapshot(probes) {
  * each non-ok device with its heartbeat age, which is enough to point at the
  * dependency. It still never carries a probe's `problem` or `detail` text:
  * those name hosts, tables and env vars, and a log drain can ship this line
- * anywhere. Device ids are Firestore document ids, which any character but "/"
- * may form, so they are reduced to a safe alphabet before they can forge a
- * second log line.
+ * anywhere. The device ids are the fleet's own (DEVICE_IDS in broker.js), but
+ * this formats whatever snapshot it is handed, and a Firestore document id may
+ * hold any character but "/", so ids are reduced to a safe alphabet before one
+ * can forge a second log line.
  *
  * Error level only when a cloud probe failed. A stopped daemon is a device
  * fault no deploy can fix (see cloud_fail in snapshot), CI already reports it

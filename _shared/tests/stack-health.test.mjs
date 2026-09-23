@@ -263,29 +263,32 @@ function fsDocs(entries) {
   return { status: 'ok', _docs };
 }
 
-t('one fresh device does not mask three dead ones', () => {
+// Fixtures use the fleet's own ids: deviceFreshness judges only the three
+// fleet devices (DEVICE_IDS in Backend/broker.js), so any other id is ignored
+// and _shared/tests/device-fleet.test.mjs pins that.
+t('one fresh device does not mask two dead ones', () => {
   const r = deviceFreshness(fsDocs([
     ['jayti-asus-vivobook', null],       // never reported
     ['samsung-s24-ultra', 11000],        // ~7.6 days
-    ['g4g-lenovo-laptop', 16000],
-    ['eka-cloud-sandbox', 3],            // the one live device
+    ['g4g-lenovo-laptop', 3],            // the one live device
   ]));
   assert.equal(r.status, 'fail', 'a live device must not green the tier while others are dead');
   assert.match(r.problem, /samsung-s24-ultra/, 'the dead devices are named, not just counted');
   assert.match(r.problem, /jayti-asus-vivobook/, 'a never-reported device is surfaced too');
-  assert.equal(r.byDevice['eka-cloud-sandbox'].status, 'ok', 'the live device is still individually green');
+  assert.equal(r.byDevice['g4g-lenovo-laptop'].status, 'ok', 'the live device is still individually green');
   assert.equal(r.byDevice['samsung-s24-ultra'].status, 'fail');
 });
 
 t('an all-fresh fleet is green and reports the newest heartbeat', () => {
-  const r = deviceFreshness(fsDocs([['a', 2], ['b', 5]]));
+  const r = deviceFreshness(fsDocs([['g4g-lenovo-laptop', 2], ['jayti-asus-vivobook', 5], ['samsung-s24-ultra', 9]]));
   assert.equal(r.status, 'ok');
-  assert.match(r.detail, /newest heartbeat 2 min/);
+  assert.match(r.detail, /^all 3 device\(s\) fresh; newest heartbeat 2 min/);
 });
 
 t('a device seen 20 min ago warns but does not fail', () => {
-  const r = deviceFreshness(fsDocs([['a', 2], ['b', 20]]));
+  const r = deviceFreshness(fsDocs([['g4g-lenovo-laptop', 2], ['jayti-asus-vivobook', 20], ['samsung-s24-ultra', 3]]));
   assert.equal(r.status, 'warn', '15<age<=60 min is a warn, not a hard fail');
+  assert.equal(r.byDevice['jayti-asus-vivobook'].status, 'warn', 'and the warn is the 20-minute device');
 });
 
 t('an unreadable Firestore probe leaves devices unknown, never green', () => {
@@ -307,7 +310,7 @@ function capture() {
 t('a stopped daemon logs one warning naming the probe and each stale device, never an error', () => {
   const probes = allOk();
   probes.devices = deviceFreshness(fsDocs([
-    ['samsung-s24-ultra', 1500], ['jayti-asus-vivobook', null], ['eka-cloud-sandbox', 3],
+    ['samsung-s24-ultra', 1500], ['jayti-asus-vivobook', null], ['g4g-lenovo-laptop', 3],
   ]));
   const log = capture();
   logVerdict(snapshot(probes), log);
@@ -318,7 +321,7 @@ t('a stopped daemon logs one warning naming the probe and each stale device, nev
   assert.match(line, / failing=devices /, 'the failing probe is named');
   assert.match(line, /samsung-s24-ultra:1500m/, 'each stale device is named with its heartbeat age');
   assert.match(line, /jayti-asus-vivobook:never/, 'a device that never reported says so');
-  assert.doesNotMatch(line, /eka-cloud-sandbox/, 'a fresh device is not noise in the line');
+  assert.doesNotMatch(line, /g4g-lenovo-laptop/, 'a fresh device is not noise in the line');
 });
 
 t('a failing cloud probe logs at error level, and no problem or detail text reaches the log', () => {
@@ -352,11 +355,14 @@ t('a green stack logs nothing; a warn-only stack logs one warning', () => {
 });
 
 t('a device id cannot forge a second log line', () => {
-  // A Firestore document id may hold any character but "/", newlines included.
-  const probes = allOk();
-  probes.devices = deviceFreshness(fsDocs([['evil\n[jp-stack] health verdict ok', 900]]));
+  // byDevice holds fleet ids today, but logVerdict formats whatever snapshot it
+  // is handed, and a Firestore document id may hold any character but "/",
+  // newlines included.
+  const snap = snapshot(allOk());
+  snap.overall = 'fail';
+  snap.probes.devices = { status: 'fail', byDevice: { 'evil\n[jp-stack] health verdict ok': { status: 'fail', mins: 900 } } };
   const log = capture();
-  logVerdict(snapshot(probes), log);
+  logVerdict(snap, log);
   const line = log.lines[0][1];
   assert.doesNotMatch(line, /[\r\n]/, 'the id broke the line in two');
   assert.equal(line.split('[jp-stack]').length, 2, 'the id carried a second [jp-stack] prefix into the log');
