@@ -423,7 +423,7 @@
                     '<div class="kv-item"><div class="k">Device</div><div class="v">' + esc(dev.deviceDisplayName || dev.deviceId) + '</div></div>' +
                     '<div class="kv-item"><div class="k">Status</div><div class="v">' + badge + '</div></div>' +
                     '<div class="kv-item"><div class="k">Last seen</div><div class="v">' + (dev.lastSeen ? fmtTime(dev.lastSeen) : '—') + '</div></div>' +
-                    '<div class="kv-item"><div class="k">Age</div><div class="v">' + (dev.lastSeenAgeSeconds != null ? dev.lastSeenAgeSeconds + 's' : '—') + '</div></div>' +
+                    '<div class="kv-item"><div class="k">Age</div><div class="v">' + esc(dev.lastSeenAgeSeconds != null ? dev.lastSeenAgeSeconds + 's' : '—') + '</div></div>' +
                     '<div class="kv-item"><div class="k">Connection</div><div class="v">' + esc(dev.connectionMethod || '—') + '</div></div>' +
                     '<div class="kv-item"><div class="k">Command queue</div><div class="v">' + esc(pending != null ? pending : '—') + ' pending · ' + esc(queue.length) + ' total</div></div>' +
                     '</div>';
@@ -459,11 +459,18 @@
         var ifaceItems = Object.keys(n.interfaces || {}).map(function (k) {
             return '<div class="kv-item"><div class="k">' + esc(k) + '</div><div class="v mono">' + esc(n.interfaces[k]) + '</div></div>';
         }).join('');
+        // The signal and traffic figures are escaped like the strings beside
+        // them. They look like numbers, but Backend/jp-devices.js passes the
+        // agent's Firestore `network` map through as written (network =
+        // f.network), so they are whatever the device stored, and they used to
+        // go into innerHTML raw: a signal_percent of <img onerror=...> ran as
+        // markup on a page whose localStorage holds the dashboard key.
+        // s24.html's renderNetwork escapes the same three fields.
         $('netDetail').innerHTML = '<div class="kv-grid">' +
             '<div class="kv-item"><div class="k">SSID</div><div class="v">' + esc(n.ssid || '—') + '</div></div>' +
-            '<div class="kv-item"><div class="k">WiFi signal</div><div class="v">' + sig + '</div></div>' +
-            '<div class="kv-item"><div class="k">Sent</div><div class="v">' + (n.sent_mb != null ? n.sent_mb + ' MB' : '—') + '</div></div>' +
-            '<div class="kv-item"><div class="k">Received</div><div class="v">' + (n.recv_mb != null ? n.recv_mb + ' MB' : '—') + '</div></div>' +
+            '<div class="kv-item"><div class="k">WiFi signal</div><div class="v">' + esc(sig) + '</div></div>' +
+            '<div class="kv-item"><div class="k">Sent</div><div class="v">' + esc(n.sent_mb != null ? n.sent_mb + ' MB' : '—') + '</div></div>' +
+            '<div class="kv-item"><div class="k">Received</div><div class="v">' + esc(n.recv_mb != null ? n.recv_mb + ' MB' : '—') + '</div></div>' +
             '<div class="kv-item"><div class="k">Updated</div><div class="v">' + (n.updatedAt ? fmtTime(n.updatedAt) : '—') + '</div></div>' +
             ifaceItems +
             '</div>';
