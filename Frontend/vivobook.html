@@ -112,7 +112,7 @@
     <div class="kpis" id="kpis">
         <div class="kpi"><div class="label">Status</div><div class="value" id="kpiStatus">—</div><div class="sub" id="kpiStatusSub"></div></div>
         <div class="kpi"><div class="label">Last seen</div><div class="value" id="kpiLastSeen">—</div><div class="sub" id="kpiLastSeenSub"></div></div>
-        <div class="kpi"><div class="label">Commands queued</div><div class="value" id="kpiQueue">—</div><div class="sub" id="kpiQueueSub"></div></div>
+        <div class="kpi"><div class="label">Pending commands</div><div class="value" id="kpiQueue">—</div><div class="sub" id="kpiQueueSub"></div></div>
         <div class="kpi"><div class="label">WiFi signal</div><div class="value" id="kpiWifi">—</div><div class="sub" id="kpiWifiSub"></div></div>
     </div>
 
@@ -159,22 +159,28 @@
     </div>
 </div>
 
-<!-- key gate removed: dashboard is open. The old markup was left unbalanced by
-     937e480 (input/button deleted, one closing </div> short). -->
+<!-- There is no key box on this page, but the page is NOT open: both endpoints
+     it reads (/api/jp-devices, /api/jp-device) call requireKey first and answer
+     401 to a missing or wrong key (Backend/jp-devices.js, Backend/_auth.js). The
+     key comes from the main dashboard's unlock gate via the shared storage slot,
+     and a 401 puts this page into its locked state (lock() below). The local gate
+     this page once had was removed because 937e480 left its markup unbalanced
+     (input/button deleted, one closing </div> short). -->
 
 <script>
 (function () {
     'use strict';
     var DEVICE_ID = 'jayti-asus-vivobook';
     // These device endpoints return device PII (IP, network, command history), so
-    // they are key-gated like the rest of the dashboard — despite the "open" note
-    // 937e480 left behind when it removed the local unlock box. The key is the one
-    // the main dashboard already holds: unlock there, click through to this page,
-    // and the same-origin sessionStorage carries it. A ?key= on a direct link also
+    // they are key-gated like the rest of the dashboard: requireKey answers 401
+    // to a request with no key or a wrong one. The key is the one the main
+    // dashboard already holds: unlock there, click through to this page, and the
+    // shared localStorage slot below carries it. A ?key= on a direct link also
     // works and is stripped from the URL so it never leaks through the Referer.
-    // Credential slot. This MUST match index.html:709 -- it is the one key the
-    // whole dashboard shares, and index.html canonicalises it into localStorage
-    // (index.html:719) while actively clearing the sessionStorage copy. Reading
+    // Credential slot. This MUST match KEY_STORAGE in index.html -- it is the one
+    // key the whole dashboard shares, and index.html keeps it in localStorage
+    // (its unlock gate writes it there; stripKeyFromUrl() moves a ?key= there)
+    // while actively clearing the sessionStorage copy. Reading
     // sessionStorage alone therefore found nothing the moment anyone visited the
     // main dashboard, which is what made this page look dead: unlock there,
     // click through, and the gate came up again.
@@ -182,11 +188,14 @@
     // Read order is localStorage -> sessionStorage -> ?key=. sessionStorage stays
     // in the chain so a key put there by an older build still works; writes go to
     // localStorage so every page converges on one slot. Wrapped in try/catch
-    // because storage access throws outright in private mode.
+    // because storage access throws outright in private mode. A function, not a
+    // one-off read, because the locked state re-reads the slot on every poll to
+    // notice a key the main dashboard has saved since (see runGated()).
     var KEY_STORAGE = 'jbt_stats_key';
-    var KEY = '';
-    try { KEY = localStorage.getItem(KEY_STORAGE) || sessionStorage.getItem(KEY_STORAGE) || ''; } catch (e) { /* private mode */ }
-    KEY = KEY || new URLSearchParams(location.search).get('key') || '';
+    function storedKey() {
+        try { return localStorage.getItem(KEY_STORAGE) || sessionStorage.getItem(KEY_STORAGE) || ''; } catch (e) { return ''; /* private mode */ }
+    }
+    var KEY = storedKey() || new URLSearchParams(location.search).get('key') || '';
     (function persistAndStripKey() {
         var params = new URLSearchParams(location.search);
         // localStorage, not sessionStorage: index.html canonicalises there and
@@ -199,8 +208,12 @@
         history.replaceState(null, '', location.pathname + (qs ? '?' + qs : '') + location.hash);
     })();
     // Sent as a header, never in the query string, for the same reason index.html
-    // moved off ?key=: a query credential reaches API logs via the Referer.
-    var AUTH = KEY ? { 'x-stats-key': KEY } : {};
+    // moved off ?key=: a query credential reaches API logs via the Referer. KEY
+    // and AUTH only ever change together, through useKey(): lock() drops both,
+    // and a resume from the locked state sets both.
+    var AUTH = {};
+    function useKey(k) { KEY = k || ''; AUTH = KEY ? { 'x-stats-key': KEY } : {}; }
+    useKey(KEY);
 
     function $(id) { return document.getElementById(id); }
     function esc(x) { return String(x == null ? '' : x).replace(/[&<>"']/g, function (c) {
@@ -220,48 +233,156 @@
         return Math.floor(h / 24) + 'd ago';
     }
 
-    /* Dashboard is open. 937e480 deleted the key input and submit button from
-       the markup but left the code wiring them, so addEventListener was called
-       on null here and threw a TypeError, killing the script before loadAll()
-       ever ran. showGate() is kept as a no-op because the 401 handlers below
-       still call it; no backend returns 401. */
-    // A keyless visit gets 401 from the PII endpoints. Rather than spin forever,
-    // say so and point at where the key comes from. A stale key is cleared so a
-    // reload after unlocking the main dashboard picks up the new one.
-    var _gateShown = false;
-    function showGate() {
-        // Clear BOTH slots; a stale key in either one would be picked up again by
-        // the read chain above and re-fail on the next load.
-        if (KEY) { try { localStorage.removeItem(KEY_STORAGE); sessionStorage.removeItem(KEY_STORAGE); } catch (e) {} }
-        if (_gateShown) return;
-        _gateShown = true;
-        $('liveDot').classList.add('off');
-        $('liveText').textContent = 'LOCKED';
-        var s = $('kpiStatus'); if (s) s.textContent = 'Locked';
-        $('liveDetail').innerHTML = '<div class="state">This device view returns network and command detail, ' +
-            'so it needs the dashboard key. Open the <a href="/">main dashboard</a>, unlock it, then return — ' +
-            'the key carries over. A direct link can also carry <code>?key=…</code>.</div>';
+    /* Locked state. Both endpoints this page reads answer 401 to a missing or
+       wrong key: handleDevices and handleDeviceHistory in Backend/jp-devices.js
+       call requireKey (Backend/_auth.js) before anything else. The comment that
+       stood here said the dashboard was open and "no backend returns 401", and
+       the handler it described only swapped out the Live panel. Both hints then
+       stayed on "Loading…" for good, the KPIs, network grid and queue kept the
+       last poll's values under a LOCKED pill, and AUTH still held the rejected
+       key, so the 30 s poll sent it to the server again every tick.
+
+       lock() drops the key from memory and from the shared slot and puts every
+       panel into one locked state. While locked nothing is fetched; runGated()
+       watches the slot for a key instead. (There is no unlock form here: when
+       937e480 deleted the old one's input and button it left their
+       addEventListener wiring behind, which threw on null and killed this
+       script before anything loaded.) */
+    var _locked = false;
+
+    // Error text can carry an upstream body verbatim: jp-devices reports
+    // "firestore read failed: " followed by Firestore's own JSON error. Raw JSON
+    // is never rendered on this dashboard, so keep the sentence and drop the
+    // payload.
+    function plainError(e) {
+        var m = String((e && e.message) || e || '').split(/[{\[]/)[0].replace(/[\s:.]+$/, '');
+        return m || 'request failed';
     }
 
-    var _deviceData = null;
+    // Puts the pill, the Status KPI, the Live panel, the other three KPIs, the
+    // network grid and the queue table into one state that carries no device
+    // data. Every path that ends without a fresh device record comes through
+    // here (locked, resuming, failed poll, device missing from the roster), so
+    // none of them can leave the previous poll's values up reading as current:
+    // a frozen "Last seen 2m ago", an old SSID, queue rows from before the queue
+    // drained. The two panel hints go back to the markup's own wording, which
+    // describes the panel and carries no device data.
+    var BLANK_HINTS = { netHint: $('netHint').textContent, queueHint: $('queueHint').textContent };
+    function showNoData(pill, statusText, statusClass, detailHtml, panelNote) {
+        $('liveDot').classList.add('off');
+        $('liveText').textContent = pill;
+        $('kpiStatus').textContent = statusText;
+        $('kpiStatus').className = 'value' + (statusClass ? ' ' + statusClass : '');
+        $('liveDetail').innerHTML = detailHtml;
+        ['kpiLastSeen', 'kpiQueue', 'kpiWifi'].forEach(function (id) { $(id).textContent = '—'; });
+        ['kpiStatusSub', 'kpiLastSeenSub', 'kpiQueueSub', 'kpiWifiSub'].forEach(function (id) { $(id).textContent = ''; });
+        $('netDetail').innerHTML = '<div class="state">' + esc(panelNote) + '</div>';
+        $('netHint').textContent = BLANK_HINTS.netHint;
+        $('queueTable').querySelector('tbody').innerHTML = '<tr><td colspan="4" class="state">' + esc(panelNote) + '</td></tr>';
+        $('queueHint').textContent = BLANK_HINTS.queueHint;
+    }
+
+    function lock(rejected) {
+        if (rejected) {
+            // Check BOTH slots, since the read chain would pick a stale copy in
+            // either back up. But clear one only while it still holds the key
+            // that was rejected: a key the main dashboard has saved there since
+            // is a new one, and deleting it would log that tab out as well.
+            try {
+                if (localStorage.getItem(KEY_STORAGE) === rejected) localStorage.removeItem(KEY_STORAGE);
+                if (sessionStorage.getItem(KEY_STORAGE) === rejected) sessionStorage.removeItem(KEY_STORAGE);
+            } catch (e) { /* private mode */ }
+        }
+        useKey('');
+        _locked = true;
+        var hint = 'Locked · ' + (rejected ? 'dashboard key rejected (HTTP 401)' : 'no dashboard key in this browser') +
+            ' · nothing is fetched until a key is saved';
+        $('liveHint').textContent = hint;
+        $('histHint').textContent = hint;
+        showNoData('LOCKED', 'Locked', '', '<div class="state">' +
+            (rejected ? 'The dashboard key this browser held was rejected (HTTP 401) and has been cleared. '
+                      : 'This browser holds no dashboard key. ') +
+            'This view shows network and command detail, so both of its endpoints need the key. ' +
+            'Unlock the <a href="/">main dashboard</a> in this browser and this page picks the key up by ' +
+            'itself. A direct link can also carry <code>?key=…</code>.</div>',
+            'Locked — needs the dashboard key.');
+        $('histTable').querySelector('tbody').innerHTML = '<tr><td colspan="4" class="state">Locked — needs the dashboard key.</td></tr>';
+    }
+
+    // Every load goes through here: the 30 s poll, both Refresh buttons and the
+    // storage listener at the bottom. While locked it sends nothing, because
+    // without a key a request can only earn another 401; it re-reads the shared
+    // slot instead, so unlocking the main dashboard resumes this page without a
+    // reload. A resume reloads BOTH panels (history is not polled and would
+    // otherwise keep the locked message) and first shows them loading, so a
+    // failure after the resume reads as that failure, not as the lock it ended.
+    // The rejected key is not blacklisted: lock() already took it out of the
+    // slot, so it is only sent again if someone saves it there again, once per
+    // save. Refusing it outright would strand an operator who re-enters the
+    // same key after the server's STATS_KEY has been put back.
+    function runGated(load) {
+        if (_locked) {
+            var k = storedKey();
+            if (!k) return;
+            useKey(k);
+            _locked = false;
+            showNoData('CHECKING', '—', '', '<div class="state"><div class="spinner"></div>Loading…</div>', 'Loading…');
+            $('histTable').querySelector('tbody').innerHTML = '<tr><td colspan="4" class="state">Loading…</td></tr>';
+            load = loadAll;
+        }
+        load();
+    }
+
+    // GETs a key-gated endpoint as { status, body }, where body is null if the
+    // answer was not JSON (an HTML error page). Resolves null when the caller
+    // must ignore the answer: requireKey's own 401, which locks the page right
+    // here, or any answer to a request sent with a key the page has since
+    // dropped. The two panels fetch in parallel, so the second 401 of a pair
+    // lands after the first has already locked, and an old request can still be
+    // in flight when runGated() adopts a new key; a late answer for the old key
+    // must neither lock out the new one nor overwrite the locked message.
+    // Only a 401 carrying _auth.js's auth_* code locks, because that is the one
+    // that says the key was checked and refused, and lock() clears the slot
+    // every dashboard tab shares. Any other 401 (a proxy, or Vercel deployment
+    // protection answering with an HTML page) is reported as an error.
+    function gatedFetch(url) {
+        var sent = KEY;
+        return fetch(url, { headers: AUTH })
+            .then(function (r) {
+                return r.text().then(function (text) {
+                    var body = null;
+                    try { body = JSON.parse(text); } catch (e) { /* HTML error page or empty body */ }
+                    return { status: r.status, body: body };
+                });
+            })
+            .then(function (res) {
+                if (sent !== KEY) return null;
+                if (res.status === 401 && res.body && /^auth_/.test(res.body.code || '')) { lock(sent); return null; }
+                return res;
+            }, function (e) {
+                if (sent !== KEY) return null;
+                throw e;
+            });
+    }
 
     function loadLive() {
-        /* open dashboard: no key required */
         $('liveHint').textContent = 'Loading live device state…';
-        fetch('/api/jp-devices', { headers: AUTH })
-            .then(function (r) { return r.json().then(function (j) { return { status: r.status, body: j }; }); })
+        gatedFetch('/api/jp-devices')
             .then(function (res) {
-                if (res.status === 401) { showGate(); return; }
-                if (!res.body.success) throw new Error(res.body.error || 'failed');
+                if (!res) return;
+                if (!res.body || !res.body.success) throw new Error((res.body && res.body.error) || 'HTTP ' + res.status);
                 var devices = res.body.devices || [];
                 var dev = devices.find(function (d) { return d.deviceId === DEVICE_ID; });
                 if (!dev) {
-                    $('liveDetail').innerHTML = '<div class="state">Device not found in Firestore. Waiting for first heartbeat…</div>';
-                    $('liveDot').classList.add('off');
-                    $('liveText').textContent = 'OFFLINE';
+                    // This branch used to leave the hint on "Loading…" and the
+                    // Status KPI, network grid and queue on the previous poll's
+                    // values, beside an OFFLINE pill.
+                    $('liveHint').textContent = 'Firestore · ' + res.body.database + ' · no document for ' + DEVICE_ID;
+                    showNoData('OFFLINE', 'OFFLINE', 'bad',
+                        '<div class="state">Device not found in Firestore. Waiting for first heartbeat…</div>',
+                        'No Firestore document for this device yet.');
                     return;
                 }
-                _deviceData = dev;
                 var live = dev.live;
                 $('liveDot').classList.toggle('off', !live);
                 $('liveText').textContent = live ? 'LIVE' : 'OFFLINE';
@@ -273,8 +394,22 @@
                 $('kpiLastSeen').textContent = dev.lastSeen ? fmtAgo(dev.lastSeen) : '—';
                 $('kpiLastSeenSub').textContent = dev.lastSeen ? fmtTime(dev.lastSeen) : '';
 
-                $('kpiQueue').textContent = dev.commandQueueDepth || 0;
-                $('kpiQueueSub').textContent = (dev.commandQueueDepth || 0) > 0 ? 'pending' : 'empty';
+                // Pending, not total. commandQueueDepth is the size of the whole
+                // Firestore queue map, finished entries included
+                // (Backend/jp-devices.js), so this KPI read "5 … pending" for a
+                // queue the laptop had already worked through. The waiting count
+                // is commandQueuePendingDepth (pending/queued/requested/claimed),
+                // which s24.html and jteka.html already read. There is no
+                // fallback to the total when it is absent: that would put the
+                // wrong number back under this label. The total shown beside it
+                // is the entries the queue table lists (commandQueue, normalised
+                // server-side), not commandQueueDepth, which also counts map
+                // entries too malformed to list; so the KPI, the Live row, the
+                // queue hint and the table can never disagree.
+                var queue = dev.commandQueue || [];
+                var pending = dev.commandQueuePendingDepth;
+                $('kpiQueue').textContent = pending != null ? pending : '—';
+                $('kpiQueueSub').textContent = queue.length ? 'of ' + queue.length + ' in queue' : 'queue empty';
 
                 var sig = dev.network && dev.network.wifiSignal && dev.network.wifiSignal.signal_percent != null ? dev.network.wifiSignal.signal_percent + '%' : '—';
                 $('kpiWifi').textContent = sig;
@@ -290,7 +425,7 @@
                     '<div class="kv-item"><div class="k">Last seen</div><div class="v">' + (dev.lastSeen ? fmtTime(dev.lastSeen) : '—') + '</div></div>' +
                     '<div class="kv-item"><div class="k">Age</div><div class="v">' + (dev.lastSeenAgeSeconds != null ? dev.lastSeenAgeSeconds + 's' : '—') + '</div></div>' +
                     '<div class="kv-item"><div class="k">Connection</div><div class="v">' + esc(dev.connectionMethod || '—') + '</div></div>' +
-                    '<div class="kv-item"><div class="k">Queued commands</div><div class="v">' + (dev.commandQueueDepth || 0) + '</div></div>' +
+                    '<div class="kv-item"><div class="k">Command queue</div><div class="v">' + esc(pending != null ? pending : '—') + ' pending · ' + esc(queue.length) + ' total</div></div>' +
                     '</div>';
                 $('liveDetail').innerHTML = html;
                 $('liveHint').textContent = 'Firestore · ' + res.body.database + ' · liveness = lastSeen < 3×heartbeat';
@@ -298,12 +433,28 @@
                 renderNetwork(dev);
                 renderQueue(dev);
             })
-            .catch(function (e) { $('liveHint').textContent = 'Error: ' + e.message; });
+            .catch(function (e) {
+                // A failed poll used to rewrite only this hint, so the LIVE pill,
+                // a frozen "Last seen 20s ago" and the last queue rows stayed up
+                // as current for as long as the API was down. This dashboard
+                // never asserts liveness it has no evidence for, so a poll that
+                // brought nothing shows nothing until the next one succeeds.
+                var msg = plainError(e);
+                $('liveHint').textContent = 'Error: ' + msg;
+                showNoData('UNKNOWN', 'Unknown', 'warn',
+                    '<div class="state">Could not load the device state (' + esc(msg) + '). ' +
+                    'This page retries every 30 seconds, or press Refresh.</div>',
+                    'No data — the last request failed.');
+            });
     }
 
     function renderNetwork(dev) {
         var n = dev.network;
-        if (!n) { $('netDetail').innerHTML = '<div class="state">No network data reported yet.</div>'; return; }
+        if (!n) {
+            $('netDetail').innerHTML = '<div class="state">No network data reported yet.</div>';
+            $('netHint').textContent = BLANK_HINTS.netHint;   // not the last poll's "Connected to <ssid>"
+            return;
+        }
         var sig = n.wifiSignal && n.wifiSignal.signal_percent != null ? n.wifiSignal.signal_percent + '%' : '—';
         var ifaceItems = Object.keys(n.interfaces || {}).map(function (k) {
             return '<div class="kv-item"><div class="k">' + esc(k) + '</div><div class="v mono">' + esc(n.interfaces[k]) + '</div></div>';
@@ -319,28 +470,50 @@
         $('netHint').textContent = n.ssid ? ('Connected to ' + n.ssid + ' · ' + sig + ' signal') : 'No WiFi connection';
     }
 
+    // Badge colour by what a status means. Only 'completed' and 'failed' used to
+    // be recognised, and everything else fell through to the amber PENDING
+    // style, but the VivoBook agent's Firestore path finishes commands as 'ok',
+    // 'error' or 'rejected' (Devices/Vivobook/device_agent.py). A queue the KPI
+    // counts as "0 pending" was drawn as a column of pending-looking pills.
+    // Amber is kept for exactly the statuses Backend/jp-devices.js counts in
+    // commandQueuePendingDepth, so a row is amber if and only if the KPI counts
+    // it; a status none of these lists knows gets a neutral grey.
+    var WAITING = { pending: 1, queued: 1, requested: 1, claimed: 1 };
+    var SUCCEEDED = { completed: 1, ok: 1 };
+    var FAILED = { failed: 1, error: 1, rejected: 1 };
+    function statusBadge(status) {
+        var s = String(status || 'pending');
+        var colours = WAITING[s] ? 'background:rgba(185,119,14,.15);color:#B9770E'
+            : SUCCEEDED[s] ? 'background:rgba(46,160,67,.15);color:#2ea043'
+            : FAILED[s] ? 'background:rgba(200,60,60,.12);color:#c83c3c'
+            : 'background:rgba(108,95,83,.12);color:#6C5F53';
+        return '<span class="pill" style="' + colours + '">' + esc(s === 'completed' ? 'DONE' : s.toUpperCase()) + '</span>';
+    }
+
     function renderQueue(dev) {
         var q = dev.commandQueue;
-        if (!q || !q.length) { $('queueHint').textContent = 'No commands queued.'; return; }
         var tbody = $('queueTable').querySelector('tbody');
+        if (!q || !q.length) {
+            // This branch used to set only the hint and return without touching
+            // the <tbody>, so once the queue drained, the rows from the last
+            // non-empty poll stayed on screen under a "No commands queued" hint.
+            tbody.innerHTML = '<tr><td colspan="4" class="state">No commands queued.</td></tr>';
+            $('queueHint').textContent = 'No commands queued.';
+            return;
+        }
         tbody.innerHTML = q.map(function (c) {
-            var status = c.status || 'pending';
-            var statusBadge = status === 'completed' ? '<span class="pill" style="background:rgba(46,160,67,.15);color:#2ea043">DONE</span>'
-                : status === 'failed' ? '<span class="pill" style="background:rgba(200,60,60,.12);color:#c83c3c">FAILED</span>'
-                : '<span class="pill" style="background:rgba(185,119,14,.15);color:#B9770E">' + esc(status.toUpperCase()) + '</span>';
-            return '<tr><td>' + esc(c.action || '—') + '</td><td>' + statusBadge + '</td><td>' + fmtTime(c.queuedAt) + '</td><td>' + fmtTime(c.completedAt) + '</td></tr>';
+            return '<tr><td>' + esc(c.action || '—') + '</td><td>' + statusBadge(c.status) + '</td><td>' + fmtTime(c.queuedAt) + '</td><td>' + fmtTime(c.completedAt) + '</td></tr>';
         }).join('');
-        $('queueHint').textContent = q.length + ' commands in queue';
+        $('queueHint').textContent = q.length + ' commands in queue' +
+            (dev.commandQueuePendingDepth != null ? ' · ' + dev.commandQueuePendingDepth + ' pending' : '');
     }
 
     function loadHistory() {
-        /* open dashboard: no key required */
         $('histHint').textContent = 'Loading events…';
-        fetch('/api/jp-device?' + new URLSearchParams({ days: 30, device: DEVICE_ID }).toString(), { headers: AUTH })
-            .then(function (r) { return r.json().then(function (j) { return { status: r.status, body: j }; }); })
+        gatedFetch('/api/jp-device?' + new URLSearchParams({ days: 30, device: DEVICE_ID }).toString())
             .then(function (res) {
-                if (res.status === 401) { showGate(); return; }
-                if (!res.body.success) throw new Error(res.body.error || 'failed');
+                if (!res) return;
+                if (!res.body || !res.body.success) throw new Error((res.body && res.body.error) || 'HTTP ' + res.status);
                 var evs = res.body.device_events || [];
                 var tbody = $('histTable').querySelector('tbody');
                 if (!evs.length) {
@@ -368,15 +541,33 @@
                 }).join('');
                 $('histHint').textContent = evs.length + ' events synced';
             })
-            .catch(function (e) { $('histHint').textContent = 'Error: ' + e.message; });
+            .catch(function (e) {
+                // The table as well as the hint: on a first load the markup's
+                // "No events synced yet." row would otherwise stand, which reads
+                // as a quiet device rather than a request that failed.
+                var msg = plainError(e);
+                $('histHint').textContent = 'Error: ' + msg;
+                $('histTable').querySelector('tbody').innerHTML =
+                    '<tr><td colspan="4" class="state">Could not load event history (' + esc(msg) + ').</td></tr>';
+            });
     }
 
-    $('refreshBtn').addEventListener('click', loadLive);
-    $('histRefreshBtn').addEventListener('click', loadHistory);
+    $('refreshBtn').addEventListener('click', function () { runGated(loadLive); });
+    $('histRefreshBtn').addEventListener('click', function () { runGated(loadHistory); });
+    // Unlocking the main dashboard in another tab writes the shared slot; resume
+    // on that write instead of up to 30 s later on the next poll. The storage
+    // event only fires in OTHER documents, so lock() removing the key here never
+    // triggers it.
+    window.addEventListener('storage', function (e) {
+        if (_locked && e.key === KEY_STORAGE) runGated(loadLive);
+    });
 
     function loadAll() { loadLive(); loadHistory(); }
-    loadAll();   /* dashboard is open - no key required */
-    setInterval(loadLive, 30000);
+    // Without a key both endpoints can only answer 401, so a keyless visit goes
+    // straight to the locked state instead of sending two requests to be
+    // refused. From there the poll and the storage listener watch for a key.
+    if (KEY) loadAll(); else lock('');
+    setInterval(function () { runGated(loadLive); }, 30000);
 })();
 </script>
 </body>
