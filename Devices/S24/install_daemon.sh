@@ -8,6 +8,63 @@ set -euo pipefail
 APP_DIR="$HOME/s24-agent"
 ENV_FILE="$APP_DIR/.env"
 WA_DIR="$(cd "$(dirname "$0")" && pwd)"
+BROKER_ROOT="$HOME/.local/share/eka-broker"
+BROKER_CONFIG_PATH="$BROKER_ROOT/devices.json"
+
+broker_recovery_required() {
+  echo "FATAL: the signed S24 broker is not installed, enrolled, or boot-verified." >&2
+  echo "  Run: bash $WA_DIR/install_s24.sh" >&2
+  echo "  Complete its AndroidKeyStore enrollment and Termux:Boot checks before retrying." >&2
+  exit 78
+}
+
+verify_broker_install() {
+  # This installer is a companion to install_s24.sh, not a second S24 runtime.
+  # Read the installed config and evidence so the broker owns its state and boot
+  # paths; fail before any networked package work when recovery is incomplete.
+  [ -s "$BROKER_CONFIG_PATH" ] || broker_recovery_required
+  command -v python >/dev/null 2>&1 || broker_recovery_required
+  if ! python - "$BROKER_CONFIG_PATH" <<'PY'
+import json
+import os
+import sys
+
+try:
+    config = json.load(open(sys.argv[1], encoding="utf-8"))
+    state_path = config["broker_state_file"]
+    evidence_path = config["installation_evidence_file"]
+    state = json.load(open(state_path, encoding="utf-8"))
+    evidence = json.load(open(evidence_path, encoding="utf-8"))
+    if not all(isinstance(record, dict) for record in (config, state, evidence)):
+        raise ValueError("signed broker records must be JSON objects")
+except (KeyError, OSError, ValueError, TypeError) as exc:
+    raise SystemExit(f"invalid signed broker installation: {exc}")
+
+if state.get("enrolled") is not True or not state.get("keyId"):
+    raise SystemExit("signed broker is not enrolled")
+boot_launcher = evidence.get("bootLauncher")
+try:
+    boot_launcher_ready = (
+        isinstance(boot_launcher, str)
+        and os.path.isfile(boot_launcher)
+        and os.access(boot_launcher, os.X_OK)
+        and os.path.getsize(boot_launcher) > 0
+    )
+except OSError:
+    boot_launcher_ready = False
+if not boot_launcher_ready:
+    raise SystemExit("Termux:Boot launcher is missing, empty, or not executable")
+if not all(evidence.get(name) is True for name in (
+    "termuxBootPackageVerified", "bootLauncherVerified", "jobSchedulerVerified"
+)):
+    raise SystemExit("signed broker installation evidence is incomplete")
+PY
+  then
+    broker_recovery_required
+  fi
+}
+
+verify_broker_install
 
 echo "==> Installing packages"
 pkg update -y >/dev/null 2>&1 || true

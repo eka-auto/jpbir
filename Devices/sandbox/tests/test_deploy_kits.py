@@ -73,6 +73,17 @@ class TestDeployKits(unittest.TestCase):
                 self.assertNotIn("FIRESTORE", config)
                 self.assertNotIn("service_account_key", config)
                 self.assertFalse((kp / "firestore_client.py").exists())
+                self.assertIn("Remove-LegacyFleetStartup", installer)
+                self.assertIn("EKA-Fleet-Agent.vbs", installer)
+                self.assertIn("CommonStartup", installer)
+                self.assertIn("Stop-Process", installer)
+                self.assertIn("Unregister-ScheduledTask", installer)
+                self.assertIn("serviceAccountKey.json", installer)
+                self.assertIn("Write-Warning", installer)
+                self.assertGreater(
+                    installer.rindex("Remove-LegacyFleetStartup"),
+                    installer.index("Persistent broker startup did not prove a signed request"),
+                )
 
     def test_s24_installer_has_no_inbound_or_key_download_path(self):
         kp = kit_path("s24")
@@ -99,6 +110,20 @@ class TestDeployKits(unittest.TestCase):
         self.assertEqual(contract["transport"]["brokerBaseUrl"], "https://jaytipargal.tech")
         self.assertEqual(contract["transport"]["connectionMethod"], "signed-broker-v2")
         self.assertFalse(contract["transport"]["inboundListener"])
+
+    def test_s24_daemon_installer_requires_the_signed_broker_not_a_service_account(self):
+        installer = (kit_path("s24") / "install_daemon.sh").read_text(encoding="utf-8")
+        self.assertIn("verify_broker_install", installer)
+        self.assertIn("install_s24.sh", installer)
+        self.assertIn("BROKER_CONFIG_PATH", installer)
+        self.assertIn("broker_state_file", installer)
+        self.assertIn("installation_evidence_file", installer)
+        self.assertIn("broker_recovery_required", installer)
+        self.assertIn("isinstance(record, dict)", installer)
+        self.assertIn("os.path.getsize(boot_launcher) > 0", installer)
+        self.assertIn("exit 78", installer)
+        self.assertNotIn("serviceAccountKey", installer)
+        self.assertLess(installer.index("verify_broker_install"), installer.index("pkg update -y"))
 
     def test_s24_release_contract_and_install_order_are_pinned(self):
         kp = kit_path("s24")
