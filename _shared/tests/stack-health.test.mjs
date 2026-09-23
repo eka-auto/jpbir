@@ -8,7 +8,7 @@
 // direction.
 
 import assert from 'node:assert/strict';
-import { worst, buildLayers, snapshot, probeAssets, deviceFreshness } from '../../Backend/jp-stack.js';
+import { worst, buildLayers, snapshot, probeAssets, deviceFreshness, logVerdict } from '../../Backend/jp-stack.js';
 import { evaluateStack, failureLines, alertBody } from '../../Backend/stack-cron.js';
 import { LAYERS, REQUIRED_ENV, allFiles } from '../../Backend/lib/stack-map.js';
 import { readFileSync } from 'node:fs';
@@ -291,6 +291,87 @@ t('a device seen 20 min ago warns but does not fail', () => {
 t('an unreadable Firestore probe leaves devices unknown, never green', () => {
   const r = deviceFreshness({ status: 'fail' });
   assert.equal(r.status, 'unknown');
+});
+
+// ── a health-check 503 explains itself in the runtime log ───────────────
+// The health-key response is verdict and counts only, and nothing was logged
+// either, so Vercel showed a bare 503 on /api/jp-stack for every health-check
+// run, with no way to tell a dead dependency from a stopped phone. logVerdict
+// is that missing line; these pin what it says, at which level, and what it
+// never says.
+function capture() {
+  const lines = [];
+  return { lines, warn: (m) => lines.push(['warn', m]), error: (m) => lines.push(['error', m]) };
+}
+
+t('a stopped daemon logs one warning naming the probe and each stale device, never an error', () => {
+  const probes = allOk();
+  probes.devices = deviceFreshness(fsDocs([
+    ['samsung-s24-ultra', 1500], ['jayti-asus-vivobook', null], ['eka-cloud-sandbox', 3],
+  ]));
+  const log = capture();
+  logVerdict(snapshot(probes), log);
+  assert.equal(log.lines.length, 1, 'one line per verdict');
+  const [level, line] = log.lines[0];
+  assert.equal(level, 'warn', 'a device CI does not gate on must not log at error level');
+  assert.match(line, /^\[jp-stack\] health verdict fail cloud_fail=0 /);
+  assert.match(line, / failing=devices /, 'the failing probe is named');
+  assert.match(line, /samsung-s24-ultra:1500m/, 'each stale device is named with its heartbeat age');
+  assert.match(line, /jayti-asus-vivobook:never/, 'a device that never reported says so');
+  assert.doesNotMatch(line, /eka-cloud-sandbox/, 'a fresh device is not noise in the line');
+});
+
+t('a failing cloud probe logs at error level, and no problem or detail text reaches the log', () => {
+  // problem/detail strings name hosts, tables and env vars; a log drain can
+  // ship this line anywhere, so only probe ids and counts may appear.
+  const probes = allOk();
+  probes.postgres = { status: 'fail', problem: 'ECONNREFUSED ep-quiet-sea.neon.tech — DATABASE_URL rejected', detail: 'db.internal:5432' };
+  probes.dynamo = { status: 'warn', problem: 'AWS_REGION unset, defaulting' };
+  const log = capture();
+  logVerdict(snapshot(probes), log);
+  assert.equal(log.lines.length, 1);
+  const [level, line] = log.lines[0];
+  assert.equal(level, 'error', 'a cloud failure is what CI gates on, so it logs as an error');
+  assert.match(line, / cloud_fail=[1-9]/);
+  assert.match(line, / failing=postgres /);
+  assert.match(line, / warning=dynamo(?: |$)/);
+  assert.doesNotMatch(line, /neon\.tech|DATABASE_URL|ECONNREFUSED|db\.internal|AWS_REGION/);
+});
+
+t('a green stack logs nothing; a warn-only stack logs one warning', () => {
+  const quiet = capture();
+  logVerdict(snapshot(allOk()), quiet);
+  assert.equal(quiet.lines.length, 0, 'a healthy run must not write a line every time CI asks');
+
+  const probes = allOk();
+  probes.dns = { status: 'warn', problem: 'certificate expires in 20 days' };
+  const warned = capture();
+  logVerdict(snapshot(probes), warned);
+  assert.deepEqual(warned.lines.map(([level]) => level), ['warn']);
+  assert.match(warned.lines[0][1], /health verdict warn .* warning=dns(?: |$)/);
+});
+
+t('a device id cannot forge a second log line', () => {
+  // A Firestore document id may hold any character but "/", newlines included.
+  const probes = allOk();
+  probes.devices = deviceFreshness(fsDocs([['evil\n[jp-stack] health verdict ok', 900]]));
+  const log = capture();
+  logVerdict(snapshot(probes), log);
+  const line = log.lines[0][1];
+  assert.doesNotMatch(line, /[\r\n]/, 'the id broke the line in two');
+  assert.equal(line.split('[jp-stack]').length, 2, 'the id carried a second [jp-stack] prefix into the log');
+  assert.match(line, /:900m$/);
+});
+
+t('only the scheduled health-key branch logs; the 10 s dashboard poll never does', () => {
+  // The handler cannot run hermetically (every probe goes to the network), so
+  // this pins its wiring by source, the way the index.html cases below do.
+  const src = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'Backend', 'jp-stack.js'), 'utf8');
+  const body = src.slice(src.indexOf('export default async function handler'));
+  const healthBranch = body.slice(0, body.indexOf('requireKey('));
+  assert.match(healthBranch, /x-health-key/, 'handler layout changed: the health-key branch is no longer first');
+  assert.match(healthBranch, /logVerdict\(snap\)/, 'the health-key verdict is no longer logged');
+  assert.doesNotMatch(body.slice(body.indexOf('requireKey(')), /logVerdict|console\./, 'the dashboard poll must not log');
 });
 
 // ── the dashboard's all-offline banner is wired, not just declared ──────
