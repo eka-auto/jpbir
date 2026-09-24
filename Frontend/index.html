@@ -3762,18 +3762,40 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
         }
         
         if (ve && ve.lastEventId) {
-            var acks = ve.seenBy || {};
-            var ackList = Object.keys(acks).sort().map(function (k) {
-                return '<span class="pill" style="background:rgba(46,160,67,.12);color:#2ea043">' + esc(k) + ' ✓</span>';
+            /* A ✓ is earned per play. `watchers` is the server's verdict
+               (videoEventWatchers in Backend/jp-devices.js): only an
+               acknowledgement tied to THIS play gets one. This used to print
+               every key of seenBy, which nothing ever clears, so a watcher that
+               had stopped still "picked up" each new play, and the Lenovo showed
+               twice, once as g4g-laptop, the id its watcher used until
+               2026-09-23. Acknowledgements of earlier plays stay on the panel,
+               muted, because "last acknowledged 3 days ago" is how a stopped
+               watcher shows itself. */
+            var watchers = Array.isArray(ve.watchers) ? ve.watchers : [];
+            var picked = watchers.filter(function (w) { return w.forThisEvent && w.fleet; });
+            var others = watchers.filter(function (w) { return !(w.forThisEvent && w.fleet); });
+            var lagText = function (w) { return typeof w.lagSeconds === 'number' ? fmtDur(w.lagSeconds * 1000) : null; };
+            var pickedHtml = picked.map(function (w) {
+                var lag = lagText(w);
+                return '<span class="pill" style="background:rgba(46,160,67,.12);color:#2ea043">' + esc(w.deviceId) + ' ✓' +
+                    (lag ? ' · ' + esc(lag) + ' after the play' : '') + '</span>';
             }).join(' ');
-            var when = ve.lastEventAt ? fmtTime(ve.lastEventAt) : '—';
+            var othersHtml = others.map(function (w) {
+                var said;
+                if (w.forThisEvent) said = 'acknowledged this play' + (lagText(w) ? ', ' + lagText(w) + ' after it' : '');
+                else if (w.ackedAt && isFinite(Date.parse(w.ackedAt))) said = 'last acknowledged an earlier play, at ' + fmtTime(w.ackedAt);
+                else said = 'acknowledgement time unreadable';
+                return esc(w.deviceId) + (w.fleet ? '' : ' (not a fleet device)') + ' — ' + esc(said);
+            }).join(' · ');
+            var when = ve.lastEventAt ? fmtTime(ve.lastEventAt) + ' (' + fmtAgo(ve.lastEventAt) + ')' : '—';
             var where = [ve.lastVisitorCity, ve.lastVisitorCountry].filter(Boolean).join(', ') || '—';
-            
+
             container.innerHTML = '<div class="panel"><div class="panel-head"><div><h2>Video relay</h2><div class="hint">Song plays trigger device connections</div></div></div>' +
                 '<div style="margin-top:12px;font-size:13px;line-height:1.8">' +
                 '<strong>Last event:</strong> <code>' + esc(ve.lastEventId) + '</code> (' + esc(ve.lastVideoEvent || 'video') + ')<br>' +
                 '<strong>From:</strong> ' + esc(where) + ' at ' + esc(when) + '<br>' +
-                '<strong>Device watchers:</strong> ' + (ackList || '<span style="color:var(--ink-muted)">none yet</span>') +
+                '<strong>Picked up by:</strong> ' + (pickedHtml || '<span style="color:var(--ink-muted)">no fleet device has acknowledged this play</span>') +
+                (othersHtml ? '<br><span style="color:var(--ink-muted)">' + othersHtml + '</span>' : '') +
                 '</div></div>';
         }
     }

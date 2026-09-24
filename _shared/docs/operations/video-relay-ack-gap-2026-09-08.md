@@ -1,5 +1,30 @@
 # Site video-event relay: no device watcher exists — 8 September 2026
 
+> **Update, 24 September 2026: a watcher exists now, and it exposed the
+> `seenBy` flaw noted below.** The Lenovo runs `site-video-event-watcher.py`
+> (laptop-side, in no repository). For each play it notices it writes
+> `seenBy.<its id>` = the time it noticed, and `devices/<its id>.lastVideoEventAck`
+> / `lastVideoEventAckAt` = the play's id and that time. It wrote under
+> `g4g-laptop` until 2026-09-23 and under `g4g-lenovo-laptop` since. The
+> Firestore backup of 2026-09-10 (`Database/backups/`) already holds
+> `seenBy: {"g4g-laptop": "2026-09-10T08:34:13.208726+00:00"}`, 36 s after that
+> day's play.
+>
+> The producer's `updateMask` never clears `seenBy` (see *Not verified* below), so
+> once a watcher had acknowledged anything, the banner showed it ✓ beside every
+> later play, stopped or not, and showed the Lenovo twice. The panel now ticks
+> only an acknowledgement tied to the play it shows: `videoEventWatchers` in
+> `Backend/jp-devices.js`, pinned by `_shared/tests/video-relay.test.mjs`.
+>
+> Still open, on the laptop: the watcher's log of 2026-09-24 (57 s and 8 s from
+> play to detection, detections 66 s apart) fits a poll of the single-slot
+> settings doc about once a minute. Since the dark-empath clips went live on
+> 2026-09-21, a visit fires `closing-clip` and `dark-empath-1` a median 0.5 s
+> apart, and 15 of the 33 plays to 2026-09-24 were overwritten by the next one
+> within 60 s. A watcher polling only the settings doc misses most of those.
+> Reading the per-play `siteVideoEvents/<eventId>` history docs the relay writes
+> would catch them.
+
 The dashboard banner "Song plays, device connects" will always end in
 `none acked yet`. The relay is a half-circuit: the site writes the event, the
 dashboard reads it, and nothing in between ever acknowledges it. No device
