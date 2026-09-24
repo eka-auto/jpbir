@@ -129,8 +129,14 @@ Served over HTTPS at **https://runner.jaytipargal.tech**, Let's Encrypt, with
 `certbot.timer` active for renewal. Plain HTTP 301-redirects to it, so the
 bearer token is never in cleartext on the wire.
 
-`runner.` and not `agent.`: `agent.jaytipargal.tech` was already a live Vercel
-CNAME serving another project, and taking it would have broken that.
+`runner.` and not `agent.`: `agent.jaytipargal.tech` is already taken by the
+Jayti Hub VPS (`jaytipargal/jayti`), which serves the Hub, device-key retrieval,
+and the EKA agent that `/api/jp-live-agent` calls. Its DNS record is in Vercel's
+zone for `jaytipargal.tech`, but it is not a Vercel project: it answers from
+nginx on that VPS (checked 2026-09-24: `nginx/1.28.3`, while this droplet
+answers `nginx/1.24.0`). Taking the name would have broken the Hub and
+`/api/jp-live-agent`. See "`agent.jaytipargal.tech` is the Jayti Hub" in the
+root CLAUDE.md.
 
 The 301 only applies when the Host header matches. Certbot's `:80` block is
 `server_name runner.jaytipargal.tech`, and it is now the *only* port-80 server,

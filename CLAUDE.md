@@ -256,8 +256,9 @@ on its own; check all four before concluding anything:
    `EKA-Lenovo-Daemon` / `EKA-VivoBook-Daemon` task, or an `HKCU\...\Run` entry
    when the task cannot be re-registered. `logs\<deviceId>.log` holds its history.
 2. **Does its config reach the broker?** `broker_url` must be
-   `https://jaytipargal.tech`. `agent.jaytipargal.tech` is a different server
-   that answers 404 on every broker route; both Windows kits pointed there.
+   `https://jaytipargal.tech`. `agent.jaytipargal.tech` is the Jayti Hub (next
+   section), which answers 404 on every broker route; both Windows kits
+   pointed there.
 3. **Does the device doc still have `enrollment.activeKeyId`?** Every broker
    route rejects a key that is not the doc's active key. A doc re-created by a
    restore (`restoredFrom`, `registeredBy: jaytibirthday-site/fleet:register`)
@@ -269,6 +270,35 @@ on its own; check all four before concluding anything:
    design. Before this date a WMI timeout made the agent send a heartbeat with
    no manufacturer, the broker answered 403 "hardware mismatch", and the daemon
    quit for good. `_shared/tests/windows-device-kits.test.mjs` pins the fix.
+
+### `agent.jaytipargal.tech` is the Jayti Hub, a second device system
+
+`agent.jaytipargal.tech` is neither this repo nor a Vercel project. Its DNS
+record is in Vercel's zone, but the host is the Jayti Hub VPS, built from
+`jaytipargal/jayti` (a public repo). nginx there sends `/` to the Hub (:8443),
+`/retrieve/` to device-key retrieval (:8444), and `/retrieval/` and `/agent/`
+to the EKA RAG stack (:8100, :8000) behind one shared `X-API-Key`. On
+2026-09-24 it answered as `nginx/1.28.3` and the `jp-agent` droplet at
+`runner.jaytipargal.tech` as `nginx/1.24.0`: two hosts.
+
+This repo depends on it in one place: `/api/jp-live-agent`
+(`Backend/jp-live-agent.js`) proxies to its `/agent/` (`AGENT_API_URL`) with
+`AGENT_API_KEY`, the shared key nginx checks there.
+
+The Hub keeps its own device registry, with a weaker trust model: each device
+sends `X-Device-Id` and a shared `jt_…` API key, checked against the Hub's
+Postgres `api_keys` table. No hardware-held key, no `HARDWARE_RULES`, no
+attestation; nothing in "The fleet is three devices" applies there. So:
+
+- Never point a device kit at `agent.`; the broker is `https://jaytipargal.tech`.
+- A device registered with the Hub is not enrolled here, and the reverse.
+- The jtagent Colab training pipeline (`jayti` `sandbox/jtagent`) pulls from
+  the Hub's `/pull` with `EKA_DEVICE_ID` / `EKA_DEVICE_KEY`; without them it
+  logs `hub pull skipped` and trains on a fallback seed. It reads nothing from
+  this repo, and nothing here reads its adapters or `RUN_REPORT.md`.
+- `Backend/eka_*.py` are drifted copies of `jayti/scripts/` (on 2026-09-24,
+  four of five differed; `eka_agent_server.py` was identical). Nothing deploys
+  them from here: change the ones in `jayti`.
 
 ### `generated_at` is not a sync time
 
