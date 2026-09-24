@@ -9,7 +9,7 @@ import {
   s24LivenessVerdict,
 } from './lib/s24-attestation.js';
 import { requireKey } from './_auth.js';
-import { splitFleet } from './broker.js';
+import { DEVICE_IDS, splitFleet } from './broker.js';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, ScanCommand } from '@aws-sdk/lib-dynamodb';
 import { scanBounded } from './lib/ddb-scan.js';
@@ -265,6 +265,77 @@ export function computeS24Liveness(fields, nowMs) {
   };
 }
 
+// Which watchers picked up the play the Video relay panel is showing.
+//
+// A watcher records an acknowledgement in two places, and the panel used to
+// read the one that cannot say which play it was for:
+//   - settings/siteVideoEvents.seenBy.<id>: the time that watcher last
+//     acknowledged *a* play. Nothing clears it. The site relay
+//     (jaytibirthday-site Backend/api/video-event.js) PATCHes seven named
+//     fields and seenBy is not one of them, so an entry outlives its play.
+//   - devices/<id>.lastVideoEventAck / lastVideoEventAckAt: the id of the
+//     play that watcher last handled, and when.
+// The panel printed every seenBy key as a ✓ beside the newest play. A watcher
+// that had stopped kept "picking up" every later play, and the Lenovo showed a
+// second ✓ under `g4g-laptop`, the id its watcher wrote until 2026-09-23 (see
+// DEVICE_IDS in broker.js). On 2026-09-24 the laptop's own log showed it
+// catching two plays 57 s and 8 s after they fired; the panel could not tell
+// those acknowledgements from ones a week old.
+//
+// So an acknowledgement counts for the displayed play only when it is tied to
+// that play: the device document names the play's id, or, failing a current
+// named id, the seenBy time is at or after the play. The id is preferred
+// because a time can belong to the previous play: a watcher that read play A
+// and wrote its ack after play B landed passes a time test for B, and site
+// visits fire two plays half a second apart. But the id only counts while it
+// is the watcher's newest acknowledgement. fleet:register (jaytibirthday-site)
+// restores lastVideoEventAck onto a re-created document, so a seenBy time
+// newer than the document's ack means the id is stale, and the time decides.
+// Everything else is still returned, as an earlier acknowledgement, because
+// "last acknowledged three days ago" is how a stopped watcher shows itself.
+// Ids outside the fleet are returned with fleet:false, not dropped, the same
+// way the roster names other_documents.
+//
+// Pure: `event` is the decoded settings doc, `deviceAcks` maps a fleet device
+// id to { eventId, at } from its own document.
+export function videoEventWatchers(event, deviceAcks, fleetIds = DEVICE_IDS) {
+  const ev = event && typeof event === 'object' ? event : {};
+  // dec() turns an arrayValue into [], which `|| {}` does not catch.
+  const seenBy = ev.seenBy && typeof ev.seenBy === 'object' && !Array.isArray(ev.seenBy) ? ev.seenBy : {};
+  const named = deviceAcks && typeof deviceAcks === 'object' ? deviceAcks : {};
+  const eventMs = typeof ev.lastEventAt === 'string' ? Date.parse(ev.lastEventAt) : NaN;
+  const str = (v) => (typeof v === 'string' && v ? v : null);
+
+  const watchers = [];
+  for (const deviceId of new Set([...Object.keys(seenBy), ...Object.keys(named)])) {
+    const own = named[deviceId] && typeof named[deviceId] === 'object' ? named[deviceId] : {};
+    const namedId = str(own.eventId);
+    const namedAt = str(own.at);
+    const seenAt = str(seenBy[deviceId]);
+    const idCurrent = Boolean(namedId) && !(Date.parse(seenAt) > Date.parse(namedAt));
+    const ackedAt = idCurrent ? namedAt || seenAt : seenAt || namedAt;
+    const ackMs = ackedAt ? Date.parse(ackedAt) : NaN;
+    const forThisEvent = Boolean(ev.lastEventId) && (idCurrent
+      ? namedId === ev.lastEventId
+      : Number.isFinite(ackMs) && Number.isFinite(eventMs) && ackMs >= eventMs);
+    // The ack time is the watcher's clock and the play time is Vercel's, so a
+    // negative gap is skew, not a lag, and is reported as unknown.
+    const lagMs = forThisEvent ? ackMs - eventMs : NaN;
+    watchers.push({
+      deviceId,
+      fleet: fleetIds.includes(deviceId),
+      forThisEvent,
+      ackedEventId: idCurrent ? namedId : null,
+      ackedAt,
+      lagSeconds: lagMs >= 0 ? Math.round(lagMs / 100) / 10 : null,
+    });
+  }
+
+  const ms = (w) => (w.ackedAt && Number.isFinite(Date.parse(w.ackedAt)) ? Date.parse(w.ackedAt) : -Infinity);
+  return watchers.sort((a, b) =>
+    (b.forThisEvent - a.forThisEvent) || (b.fleet - a.fleet) || (ms(b) - ms(a)) || a.deviceId.localeCompare(b.deviceId));
+}
+
 async function handleDevices(req, res) {
   res.setHeader('Cache-Control', 'no-store');
   // The enrolled-device roster, and with ?full=1 the whole stored payload.
@@ -319,10 +390,14 @@ async function handleDevices(req, res) {
     };
 
     const now = Date.now();
+    // Each fleet document's own video-watcher acknowledgement, for
+    // videoEventWatchers() below.
+    const videoAcks = {};
     const devices = fleet.map((d) => {
       const f = {};
       for (const [k, v] of Object.entries(d.fields || {})) f[k] = dec(v);
       const deviceId = d.name.split('/').pop();
+      if (f.lastVideoEventAck) videoAcks[deviceId] = { eventId: f.lastVideoEventAck, at: f.lastVideoEventAckAt || null };
       const lastSeen = f.lastSeen || null;
       // Only an always-on agent can be expected to check in every 45s. Phones
       // heartbeat opportunistically (samsung-s24-ultra uses a native Android
@@ -427,7 +502,8 @@ async function handleDevices(req, res) {
     devices.sort((a, b) => (b.lastSeen || '').localeCompare(a.lastSeen || ''));
 
     // Site video-event relay state: last play event from jaytibirthday.in and
-    // which devices acknowledged it (seenBy map written by the device watchers).
+    // which watchers acknowledged that play. seenBy is passed through as stored;
+    // `watchers` is the verdict the panel renders (videoEventWatchers above).
     let videoEvent = null;
     let videoEventError = null;
     try {
@@ -447,6 +523,7 @@ async function handleDevices(req, res) {
           lastVisitorCountry: decodeOne(f.lastVisitorCountry) || null,
           lastVisitorCity: decodeOne(f.lastVisitorCity) || null,
           seenBy: f.seenBy || {},
+          watchers: videoEventWatchers(f, videoAcks),
         };
       }
     } catch (e) {
