@@ -38,6 +38,26 @@
     .msg.agent { align-self: flex-start; background: var(--panel); }
     .msg.err { align-self: flex-start; background: #F8E3E0; color: var(--bad); }
     .meta { display: block; margin-top: 6px; font-size: 11.5px; color: var(--ink-muted); white-space: normal; }
+    .cites { margin: 8px 0 0 18px; font-size: 12px; color: var(--ink-muted); white-space: normal; }
+    .cites li { margin: 2px 0; }
+    .cites code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px; color: var(--ink); }
+
+    .hub { background: var(--panel); border-radius: 12px; padding: 12px 14px; margin-bottom: 12px; font-size: 13px; }
+    .hub-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+    .hub-head h2 { font-family: var(--serif); font-size: 15px; font-weight: 600; }
+    .hub-head .hint { font-size: 11.5px; color: var(--ink-muted); }
+    .hub-head button { font: inherit; font-size: 12px; margin-left: auto; padding: 4px 10px; cursor: pointer;
+        border: 1px solid var(--border); border-radius: 8px; background: var(--panel2); color: var(--ink); }
+    .hub-kpis { display: flex; gap: 18px; flex-wrap: wrap; margin-bottom: 8px; }
+    .hub-kpis b { font-family: var(--serif); font-size: 18px; color: var(--amber); }
+    .hub-kpis span { display: block; font-size: 11px; color: var(--ink-muted); }
+    .hub-wrap { overflow-x: auto; }
+    .hub table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .hub th, .hub td { text-align: left; padding: 4px 6px; border-top: 1px solid var(--border); white-space: nowrap; }
+    .hub th { color: var(--ink-muted); font-weight: 500; border-top: 0; }
+    .hub th.num, .hub td.num { text-align: right; }
+    .hub tr.off td { color: var(--ink-muted); }
+    .hub-err { color: var(--bad); font-size: 12.5px; }
 
     form { display: flex; gap: 8px; padding-bottom: env(safe-area-inset-bottom, 0px); }
     textarea { flex: 1; font: inherit; resize: none; padding: 11px 13px; border-radius: 12px; border: 1px solid var(--border);
@@ -75,6 +95,14 @@
 </header>
 
 <main>
+    <section class="hub" id="hub">
+        <div class="hub-head">
+            <h2>Hub / devices</h2>
+            <span class="hint" id="hubHint"></span>
+            <button id="hubRefresh" type="button">Refresh</button>
+        </div>
+        <div id="hubBody"></div>
+    </section>
     <div id="log">
         <div class="empty" id="empty">
             <h1>Ask the agent</h1>
@@ -124,6 +152,30 @@
         return d;
     }
 
+    function el(tag, cls, text) {
+        var n = document.createElement(tag);
+        if (cls) n.className = cls;
+        if (text !== undefined && text !== null) n.textContent = text;
+        return n;
+    }
+
+    // Numbered citations under an answer: the proxy passes through the
+    // service's source_docs [{n, doc_id, index_id, score, source, snippet}].
+    function addCitations(node, docs) {
+        if (!Array.isArray(docs) || !docs.length) return;
+        var ol = el('ol', 'cites');
+        docs.forEach(function (d, i) {
+            var li = el('li');
+            if (d.n) li.value = d.n;
+            li.appendChild(el('code', '', d.doc_id || d.source || ('doc ' + (i + 1))));
+            var snip = String(d.snippet || '').replace(/\s+/g, ' ').trim();
+            if (snip.length > 240) snip = snip.slice(0, 240) + '…';
+            if (snip) li.appendChild(document.createTextNode(' — ' + snip));
+            ol.appendChild(li);
+        });
+        node.appendChild(ol);
+    }
+
     function api(path, init) {
         init = init || {};
         init.headers = Object.assign({ 'x-stats-key': KEY }, init.headers || {});
@@ -131,6 +183,74 @@
             return res.json().catch(function () { return {}; }).then(function (j) { return { res: res, j: j }; });
         });
     }
+
+    /* ===== Hub / devices (read-only, via /agent/state) ===== */
+    function fmtNum(v) { return v === undefined || v === null ? '–' : Number(v).toLocaleString(); }
+    function fmtTime(v) {
+        if (!v) return '–';
+        var t = new Date(v);
+        return isNaN(t.getTime()) ? String(v) : t.toLocaleString();
+    }
+
+    function renderHub(box, j) {
+        var st = j.status || {};
+        var devices = Array.isArray(j.devices) ? j.devices : [];
+        box.textContent = '';
+        $('hubHint').textContent = [j.hub, st.ts ? 'as of ' + fmtTime(st.ts) : ''].filter(Boolean).join(' · ');
+
+        var kpis = el('div', 'hub-kpis');
+        [['devices_active', 'active devices'], ['items_total', 'rows'], ['items_unprocessed', 'unprocessed']].forEach(function (k) {
+            var d = el('div');
+            d.appendChild(el('b', '', fmtNum(st[k[0]])));
+            d.appendChild(el('span', '', k[1]));
+            kpis.appendChild(d);
+        });
+        box.appendChild(kpis);
+
+        if (j.status_error) box.appendChild(el('div', 'hub-err', 'status: ' + j.status_error));
+        if (j.devices_error) box.appendChild(el('div', 'hub-err', 'devices: ' + j.devices_error));
+
+        if (!devices.length) { if (!j.devices_error) box.appendChild(el('div', 'hub-err', 'No devices reported.')); return; }
+        var wrap = el('div', 'hub-wrap');
+        var table = el('table');
+        var thead = el('thead'); var hr = el('tr');
+        [['Device'], ['Type / OS'], ['Rows', 'num'], ['Unprocessed', 'num'], ['Last ingest']].forEach(function (h) {
+            hr.appendChild(el('th', h[1] || '', h[0]));
+        });
+        thead.appendChild(hr); table.appendChild(thead);
+        var tbody = el('tbody');
+        devices.forEach(function (d) {
+            var tr = el('tr', d.is_active === false ? 'off' : '');
+            tr.appendChild(el('td', '', d.device_id || '–'));
+            tr.appendChild(el('td', '', [d.device_type, d.os].filter(Boolean).join(' / ') || '–'));
+            tr.appendChild(el('td', 'num', fmtNum(d.items)));
+            tr.appendChild(el('td', 'num', fmtNum(d.unprocessed)));
+            tr.appendChild(el('td', '', fmtTime(d.last_ingest)));
+            tbody.appendChild(tr);
+        });
+        table.appendChild(tbody); wrap.appendChild(table); box.appendChild(wrap);
+    }
+
+    var hubBusy = false;
+    function loadHubState() {
+        if (hubBusy) return Promise.resolve();
+        hubBusy = true; $('hubRefresh').disabled = true;
+        var box = $('hubBody');
+        box.textContent = 'Loading…';
+        return api('/agent/state').then(function (r) {
+            if (r.res.status === 401) { box.textContent = 'Locked.'; showGate(KEY ? 'That key was not accepted.' : ''); return; }
+            if (!r.res.ok) {
+                box.textContent = '';
+                box.appendChild(el('div', 'hub-err', r.j.missing ? 'Agent not configured: missing ' + r.j.missing.join(', ') : (r.j.error || 'HTTP ' + r.res.status)));
+                return;
+            }
+            renderHub(box, r.j);
+        }).catch(function (err) {
+            box.textContent = '';
+            box.appendChild(el('div', 'hub-err', 'Request failed: ' + (err && err.message || err)));
+        }).then(function () { hubBusy = false; $('hubRefresh').disabled = false; });
+    }
+    $('hubRefresh').addEventListener('click', function () { loadHubState(); });
 
     function checkHealth() {
         $('status').textContent = 'checking…';
@@ -148,7 +268,7 @@
         if (!v) return;
         KEY = v;
         try { localStorage.setItem(KEY_STORAGE, v); sessionStorage.removeItem(KEY_STORAGE); } catch (e) {}
-        checkHealth().then(function (ok) { if (ok) { $('gate').hidden = true; $('keyInput').value = ''; $('prompt').focus(); } });
+        checkHealth().then(function (ok) { if (ok) { $('gate').hidden = true; $('keyInput').value = ''; $('prompt').focus(); loadHubState(); } });
     });
     $('keyInput').addEventListener('keydown', function (e) { if (e.key === 'Enter') $('unlockBtn').click(); });
     $('lockBtn').addEventListener('click', function () {
@@ -186,14 +306,15 @@
             var meta = [];
             if (r.j.sources) meta.push(r.j.sources + ' source' + (r.j.sources === 1 ? '' : 's'));
             if (r.j.total_time_ms) meta.push((r.j.total_time_ms / 1000).toFixed(1) + 's');
-            add('agent', r.j.response || '(empty response)', meta.join(' · '));
+            var answer = add('agent', r.j.response || '(empty response)', meta.join(' · '));
+            addCitations(answer, r.j.source_docs);
         }).catch(function (err) {
             pending.remove();
             add('err', 'Request failed: ' + (err && err.message || err));
         }).then(function () { busy = false; $('sendBtn').disabled = false; });
     });
 
-    if (KEY) checkHealth(); else showGate();
+    if (KEY) checkHealth().then(function (ok) { if (ok) loadHubState(); }); else showGate();
 })();
 </script>
 </body>
