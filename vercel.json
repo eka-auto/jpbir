@@ -72,6 +72,10 @@
       "use": "@vercel/node"
     },
     {
+      "src": "Backend/jp-hub-state.js",
+      "use": "@vercel/node"
+    },
+    {
       "src": "Backend/jp-live-content.js",
       "use": "@vercel/node"
     },
@@ -188,6 +192,10 @@
     {
       "src": "/agent/health",
       "dest": "Backend/jp-live-agent.js?op=health"
+    },
+    {
+      "src": "/agent/state",
+      "dest": "Backend/jp-hub-state.js"
     },
     {
       "src": "/api/agent-run",

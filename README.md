@@ -50,7 +50,7 @@ Static HTML served by Vercel from `Frontend/`.
 | `/s24` | `s24.html` | Samsung S24 Ultra device view |
 | `/vivobook` | `vivobook.html` | ASUS Vivobook device view |
 | `/jteka` | `jteka.html` | JTEKA fleet status |
-| `/agent` | `agent.html` | Ask the `jp-agent` runtime (via `/agent/query`) |
+| `/agent` | `agent.html` | Jayti Agent: the retrieval-grounded jtagent service (`/agent/query`, `/agent/health`, `/agent/state`, proxied to `AGENT_API_URL`). Distinct from the dashboard's Terminal, which posts to `/api/agent-run` on the droplet |
 | `/db` | `db.html` | Data browser over the Postgres warehouse |
 | `/viewer` | `viewer.html` | Media: WhatsApp photos, video, voice notes and documents from every chat (`/api/jp-live-content`, files via the `/api/wa-media` proxy) |
 
