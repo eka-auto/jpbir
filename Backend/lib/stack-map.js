@@ -136,7 +136,7 @@ export const LAYERS = [
       { path: 'Integrations/s24-store.js', probe: 'postgres', why: 'Device telemetry tables' },
       { path: 'Backend/verify-db.js', probe: 'postgres', why: 'Schema presence check' },
       { path: 'Backend/lib/ddb-scan.js', probe: 'dynamo', why: 'Bounded DynamoDB scan' },
-      { path: 'Backend/lib/warehouse.js', probe: 'dynamo', why: 'Analytics table access' },
+      { path: 'Backend/lib/warehouse.js', probe: 'postgres', why: 'Neon analytics warehouse' },
       { path: 'Backend/wa-blob-upload.js', probe: 'blob', why: 'Media bytes → Vercel Blob' },
       { path: 'Backend/wa-media.js', probe: 'blob', why: 'Serves media from Blob' },
       { path: 'Database/scripts/migrate.mjs', probe: 'static', why: 'Migration runner' },

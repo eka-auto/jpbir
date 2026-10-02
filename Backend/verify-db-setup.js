@@ -10,47 +10,39 @@
  * Usage: node verify-db-setup.js
  */
 
-import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocumentClient, ScanCommand } from '@aws-sdk/lib-dynamodb';
+import { ScanCommand } from '@aws-sdk/lib-dynamodb';
+import { credentialMeta, credentialRefusal, documentClient, telemetryRegion, telemetryTable } from './lib/ddb.js';
 import { fetch } from 'undici';
 
 const env = process.env;
 
 const config = {
-  STATS_KEY: env.STATS_KEY,
-  AWS_ACCESS_KEY_ID: env.JP_AWS_ACCESS_KEY_ID,
-  AWS_SECRET_ACCESS_KEY: env.JP_AWS_SECRET_ACCESS_KEY,
-  AWS_REGION: env.JP_AWS_REGION || 'us-west-2',
-  TABLE: env.JP_TELEMETRY_TABLE || 'jaytipargal_telemetry',
+  AWS_REGION: telemetryRegion(),
+  TABLE: telemetryTable(),
   FIREBASE_SA_JSON: env.FIREBASE_SERVICE_ACCOUNT_JSON,
 };
 
 console.log('🔍 Database Verification for Production\n');
 console.log('Configuration:');
-Object.entries(config).forEach(([key, value]) => {
-  const masked = value && value.length > 10 ? value.substring(0, 10) + '...' : value ? '***' : '❌ MISSING';
-  console.log(`  ${key}: ${masked}`);
-});
+const aws = credentialMeta('read');
+console.log('  STATS_KEY: ' + (env.STATS_KEY ? 'set' : '❌ MISSING'));
+console.log('  JP_AWS read: ' + (aws.configured ? 'set keyClass=' + aws.keyClass : '❌ MISSING'));
+console.log('  AWS_REGION: ' + config.AWS_REGION);
+console.log('  TABLE: ' + config.TABLE);
+console.log('  FIREBASE_SERVICE_ACCOUNT_JSON: ' + (config.FIREBASE_SA_JSON ? 'set' : '❌ MISSING'));
 console.log('');
 
 async function verifyDynamoDB() {
   console.log('📊 Checking DynamoDB...');
   
-  if (!config.AWS_ACCESS_KEY_ID || !config.AWS_SECRET_ACCESS_KEY) {
-    console.log('  ❌ AWS credentials not configured\n');
+  const refusal = credentialRefusal('read');
+  if (refusal) {
+    console.log('  ❌ ' + refusal + '\n');
     return false;
   }
 
   try {
-    const client = new DynamoDBClient({
-      region: config.AWS_REGION,
-      credentials: {
-        accessKeyId: config.AWS_ACCESS_KEY_ID,
-        secretAccessKey: config.AWS_SECRET_ACCESS_KEY,
-      },
-    });
-
-    const docClient = DynamoDBDocumentClient.from(client);
+    const docClient = documentClient('read');
     const cmd = new ScanCommand({
       TableName: config.TABLE,
       Limit: 5,

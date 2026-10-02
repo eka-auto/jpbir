@@ -256,6 +256,10 @@ check('db-push no longer stamps every row with one hardcoded site',
   !/`\$\{SITE\}:\$\{it\.id\}`/.test(pushSrc) && /siteFor\(/.test(pushSrc),
   'db-push still builds ids from a constant site');
 
+check('db-push does not invent a property when the row has no site',
+  !/FALLBACK_SITE/.test(pushSrc) && /if \(!site\) return false/.test(pushSrc),
+  'a row with no derivable site is still filed under a constant property');
+
 check('both feeds insert through the same module',
   /lib\/warehouse\.js/.test(pushSrc) && /lib\/warehouse\.js/.test(trackSrc),
   'one of the two feeds has its own copy of the INSERT');

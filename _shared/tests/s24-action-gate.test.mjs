@@ -36,7 +36,7 @@ const REFUSED = ['start-ssh', 'start-sshd', 'ssh', 'wakeup-sshd', 'secure-wipe',
   'heartbeat', 'wakeup', 'wake-up', 'rm -rf /', 'anything', ''];
 
 function quotedSet(source, pattern, label) {
-  const match = source.match(pattern);
+  const match = source.replace(/\r\n/g, '\n').match(pattern);
   assert.ok(match, label + ' action set was not found');
   return [...match[1].matchAll(/['"]([^'"]+)['"]/g)].map((m) => m[1]).sort();
 }

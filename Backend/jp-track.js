@@ -1,14 +1,10 @@
-import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocumentClient, BatchWriteCommand, PutCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
+import { BatchWriteCommand, PutCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
 import { decodeOne } from './lib/geo.js';
+import { credentialRefusal, documentClient, telemetryTable } from './lib/ddb.js';
 import { siteFor, recordEvent, botLike } from './lib/warehouse.js';
 import { isConfigured } from '../Integrations/postgres.js';
 
-const _env = (typeof process !== 'undefined' ? process : globalThis['proc' + 'ess']).env;
-const AWS_ACCESS_KEY_ID = _env['JP_WRITE_AWS_' + 'ACCESS_KEY_ID'];
-const AWS_SECRET_ACCESS_KEY = _env['JP_WRITE_AWS_' + 'SECRET_ACCESS_KEY'];
-const AWS_REGION = _env['JP_AWS_' + 'REGION'] || 'us-west-2';
-const TABLE = _env['JP_TELEMETRY_' + 'TABLE'] || 'jaytipargal_telemetry';
+const TABLE = telemetryTable();
 
 const ALLOWED_ORIGINS = new Set([
   'https://jaytipargal.com',
@@ -109,8 +105,9 @@ export default async function handler(req, res) {
     res.setHeader('Allow', 'POST');
     return res.status(405).json({ success: false, error: 'Method not allowed' });
   }
-  if (!AWS_ACCESS_KEY_ID || !AWS_SECRET_ACCESS_KEY) {
-    return res.status(503).json({ success: false, error: 'AWS write credentials not configured' });
+  const awsRefusal = credentialRefusal('write');
+  if (awsRefusal) {
+    return res.status(503).json({ success: false, error: awsRefusal });
   }
 
   try {
@@ -173,10 +170,7 @@ export default async function handler(req, res) {
     // undefined values unless removeUndefinedValues is set.
     item.site = siteFor(item.pageUrl, req.headers.origin || req.headers.referer || req.headers.host) || null;
 
-    const client = DynamoDBDocumentClient.from(new DynamoDBClient({
-      region: AWS_REGION,
-      credentials: { accessKeyId: AWS_ACCESS_KEY_ID, secretAccessKey: AWS_SECRET_ACCESS_KEY }
-    }));
+    const client = documentClient('write');
     await client.send(new PutCommand({ TableName: TABLE, Item: item }));
 
     // The warehouse is the store the dashboard reads; DynamoDB is the raw

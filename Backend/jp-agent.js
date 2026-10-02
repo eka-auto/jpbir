@@ -1,15 +1,11 @@
-import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocumentClient, ScanCommand } from '@aws-sdk/lib-dynamodb';
+import { credentialRefusal, documentClient, telemetryTable } from './lib/ddb.js';
 import { scanBounded } from './lib/ddb-scan.js';
 import { list } from '@vercel/blob';
 import { decodeGeo } from './lib/geo.js';
 import { requireKey } from './_auth.js';
 
 const _env = (typeof process !== 'undefined' ? process : globalThis['proc' + 'ess']).env;
-const AWS_ACCESS_KEY_ID = _env['JP_AWS_' + 'ACCESS_KEY_ID'];
-const AWS_SECRET_ACCESS_KEY = _env['JP_AWS_' + 'SECRET_ACCESS_KEY'];
-const AWS_REGION = _env['JP_AWS_' + 'REGION'] || 'us-west-2';
-const TABLE = _env['JP_TELEMETRY_' + 'TABLE'] || 'jaytipargal_telemetry';
+const TABLE = telemetryTable();
 const ANTHROPIC_KEY = _env['ANTHROPIC_' + 'API_KEY'];
 const BLOB_TOKEN = _env['BLOB_' + 'READ_WRITE_TOKEN'];
 
@@ -33,10 +29,7 @@ async function gatherContext(question) {
   const q = (question || '').toLowerCase();
 
   try {
-    const client = DynamoDBDocumentClient.from(new DynamoDBClient({
-      region: AWS_REGION,
-      credentials: { accessKeyId: AWS_ACCESS_KEY_ID, secretAccessKey: AWS_SECRET_ACCESS_KEY }
-    }));
+    const client = documentClient('read');
     // `truncated` is surfaced, not swallowed. A page ceiling or the time budget
     // can stop the scan before the table ends, and a partial total presented as
     // a complete one is worse than an error because nothing looks wrong.
@@ -172,8 +165,9 @@ export default async function handler(req, res) {
   // The same guard every other DynamoDB-backed handler applies. Without it an
   // unconfigured deployment spent a paid Anthropic call reasoning over an empty
   // context and answered as though the fleet were genuinely empty.
-  if (!AWS_ACCESS_KEY_ID || !AWS_SECRET_ACCESS_KEY) {
-    return res.status(503).json({ success: false, error: 'AWS credentials not configured' });
+  const awsRefusal = credentialRefusal('read');
+  if (awsRefusal) {
+    return res.status(503).json({ success: false, error: awsRefusal });
   }
 
   let body = req.body || {};

@@ -10,17 +10,13 @@ import {
 } from './lib/s24-attestation.js';
 import { requireKey } from './_auth.js';
 import { DEVICE_IDS, splitFleet } from './broker.js';
-import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocumentClient, ScanCommand } from '@aws-sdk/lib-dynamodb';
+import { credentialRefusal, documentClient, telemetryTable } from './lib/ddb.js';
 import { scanBounded } from './lib/ddb-scan.js';
 
 const _env = (typeof process !== 'undefined' ? process : globalThis['proc' + 'ess']).env;
 const FIREBASE_SA_JSON = _env['FIREBASE_' + 'SERVICE_ACCOUNT_JSON'];
 const FIRESTORE_DB = _env['FIRESTORE_' + 'DB'] || 'eka-agent';
-const AWS_ACCESS_KEY_ID = _env['JP_AWS_' + 'ACCESS_KEY_ID'];
-const AWS_SECRET_ACCESS_KEY = _env['JP_AWS_' + 'SECRET_ACCESS_KEY'];
-const AWS_REGION = _env['JP_AWS_' + 'REGION'] || 'us-west-2';
-const TABLE = _env['JP_TELEMETRY_' + 'TABLE'] || 'jaytipargal_telemetry';
+const TABLE = telemetryTable();
 
 let _tokenCache = { token: null, exp: 0 };
 
@@ -585,18 +581,16 @@ async function handleDeviceHistory(req, res) {
   // Per-device telemetry, including network and location detail. Keyed for the
   // same reason the roster is: it is the complete browsing trail.
   if (!requireKey(req, res)) return;
-  if (!AWS_ACCESS_KEY_ID || !AWS_SECRET_ACCESS_KEY) {
-    return res.status(503).json({ success: false, error: 'AWS credentials not configured' });
+  const awsRefusal = credentialRefusal('read');
+  if (awsRefusal) {
+    return res.status(503).json({ success: false, error: awsRefusal });
   }
 
   const days = Math.min(Math.max(parseInt(req.query.days) || 30, 1), 90);
   const cutoff = Date.now() - days * 86400000;
 
   try {
-    const client = DynamoDBDocumentClient.from(new DynamoDBClient({
-      region: AWS_REGION,
-      credentials: { accessKeyId: AWS_ACCESS_KEY_ID, secretAccessKey: AWS_SECRET_ACCESS_KEY }
-    }));
+    const client = documentClient('read');
 
     // `truncated` is surfaced, not swallowed. A page ceiling or the time budget
     // can stop the scan before the table ends, and a partial total presented as

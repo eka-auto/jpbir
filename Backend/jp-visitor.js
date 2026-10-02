@@ -1,14 +1,9 @@
-import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocumentClient, ScanCommand } from '@aws-sdk/lib-dynamodb';
+import { credentialRefusal, documentClient, telemetryTable } from './lib/ddb.js';
 import { scanBounded } from './lib/ddb-scan.js';
 import { decodeGeo } from './lib/geo.js';
 import { requireKey } from './_auth.js';
 
-const _env = (typeof process !== 'undefined' ? process : globalThis['proc' + 'ess']).env;
-const AWS_ACCESS_KEY_ID = _env['JP_AWS_' + 'ACCESS_KEY_ID'];
-const AWS_SECRET_ACCESS_KEY = _env['JP_AWS_' + 'SECRET_ACCESS_KEY'];
-const AWS_REGION = _env['JP_AWS_' + 'REGION'] || 'us-west-2';
-const TABLE = _env['JP_TELEMETRY_' + 'TABLE'] || 'jaytipargal_telemetry';
+const TABLE = telemetryTable();
 
 // The bounded scan this file introduced now lives in lib/ddb-scan.js, so
 // jp-stats, jp-device and jp-agent -- which each carried an UNBOUNDED copy of
@@ -47,8 +42,9 @@ export default async function handler(req, res) {
   // always sent ?key= for both endpoints and already renders the 401 inside the
   // drawer, so this is a server-side gap only.
   if (!requireKey(req, res)) return;
-  if (!AWS_ACCESS_KEY_ID || !AWS_SECRET_ACCESS_KEY) {
-    return res.status(503).json({ success: false, error: 'AWS credentials not configured' });
+  const awsRefusal = credentialRefusal('read');
+  if (awsRefusal) {
+    return res.status(503).json({ success: false, error: awsRefusal });
   }
 
   const visitor = req.query.visitor;
@@ -61,10 +57,7 @@ export default async function handler(req, res) {
   const cutoff = Date.now() - days * 86400000;
 
   try {
-    const client = DynamoDBDocumentClient.from(new DynamoDBClient({
-      region: AWS_REGION,
-      credentials: { accessKeyId: AWS_ACCESS_KEY_ID, secretAccessKey: AWS_SECRET_ACCESS_KEY }
-    }));
+    const client = documentClient('read');
 
     // Keep the epoch window server-side alongside the id match. DynamoDB
     // compares across types as never-equal, so a bare `#epoch >= :cutoff` would

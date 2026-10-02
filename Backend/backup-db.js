@@ -10,11 +10,10 @@ import { writeFileSync, mkdirSync } from 'fs';
 import { join, dirname } from 'path';
 import crypto from 'crypto';
 
+import { credentialRefusal, documentClient, telemetryTable } from './lib/ddb.js';
+
 const _env = (typeof process !== 'undefined' ? process : globalThis['proc' + 'ess']).env;
-const AWS_ACCESS_KEY_ID = _env['JP_AWS_' + 'ACCESS_KEY_ID'];
-const AWS_SECRET_ACCESS_KEY = _env['JP_AWS_' + 'SECRET_ACCESS_KEY'];
-const AWS_REGION = _env['JP_AWS_' + 'REGION'] || 'us-west-2';
-const TABLE = _env['JP_TELEMETRY_' + 'TABLE'] || 'jaytipargal_telemetry';
+const TABLE = telemetryTable();
 const FIREBASE_SA_JSON = _env['FIREBASE_' + 'SERVICE_ACCOUNT_JSON'];
 
 const BACKUP_DIR = join(process.cwd(), 'db-backup');
@@ -87,24 +86,15 @@ async function backupFirestore() {
 async function backupDynamoDB() {
   console.log('📊 Backing up DynamoDB telemetry...');
   
-  if (!AWS_ACCESS_KEY_ID || !AWS_SECRET_ACCESS_KEY) {
-    console.log('  ❌ AWS credentials not configured');
+  const refusal = credentialRefusal('read');
+  if (refusal) {
+    console.log('  ❌ ' + refusal);
     return null;
   }
 
   try {
-    const { DynamoDBClient } = await import('@aws-sdk/client-dynamodb');
-    const { DynamoDBDocumentClient, ScanCommand } = await import('@aws-sdk/lib-dynamodb');
-
-    const client = new DynamoDBClient({
-      region: AWS_REGION,
-      credentials: {
-        accessKeyId: AWS_ACCESS_KEY_ID,
-        secretAccessKey: AWS_SECRET_ACCESS_KEY,
-      },
-    });
-
-    const docClient = DynamoDBDocumentClient.from(client);
+    const { ScanCommand } = await import('@aws-sdk/lib-dynamodb');
+    const docClient = documentClient('read');
     
     const allItems = [];
     let lastKey = null;
