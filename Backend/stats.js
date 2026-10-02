@@ -23,14 +23,14 @@
 import { decodeGeo } from './lib/geo.js';
 import { requireKey } from './_auth.js';
 import { query, isConfigured } from '../Integrations/postgres.js';
+import { propertyFromQuery } from './lib/warehouse.js';
 
 const CACHE_TTL = 5000;
 const _cache = globalThis.__jbtStatsCache || (globalThis.__jbtStatsCache = new Map());
 
-// The property this dashboard reports on. The blob store held exactly one
-// site's analytics, so this was implicit before; in a warehouse holding
-// several it has to be said out loud.
-const SITE = process.env.STATS_SITE || 'jaytibirthday.in';
+// Default property when the dashboard does not name one. Callers pass ?site=
+// for jaytibirthday.in, jaytipargal.tech, or jaytipargal.com. Unknown hosts
+// are refused rather than queried.
 
 function parseUA(ua) {
   if (!ua) return { device: 'unknown', browser: 'unknown', os: 'unknown' };
@@ -88,8 +88,12 @@ export default async function handler(req, res) {
   // Visitor analytics: gated before the cache, so a cached body can never be
   // served to a caller who could not have earned it.
   if (!requireKey(req, res)) return;
+  const SITE = propertyFromQuery(req.query.site, 'jaytibirthday.in');
+  if (!SITE) {
+    return res.status(400).json({ success: false, error: 'unknown site' });
+  }
   const days = Math.min(Math.max(parseInt(req.query.days) || 7, 1), 90);
-  const cacheKey = 'd' + days;
+  const cacheKey = SITE + '|d' + days;
   const cached = _cache.get(cacheKey);
   if (cached && Date.now() - cached.at < CACHE_TTL) {
     return res.status(200).json({ ...cached.body, cached: true });

@@ -25,9 +25,7 @@
 import { requireKey } from './_auth.js';
 import { decodeGeo } from './lib/geo.js';
 import { query, isConfigured } from '../Integrations/postgres.js';
-
-// The property this dossier covers, matching /api/stats.
-const SITE = process.env.STATS_SITE || 'jaytibirthday.in';
+import { propertyFromQuery } from './lib/warehouse.js';
 
 // Rebuilds the event exactly as the blob scan used to hand it over. The
 // archived payload wins; the indexed columns fill anything it lacks, which
@@ -158,6 +156,10 @@ function summarize(events, fallbackVisitor) {
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
   if (!requireKey(req, res)) return;
+  const SITE = propertyFromQuery(req.query.site, 'jaytibirthday.in');
+  if (!SITE) {
+    return res.status(400).json({ success: false, error: 'unknown site' });
+  }
   const visitor = req.query.visitor;
   const session = req.query.session;
   if (!visitor && !session) {

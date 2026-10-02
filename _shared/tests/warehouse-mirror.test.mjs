@@ -28,7 +28,7 @@ const check = (label, ok, detail) => {
 delete process.env.DATABASE_URL;
 delete process.env.POSTGRES_URL;
 
-const { siteFor, botLike, insertEvent, recordEvent, rollupVisitors, rollupSessions } =
+const { siteFor, propertyFromQuery, botLike, insertEvent, recordEvent, rollupVisitors, rollupSessions } =
   await import('../../Backend/lib/warehouse.js');
 
 // Records every statement instead of running it.
@@ -92,6 +92,15 @@ for (const [pageUrl, fallback, want, why] of [
   const got = siteFor(pageUrl, fallback);
   check(`siteFor: ${why}`, got === want, `siteFor(${JSON.stringify(pageUrl)}, ${JSON.stringify(fallback)}) = ${JSON.stringify(got)}, wanted ${JSON.stringify(want)}`);
 }
+
+check('propertyFromQuery accepts the two dashboard hosts',
+  propertyFromQuery('jaytibirthday.in') === 'jaytibirthday.in' &&
+  propertyFromQuery('jaytipargal.tech') === 'jaytipargal.tech' &&
+  propertyFromQuery('www.jaytipargal.tech') === 'jaytipargal.tech',
+  'the selector hosts did not resolve to themselves');
+check('propertyFromQuery refuses a host outside the allow-list',
+  propertyFromQuery('evil.example') === null && propertyFromQuery('', 'jaytibirthday.in') === 'jaytibirthday.in',
+  'an unknown site was accepted, or the birthday default was dropped');
 
 // botLike gates the warehouse WRITE, because visitors/sessions are recomputed
 // from events — a crawler counted there inflates every rollup off it. A false
@@ -220,8 +229,17 @@ const trackSrc = readFileSync(join(BACKEND, 'jp-track.js'), 'utf8');
 const pushSrc = readFileSync(join(BACKEND, 'db-push.js'), 'utf8');
 
 check('jp-track mirrors AFTER the DynamoDB write, never instead of it',
-  trackSrc.indexOf('PutCommand') < trackSrc.indexOf('recordEvent'),
+  trackSrc.indexOf('new PutCommand') < trackSrc.indexOf('await recordEvent'),
   'recordEvent appears before the DynamoDB PutCommand');
+
+{
+  const from = trackSrc.indexOf('catch (dynamoError)');
+  const to = trackSrc.indexOf('await recordEvent');
+  const between = from >= 0 && to > from ? trackSrc.slice(from, to) : '';
+  check('a DynamoDB failure still reaches the warehouse mirror',
+    between.length > 0 && !/return res/.test(between),
+    'recordEvent is skipped when the DynamoDB put throws');
+}
 
 check('a warehouse failure cannot turn a tracked pageview into a 500',
   /try\s*\{[\s\S]{0,400}recordEvent[\s\S]{0,400}\}\s*catch/.test(trackSrc),
