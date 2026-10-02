@@ -246,16 +246,20 @@ export function deviceFreshness(firestoreResult) {
  * from this file's perspective (they are hard deps of jp-track / wa-blob-upload).
  */
 async function probeDynamo() {
-  const accessKeyId = _env['JP_AWS_' + 'ACCESS_KEY_ID'];
-  const secretAccessKey = _env['JP_AWS_' + 'SECRET_ACCESS_KEY'];
-  const region = _env['JP_AWS_' + 'REGION'] || 'us-west-2';
-  const table = _env['JP_TELEMETRY_' + 'TABLE'] || 'jaytipargal_telemetry';
-  if (!accessKeyId || !secretAccessKey) {
+  const { credentialMeta, credentialRefusal, dynamoClient, explainDynamoError, telemetryRegion, telemetryTable } = await import('./lib/ddb.js');
+  const table = telemetryTable();
+  const region = telemetryRegion();
+  const meta = credentialMeta('read');
+  if (!meta.configured) {
     return { status: UNKNOWN, problem: 'JP_AWS_ACCESS_KEY_ID / JP_AWS_SECRET_ACCESS_KEY not set on this deployment' };
   }
+  const refusal = credentialRefusal('read');
+  if (refusal) {
+    return { status: FAIL, problem: 'DynamoDB credentials refused before DescribeTable(' + table + '): ' + refusal };
+  }
   try {
-    const { DynamoDBClient, DescribeTableCommand } = await import('@aws-sdk/client-dynamodb');
-    const client = new DynamoDBClient({ region, credentials: { accessKeyId, secretAccessKey } });
+    const { DescribeTableCommand } = await import('@aws-sdk/client-dynamodb');
+    const client = dynamoClient('read');
     const res = await client.send(new DescribeTableCommand({ TableName: table }));
     const state = res.Table && res.Table.TableStatus;
     if (state !== 'ACTIVE') {
@@ -264,9 +268,7 @@ async function probeDynamo() {
     const items = res.Table && res.Table.ItemCount;
     return { status: OK, detail: table + ' ACTIVE in ' + region + (typeof items === 'number' ? ' (' + items + ' items)' : '') };
   } catch (e) {
-    const name = e && e.name ? e.name : 'Error';
-    const msg = String((e && e.message) || e).slice(0, 140);
-    return { status: FAIL, problem: 'DynamoDB DescribeTable(' + table + ') failed: ' + name + ' - ' + msg };
+    return { status: FAIL, problem: 'DynamoDB DescribeTable(' + table + ') failed: ' + explainDynamoError(e, 'read') };
   }
 }
 

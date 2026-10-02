@@ -394,8 +394,9 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
         <div class="live-pill"><span class="live-dot" id="liveDot"></span><span id="liveLabel">connecting…</span></div>
         <div class="spacer"></div>
         <span class="last-updated" id="lastUpdated"></span>
-        <select id="siteSel" title="Which tracked property to show. Beacons from jaytibirthday.in and jaytipargal.com go into DynamoDB via /api/jp-track, then mirror to Postgres.">
+        <select id="siteSel" title="Which tracked property to show. Beacons land in Postgres even when DynamoDB rejects the write.">
             <option value="jbt" selected>jaytibirthday.in</option>
+            <option value="tech">jaytipargal.tech</option>
             <option value="jp">jaytipargal.com</option>
         </select>
         <select id="daysSel">
@@ -413,8 +414,8 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
          learn that the selector switches the whole ANALYZE column between two
          real, separately-tracked properties. -->
     <div class="topbar-hint" id="topbarHint">
-        Site selector switches beacons from <b>jaytibirthday.in</b> and <b>jaytipargal.com</b>
-        (<code>/api/jp-track</code> → DynamoDB → Postgres). Every ANALYZE panel below is scoped by it.
+        Site selector reads <b>jaytibirthday.in</b>, <b>jaytipargal.tech</b>, and <b>jaytipargal.com</b>
+        from Postgres (<code>/api/stats?site=</code>). Every ANALYZE panel below is scoped by it.
     </div>
 
     <div class="layout">
@@ -852,6 +853,8 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
         } catch (e) { /* nothing else to do; the key is already stored */ }
     })();
     var SITE = sessionStorage.getItem('jbt_site') || 'jbt';
+    var SITE_HOSTS = { jbt: 'jaytibirthday.in', tech: 'jaytipargal.tech', jp: 'jaytipargal.com' };
+    function siteHost() { return SITE_HOSTS[SITE] || SITE_HOSTS.jbt; }
     /* Every API call carries the key in a header, never the query string: a
        URL credential lands in access logs, browser history and Referers. The
        media proxy below is the one exception - <img>/<video> can't set headers. */
@@ -1970,7 +1973,8 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
         var qs = new URLSearchParams({ days: '30' });
         if (params.visitor) qs.set('visitor', params.visitor);
         if (params.session) qs.set('session', params.session);
-        var endpoint = SITE === 'jp' ? '/api/jp-visitor' : '/api/visitor';
+        var endpoint = '/api/visitor';
+        qs.set('site', siteHost());
         fetch(endpoint + '?' + qs.toString(), { headers: authHeaders() })
             .then(function (r) { return r.json().then(function (j) { return { status: r.status, body: j }; }); })
             .then(function (res) {
@@ -2068,15 +2072,10 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
     function load() {
         /* open dashboard: no key required */
         var days = $('daysSel').value;
-        var endpoint = SITE === 'jp' ? '/api/jp-stats' : '/api/stats';
-        /* Ask for the property the selector names. /api/jp-stats used to narrow
-           only on time and return EVERY property's events under the
-           "jaytipargal.com" label, so the page was not empty - it was reporting
-           the wrong thing while naming a specific site. It is scoped now, and
-           the scope is sent explicitly rather than left to a server default so
-           the label and the data cannot drift apart again. */
-        var params = { days: days };
-        if (SITE === 'jp') params.site = 'jaytipargal.com';
+        var endpoint = '/api/stats';
+        /* The label and the query are the same host. All three properties are
+           read from Postgres, so a DynamoDB outage does not blank the page. */
+        var params = { days: days, site: siteHost() };
         setStatus('Loading analytics…');
         fetch(endpoint + '?' + new URLSearchParams(params).toString(), { headers: authHeaders() })
             .then(function (r) {

@@ -147,11 +147,12 @@ t('all three installers agree on every shared artifact they all pin', () => {
 // removal under C:\eka-agent\broker already names serviceAccountKey.json — so
 // deleting the legacy kill or the legacy key removal left every check green.
 function legacyCleanupBody(source, kit) {
-  const start = source.search(/^function Remove-LegacyFleetStartup \{$/m);
+  const text = source.replace(/\r\n/g, '\n');
+  const start = text.search(/^function Remove-LegacyFleetStartup \{$/m);
   assert.notEqual(start, -1, `${kit} does not define legacy startup cleanup`);
-  const end = source.indexOf('\n}\n', start);
+  const end = text.indexOf('\n}\n', start);
   assert.notEqual(end, -1, `${kit}: Remove-LegacyFleetStartup has no closing brace at column 0`);
-  return source.slice(start, end + 2).split('\n').filter((line) => !/^\s*#/.test(line)).join('\n');
+  return text.slice(start, end + 2).split('\n').filter((line) => !/^\s*#/.test(line)).join('\n');
 }
 
 t('Windows installers remove the retired direct-Firestore startup only after a signed broker proves live', () => {

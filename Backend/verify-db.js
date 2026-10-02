@@ -12,8 +12,8 @@
  * Returns JSON with verification status
  */
 
-import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocumentClient, ScanCommand } from '@aws-sdk/lib-dynamodb';
+import { ScanCommand } from '@aws-sdk/lib-dynamodb';
+import { credentialRefusal, documentClient, telemetryTable } from './lib/ddb.js';
 import crypto from 'crypto';
 import { requireKey } from './_auth.js';
 import { query, isConfigured } from '../Integrations/postgres.js';
@@ -21,10 +21,7 @@ import { cronAuthorized, secretEquals } from './lib/cron-auth.js';
 import { splitFleet } from './broker.js';
 
 const _env = (typeof process !== 'undefined' ? process : globalThis['proc' + 'ess']).env;
-const AWS_ACCESS_KEY_ID = _env['JP_AWS_' + 'ACCESS_KEY_ID'];
-const AWS_SECRET_ACCESS_KEY = _env['JP_AWS_' + 'SECRET_ACCESS_KEY'];
-const AWS_REGION = _env['JP_AWS_' + 'REGION'] || 'us-west-2';
-const TABLE = _env['JP_TELEMETRY_' + 'TABLE'] || 'jaytipargal_telemetry';
+const TABLE = telemetryTable();
 const FIREBASE_SA_JSON = _env['FIREBASE_' + 'SERVICE_ACCOUNT_JSON'];
 
 // Every table a deployed read route actually queries, extracted from the SQL in
@@ -108,20 +105,13 @@ export async function verifyPostgres(q = query, configured = isConfigured) {
 }
 
 async function verifyDynamoDB() {
-  if (!AWS_ACCESS_KEY_ID || !AWS_SECRET_ACCESS_KEY) {
-    return { ok: false, error: 'AWS credentials not configured' };
+  const refusal = credentialRefusal('read');
+  if (refusal) {
+    return { ok: false, error: refusal };
   }
 
   try {
-    const client = new DynamoDBClient({
-      region: AWS_REGION,
-      credentials: {
-        accessKeyId: AWS_ACCESS_KEY_ID,
-        secretAccessKey: AWS_SECRET_ACCESS_KEY,
-      },
-    });
-
-    const docClient = DynamoDBDocumentClient.from(client);
+    const docClient = documentClient('read');
     const cmd = new ScanCommand({
       TableName: TABLE,
       Limit: 1,

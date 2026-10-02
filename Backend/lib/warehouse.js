@@ -106,6 +106,17 @@ export function siteFor(pageUrl, fallback) {
   return null;
 }
 
+/**
+ * A dashboard `?site=` value, limited to the property allow-list. A bare host
+ * is accepted. Anything that is not one of our properties is null, so a client
+ * cannot point a read at an arbitrary site string.
+ */
+export function propertyFromQuery(raw, fallback) {
+  const text = String(raw || '').trim() || fallback || '';
+  if (!text) return null;
+  return siteFor(text.includes('://') ? text : 'https://' + text, null);
+}
+
 // Obvious automated clients, dropped at INGEST (see jp-track.js) so a crawler
 // never reaches the warehouse. It has to be the write path: `visitors` and
 // `sessions` are rollups recomputed from `events` (rollupVisitors/rollupSessions

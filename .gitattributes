@@ -1,0 +1,8 @@
+# Installers hash these bytes and the tests match on LF. A Windows checkout
+# that rewrites them to CRLF fails the pin and makes the installer abort.
+*.py text eol=lf
+*.ps1 text eol=lf
+*.sh text eol=lf
+*.mjs text eol=lf
+*.js text eol=lf
+*.json text eol=lf

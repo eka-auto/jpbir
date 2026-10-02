@@ -1,15 +1,11 @@
-import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocumentClient, ScanCommand } from '@aws-sdk/lib-dynamodb';
 import { scanBounded } from './lib/ddb-scan.js';
+import { credentialRefusal, documentClient, telemetryTable } from './lib/ddb.js';
 import { siteFor } from './lib/warehouse.js';
 import { decodeOne } from './lib/geo.js';
 import { requireKey } from './_auth.js';
 
 const _env = (typeof process !== 'undefined' ? process : globalThis['proc' + 'ess']).env;
-const AWS_ACCESS_KEY_ID = _env['JP_AWS_' + 'ACCESS_KEY_ID'];
-const AWS_SECRET_ACCESS_KEY = _env['JP_AWS_' + 'SECRET_ACCESS_KEY'];
-const AWS_REGION = _env['JP_AWS_' + 'REGION'] || 'us-west-2';
-const TABLE = _env['JP_TELEMETRY_' + 'TABLE'] || 'jaytipargal_telemetry';
+const TABLE = telemetryTable();
 
 const CACHE_TTL = 5000;
 const _cache = globalThis.__jpStatsCache || (globalThis.__jpStatsCache = new Map());
@@ -62,8 +58,9 @@ export default async function handler(req, res) {
   // Before the credential check and before the cache: an unauthenticated
   // caller learns nothing, not even whether this deployment is configured.
   if (!requireKey(req, res)) return;
-  if (!AWS_ACCESS_KEY_ID || !AWS_SECRET_ACCESS_KEY) {
-    return res.status(503).json({ success: false, error: 'AWS credentials not configured' });
+  const awsRefusal = credentialRefusal('read');
+  if (awsRefusal) {
+    return res.status(503).json({ success: false, error: awsRefusal });
   }
 
   const days = Math.min(Math.max(parseInt(req.query.days) || 7, 1), 90);
@@ -81,10 +78,7 @@ export default async function handler(req, res) {
   const cutoff = Date.now() - days * 86400000;
 
   try {
-    const client = DynamoDBDocumentClient.from(new DynamoDBClient({
-      region: AWS_REGION,
-      credentials: { accessKeyId: AWS_ACCESS_KEY_ID, secretAccessKey: AWS_SECRET_ACCESS_KEY }
-    }));
+    const client = documentClient('read');
 
     // `truncated` is surfaced, not swallowed. A page ceiling or the time budget
     // can stop the scan before the table ends, and a partial total presented as

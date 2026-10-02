@@ -1,14 +1,10 @@
-import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocumentClient, BatchWriteCommand, PutCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
+import { BatchWriteCommand, PutCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
 import { decodeOne } from './lib/geo.js';
+import { credentialRefusal, documentClient, explainDynamoError, telemetryTable } from './lib/ddb.js';
 import { siteFor, recordEvent, botLike } from './lib/warehouse.js';
 import { isConfigured } from '../Integrations/postgres.js';
 
-const _env = (typeof process !== 'undefined' ? process : globalThis['proc' + 'ess']).env;
-const AWS_ACCESS_KEY_ID = _env['JP_WRITE_AWS_' + 'ACCESS_KEY_ID'];
-const AWS_SECRET_ACCESS_KEY = _env['JP_WRITE_AWS_' + 'SECRET_ACCESS_KEY'];
-const AWS_REGION = _env['JP_AWS_' + 'REGION'] || 'us-west-2';
-const TABLE = _env['JP_TELEMETRY_' + 'TABLE'] || 'jaytipargal_telemetry';
+const TABLE = telemetryTable();
 
 const ALLOWED_ORIGINS = new Set([
   'https://jaytipargal.com',
@@ -109,10 +105,6 @@ export default async function handler(req, res) {
     res.setHeader('Allow', 'POST');
     return res.status(405).json({ success: false, error: 'Method not allowed' });
   }
-  if (!AWS_ACCESS_KEY_ID || !AWS_SECRET_ACCESS_KEY) {
-    return res.status(503).json({ success: false, error: 'AWS write credentials not configured' });
-  }
-
   try {
     let event = req.body || {};
     if (typeof event === 'string') {
@@ -173,20 +165,30 @@ export default async function handler(req, res) {
     // undefined values unless removeUndefinedValues is set.
     item.site = siteFor(item.pageUrl, req.headers.origin || req.headers.referer || req.headers.host) || null;
 
-    const client = DynamoDBDocumentClient.from(new DynamoDBClient({
-      region: AWS_REGION,
-      credentials: { accessKeyId: AWS_ACCESS_KEY_ID, secretAccessKey: AWS_SECRET_ACCESS_KEY }
-    }));
-    await client.send(new PutCommand({ TableName: TABLE, Item: item }));
+    // DynamoDB is the raw journal. The dashboard reads Postgres. A rejected
+    // AWS key must not drop the visit: the mirror below still runs, and the
+    // response says which store actually took the row.
+    let client = null;
+    let dynamodb = { ok: false };
+    const awsRefusal = credentialRefusal('write');
+    if (awsRefusal) {
+      dynamodb = { ok: false, error: awsRefusal };
+    } else {
+      try {
+        client = documentClient('write');
+        await client.send(new PutCommand({ TableName: TABLE, Item: item }));
+        dynamodb = { ok: true };
+      } catch (dynamoError) {
+        console.error('[jp-track] dynamodb write failed:', dynamoError);
+        dynamodb = { ok: false, error: explainDynamoError(dynamoError, 'write') };
+      }
+    }
 
-    // The warehouse is the store the dashboard reads; DynamoDB is the raw
-    // journal db-push replays from. Mirroring here is what makes a visit
-    // visible on /db without waiting for someone to run that migration by
-    // hand - it had not been run since 2026-09-13.
+    // The warehouse is the store the dashboard reads. Mirroring here is what
+    // makes a visit visible without waiting for db-push.
     //
-    // Never fatal. Telemetry that cannot reach Postgres is still telemetry: the
-    // DynamoDB write above has already succeeded, so a warehouse outage must
-    // not turn a tracked pageview into a 500 the visitor's browser retries.
+    // A warehouse failure after a successful DynamoDB write is not fatal: the
+    // journal already has the event, and a 500 would make the browser retry.
     let warehouse;
     if (!item.site) {
       warehouse = { mirrored: false, reason: 'no site could be derived from page_url or origin' };
@@ -209,7 +211,7 @@ export default async function handler(req, res) {
 
     let prunedHistory = 0;
     let retentionWarning = null;
-    if (SNAPSHOT_EVENT_TYPES.has(item.eventType)) {
+    if (dynamodb.ok && SNAPSHOT_EVENT_TYPES.has(item.eventType)) {
       try {
         prunedHistory = await prunePreviousHistory(client, item.id, item.visitorId);
       } catch (retentionError) {
@@ -218,10 +220,23 @@ export default async function handler(req, res) {
       }
     }
 
+    const persisted = dynamodb.ok || warehouse.mirrored === true;
+    if (!persisted) {
+      return res.status(dynamodb.error && !isConfigured() ? 503 : 500).json({
+        success: false,
+        id,
+        persisted: false,
+        dynamodb,
+        warehouse,
+        error: dynamodb.error || warehouse.reason || 'failed to persist',
+      });
+    }
+
     return res.status(200).json({
       success: true,
       id,
       persisted: true,
+      dynamodb,
       warehouse,
       retention: {
         mode: SNAPSHOT_EVENT_TYPES.has(item.eventType) ? 'latest-history-snapshot-per-device' : 'analytics-events-unchanged',
