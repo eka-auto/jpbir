@@ -13,9 +13,16 @@
 //   GET /api/jp-wa-messages?chat_id=<id>&limit=<n>&before=<cursor>&q=<text>
 import { requireKey } from './_auth.js';
 import { query, isConfigured } from '../Integrations/postgres.js';
-import { displayMessageBody, messageSenderLabel, normalizeSender } from '../Integrations/wa-store.js';
+import {
+  MESSAGE_BODY_PLACEHOLDERS,
+  displayMessageBody,
+  isReadableMessageBody,
+  messageSenderLabel,
+  normalizeSender,
+} from '../Integrations/wa-store.js';
 
 export function presentMessageRow(m) {
+  const readable = isReadableMessageBody(m);
   return {
     msg_id: m.msg_id,
     sent_at: m.sent_at ? new Date(m.sent_at).toISOString() : null,
@@ -24,6 +31,7 @@ export function presentMessageRow(m) {
     sender_label: messageSenderLabel(m),
     kind: m.kind,
     encrypted: m.encrypted === true,
+    readable,
     body: m.body,
     display_body: displayMessageBody(m),
   };
@@ -56,7 +64,8 @@ export default async function handler(req, res) {
   }
 
   try {
-    const conds = ['m.chat_id = $1', 'm.body IS NOT NULL', "m.body <> ''"];
+    const baseConds = ['m.chat_id = $1', 'm.body IS NOT NULL', "btrim(m.body) <> ''"];
+    const conds = baseConds.slice();
     const params = [chatId];
     // Keyset pagination over the whole ordering key (sent_at DESC NULLS LAST,
     // msg_id DESC). A cursor of sent_at alone skipped every row sharing the
@@ -83,18 +92,34 @@ export default async function handler(req, res) {
     if (q) { params.push(`%${q}%`); conds.push(`m.body ILIKE $${params.length}`); }
     params.push(limit);
 
-    const r = await query(
-      `SELECT m.msg_id, m.sent_at, m.from_me, m.sender, m.kind, m.encrypted, m.body,
-              m.ingested_at, c.name AS chat_name, c.kind AS chat_kind
-         FROM wa_messages m
-         JOIN wa_chats c ON c.chat_id = m.chat_id
-        WHERE ${conds.join(' AND ')}
-        ORDER BY m.sent_at DESC NULLS LAST, m.msg_id DESC
-        LIMIT $${params.length}`,
-      params
-    );
+    const countConds = baseConds.slice();
+    const countParams = [chatId, MESSAGE_BODY_PLACEHOLDERS];
+    if (q) { countParams.push(`%${q}%`); countConds.push(`m.body ILIKE $${countParams.length}`); }
+    const readableBody = 'm.body <> ALL($2::text[])';
+
+    const [r, totalsResult] = await Promise.all([
+      query(
+        `SELECT m.msg_id, m.sent_at, m.from_me, m.sender, m.kind, m.encrypted, m.body,
+                m.ingested_at, c.name AS chat_name, c.kind AS chat_kind
+           FROM wa_messages m
+           JOIN wa_chats c ON c.chat_id = m.chat_id
+          WHERE ${conds.join(' AND ')}
+          ORDER BY m.sent_at DESC NULLS LAST, m.msg_id DESC
+          LIMIT $${params.length}`,
+        params
+      ),
+      query(
+        `SELECT count(*)::int AS total,
+                count(*) FILTER (WHERE ${readableBody})::int AS readable,
+                count(*) FILTER (WHERE NOT (${readableBody}))::int AS metadata_only
+           FROM wa_messages m
+          WHERE ${countConds.join(' AND ')}`,
+        countParams
+      ),
+    ]);
 
     const rows = r.rows.map(presentMessageRow);
+    const totals = totalsResult.rows[0] || { total: 0, readable: 0, metadata_only: 0 };
 
     // The composite cursor the parser above expects. Emitting sent_at alone
     // would leave the fix unreachable, since no client would ever send one.
@@ -103,8 +128,11 @@ export default async function handler(req, res) {
 
     return res.status(200).json({
       ok: true, chat_id: chatId, count: rows.length, next_before: cursor, q: q || null,
-      readable_count: rows.filter((m) => !m.encrypted).length,
-      encrypted_count: rows.filter((m) => m.encrypted).length,
+      readable_count: rows.filter((m) => m.readable).length,
+      encrypted_count: rows.filter((m) => !m.readable).length,
+      total_count: totals.total | 0,
+      total_readable_count: totals.readable | 0,
+      total_metadata_count: totals.metadata_only | 0,
       messages: rows,
     });
   } catch (err) {

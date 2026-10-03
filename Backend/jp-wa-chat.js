@@ -14,6 +14,7 @@
 // export ingest); attachments land here later (path 3, Vercel Blob).
 import { requireKey } from './_auth.js';
 import { query, isConfigured } from '../Integrations/postgres.js';
+import { MESSAGE_BODY_PLACEHOLDERS } from '../Integrations/wa-store.js';
 
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'private, no-store');
@@ -68,17 +69,22 @@ export default async function handler(req, res) {
         [chatId]
       ),
       query(
-        `SELECT count(*) FILTER (WHERE encrypted IS FALSE AND body IS NOT NULL AND body <> '') ::int AS readable,
-                count(*) FILTER (WHERE encrypted IS TRUE)::int AS encrypted,
+        `SELECT count(*) FILTER (
+                  WHERE body IS NOT NULL AND btrim(body) <> '' AND body <> ALL($2::text[])
+                )::int AS readable,
+                count(*) FILTER (
+                  WHERE body IS NULL OR btrim(body) = '' OR body = ANY($2::text[])
+                )::int AS metadata_only,
+                count(*) FILTER (WHERE encrypted IS TRUE)::int AS flagged_encrypted,
                  count(*)::int AS total
             FROM wa_messages WHERE chat_id = $1`,
-        [chatId]
+        [chatId, MESSAGE_BODY_PLACEHOLDERS]
       ),
     ]);
 
     const sent = direction.rows.find((d) => d.from_me === true);
     const received = direction.rows.find((d) => d.from_me === false);
-    const bs = bodyStats.rows[0] || { readable: 0, encrypted: 0, total: 0 };
+    const bs = bodyStats.rows[0] || { readable: 0, metadata_only: 0, flagged_encrypted: 0, total: 0 };
 
     return res.status(200).json({
       ok: true,
@@ -113,7 +119,9 @@ export default async function handler(req, res) {
       },
       bodies: {
         with_body: bs.readable | 0,
-        encrypted: bs.encrypted | 0,
+        encrypted: bs.metadata_only | 0,
+        metadata_only: bs.metadata_only | 0,
+        flagged_encrypted: bs.flagged_encrypted | 0,
         total: bs.total | 0,
         available: (bs.readable | 0) > 0,
         reason: (bs.readable | 0) > 0 ? null : 'message text is not present in the recovery metadata; import a WhatsApp Chat Export',
