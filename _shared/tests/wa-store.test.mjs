@@ -13,6 +13,7 @@
 // with them.
 import {
   normalizeChat, normalizeMessage, normalizeSender, whatsappAddress, messageSenderLabel, displayMessageBody,
+  isReadableMessageBody,
   chatIdFor, assignChatIds, idlessChats, upsertChats, upsertMessages, ingestBatch,
   normalizeAttachment, attachmentSkipReason, upsertAttachments,
   galaxyPayload, redactChats, toCompact, CHUNK,
@@ -80,6 +81,11 @@ check('sender labels recover from direction and chat metadata', messageSenderLab
 check('body display preserves real text and explains sealed metadata', displayMessageBody({ body: 'hello', encrypted: true }) === 'hello'
   && displayMessageBody({ body: '[Encrypted — export chat to read]', encrypted: true }).startsWith('Encrypted message')
   && displayMessageBody({ body: '[System message]', kind: 'system', encrypted: true }).startsWith('System event'), 'bad body display');
+check('readability follows the stored body rather than the stale encrypted flag',
+  isReadableMessageBody({ body: 'hello', encrypted: true })
+  && !isReadableMessageBody({ body: '[Encrypted — export chat to read]', encrypted: false })
+  && !isReadableMessageBody({ body: '   ', encrypted: false }),
+  'readability must identify actual imported text');
 
 /* ---------- upserts against a recording stub ---------- */
 // rowCount mimics pg: every chat row is written; message rows can be filtered by the chat guard

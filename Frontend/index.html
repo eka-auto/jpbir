@@ -329,6 +329,33 @@
         .payload-tree-value > .payload-tree { padding-left: 7px; }
     }
 
+    /* ===== WHATSAPP MESSAGE LEDGER =====
+       The thin amber spine keeps long histories scannable without pretending
+       this operational dashboard is the WhatsApp client. Real imported text
+       stays visually solid; recovery-only metadata is deliberately quieter. */
+    .wa-message-list { margin-top: 12px; max-height: 520px; overflow-y: auto; display: flex;
+        flex-direction: column; gap: 7px; padding: 2px 4px 2px 13px; border-left: 2px solid rgba(200,122,30,.2); }
+    .wa-message-shell { display: flex; }
+    .wa-message-shell.outgoing { justify-content: flex-end; }
+    .wa-message-shell.incoming { justify-content: flex-start; }
+    .wa-message { width: fit-content; max-width: min(82%, 760px); padding: 9px 12px 8px; border-radius: 12px;
+        background: #FFFDF9; border: 1px solid var(--border); box-shadow: 0 4px 14px -10px rgba(34,26,21,.7); }
+    .wa-message-shell.outgoing .wa-message { background: #FFF1D9; border-color: rgba(200,122,30,.32); border-bottom-right-radius: 4px; }
+    .wa-message-shell.incoming .wa-message { border-bottom-left-radius: 4px; }
+    .wa-message.is-readable { border-left: 3px solid var(--amber); }
+    .wa-message.is-metadata { border-style: dashed; box-shadow: none; opacity: .72; }
+    .wa-message-meta { margin-bottom: 4px; color: var(--ink-muted); font-size: 10.5px; }
+    .wa-message-meta strong { color: var(--ink); font-weight: 650; }
+    .wa-message-body { color: var(--ink); font-size: 13px; line-height: 1.48; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .wa-message-status { margin: 0 0 12px; padding: 12px 14px; border: 1px solid rgba(200,122,30,.3);
+        border-radius: 10px; background: rgba(240,185,104,.1); line-height: 1.55; }
+    .wa-message-actions { display: flex; justify-content: center; margin-top: 12px; }
+    .wa-message-actions button { min-width: 150px; }
+    @media (max-width: 560px) {
+        .wa-message { max-width: 94%; }
+        .wa-message-list { padding-left: 9px; }
+    }
+
     /* ===== STATES ===== */
     .state { text-align: center; padding: 40px 20px; color: var(--ink-muted); font-size: 13px; }
     .state.err { color: var(--bad); }
@@ -757,6 +784,7 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
                                     <th style="text-align:left;padding:8px 10px;font-weight:600">Name</th>
                                     <th style="text-align:left;padding:8px 10px;font-weight:600">Kind</th>
                                     <th style="text-align:right;padding:8px 10px;font-weight:600">Messages</th>
+                                    <th style="text-align:right;padding:8px 10px;font-weight:600">Readable</th>
                                     <th style="text-align:right;padding:8px 10px;font-weight:600">Media</th>
                                     <th style="text-align:right;padding:8px 10px;font-weight:600">Audio</th>
                                     <th style="text-align:right;padding:8px 10px;font-weight:600">Calls</th>
@@ -799,8 +827,9 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
                                 <input id="waMsgSearch" type="text" placeholder="Search body…" style="padding:6px 10px;border:1px solid var(--border);border-radius:9px;background:var(--panel2);color:var(--ink);font-family:var(--sans);font-size:12px;outline:none;width:180px">
                             </div>
                         </div>
-                        <div id="waMsgList" style="margin-top:12px;max-height:520px;overflow-y:auto;display:flex;flex-direction:column;gap:6px"></div>
+                        <div id="waMsgList" class="wa-message-list" aria-live="polite"></div>
                         <div id="waMsgEmpty" class="hint" style="margin-top:10px;display:none"></div>
+                        <div class="wa-message-actions"><button id="waMsgMore" type="button" style="display:none">Load older messages</button></div>
                     </div>
                 </div>
             </section>
@@ -1981,11 +2010,9 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
                 /* Visitor detail is the gated pair - /api/visitor and, since the
                    jp side serves the same dossier, /api/jp-visitor. Both branches
                    selected above can 401, so this handling is load-bearing for
-                   either site. Every other panel
-                   on this dashboard is open. showGate() sets app.display=none,
-                   so calling it here would blank the whole page the moment
-                   anyone clicked a visitor row. Keep the failure inside the
-                   drawer and let them unlock deliberately. */
+                   either site. Keep the failure inside the drawer long enough
+                   to explain why the stored key was rejected, then let the
+                   operator reopen the dashboard gate deliberately. */
                 /* 503 means two different things since the store-backed handlers
                    adopted it for "not configured": no STATS_KEY (an auth problem,
                    clear the key) or no DATABASE_URL (a store outage, where
@@ -2070,7 +2097,7 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
 
     /* ===== LOAD ===== */
     function load() {
-        /* open dashboard: no key required */
+        /* Private analytics: every request carries the stored dashboard key. */
         var days = $('daysSel').value;
         var endpoint = '/api/stats';
         /* The label and the query are the same host. All three properties are
@@ -2884,8 +2911,9 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
         var host = $('waTotals'); if (!host) return;
         var kv = function (k, v) { return '<div class="kv-item"><div class="k">' + k + '</div><div class="v">' + v + '</div></div>'; };
         host.innerHTML = kv('Chats', fmt(t.chats)) + kv('Groups', fmt(t.groups)) + kv('Direct', fmt(t.direct))
-            + kv('Messages', fmt(t.msgs)) + kv('Media', fmt(t.media)) + kv('Audio', fmt(t.audio))
-            + kv('Calls', fmt(t.calls)) + kv('Encrypted', fmt(t.enc)) + kv('Undated', fmt(t.undated));
+            + kv('Inventory messages', fmt(t.msgs)) + kv('Stored rows', fmt(t.stored || 0)) + kv('Inventory gap', fmt(t.missing || 0))
+            + kv('Media', fmt(t.media)) + kv('Audio', fmt(t.audio))
+            + kv('Calls', fmt(t.calls)) + kv('Readable text', fmt(t.readable || 0)) + kv('Metadata only', fmt(t.enc)) + kv('Undated', fmt(t.undated));
     }
     function renderWaByKind(chats) {
         var host = $('waByKind'); if (!host) return;
@@ -2932,6 +2960,7 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
                 + '<td style="padding:8px 10px;border-bottom:1px solid var(--border-light)">' + esc(c.name) + (c.unresolved ? ' <span style="color:var(--warn);font-size:10px">·unresolved</span>' : '') + '</td>'
                 + '<td style="padding:8px 10px;border-bottom:1px solid var(--border-light);text-transform:capitalize">' + esc(c.kind) + '</td>'
                 + '<td style="padding:8px 10px;border-bottom:1px solid var(--border-light);text-align:right;font-variant-numeric:tabular-nums">' + fmt(c.msg_count) + '</td>'
+                + '<td style="padding:8px 10px;border-bottom:1px solid var(--border-light);text-align:right;font-variant-numeric:tabular-nums;color:' + ((c.readable_count || 0) ? 'var(--good)' : 'var(--ink-muted)') + '">' + fmt(c.readable_count || 0) + '</td>'
                 + '<td style="padding:8px 10px;border-bottom:1px solid var(--border-light);text-align:right;font-variant-numeric:tabular-nums">' + fmt(c.media_count) + '</td>'
                 + '<td style="padding:8px 10px;border-bottom:1px solid var(--border-light);text-align:right;font-variant-numeric:tabular-nums">' + fmt(c.audio_count) + '</td>'
                 + '<td style="padding:8px 10px;border-bottom:1px solid var(--border-light);text-align:right;font-variant-numeric:tabular-nums">' + fmt(c.call_count) + '</td>'
@@ -3059,30 +3088,40 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
                 $('waAttHint').textContent = 'Load failed: ' + e.message;
             });
     }
-    var waMsgState = { chatId: null, q: '', reqId: 0 };
+    var waMsgState = { chatId: null, q: '', before: null, shown: 0, total: 0, loading: false, reqId: 0 };
     function waMsgRow(m) {
         var when = m.sent_at ? new Date(m.sent_at).toISOString().replace('T', ' ').slice(0, 16) + ' UTC' : 'undated';
         var mine = m.from_me === true;
-        var align = mine ? 'flex-end' : 'flex-start';
-        var bg = mine ? 'rgba(240,185,104,.16)' : 'rgba(255,248,238,.05)';
-        var border = mine ? 'rgba(240,185,104,.35)' : 'rgba(255,248,238,.12)';
-        var head = '<span style="font-weight:600">' + esc(m.sender_label || m.sender || 'Unknown sender') + '</span> · '
+        var readable = m.readable === true;
+        var head = '<strong>' + esc(m.sender_label || m.sender || 'Unknown sender') + '</strong> · '
             + '<span>' + esc(when) + '</span>'
             + (m.kind && m.kind !== 'text' ? ' · <span style="color:var(--warn)">' + esc(m.kind) + '</span>' : '');
         var body = esc(m.display_body || m.body || '(message content unavailable)').replace(/\n/g, '<br>');
-        return '<div style="display:flex;justify-content:' + align + '">'
-            + '<div style="max-width:80%;padding:8px 12px;border-radius:10px;background:' + bg + ';border:1px solid ' + border + '">'
-            + '<div style="font-size:10.5px;color:var(--ink-muted);margin-bottom:4px">' + head + '</div>'
-            + '<div style="font-size:13px;line-height:1.4;white-space:pre-wrap;word-wrap:break-word">' + body + '</div>'
+        return '<div class="wa-message-shell ' + (mine ? 'outgoing' : 'incoming') + '">'
+            + '<div class="wa-message ' + (readable ? 'is-readable' : 'is-metadata') + '">'
+            + '<div class="wa-message-meta">' + head + '</div>'
+            + '<div class="wa-message-body">' + body + '</div>'
             + '</div></div>';
     }
-    function loadMessages(chatId, q) {
-        waMsgState.chatId = chatId; waMsgState.q = q || '';
+    function loadMessages(chatId, q, append) {
+        q = q || '';
+        if (append && (waMsgState.loading || !waMsgState.before || waMsgState.chatId !== chatId || waMsgState.q !== q)) return;
+        if (!append) {
+            waMsgState.chatId = chatId; waMsgState.q = q; waMsgState.before = null;
+            waMsgState.shown = 0; waMsgState.total = 0;
+        }
         var token = ++waMsgState.reqId;
-        var list = $('waMsgList'); var empty = $('waMsgEmpty');
-        list.innerHTML = '<div class="hint">Loading…</div>'; empty.style.display = 'none';
+        var list = $('waMsgList'); var empty = $('waMsgEmpty'); var more = $('waMsgMore');
+        waMsgState.loading = true;
+        if (!append) { list.innerHTML = '<div class="hint">Loading…</div>'; empty.style.display = 'none'; }
+        if (more) {
+            more.disabled = true;
+            more.textContent = append ? 'Loading older…' : 'Load older messages';
+            if (!append) more.style.display = 'none';
+        }
         var params = { chat_id: chatId, limit: 200 };
         if (q) params.q = q;
+        if (append && waMsgState.before) params.before = waMsgState.before;
         /* Message bodies are the most sensitive thing on this page: key in the
            header, never the query string. */
         fetch('/api/jp-wa-messages?' + new URLSearchParams(params).toString(),
@@ -3090,43 +3129,66 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
             .then(function (r) { return r.json().then(function (b) { return { status: r.status, body: b }; }); })
             .then(function (res) {
                 if (waMsgState.reqId !== token || waMsgState.chatId !== chatId) return;
+                waMsgState.loading = false;
                 if (res.status === 401) {
                     localStorage.removeItem(KEY_STORAGE); KEY = '';
                     list.innerHTML = ''; $('waMsgHint').textContent = '';
+                    if (more) more.style.display = 'none';
                     $('gateMsg').textContent = 'Invalid key.';
                     showGate();
                     return;
                 }
                 var j = res.body;
-                list.innerHTML = '';
-                if (!j.ok) { $('waMsgHint').textContent = 'Load failed: ' + (j.error || 'unknown'); return; }
-                if (j.migrated === false) { $('waMsgHint').textContent = 'wa_messages table not migrated yet.'; empty.textContent = 'Run npm run db:migrate.'; empty.style.display = 'block'; return; }
-                if (!(j.messages || []).length) {
-                    $('waMsgHint').textContent = q ? 'No messages match "' + esc(q) + '".' : 'No message bodies imported for this chat.';
+                if (!append) list.innerHTML = '';
+                if (!j.ok) {
+                    if (more) { more.disabled = false; more.style.display = waMsgState.before ? '' : 'none'; }
+                    $('waMsgHint').textContent = 'Load failed: ' + (j.error || 'unknown'); return;
+                }
+                if (j.migrated === false) {
+                    if (more) more.style.display = 'none';
+                    $('waMsgHint').textContent = 'wa_messages table not migrated yet.'; empty.textContent = 'Run npm run db:migrate.'; empty.style.display = 'block'; return;
+                }
+                var batch = j.messages || [];
+                if (!batch.length) {
+                    if (more) more.style.display = 'none';
+                    if (append) { waMsgState.before = null; return; }
+                    $('waMsgHint').textContent = q ? 'No messages match "' + q + '".' : 'No message records stored for this chat.';
                     empty.textContent = q ? '' : 'Drop a WhatsApp Chat Export into ~/wa-exports/ on the phone and run wa_export_import.py.';
                     empty.style.display = empty.textContent ? 'block' : 'none';
                     return;
                 }
-                $('waMsgHint').textContent = fmt(j.count) + ' records · ' + fmt(j.readable_count || 0) + ' readable · '
-                    + fmt(j.encrypted_count || 0) + ' encrypted metadata' + (q ? ' matching "' + esc(q) + '"' : '') + ', newest first.';
-                /* Every row here is sealed-dump metadata — no text ever existed
-                   for it. Say so once, with the exact fix, instead of leaving a
-                   wall of identical "Encrypted message" bubbles that reads like
-                   a bug. The chat's own id is shown copy-selectable because the
-                   export mapping must match it byte-for-byte or every imported
-                   line is dropped on ingest (see the run-panel warning). */
+                waMsgState.shown += batch.length;
+                waMsgState.total = j.total_count == null ? waMsgState.shown : (j.total_count | 0);
+                waMsgState.before = j.next_before || null;
+                $('waMsgHint').textContent = 'Showing ' + fmt(waMsgState.shown) + ' of ' + fmt(waMsgState.total) + ' records · '
+                    + fmt(j.total_readable_count || 0) + ' readable text · '
+                    + fmt(j.total_metadata_count || 0) + ' metadata only' + (q ? ' matching "' + q + '"' : '') + ' · newest first.';
+                /* A chat with no readable bodies needs one precise explanation,
+                   not hundreds of identical placeholder bubbles. Use the full
+                   query total from the API, not just the first page. */
                 var stubBanner = '';
-                if ((j.messages || []).length && !(j.readable_count > 0)) {
-                    stubBanner = '<div style="margin:0 0 12px;padding:12px 14px;border:1px solid rgba(240,185,104,.35);border-radius:10px;background:rgba(240,185,104,.08);line-height:1.55">'
+                if (!append && !q && !(j.total_readable_count > 0)) {
+                    stubBanner = '<div class="wa-message-status">'
                         + '<div style="font-weight:600;margin-bottom:5px">Metadata only — no message text is stored for this chat</div>'
                         + '<div style="color:var(--ink-muted);font-size:12.5px">These rows were recovered from a sealed dump. WhatsApp bodies are end-to-end encrypted, so the text was never present here and cannot be reconstructed cloud-side. To import the real text, on the S24: WhatsApp &rarr; open this chat &rarr; &#8942; &rarr; More &rarr; <b>Export chat &rarr; Without Media</b>, drop the .txt into <code>~/wa-exports/</code>, then run <code>wa_export_import.py</code> (the every-30-min cron picks it up).</div>'
                         + '<div style="color:var(--ink-muted);font-size:12.5px;margin-top:7px">Map the file to this chat\'s exact id, or every line is dropped on ingest:</div>'
                         + '<div style="margin-top:4px"><code style="user-select:all;background:rgba(255,248,238,.08);padding:3px 7px;border-radius:5px;font-size:12px">' + esc(waMsgState.chatId || chatId) + '</code></div>'
                         + '</div>';
                 }
-                list.innerHTML = stubBanner + j.messages.map(waMsgRow).join('');
+                list.insertAdjacentHTML('beforeend', stubBanner + batch.map(waMsgRow).join(''));
+                if (more) {
+                    more.disabled = false;
+                    more.textContent = 'Load older messages';
+                    more.style.display = waMsgState.before ? '' : 'none';
+                }
             })
-            .catch(function (e) { if (waMsgState.reqId !== token) return; list.innerHTML = ''; $('waMsgHint').textContent = 'Load failed: ' + e.message; });
+            .catch(function (e) {
+                if (waMsgState.reqId !== token) return;
+                waMsgState.loading = false;
+                if (!append) list.innerHTML = '';
+                if (more) { more.disabled = false; more.textContent = 'Load older messages'; }
+                $('waMsgHint').textContent = 'Load failed: ' + e.message;
+            });
     }
     function loadWaChat(chatId) {
         var token = ++waDetailReq;
@@ -3222,6 +3284,11 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
                chat was selected 220ms later. */
             var forChat = waMsgState.chatId;
             msgDebounce = setTimeout(function () { loadMessages(forChat, val); }, 220);
+        });
+        var msgMore = $('waMsgMore');
+        if (msgMore) msgMore.addEventListener('click', function () {
+            if (!waMsgState.chatId) return;
+            loadMessages(waMsgState.chatId, waMsgState.q, true);
         });
     })();
     function loadWhatsApp(force) {
@@ -4010,9 +4077,12 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
 
     /* ===== INIT ===== */
     $('siteSel').value = SITE;
-    /* Dashboard is open - no authentication. The gate/unlock UI is retained but
-       never shown; no backend handler reads a key or returns 401. */
-    showApp(); load();
+    /* Every private dashboard endpoint fails closed on STATS_KEY. Opening the
+       app before a key exists only flashes empty panels and causes a burst of
+       predictable 401s, so start at the gate unless this browser already has
+       the operator key. */
+    if (KEY) { showApp(); load(); }
+    else { showGate(); try { $('keyInput').focus(); } catch (e) { /* no-op */ } }
 })();
 </script>
 </body>

@@ -84,13 +84,25 @@ export function messageSenderLabel(message = {}) {
 // export already supplied (see the ON CONFLICT clause there).
 export const ENCRYPTED_PLACEHOLDER = '[Encrypted — export chat to read]';
 
+// These values describe a recovered row, not a readable message body. Keep
+// the test independent of the legacy `encrypted` flag: the first real chat
+// exports were imported into rows whose flag remained true, so trusting that
+// flag hid valid text already present in Neon.
+export const MESSAGE_BODY_PLACEHOLDERS = Object.freeze([
+  ENCRYPTED_PLACEHOLDER,
+  '[System message]',
+  '[Media — image/video]',
+]);
+
+export function isReadableMessageBody(message = {}) {
+  const body = typeof message.body === 'string' ? message.body.trim() : '';
+  return Boolean(body) && !MESSAGE_BODY_PLACEHOLDERS.includes(body);
+}
+
 /** Explain sealed recovery rows honestly while preserving real imported text. */
 export function displayMessageBody(message = {}) {
   const body = typeof message.body === 'string' ? message.body.trim() : '';
-  const placeholders = new Set([
-    ENCRYPTED_PLACEHOLDER, '[System message]', '[Media — image/video]',
-  ]);
-  if (body && !placeholders.has(body)) return body;
+  if (isReadableMessageBody(message)) return body;
   if (message.kind === 'system') return 'System event — details were not present in the recovery metadata.';
   if (message.kind === 'media') return 'Media metadata only — attachment content was not present in the recovery dump.';
   if (message.kind === 'audio') return 'Audio metadata only — audio content was not present in the recovery dump.';

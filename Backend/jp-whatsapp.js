@@ -18,6 +18,7 @@
 // can show a "run the migration" hint instead of a broken panel.
 import { requireKey } from './_auth.js';
 import { query, isConfigured } from '../Integrations/postgres.js';
+import { MESSAGE_BODY_PLACEHOLDERS } from '../Integrations/wa-store.js';
 
 const iso = (v) => (v ? new Date(v).toISOString() : null);
 const dayStr = (v) => (v ? String(v).slice(0, 10) : '');
@@ -46,14 +47,31 @@ export default async function handler(req, res) {
 
   try {
     const chatsRes = await safe(
-      `SELECT chat_id, name, kind, unresolved, msg_count, enc_count, media_count,
-              audio_count, call_count, member_count,
-              to_char(first_at, 'YYYY-MM-DD') AS first_at,
-              to_char(last_at,  'YYYY-MM-DD') AS last_at,
-              device_id, run_id, source_system,
-              ingested_at, updated_at
-         FROM wa_chats
-        ORDER BY msg_count DESC NULLS LAST, name`
+      `SELECT c.chat_id, c.name, c.kind, c.unresolved, c.msg_count,
+              c.enc_count AS flagged_enc_count,
+              COALESCE(b.readable_count, 0)::int AS readable_count,
+              COALESCE(b.metadata_count, 0)::int AS enc_count,
+              COALESCE(b.stored_count, 0)::int AS stored_count,
+              c.media_count, c.audio_count, c.call_count, c.member_count,
+              to_char(c.first_at, 'YYYY-MM-DD') AS first_at,
+              to_char(c.last_at,  'YYYY-MM-DD') AS last_at,
+              c.device_id, c.run_id, c.source_system,
+              c.ingested_at, c.updated_at
+         FROM wa_chats c
+         LEFT JOIN (
+           SELECT chat_id,
+                  count(*) FILTER (
+                    WHERE body IS NOT NULL AND btrim(body) <> '' AND body <> ALL($1::text[])
+                  )::int AS readable_count,
+                  count(*) FILTER (
+                    WHERE body IS NULL OR btrim(body) = '' OR body = ANY($1::text[])
+                  )::int AS metadata_count,
+                  count(*)::int AS stored_count
+             FROM wa_messages
+            GROUP BY chat_id
+         ) b ON b.chat_id = c.chat_id
+        ORDER BY c.msg_count DESC NULLS LAST, c.name`,
+      [MESSAGE_BODY_PLACEHOLDERS]
     );
 
     if (chatsRes._missing) {
@@ -61,23 +79,26 @@ export default async function handler(req, res) {
         ok: true,
         migrated: false,
         chats: [],
-        totals: { chats: 0, groups: 0, direct: 0, msgs: 0, media: 0, audio: 0, calls: 0, enc: 0, undated: 0 },
+        totals: { chats: 0, groups: 0, direct: 0, msgs: 0, stored: 0, missing: 0, readable: 0, media: 0, audio: 0, calls: 0, enc: 0, undated: 0 },
         runs: [],
-        note: 'wa_chats table does not exist yet — apply Database/schema/002_whatsapp.sql from jaytibirthday-site (npm run db:migrate) before loading data.',
+        note: 'WhatsApp tables are not fully migrated — run npm run db:migrate before loading data.',
       });
     }
 
     const chats = chatsRes.rows;
-    const totals = { chats: chats.length, groups: 0, direct: 0, msgs: 0, media: 0, audio: 0, calls: 0, enc: 0, undated: 0 };
+    const totals = { chats: chats.length, groups: 0, direct: 0, msgs: 0, stored: 0, missing: 0, readable: 0, media: 0, audio: 0, calls: 0, enc: 0, undated: 0 };
     for (const c of chats) {
       if (c.kind === 'group') totals.groups++; else totals.direct++;
       totals.msgs += c.msg_count || 0;
+      totals.stored += c.stored_count || 0;
+      totals.readable += c.readable_count || 0;
       totals.media += c.media_count || 0;
       totals.audio += c.audio_count || 0;
       totals.calls += c.call_count || 0;
       totals.enc  += c.enc_count  || 0;
       if (!c.first_at || !c.last_at) totals.undated++;
     }
+    totals.missing = Math.max(0, totals.msgs - totals.stored);
 
     // Last few sync runs, so the panel shows when the S24 last pushed.
     const runsRes = await safe(
@@ -100,7 +121,10 @@ export default async function handler(req, res) {
         kind: c.kind,
         unresolved: !!c.unresolved,
         msg_count: c.msg_count | 0,
+        stored_count: c.stored_count | 0,
+        readable_count: c.readable_count | 0,
         enc_count: c.enc_count | 0,
+        flagged_enc_count: c.flagged_enc_count | 0,
         media_count: c.media_count | 0,
         audio_count: c.audio_count | 0,
         call_count: c.call_count | 0,

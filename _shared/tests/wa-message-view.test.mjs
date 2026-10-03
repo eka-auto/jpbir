@@ -11,6 +11,16 @@ assert.equal(outgoing.sender, null);
 assert.equal(outgoing.sender_label, 'You');
 assert.match(outgoing.display_body, /^Encrypted message/);
 assert.equal(outgoing.encrypted, true);
+assert.equal(outgoing.readable, false);
+
+const recoveredText = presentMessageRow({
+  msg_id: 'm-readable', sent_at: '2026-05-30T16:50:00Z', from_me: false,
+  sender: 'Peer', kind: 'text', encrypted: true, body: 'actual imported text',
+  chat_name: 'Peer', chat_kind: 'direct',
+});
+assert.equal(recoveredText.encrypted, true, 'legacy flag remains visible for diagnostics');
+assert.equal(recoveredText.readable, true, 'a real body wins over the stale legacy flag');
+assert.equal(recoveredText.display_body, 'actual imported text');
 
 const incoming = presentMessageRow({
   msg_id: 'm2', sent_at: '2026-05-30T16:51:00Z', from_me: false,
@@ -31,6 +41,9 @@ assert.match(system.display_body, /^System event/);
 const frontend = await readFile(new URL('../../Frontend/index.html', import.meta.url), 'utf8');
 assert.match(frontend, /m\.sender_label \|\| m\.sender \|\| 'Unknown sender'/);
 assert.match(frontend, /m\.display_body \|\| m\.body/);
-assert.match(frontend, /readable ·/);
+assert.match(frontend, /Load older messages/);
+assert.match(frontend, /total_readable_count/);
+assert.match(frontend, /m\.readable === true/);
+assert.match(frontend, /Inventory gap/);
 
 console.log('WhatsApp message presentation tests passed');
