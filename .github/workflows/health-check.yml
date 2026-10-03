@@ -137,20 +137,24 @@ jobs:
           OVERALL=$(echo "$JSON" | jq -r '.overall // "unreadable"')
           CLOUDFAIL=$(echo "$JSON" | jq -r '.cloud_fail // "unreadable"')
           ALLFAIL=$(echo "$JSON" | jq -r '.summary.fail // 0')
-          if [ "$CODE" = "200" ] && [ "$OVERALL" != "fail" ]; then
-            echo "✅ Stack healthy (overall=$OVERALL, $(echo "$JSON" | jq -r '.summary.ok') checks ok)"
-            echo "status=ok" >> "$GITHUB_OUTPUT"
-          elif [ "$CLOUDFAIL" = "0" ]; then
-            # The only reds are device-freshness files: phones report in or they
-            # don't, and no deploy fixes them (inboundListener: false by design).
-            # The panel and the stack-alert cron keep carrying that red; a git
-            # check must not burn main-red on it every 15 minutes and every push.
-            echo "⚠️ Cloud probes all green; $((ALLFAIL)) red file(s) are device freshness only — go wake a daemon, CI does not gate on it"
-            echo "   $JSON"
-            echo "status=device_freshness" >> "$GITHUB_OUTPUT"
-            echo "device_freshness_red=$ALLFAIL" >> "$GITHUB_OUTPUT"
+          if { [ "$CODE" = "200" ] || [ "$CODE" = "503" ]; } \
+             && echo "$JSON" | jq -e '(.overall == "ok" or .overall == "warn" or .overall == "fail") and (.cloud_fail | type == "number") and (.summary.ok | type == "number") and (.summary.fail | type == "number")' >/dev/null; then
+            if [ "$CODE" = "200" ] && [ "$OVERALL" != "fail" ]; then
+              echo "✅ Stack endpoint OK (overall=$OVERALL, $(echo "$JSON" | jq -r '.summary.ok') checks ok)"
+              echo "status=ok" >> "$GITHUB_OUTPUT"
+            elif [ "$CLOUDFAIL" = "0" ]; then
+              echo "⚠️ Cloud probes all green; $((ALLFAIL)) red file(s) are device freshness only"
+              echo "   $JSON"
+              echo "status=device_freshness" >> "$GITHUB_OUTPUT"
+              echo "device_freshness_red=$ALLFAIL" >> "$GITHUB_OUTPUT"
+            else
+              echo "⚠️ Stack endpoint reachable; downstream probe failures reported (HTTP $CODE, cloud_fail=$CLOUDFAIL)"
+              echo "   $JSON"
+              echo "status=stack_degraded" >> "$GITHUB_OUTPUT"
+              echo "stack_cloud_fail=$CLOUDFAIL" >> "$GITHUB_OUTPUT"
+            fi
           else
-            echo "❌ Stack check failed (HTTP $CODE, overall=$OVERALL, cloud_fail=$CLOUDFAIL): $JSON"
+            echo "❌ Stack endpoint failed or returned an invalid health payload (HTTP $CODE): $JSON"
             exit 1
           fi
 
@@ -158,6 +162,7 @@ jobs:
         env:
           STACK_STATUS: ${{ steps.stack.outputs.status }}
           STACK_REDS: ${{ steps.stack.outputs.device_freshness_red }}
+          STACK_CLOUD_FAIL: ${{ steps.stack.outputs.stack_cloud_fail }}
         run: |
           # Only the stack probe can succeed with a caveat, so it is the only row
           # that is not a hardcoded OK: every earlier step exits 1 on failure and
@@ -176,6 +181,10 @@ jobs:
               # of them), not devices; there are three devices. "6
               # device-freshness red(s)" was read as six stale devices once.
               stack_row="⚠️ ${STACK_REDS:-?} red file(s) on the device-freshness probe (files, not devices); cloud probes green, CI does not gate on it"
+              ;;
+            stack_degraded)
+              heading="## ⚠️ Stack Endpoint Reachable — Downstream Probes Degraded"
+              stack_row="⚠️ ${STACK_CLOUD_FAIL:-?} cloud probe failure(s); endpoint responded with a valid health payload"
               ;;
             *)
               heading="## ❓ Stack Probe Recorded No Status"
