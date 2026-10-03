@@ -4,7 +4,7 @@
 // so the raw blob URL is NOT fetchable without a signature. The dashboard can't
 // put a bearer token on an <img>/<video>/<audio> element, so it points those at
 //
-//   GET /api/wa-media?att_id=<id>&key=<STATS_KEY>
+//   GET /api/wa-media?att_id=<id>&token=<short-lived attachment token>
 //
 // which checks the same STATS_KEY as every other read route, looks up the blob
 // pathname for that attachment, mints a short-lived presigned GET URL, and
@@ -13,11 +13,11 @@
 // token is issued once and cached in module scope, so a grid of 40 thumbnails
 // costs one network round-trip on a cold function, then local HMAC signing.
 //
-// Referrer-Policy:no-referrer keeps the key (which sits in this URL's query,
-// the same pattern the rest of the dashboard already uses) from leaking to the
-// blob host on the redirect. The browser follows the 302 internally, so the
-// presigned URL never lands back in the DOM.
+// Referrer-Policy:no-referrer keeps even the short-lived attachment token from
+// leaking to the blob host on redirect. The long-lived dashboard key is never
+// placed in a media URL.
 import { requireKey } from './_auth.js';
+import { verifyMediaToken } from './lib/media-auth.js';
 import { query, isConfigured } from '../Integrations/postgres.js';
 import { issueSignedToken, presignUrl } from '@vercel/blob';
 
@@ -62,16 +62,23 @@ export default async function handler(req, res) {
     res.setHeader('Allow', 'GET, HEAD');
     return res.status(405).json({ ok: false, error: 'GET only' });
   }
-  if (!requireKey(req, res)) return;
+  const attId = String((req.query && req.query.att_id) || '').trim();
+  if (!attId) return res.status(400).json({ ok: false, error: 'att_id required' });
+
+  // Media elements cannot send x-stats-key. Normal dashboard responses carry a
+  // short-lived HMAC bound to exactly one attachment. Direct API clients may
+  // still use the header, but a raw ?key= query is deliberately ignored here.
+  const mediaToken = String((req.query && req.query.token) || '');
+  if (!verifyMediaToken(attId, mediaToken)) {
+    const headerOnlyReq = { ...req, query: { ...(req.query || {}), key: undefined } };
+    if (!requireKey(headerOnlyReq, res)) return;
+  }
   if (!isConfigured()) {
     return res.status(503).json({ ok: false, error: 'DATABASE_URL not set on this deployment' });
   }
   if (!_env.BLOB_READ_WRITE_TOKEN) {
     return res.status(503).json({ ok: false, error: 'BLOB_READ_WRITE_TOKEN not configured on this deployment' });
   }
-
-  const attId = String((req.query && req.query.att_id) || '').trim();
-  if (!attId) return res.status(400).json({ ok: false, error: 'att_id required' });
 
   let row;
   try {

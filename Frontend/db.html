@@ -22,6 +22,11 @@
   body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:13px;line-height:1.5;-webkit-font-smoothing:antialiased}
   a{color:var(--accent);text-decoration:none}
   ::selection{background:rgba(76,154,255,.3)}
+  .skip-link{position:fixed;left:12px;top:12px;z-index:100;transform:translateY(-180%);background:#fff;color:#111;padding:10px 14px;border-radius:6px}
+  .skip-link:focus{transform:none}
+  .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+  button,select,input,a{touch-action:manipulation}
+  button:focus-visible,select:focus-visible,input:focus-visible,a:focus-visible{outline:3px solid var(--accent);outline-offset:3px}
 
   .shell{display:grid;grid-template-columns:208px 1fr;min-height:100vh}
 
@@ -31,7 +36,7 @@
   .brand h1{font-size:13px;font-weight:600;letter-spacing:.2px}
   .brand span{display:block;font-size:10px;color:var(--ink-faint);font-family:var(--mono);margin-top:3px}
   .nav{padding:10px 8px;overflow-y:auto;flex:1}
-  .nav button{display:flex;align-items:center;gap:9px;width:100%;padding:7px 10px;margin-bottom:1px;border:0;border-radius:6px;
+  .nav button{display:flex;align-items:center;gap:9px;width:100%;min-height:44px;padding:7px 10px;margin-bottom:1px;border:0;border-radius:6px;
     background:transparent;color:var(--ink-dim);font:inherit;font-size:12.5px;cursor:pointer;text-align:left}
   .nav button:hover{background:var(--panel-2);color:var(--ink)}
   .nav button.on{background:var(--accent-dim);color:#fff}
@@ -43,7 +48,7 @@
   .main{min-width:0;display:flex;flex-direction:column}
   .bar{display:flex;align-items:center;gap:10px;padding:12px 20px;border-bottom:1px solid var(--line);background:var(--panel);position:sticky;top:0;z-index:20;flex-wrap:wrap}
   .bar h2{font-size:14px;font-weight:600;margin-right:auto}
-  select,input,.btn{background:var(--panel-2);border:1px solid var(--line);color:var(--ink);border-radius:6px;padding:5px 9px;font:inherit;font-size:12px}
+  select,input,.btn{background:var(--panel-2);border:1px solid var(--line);color:var(--ink);border-radius:6px;min-height:44px;padding:5px 9px;font:inherit;font-size:12px}
   select,.btn{cursor:pointer}
   .btn:hover{border-color:var(--accent);color:#fff}
   .btn.on{background:var(--accent-dim);border-color:var(--accent);color:#fff}
@@ -163,6 +168,7 @@
 </style>
 </head>
 <body>
+<a class="skip-link" href="#main-content">Skip to Main Content</a>
 <div class="shell">
   <aside class="side">
     <div class="brand">
@@ -173,11 +179,13 @@
     <div class="side-foot" id="foot">—</div>
   </aside>
 
-  <div class="main">
+  <main class="main" id="main-content" tabindex="-1">
     <div class="bar">
       <h2 id="title">Overview</h2>
-      <select id="siteSel" title="Property"></select>
-      <select id="daysSel" title="Window">
+      <label class="sr-only" for="siteSel">Tracked property</label>
+      <select id="siteSel" name="site" aria-label="Tracked property" title="Property"></select>
+      <label class="sr-only" for="daysSel">Date range</label>
+      <select id="daysSel" name="days" aria-label="Date range" title="Window">
         <option value="1">24 hours</option>
         <option value="7">7 days</option>
         <option value="30" selected>30 days</option>
@@ -204,7 +212,7 @@
       <section class="page" id="page-emails"></section>
       <section class="page" id="page-health"></section>
     </div>
-  </div>
+  </main>
 </div>
 
 <div class="backdrop" id="backdrop"></div>
@@ -236,8 +244,8 @@
   // made /db -- the ONLY rendering surface for the whole S24 archive pipeline --
   // need a separate unlock from every other page, for the same key.
   //
-  // One slot now, read localStorage -> sessionStorage -> legacy, written to
-  // localStorage to match index.html:719. The legacy read is a one-time
+  // One slot now, read sessionStorage -> localStorage -> legacy, written to
+  // sessionStorage to match index.html. The legacy read is a one-time
   // migration so anyone already unlocked here is not logged out by this change;
   // it is consumed and cleared on first use.
   var KEY_STORAGE = 'jbt_stats_key';
@@ -245,8 +253,10 @@
 
   function readDashboardKey() {
     try {
-      var v = localStorage.getItem(KEY_STORAGE) || sessionStorage.getItem(KEY_STORAGE) || '';
+      var v = sessionStorage.getItem(KEY_STORAGE) || '';
       if (v) return v;
+      var persisted = localStorage.getItem(KEY_STORAGE) || '';
+      if (persisted) { writeDashboardKey(persisted); return persisted; }
       var legacy = sessionStorage.getItem(LEGACY_KEY_STORAGE) || '';
       if (legacy) { writeDashboardKey(legacy); return legacy; }
     } catch (e) { /* private mode */ }
@@ -254,8 +264,8 @@
   }
   function writeDashboardKey(value) {
     try {
-      localStorage.setItem(KEY_STORAGE, value);
-      sessionStorage.removeItem(KEY_STORAGE);
+      sessionStorage.setItem(KEY_STORAGE, value);
+      localStorage.removeItem(KEY_STORAGE);
       sessionStorage.removeItem(LEGACY_KEY_STORAGE);
     } catch (e) { /* private mode */ }
   }
@@ -272,7 +282,7 @@
     storedDashboardKey = '';
     clearDashboardKey();
   }
-  var state = { site: 'jaytibirthday.in', days: 30, noise: false, page: 'overview',
+  var state = { site: 'jaytipargal.tech', days: 30, noise: false, page: 'overview',
                 // whatsapp was missing here while resetPaging() at the bottom of this
                 // file does include it, so before the first reset the WhatsApp page
                 // requested `offset=undefined` and its pager computed
@@ -482,9 +492,8 @@
   function clearErr() { $('err').innerHTML = ''; }
 
   // Where the key lives, stated on both gates. The old text said it "stays in
-  // this browser tab"; since /db moved to the shared jbt_stats_key slot it is
-  // written to localStorage, survives the tab, and unlocks every gated page.
-  var KEY_STORAGE_NOTE = 'The key is saved in this browser, unlocks every page of this dashboard, and is sent only as a request header.';
+  // this browser tab; every gated page shares this session-scoped slot.
+  var KEY_STORAGE_NOTE = 'The key is saved only for this browser tab, unlocks every page of this dashboard, and is sent only as a request header.';
 
   // The key gate, drawn in front of whichever view is active. Since db-api
   // gates every view, any page can be the one that finds the key missing.

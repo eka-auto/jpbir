@@ -116,10 +116,11 @@ test('public device pages stay read-only and never queue S24 commands', async ()
   strictEqual(index.includes("e.event_type === 'pageview'"), true);
 });
 
-test('dashboard key persists and WhatsApp prompts clearly when it is missing', async () => {
+test('dashboard key is session-scoped and WhatsApp prompts clearly when it is missing', async () => {
   const index = await readFile(new URL('../../Frontend/index.html', import.meta.url), 'utf8');
-  strictEqual(index.includes('localStorage.getItem(KEY_STORAGE) || sessionStorage.getItem(KEY_STORAGE)'), true);
-  strictEqual(index.includes('localStorage.setItem(KEY_STORAGE, v)'), true);
+  strictEqual(index.includes('sessionStorage.getItem(KEY_STORAGE)'), true);
+  strictEqual(index.includes('sessionStorage.setItem(KEY_STORAGE, value)'), true);
+  strictEqual(index.includes('localStorage.setItem(KEY_STORAGE, v)'), false);
   strictEqual(index.includes('localStorage.removeItem(KEY_STORAGE)'), true);
   strictEqual(index.includes('Dashboard key required — enter it to load WhatsApp.'), true);
 });

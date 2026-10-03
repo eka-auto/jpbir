@@ -30,6 +30,12 @@ jobs:
       - name: Run tests
         run: npm test --if-present
 
+      - name: Install Chromium for browser checks
+        run: npx playwright install --with-deps chromium
+
+      - name: Run browser checks
+        run: npm run test:browser
+
   # Nothing ever validated the workflow files themselves, and it cost a release.
   #
   # s24-export-sync.yml shipped with `SYNC_ROOT: ${{ runner.temp }}/s24-sync` in

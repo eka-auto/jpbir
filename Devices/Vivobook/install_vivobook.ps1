@@ -221,7 +221,7 @@ $Artifacts = @(
     [pscustomobject]@{ Name = 'broker_client.py'; Hash = 'E380867C5843E49C21D7E46704DB20607389A9F1FAAD4B3CF61F9B4EAB173BB1' },
     [pscustomobject]@{ Name = 'signer.py'; Hash = '64C56FA828DC56656CE6E28A116A43386781A1A0F737E5D794BEC587DB4927FA' },
     [pscustomobject]@{ Name = 'single_instance.py'; Hash = '287FE1C114488E847F0252C89170067E6FE5B33650780C72E8A8F00F7B63843A' },
-    [pscustomobject]@{ Name = 'requirements-broker.txt'; Hash = '37B13C7D746D596E7DA6E73098DFBA792EAB1A49C8ACC7E0A5AB287B56B107D5' }
+    [pscustomobject]@{ Name = 'requirements-broker.txt'; Hash = '1940BA363C2B88D6CAE8EEECF14BDA2479268122A65F8B548147201883F76977' }
 )
 
 function Get-CompatiblePython {

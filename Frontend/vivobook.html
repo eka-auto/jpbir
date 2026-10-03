@@ -175,33 +175,28 @@
     // they are key-gated like the rest of the dashboard: requireKey answers 401
     // to a request with no key or a wrong one. The key is the one the main
     // dashboard already holds: unlock there, click through to this page, and the
-    // shared localStorage slot below carries it. A ?key= on a direct link also
+    // shared sessionStorage slot below carries it. A ?key= on a direct link also
     // works and is stripped from the URL so it never leaks through the Referer.
     // Credential slot. This MUST match KEY_STORAGE in index.html -- it is the one
-    // key the whole dashboard shares, and index.html keeps it in localStorage
-    // (its unlock gate writes it there; stripKeyFromUrl() moves a ?key= there)
-    // while actively clearing the sessionStorage copy. Reading
-    // sessionStorage alone therefore found nothing the moment anyone visited the
-    // main dashboard, which is what made this page look dead: unlock there,
-    // click through, and the gate came up again.
-    //
-    // Read order is localStorage -> sessionStorage -> ?key=. sessionStorage stays
-    // in the chain so a key put there by an older build still works; writes go to
-    // localStorage so every page converges on one slot. Wrapped in try/catch
+    // key the whole dashboard shares. Read sessionStorage first and migrate the
+    // persistent localStorage value left by an older build. Wrapped in try/catch
     // because storage access throws outright in private mode. A function, not a
     // one-off read, because the locked state re-reads the slot on every poll to
     // notice a key the main dashboard has saved since (see runGated()).
     var KEY_STORAGE = 'jbt_stats_key';
     function storedKey() {
-        try { return localStorage.getItem(KEY_STORAGE) || sessionStorage.getItem(KEY_STORAGE) || ''; } catch (e) { return ''; /* private mode */ }
+        try {
+            var current = sessionStorage.getItem(KEY_STORAGE) || '';
+            if (current) return current;
+            var legacy = localStorage.getItem(KEY_STORAGE) || '';
+            if (legacy) { sessionStorage.setItem(KEY_STORAGE, legacy); localStorage.removeItem(KEY_STORAGE); }
+            return legacy;
+        } catch (e) { return ''; /* private mode */ }
     }
     var KEY = storedKey() || new URLSearchParams(location.search).get('key') || '';
     (function persistAndStripKey() {
         var params = new URLSearchParams(location.search);
-        // localStorage, not sessionStorage: index.html canonicalises there and
-        // clears the sessionStorage copy, so writing it there would be erased on
-        // the next visit to the main dashboard.
-        if (KEY) { try { localStorage.setItem(KEY_STORAGE, KEY); sessionStorage.removeItem(KEY_STORAGE); } catch (e) { /* private mode */ } }
+        if (KEY) { try { sessionStorage.setItem(KEY_STORAGE, KEY); localStorage.removeItem(KEY_STORAGE); } catch (e) { /* private mode */ } }
         if (!params.has('key')) return;
         params.delete('key');
         var qs = params.toString();
@@ -568,12 +563,6 @@
     $('histRefreshBtn').addEventListener('click', function () { runGated(loadHistory); });
     // Unlocking the main dashboard in another tab writes the shared slot; resume
     // on that write instead of up to 30 s later on the next poll. The storage
-    // event only fires in OTHER documents, so lock() removing the key here never
-    // triggers it.
-    window.addEventListener('storage', function (e) {
-        if (_locked && e.key === KEY_STORAGE) runGated(loadLive);
-    });
-
     function loadAll() { loadLive(); loadHistory(); }
     // Without a key both endpoints can only answer 401, so a keyless visit goes
     // straight to the locked state instead of sending two requests to be

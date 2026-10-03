@@ -6,8 +6,10 @@
   "type": "module",
   "scripts": {
     "dev": "node scripts/dev-server.mjs",
-    "build": "echo 'Build completed - frontend files ready'",
+    "build": "node scripts/build.mjs",
+    "lint": "node scripts/lint.mjs",
     "test": "node _shared/tests/run-all.mjs",
+    "test:browser": "playwright test",
     "db:migrate": "node Database/scripts/migrate.mjs",
     "wa:build": "node Database/scripts/wa-build-inventory.mjs",
     "wa:import": "node Database/scripts/wa-import.mjs"
@@ -18,8 +20,11 @@
     "@aws-sdk/lib-dynamodb": "^3.1115.0",
     "@vercel/blob": "^2.8.0",
     "@vercel/connect": "^2.0.1",
-    "nodemailer": "9.1.1",
+    "nodemailer": "^10.0.14",
     "pg": "^8.23.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0"
   },
   "engines": {
     "node": "24.x"

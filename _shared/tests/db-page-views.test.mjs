@@ -151,7 +151,8 @@ async function load({ key = '', handler = answer } = {}) {
   };
   const local = mkStorage(key ? { jbt_stats_key: key } : {});
   globalThis.localStorage = local;
-  globalThis.sessionStorage = mkStorage({});
+  const session = mkStorage({});
+  globalThis.sessionStorage = session;
   const log = [];
   globalThis.fetch = async (url, opts) => {
     const q = Object.fromEntries(new URL(url, 'https://x.test').searchParams.entries());
@@ -163,7 +164,7 @@ async function load({ key = '', handler = answer } = {}) {
   new Function(instrumented)();
   const dbg = globalThis.__dbg;
   await settle(); // boot: sites, first draw, health
-  return { dbg, $, log, local, pages };
+  return { dbg, $, log, local, session, pages };
 }
 
 const deferred = () => { let release; const wait = new Promise((r) => { release = r; }); return { wait, release }; };
@@ -446,13 +447,14 @@ await t('a first visit with no key asks for one instead of saying a key was reje
   const gate = fresh.$('page-overview').innerHTML;
   assert.match(gate, /Enter the dashboard key to load this page\./);
   assert.equal(/rejected/i.test(gate), false);
-  assert.equal(/browser tab/.test(gate), false, 'the gate still says the key stays in the tab; it is in localStorage');
+  assert.match(gate, /only for this browser tab/i);
 });
 
 await t('a stored key the server refuses is reported as rejected, even after the keyless requests that follow', async () => {
   const stale = await load({ key: KEY, handler: () => refused('auth_invalid') });
   assert.match(stale.$('page-overview').innerHTML, /That dashboard key was rejected\./);
-  assert.equal(stale.local.getItem('jbt_stats_key'), null, 'the refused key was kept');
+  assert.equal(stale.local.getItem('jbt_stats_key'), null, 'the refused legacy key was kept');
+  assert.equal(stale.session.getItem('jbt_stats_key'), null, 'the refused session key was kept');
 });
 
 await t('an auth 503 on the S24 page leaves the gate up without claiming the deleted key is still stored', async () => {
@@ -493,7 +495,8 @@ await t('a keyless boot request refused after the operator has unlocked does not
   await settle();
   late.release();
   await settle();
-  assert.equal(racing.local.getItem('jbt_stats_key'), KEY, 'the valid key was deleted by a refusal of no key');
+  assert.equal(racing.local.getItem('jbt_stats_key'), null, 'the valid key must not persist in localStorage');
+  assert.equal(racing.session.getItem('jbt_stats_key'), KEY, 'the valid session key was deleted by a refusal of no key');
   assert.match(racing.$('page-overview').innerHTML, /class="kpi"/);
   assert.equal(racing.$('page-overview').innerHTML.includes('private-gate'), false);
 });

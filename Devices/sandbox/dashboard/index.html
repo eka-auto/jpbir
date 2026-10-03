@@ -6,12 +6,14 @@
   <title>Channel Sandbox — Device Dashboard</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0a0a0a; color: #fff; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0a0a0a; color: #fff; overflow-x: hidden; }
+    .skip-link { position: fixed; left: 12px; top: 12px; z-index: 100; transform: translateY(-180%); background: #fff; color: #111; padding: 10px 14px; border-radius: 6px; }
+    .skip-link:focus { transform: none; }
     .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
     header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; border-radius: 12px; margin-bottom: 30px; }
     h1 { font-size: 2rem; margin-bottom: 10px; }
     .subtitle { opacity: 0.8; }
-    .devices-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 20px; margin-bottom: 30px; }
+    .devices-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 20px; margin-bottom: 30px; }
     .device-card { background: #1a1a1a; border-radius: 12px; padding: 25px; border: 1px solid #333; }
     .device-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
     .device-name { font-size: 1.3rem; font-weight: 600; }
@@ -32,8 +34,10 @@
     .data-item { padding: 10px; background: #0a0a0a; border-radius: 6px; margin-bottom: 8px; font-size: 0.9rem; }
     .data-item:last-child { margin-bottom: 0; }
     .timestamp { opacity: 0.5; font-size: 0.8rem; }
-    .controls { margin-top: 15px; display: flex; gap: 10px; }
-    button { padding: 10px 20px; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; transition: all 0.2s; }
+    .controls { margin-top: 15px; display: flex; gap: 10px; flex-wrap: wrap; }
+    button { min-height: 44px; padding: 10px 20px; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; transition: background-color 0.2s, color 0.2s, border-color 0.2s, opacity 0.2s; touch-action: manipulation; }
+    button:disabled { opacity: .45; cursor: not-allowed; }
+    button:focus-visible, input:focus-visible, a:focus-visible { outline: 3px solid #fbbf24; outline-offset: 3px; }
     .btn-primary { background: #667eea; color: #fff; }
     .btn-primary:hover { background: #5568d3; }
     .btn-secondary { background: #333; color: #fff; }
@@ -41,6 +45,7 @@
     .btn-success { background: #22c55e; color: #000; }
     .btn-success:hover { background: #16a34a; }
     .empty-state { text-align: center; padding: 40px; opacity: 0.5; }
+    .command-status { min-height: 24px; margin: 0 0 18px; color: #fbbf24; }
     .loading { text-align: center; padding: 20px; opacity: 0.7; }
     .battery-indicator { display: flex; align-items: center; gap: 8px; }
     .battery-icon { width: 24px; height: 12px; border: 2px solid #fff; border-radius: 2px; position: relative; }
@@ -48,7 +53,8 @@
   </style>
 </head>
 <body>
-  <div class="container">
+  <a class="skip-link" href="#main-content">Skip to Main Content</a>
+  <main class="container" id="main-content" tabindex="-1">
     <header>
       <h1>🔗 Device Dashboard</h1>
       <p class="subtitle">Real-time device monitoring and data synchronization</p>
@@ -63,7 +69,8 @@
       <strong>Dashboard key required.</strong>
       <span id="key-gate-msg">Every route except /api/status needs it.</span>
       <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
-        <input id="key-input" type="password" placeholder="dashboard key" autocomplete="off"
+        <label for="key-input">Dashboard key</label>
+        <input id="key-input" name="dashboard-key" type="password" placeholder="Dashboard key…" autocomplete="off" spellcheck="false"
                style="flex:1 1 260px;padding:7px 10px;border-radius:7px;border:1px solid #888;font:inherit">
         <button id="key-unlock" type="button"
                 style="padding:7px 14px;border-radius:7px;border:1px solid currentColor;
@@ -76,7 +83,7 @@
       <div class="device-card">
         <div class="device-header">
           <div class="device-name">📱 Samsung S24 Ultra</div>
-          <div id="s24-status" class="status-badge status-connecting">Connecting...</div>
+          <div id="s24-status" class="status-badge status-connecting" aria-live="polite">Locked</div>
         </div>
         <div class="device-info">
           <div class="info-row">
@@ -101,9 +108,9 @@
           </div>
         </div>
         <div class="controls">
-          <button class="btn-primary" onclick="sendCommand('s24', 'heartbeat')">Heartbeat</button>
-          <button class="btn-success" onclick="sendCommand('s24', 'status-only')">Status</button>
-          <button class="btn-secondary" onclick="sendCommand('s24', 'wakeup')">Wake Up</button>
+          <button class="btn-primary command-btn" type="button" data-device="s24" data-action="heartbeat" disabled>Heartbeat</button>
+          <button class="btn-success command-btn" type="button" data-device="s24" data-action="status-only" disabled>Status</button>
+          <button class="btn-secondary command-btn" type="button" data-device="s24" data-action="wakeup" disabled>Wake Up</button>
         </div>
       </div>
 
@@ -111,7 +118,7 @@
       <div class="device-card">
         <div class="device-header">
           <div class="device-name">💻 Asus VivoBook</div>
-          <div id="vivobook-status" class="status-badge status-connecting">Connecting...</div>
+          <div id="vivobook-status" class="status-badge status-connecting" aria-live="polite">Locked</div>
         </div>
         <div class="device-info">
           <div class="info-row">
@@ -136,11 +143,12 @@
           </div>
         </div>
         <div class="controls">
-          <button class="btn-primary" onclick="sendCommand('vivobook', 'heartbeat')">Heartbeat</button>
-          <button class="btn-success" onclick="sendCommand('vivobook', 'status-only')">Status</button>
+          <button class="btn-primary command-btn" type="button" data-device="vivobook" data-action="heartbeat" disabled>Heartbeat</button>
+          <button class="btn-success command-btn" type="button" data-device="vivobook" data-action="status-only" disabled>Status</button>
         </div>
       </div>
     </div>
+    <div id="command-status" class="command-status" role="status" aria-live="polite"></div>
 
     <!-- Data Sections -->
     <div class="data-section">
@@ -175,7 +183,7 @@
         </div>
       </div>
     </div>
-  </div>
+  </main>
 
   <script>
     // Firebase configuration
@@ -190,9 +198,8 @@
     // so subsequent navigations don't lose it, and sent on every API call as
     // X-Stats-Key. The API refuses every non-status route without it (STATS_KEY
     // env on Vercel is the expected value).
-    // localStorage, with sessionStorage kept in the read chain so a key stored by
-    // an older build still works. sessionStorage alone meant the key died with
-    // the tab and the only way back in was to re-find the ?key= URL.
+    // only for the current tab. A key left by an older build in localStorage is
+    // migrated once and removed so it no longer persists across browser restarts.
     //
     // ?key= is accepted and then stripped from the address bar: it would
     // otherwise travel in the Referer header of every outbound link, which is
@@ -208,11 +215,20 @@
       }
     })();
     function getKey() {
-      try { return localStorage.getItem('SANDBOX_KEY') || sessionStorage.getItem('SANDBOX_KEY') || ''; }
+      try {
+        const current = sessionStorage.getItem('SANDBOX_KEY') || '';
+        if (current) return current;
+        const legacy = localStorage.getItem('SANDBOX_KEY') || '';
+        if (legacy) {
+          sessionStorage.setItem('SANDBOX_KEY', legacy);
+          localStorage.removeItem('SANDBOX_KEY');
+        }
+        return legacy;
+      }
       catch (_) { return ''; }
     }
     function setKey(v) {
-      try { localStorage.setItem('SANDBOX_KEY', v); sessionStorage.removeItem('SANDBOX_KEY'); } catch (_) {}
+      try { sessionStorage.setItem('SANDBOX_KEY', v); localStorage.removeItem('SANDBOX_KEY'); } catch (_) {}
     }
     function clearKey() {
       try { localStorage.removeItem('SANDBOX_KEY'); sessionStorage.removeItem('SANDBOX_KEY'); } catch (_) {}
@@ -228,6 +244,16 @@
       const g = document.getElementById('key-gate');
       if (g) g.hidden = true;
     }
+    function setLocked(locked) {
+      document.querySelectorAll('.command-btn').forEach(btn => { btn.disabled = locked; });
+      if (locked) {
+        ['s24', 'vivobook'].forEach(deviceKey => {
+          const status = document.getElementById(`${deviceKey}-status`);
+          status.textContent = 'Locked';
+          status.className = 'status-badge status-connecting';
+        });
+      }
+    }
     function apiFetch(path, opts = {}) {
       const headers = Object.assign({}, opts.headers || {});
       const k = getKey();
@@ -240,11 +266,13 @@
         // would be wrong, so only 401 does that.
         if (r.status === 401) {
           clearKey();
+          setLocked(true);
           showGate(k ? 'That key was rejected. Paste it again.' : 'Enter the dashboard key to load device data.');
         } else if (r.status === 503) {
           showGate('This deployment is not fully configured (the server reported 503). A key will not help.');
         } else if (r.ok) {
           hideGate();
+          setLocked(false);
         }
         return r;
       });
@@ -304,11 +332,11 @@
     }
 
     // Send command to device
-    async function sendCommand(deviceKey, action) {
+    async function sendCommand(deviceKey, action, btn) {
       const device = devices[deviceKey];
-      const btn = event.target;
       const originalText = btn.textContent;
-      btn.textContent = 'Sending...';
+      const status = document.getElementById('command-status');
+      btn.textContent = 'Sending…';
       btn.disabled = true;
 
       try {
@@ -321,15 +349,15 @@
         const result = await response.json();
         
         if (result.status === 'queued') {
-          alert(`Command "${action}" sent to ${device.name}`);
+          status.textContent = `Command “${action}” queued for ${device.name}.`;
         } else {
-          alert(`Failed to send command: ${result.error}`);
+          status.textContent = `Command failed: ${result.error || 'unknown error'}.`;
         }
       } catch (error) {
-        alert(`Error: ${error.message}`);
+        status.textContent = `Command failed: ${error.message}.`;
       } finally {
         btn.textContent = originalText;
-        btn.disabled = false;
+        btn.disabled = !getKey();
       }
     }
 
@@ -403,18 +431,20 @@
       el.innerHTML = data.map(renderFn).join('');
     }
 
-    // Initial fetch and polling
-    async function init() {
+    // Initial fetch and polling. Setup is idempotent so unlocking repeatedly
+    // cannot create duplicate 15-second timers.
+    let pollTimer = null;
+    async function refreshAll() {
+      if (!getKey()) return;
       await fetchDeviceStatus('s24');
       await fetchDeviceStatus('vivobook');
       await fetchLatestData();
-      
-      // Poll every 15 seconds
-      setInterval(async () => {
-        await fetchDeviceStatus('s24');
-        await fetchDeviceStatus('vivobook');
-        await fetchLatestData();
-      }, 15000);
+    }
+    async function init() {
+      if (!getKey()) { setLocked(true); return; }
+      await refreshAll();
+      if (!getKey() || pollTimer) return;
+      pollTimer = setInterval(refreshAll, 15000);
     }
 
     document.getElementById('key-unlock').addEventListener('click', function () {
@@ -429,10 +459,19 @@
       if (e.key === 'Enter') document.getElementById('key-unlock').click();
     });
 
-    // Say so before the first request rather than after three 401s.
-    if (!getKey()) showGate('Enter the dashboard key to load device data.');
+    document.querySelectorAll('.command-btn').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        sendCommand(btn.dataset.device, btn.dataset.action, btn);
+      });
+    });
 
-    init();
+    // Do not send protected requests before the user has authenticated.
+    if (!getKey()) {
+      setLocked(true);
+      showGate('Enter the dashboard key to load device data.');
+    } else {
+      init();
+    }
   </script>
 </body>
 </html>

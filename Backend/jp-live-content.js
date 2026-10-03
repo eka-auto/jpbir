@@ -16,6 +16,7 @@
 import { requireKey } from './_auth.js';
 import { query, isConfigured } from '../Integrations/postgres.js';
 import { displayMessageBody, messageSenderLabel, normalizeSender } from '../Integrations/wa-store.js';
+import { issueMediaToken } from './lib/media-auth.js';
 
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'private, no-store');
@@ -109,6 +110,7 @@ export default async function handler(req, res) {
         sent_at: a.sent_at,
         ingested_at: a.ingested_at,
         device_id: a.device_id,
+        media_token: issueMediaToken(a.att_id),
       })),
       messages: msgs.rows.map((m) => ({
         msg_id: m.msg_id,

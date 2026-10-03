@@ -52,10 +52,13 @@ t('every /api route the page calls resolves to a Backend handler — the old pag
   assert.equal(/chrome-data/.test(code), false, 'the dead chrome-data route is still called');
 });
 
-t('the key is read from and written to the shared jbt_stats_key slot, every access wrapped for private mode', () => {
+t('the key is session-scoped in the shared jbt_stats_key slot and legacy persistent copies are removed', () => {
   assert.ok(code.includes("KEY_STORAGE = 'jbt_stats_key'"), 'wrong or missing slot');
-  assert.match(code, /localStorage\.getItem\(\s*KEY_STORAGE/, 'never reads localStorage, where index.html keeps the key');
-  assert.match(code, /localStorage\.setItem\(\s*KEY_STORAGE/, 'never writes localStorage, so the key is lost with the tab');
+  assert.match(code, /sessionStorage\.getItem\(\s*KEY_STORAGE/, 'never reads the current-tab session slot');
+  assert.match(code, /sessionStorage\.setItem\(\s*KEY_STORAGE/, 'never writes the current-tab session slot');
+  assert.match(code, /localStorage\.getItem\(\s*KEY_STORAGE/, 'never migrates a legacy persistent key');
+  assert.doesNotMatch(code, /localStorage\.setItem\(\s*KEY_STORAGE/, 'persists the dashboard key across browser restarts');
+  assert.match(code, /localStorage\.removeItem\(\s*KEY_STORAGE/, 'does not clear a migrated persistent key');
   assert.match(script, /try\s*\{[^}]*localStorage/, 'storage touched outside try/catch; private mode throws');
   assert.equal(code.includes('jbt_site'), false, "jbt_site is index.html's site selector, not a credential");
 });
@@ -64,10 +67,10 @@ t('only an auth failure clears the key: a 503 store outage branches on _auth.js\
   assert.match(code, /\/\^auth_\/\.test\(/, 'every 503 would log the operator out, including a DATABASE_URL outage');
 });
 
-t('the key rides in the query string only on the media proxy, which <img>/<video>/<audio> cannot send headers to', () => {
+t('the dashboard key never enters a URL; media uses a short-lived attachment token', () => {
   const lines = code.split('\n').filter((l) => /[?&]key=/.test(l));
-  assert.ok(lines.length >= 1, 'media proxy URL no longer carries the key, so every preview would 401');
-  for (const l of lines) assert.match(l, /\/api\/wa-media\?/, 'a non-media URL carries the key: ' + l.trim().slice(0, 100));
+  assert.equal(lines.length, 0, 'a URL still carries the long-lived dashboard key');
+  assert.match(code, /\/api\/wa-media\?att_id=.*&token=/, 'media proxy has no attachment token');
   assert.match(code, /'x-stats-key': KEY/, 'API requests no longer send the x-stats-key header');
 });
 
@@ -76,7 +79,7 @@ t('the key rides in the query string only on the media proxy, which <img>/<video
 const KEY = 'k'.repeat(40);
 // Each boot() gets fresh elements, storage and a call log; the stubs below read
 // whichever are current.
-let elements = new Map(), store = new Map(), calls = [], chatsFail = false, liveOverride = null;
+let elements = new Map(), store = new Map(), sessionStore = new Map(), calls = [], chatsFail = false, liveOverride = null;
 function mkEl(id) {
   return {
     id, innerHTML: '', textContent: '', value: '', hidden: false, disabled: false, children: [],
@@ -91,16 +94,16 @@ globalThis.document = {
 };
 globalThis.window = globalThis;
 globalThis.localStorage ={ getItem: (k) => (store.has(k) ? store.get(k) : null), setItem: (k, v) => store.set(k, String(v)), removeItem: (k) => store.delete(k) };
-globalThis.sessionStorage = { getItem: () => null, setItem() {}, removeItem() {} };
+globalThis.sessionStorage = { getItem: (k) => (sessionStore.has(k) ? sessionStore.get(k) : null), setItem: (k, v) => sessionStore.set(k, String(v)), removeItem: (k) => sessionStore.delete(k) };
 
 const DM = '919800000001@s.whatsapp.net';
 const HOSTILE_FILE = '<img src=x onerror="alert(1)">shot.png';
 const HOSTILE_CHAT = 'Mallory <script>alert(2)</script>';
 const ROWS = [
   // size_bytes as strings: wa_attachments.size_bytes is BIGINT, which node-postgres returns as a string
-  { att_id: DM + ':m1:aa', chat_id: DM, kind: 'image', mime: 'image/jpeg', file_name: 'IMG-1.jpg', size_bytes: '48213', width: 1080, height: 1440, sent_at: '2026-09-22T10:00:00.000Z', ingested_at: '2026-09-22T10:01:00.000Z' },
-  { att_id: DM + ':m2:bb', chat_id: DM, kind: 'document', mime: 'application/pdf', file_name: 'Rent.pdf', size_bytes: '2201931', sent_at: '2026-09-21T10:00:00.000Z', ingested_at: '2026-09-21T10:01:00.000Z' },
-  { att_id: 'evil:m3:cc', chat_id: 'evil', kind: 'image', mime: 'image/png', file_name: HOSTILE_FILE, size_bytes: '1000', sent_at: '2026-09-20T10:00:00.000Z', ingested_at: '2026-09-20T10:01:00.000Z' },
+  { att_id: DM + ':m1:aa', media_token: 'tok-1', chat_id: DM, kind: 'image', mime: 'image/jpeg', file_name: 'IMG-1.jpg', size_bytes: '48213', width: 1080, height: 1440, sent_at: '2026-09-22T10:00:00.000Z', ingested_at: '2026-09-22T10:01:00.000Z' },
+  { att_id: DM + ':m2:bb', media_token: 'tok-2', chat_id: DM, kind: 'document', mime: 'application/pdf', file_name: 'Rent.pdf', size_bytes: '2201931', sent_at: '2026-09-21T10:00:00.000Z', ingested_at: '2026-09-21T10:01:00.000Z' },
+  { att_id: 'evil:m3:cc', media_token: 'tok-3', chat_id: 'evil', kind: 'image', mime: 'image/png', file_name: HOSTILE_FILE, size_bytes: '1000', sent_at: '2026-09-20T10:00:00.000Z', ingested_at: '2026-09-20T10:01:00.000Z' },
 ];
 globalThis.fetch = async (url, init) => {
   calls.push({ url, headers: (init && init.headers) || {} });
@@ -127,6 +130,7 @@ async function boot(storedKey, opts = {}) {
   elements = new Map();
   calls = [];
   store = new Map(storedKey == null ? [] : [['jbt_stats_key', storedKey]]);
+  sessionStore = new Map();
   chatsFail = !!opts.chatsFail;
   liveOverride = opts.live || null;
   delete globalThis.__media;
@@ -164,8 +168,9 @@ t('a BIGINT size_bytes, which node-postgres returns as a string, still renders a
   for (const v of [null, undefined, '', 'abc', -1, {}]) assert.equal(M.fmtBytes(v), '', 'no size must mean no text, got one for ' + String(v));
 });
 
-t('every media src goes through the key-gated /api/wa-media proxy; a stored value can never become a script URL', () => {
-  assert.equal(M.mediaSrc({ att_id: 'a:b c' }), '/api/wa-media?att_id=a%3Ab%20c&key=' + KEY);
+t('every media src uses a short-lived attachment token; the dashboard key never enters a URL', () => {
+  assert.equal(M.mediaSrc({ att_id: 'a:b c', media_token: 'expires.sig' }), '/api/wa-media?att_id=a%3Ab%20c&token=expires.sig');
+  assert.equal(M.mediaSrc({ att_id: 'a:b c' }), '');
   assert.equal(M.mediaSrc({ blob_url: 'javascript:alert(1)' }), '');
   assert.equal(M.mediaSrc({ blob_url: 'https://x.public.blob.vercel-storage.com/a.jpg' }), 'https://x.public.blob.vercel-storage.com/a.jpg');
   assert.equal(M.mediaSrc({}), '');
@@ -180,7 +185,7 @@ t('stored file and chat names are escaped — the old viewer wrote rows into inn
 });
 
 t('each of the seven wa_attachments kinds renders as the right element, never as a data dump', () => {
-  const card = (kind, mime, file_name) => M.cardHtml({ att_id: 'c:' + kind, chat_id: DM, kind, mime, file_name, size_bytes: '10', sent_at: '2026-09-22T10:00:00Z' });
+  const card = (kind, mime, file_name) => M.cardHtml({ att_id: 'c:' + kind, media_token: 'expires.sig', chat_id: DM, kind, mime, file_name, size_bytes: '10', sent_at: '2026-09-22T10:00:00Z' });
   assert.match(card('image', 'image/jpeg', 'a.jpg'), /<img src="\/api\/wa-media\?[^"]*" loading="lazy"/);
   assert.match(card('sticker', 'image/webp', 's.webp'), /is-sticker"[^>]*><img /);
   const video = card('video', 'video/mp4', 'v.mp4');
@@ -265,10 +270,10 @@ t('with no stored key the gate shows and not a single request is made', () => {
 });
 
 await boot('pasted key with spaces');
-t('a stored key no header can carry is refused in memory only — the shared slot every other page reads stays', () => {
+t('a stored key no header can carry is removed from the session and legacy slots', () => {
   assert.equal(calls.length, 0, 'sent a request with a key fetch() cannot encode');
-  assert.equal(store.get('jbt_stats_key'), 'pasted key with spaces',
-    'cleared jbt_stats_key, which logs the operator out of index.html, /db and the device pages too');
+  assert.equal(store.get('jbt_stats_key'), undefined, 'an unsafe legacy key was not removed');
+  assert.equal(sessionStore.get('jbt_stats_key'), undefined, 'an unsafe session key was not removed');
   assert.match(el('gateMsg').textContent, /cannot carry/);
 });
 

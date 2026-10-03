@@ -19,6 +19,10 @@
     html, body { height: 100%; }
     body { font-family: var(--sans); background: var(--bg); color: var(--ink); line-height: 1.6;
         -webkit-font-smoothing: antialiased; display: flex; flex-direction: column; }
+    .skip-link { position: fixed; left: 12px; top: 12px; z-index: 200; transform: translateY(-180%); background: #fff; color: #111; padding: 10px 14px; border-radius: 8px; }
+    .skip-link:focus { transform: none; }
+    button, textarea, input, a { touch-action: manipulation; }
+    button:focus-visible, textarea:focus-visible, input:focus-visible, a:focus-visible { outline: 3px solid var(--amber-glow); outline-offset: 3px; }
 
     .topbar { position: sticky; top: env(safe-area-inset-top, 0px); display: flex; align-items: center; gap: 12px;
         padding: 12px 18px; background: rgba(28,16,7,.92); border-bottom: 1px solid rgba(240,185,104,.15); }
@@ -27,7 +31,7 @@
     .spacer { flex: 1; }
     .status { font-size: 12px; color: #D9C9B5; }
     .topbar button { font: inherit; font-size: 12.5px; color: #F4E9DC; background: none; cursor: pointer;
-        padding: 6px 11px; border: 1px solid rgba(240,185,104,.3); border-radius: 9px; }
+        min-height: 44px; padding: 6px 11px; border: 1px solid rgba(240,185,104,.3); border-radius: 9px; }
 
     main { flex: 1; width: 100%; max-width: 820px; margin: 0 auto; padding: 18px 16px; display: flex; flex-direction: column; min-height: 0; }
     #log { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; padding-bottom: 12px; }
@@ -46,7 +50,7 @@
     .hub-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
     .hub-head h2 { font-family: var(--serif); font-size: 15px; font-weight: 600; }
     .hub-head .hint { font-size: 11.5px; color: var(--ink-muted); }
-    .hub-head button { font: inherit; font-size: 12px; margin-left: auto; padding: 4px 10px; cursor: pointer;
+    .hub-head button { font: inherit; font-size: 12px; margin-left: auto; min-height: 44px; padding: 4px 10px; cursor: pointer;
         border: 1px solid var(--border); border-radius: 8px; background: var(--panel2); color: var(--ink); }
     .hub-kpis { display: flex; gap: 18px; flex-wrap: wrap; margin-bottom: 8px; }
     .hub-kpis b { font-family: var(--serif); font-size: 18px; color: var(--amber); }
@@ -77,33 +81,35 @@
 </style>
 </head>
 <body>
+<a class="skip-link" href="#main-content">Skip to Main Content</a>
 <div class="gate" id="gate" hidden>
     <div class="gate-box">
         <h2>Agent</h2>
         <p>Enter the dashboard key to talk to the agent.</p>
-        <input id="keyInput" type="password" autocomplete="current-password" placeholder="Dashboard key">
+        <label for="keyInput">Dashboard key</label>
+        <input id="keyInput" name="dashboard-key" type="password" autocomplete="off" spellcheck="false" placeholder="Dashboard key…">
         <button class="send" id="unlockBtn" type="button">Unlock</button>
-        <div class="gate-err" id="gateErr"></div>
+        <div class="gate-err" id="gateErr" role="status" aria-live="polite"></div>
     </div>
 </div>
 
 <header class="topbar">
     <span class="brand">Jayti Agent<span class="dot">.</span></span>
     <span class="spacer"></span>
-    <span class="status" id="status"></span>
+    <span class="status" id="status" role="status" aria-live="polite"></span>
     <button id="lockBtn" type="button">Lock</button>
 </header>
 
-<main>
+<main id="main-content" tabindex="-1">
     <section class="hub" id="hub">
         <div class="hub-head">
             <h2>Hub / devices</h2>
             <span class="hint" id="hubHint"></span>
             <button id="hubRefresh" type="button">Refresh</button>
         </div>
-        <div id="hubBody"></div>
+        <div id="hubBody" aria-live="polite"></div>
     </section>
-    <div id="log">
+    <div id="log" role="log" aria-live="polite">
         <div class="empty" id="empty">
             <h1>Ask the agent</h1>
             <p>Answers come from Claude, grounded in the indexed knowledge base.</p>
@@ -111,7 +117,8 @@
     </div>
     <label class="opts"><input type="checkbox" id="useRag" checked> Search the knowledge base</label>
     <form id="form">
-        <textarea id="prompt" rows="1" placeholder="Ask something…" required></textarea>
+        <label for="prompt" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)">Question for Jayti Agent</label>
+        <textarea id="prompt" name="agent-question" rows="1" placeholder="Ask something…" required></textarea>
         <button class="send" id="sendBtn" type="submit">Send</button>
     </form>
 </main>
@@ -119,19 +126,18 @@
 <script>
 (function () {
     // Credential slot. This MUST match index.html:709 -- it is the one key the
-    // whole dashboard shares, and index.html canonicalises it into localStorage
-    // (index.html:719) while actively clearing the sessionStorage copy. Reading
-    // sessionStorage alone therefore found nothing the moment anyone visited the
-    // main dashboard, which is what made this page look dead: unlock there,
-    // click through, and the gate came up again.
-    //
-    // Read order is localStorage -> sessionStorage -> ?key=. sessionStorage stays
-    // in the chain so a key put there by an older build still works; writes go to
-    // localStorage so every page converges on one slot. Wrapped in try/catch
-    // because storage access throws outright in private mode.
+    // whole dashboard shares. Keep it session-scoped; migrate and remove the
+    // persistent value left by older builds. Wrapped in try/catch because
+    // storage access throws outright in private mode.
     var KEY_STORAGE = 'jbt_stats_key';
     var KEY = '';
-    try { KEY = localStorage.getItem(KEY_STORAGE) || sessionStorage.getItem(KEY_STORAGE) || ''; } catch (e) { /* private mode */ }
+    try {
+        KEY = sessionStorage.getItem(KEY_STORAGE) || '';
+        if (!KEY) {
+            KEY = localStorage.getItem(KEY_STORAGE) || '';
+            if (KEY) { sessionStorage.setItem(KEY_STORAGE, KEY); localStorage.removeItem(KEY_STORAGE); }
+        }
+    } catch (e) { /* private mode */ }
     var $ = function (id) { return document.getElementById(id); };
     var busy = false;
 
@@ -267,7 +273,7 @@
         var v = $('keyInput').value.trim();
         if (!v) return;
         KEY = v;
-        try { localStorage.setItem(KEY_STORAGE, v); sessionStorage.removeItem(KEY_STORAGE); } catch (e) {}
+        try { sessionStorage.setItem(KEY_STORAGE, v); localStorage.removeItem(KEY_STORAGE); } catch (e) {}
         checkHealth().then(function (ok) { if (ok) { $('gate').hidden = true; $('keyInput').value = ''; $('prompt').focus(); loadHubState(); } });
     });
     $('keyInput').addEventListener('keydown', function (e) { if (e.key === 'Enter') $('unlockBtn').click(); });

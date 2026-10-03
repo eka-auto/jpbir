@@ -10,6 +10,7 @@ import { createHash, timingSafeEqual } from 'node:crypto';
 
 const _env = (typeof process !== 'undefined' ? process : globalThis['proc' + 'ess']).env;
 const STATS_KEY = _env.STATS_KEY || '';
+const OPERATOR_KEY = _env.OPERATOR_KEY || '';
 
 // Digest both sides before comparing: timingSafeEqual throws on length mismatch,
 // and comparing raw values would leak the key's length through that exception.
@@ -51,6 +52,31 @@ export function checkKey(req) {
  */
 export function requireKey(req, res) {
   const result = checkKey(req);
+  if (result.ok) return true;
+  res.status(result.status).json({ success: false, code: result.code, error: result.error });
+  return false;
+}
+
+/**
+ * Destructive/operator routes use a credential that is deliberately separate
+ * from the read-only dashboard key. It is accepted only from a header so it
+ * never appears in access logs, browser history, or referrers.
+ */
+export function checkOperatorKey(req) {
+  if (!OPERATOR_KEY) {
+    return { ok: false, status: 503, code: 'operator_auth_not_configured', error: 'OPERATOR_KEY is not configured on the server' };
+  }
+
+  const supplied = req.headers?.['x-operator-key'] || '';
+  if (!supplied) return { ok: false, status: 401, code: 'operator_auth_missing', error: 'missing operator key' };
+
+  return timingSafeEqual(sha256(supplied), sha256(OPERATOR_KEY))
+    ? { ok: true }
+    : { ok: false, status: 401, code: 'operator_auth_invalid', error: 'invalid operator key' };
+}
+
+export function requireOperatorKey(req, res) {
+  const result = checkOperatorKey(req);
   if (result.ok) return true;
   res.status(result.status).json({ success: false, code: result.code, error: result.error });
   return false;

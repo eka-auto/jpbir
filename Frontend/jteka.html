@@ -96,10 +96,9 @@
   var ENDPOINT  = "/api/jp-devices";
   var el = function(id){ return document.getElementById(id); };
 
-  // localStorage first, matching index.html:710/719, which canonicalises the key
-  // there and clears the sessionStorage copy.
-  function getKey(){ try { return localStorage.getItem(KEY_STORE) || sessionStorage.getItem(KEY_STORE) || ""; } catch(e){ return ""; } }
-  function setKey(v){ try { localStorage.setItem(KEY_STORE, v); sessionStorage.removeItem(KEY_STORE); } catch(e){} }
+  // Session-scoped; migrate and remove the persistent value left by older builds.
+  function getKey(){ try { var v=sessionStorage.getItem(KEY_STORE)||""; if(v)return v; v=localStorage.getItem(KEY_STORE)||""; if(v){sessionStorage.setItem(KEY_STORE,v);localStorage.removeItem(KEY_STORE);} return v; } catch(e){ return ""; } }
+  function setKey(v){ try { sessionStorage.setItem(KEY_STORE, v); localStorage.removeItem(KEY_STORE); } catch(e){} }
   function clearKey(){ try { localStorage.removeItem(KEY_STORE); sessionStorage.removeItem(KEY_STORE); } catch(e){} }
 
   function rel(sec){
