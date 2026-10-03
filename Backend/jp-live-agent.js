@@ -23,6 +23,16 @@ export const config = { maxDuration: 300 };
 
 const num = (v, fallback) => (Number.isFinite(Number(v)) ? Number(v) : fallback);
 
+async function fetchWithTimeout(url, init = {}, timeoutMs = 12_000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
   if (!requireKey(req, res)) return;
@@ -41,11 +51,12 @@ export default async function handler(req, res) {
   const op = req.query?.op === 'health' || req.method === 'GET' ? 'health' : 'query';
   if (op === 'health') {
     try {
-      const upstream = await fetch(`${url}/health`, { headers });
+      const upstream = await fetchWithTimeout(`${url}/health`, { headers });
       const data = await upstream.json().catch(() => ({}));
       return res.status(upstream.ok ? 200 : 502).json({ success: upstream.ok, ...data });
     } catch (error) {
-      return res.status(502).json({ success: false, error: error.message || 'Agent health check failed' });
+      const timedOut = error?.name === 'AbortError';
+      return res.status(timedOut ? 504 : 502).json({ success: false, error: timedOut ? 'Agent health check timed out' : (error.message || 'Agent health check failed') });
     }
   }
 

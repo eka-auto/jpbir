@@ -6,10 +6,11 @@
 // the droplet only ever trusts a caller holding it.
 //
 // The agent can run shell commands, so this is the most sensitive route on the
-// dashboard. It is gated by the same STATS_KEY check as the visitor dossier and
-// fails closed if anything is unconfigured.
+// dashboard. It is gated by its own OPERATOR_KEY rather than the read-only
+// STATS_KEY and fails closed if anything is unconfigured.
 
-import { requireKey } from './_auth.js';
+import { randomUUID } from 'node:crypto';
+import { requireOperatorKey } from './_auth.js';
 
 const _env = (typeof process !== 'undefined' ? process : globalThis['proc' + 'ess']).env;
 const AGENT_URL = (_env['JP_AGENT_' + 'URL'] || '').replace(/\/+$/, '');
@@ -21,18 +22,33 @@ const AGENT_TOKEN = _env['JP_AGENT_' + 'TOKEN'] || '';
 // per-route value has to be exported from the route itself.
 export const config = { maxDuration: 800 };
 
+// Vercel retains structured function logs for the incident/audit trail. Do not
+// log prompts, credentials, or remote addresses: the correlation id, outcome,
+// and request shape are enough to trace an operator action without turning the
+// audit stream into another sensitive-data store.
+function audit(event, requestId, details = {}) {
+  console.info(JSON.stringify({ event, request_id: requestId, at: new Date().toISOString(), ...details }));
+}
+
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
+  const requestId = String(req.headers?.['x-request-id'] || randomUUID()).slice(0, 128);
+  res.setHeader('X-Request-ID', requestId);
 
   if (req.method !== 'POST') {
+    audit('operator_agent_request_rejected', requestId, { reason: 'method', method: req.method });
     res.setHeader('Allow', 'POST');
     return res.status(405).json({ ok: false, error: 'method not allowed' });
   }
-  if (!requireKey(req, res)) return;
+  if (!requireOperatorKey(req, res)) {
+    audit('operator_agent_request_rejected', requestId, { reason: 'authentication' });
+    return;
+  }
 
   // 503 rather than 500: an unconfigured deployment is an operator problem, and
   // saying so plainly beats a generic failure that sends someone into the logs.
   if (!AGENT_URL || !AGENT_TOKEN) {
+    audit('operator_agent_request_rejected', requestId, { reason: 'upstream_not_configured' });
     return res.status(503).json({
       ok: false,
       error: 'agent is not configured on this deployment',
@@ -45,7 +61,11 @@ export default async function handler(req, res) {
     try { body = JSON.parse(body); } catch { body = {}; }
   }
   const prompt = (body?.prompt || '').trim();
-  if (!prompt) return res.status(400).json({ ok: false, error: 'prompt is required' });
+  if (!prompt) {
+    audit('operator_agent_request_rejected', requestId, { reason: 'empty_prompt' });
+    return res.status(400).json({ ok: false, error: 'prompt is required' });
+  }
+  audit('operator_agent_request_started', requestId, { prompt_length: prompt.length, has_session: Boolean(body?.session_id) });
 
   // A single agent task can legitimately run for minutes. Abort well before the
   // function's own ceiling so the client gets a clean error rather than a
@@ -69,6 +89,7 @@ export default async function handler(req, res) {
 
     if (!upstream.ok) {
       const detail = (await upstream.text()).slice(0, 300);
+      audit('operator_agent_request_failed', requestId, { reason: 'upstream_status', upstream_status: upstream.status });
       return res.status(502).json({ ok: false, error: `agent returned ${upstream.status}`, detail });
     }
 
@@ -87,8 +108,10 @@ export default async function handler(req, res) {
       res.write(Buffer.from(value));
     }
     res.end();
+    audit('operator_agent_request_completed', requestId, { outcome: 'stream_complete' });
   } catch (err) {
     const aborted = err.name === 'AbortError';
+    audit('operator_agent_request_failed', requestId, { reason: aborted ? 'timeout' : 'upstream_error' });
     if (res.headersSent) {
       res.write(`event: error\ndata: ${JSON.stringify({ error: aborted ? 'timed out' : err.message })}\n\n`);
       return res.end();

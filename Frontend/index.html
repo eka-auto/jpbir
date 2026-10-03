@@ -22,8 +22,16 @@
     }
     html, body { min-height: 100%; }
     body { font-family: var(--sans); background: var(--bg); color: var(--ink); line-height: 1.6;
-        -webkit-font-smoothing: antialiased; }
+        -webkit-font-smoothing: antialiased; overflow-x: hidden; }
     ::selection { background: rgba(200,122,30,.4); color: #FFF8EE; }
+    .skip-link { position: fixed; left: 12px; top: 12px; z-index: 200; transform: translateY(-180%);
+        background: #FFF8EE; color: #221A15; padding: 10px 14px; border-radius: 8px; }
+    .skip-link:focus { transform: none; }
+    .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+        overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+    button, select, input, textarea, a { touch-action: manipulation; }
+    button:focus-visible, select:focus-visible, input:focus-visible, textarea:focus-visible, a:focus-visible {
+        outline: 3px solid var(--amber-glow); outline-offset: 3px; }
 
     /* ===== TOP BAR ===== */
     /* One row at every width. Squeezed, the bar wrapped its "fetched …" label
@@ -49,7 +57,7 @@
     @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
     .topbar select, .topbar button { font-family: var(--sans); font-size: 12.5px; color: #F4E9DC;
         background: rgba(255,248,238,.07); border: 1px solid rgba(240,185,104,.3); border-radius: 9px;
-        padding: 7px 12px; cursor: pointer; outline: none; }
+        min-height: 44px; padding: 7px 12px; cursor: pointer; }
     .topbar select:hover, .topbar button:hover { border-color: var(--amber-glow); }
     .topbar button.primary { background: linear-gradient(180deg, var(--amber-glow), var(--amber));
         color: #241505; font-weight: 700; border: none; }
@@ -68,7 +76,7 @@
     .sidebar { padding: 18px 12px; border-right: 1px solid rgba(240,185,104,.12); position: sticky; top: 57px;
         height: calc(100vh - 57px); overflow-y: auto; }
     .sidebar .nav-item { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
-        padding: 10px 14px; margin-bottom: 4px; border-radius: 10px; border: none; background: transparent;
+        min-height: 44px; padding: 10px 14px; margin-bottom: 4px; border-radius: 10px; border: none; background: transparent;
         color: rgba(244,233,220,.7); font-family: var(--sans); font-size: 13px; font-weight: 500; cursor: pointer;
         transition: background .15s, color .15s; text-decoration: none; }
     .sidebar .nav-item:hover { background: rgba(200,122,30,.12); color: #F4E9DC; }
@@ -116,7 +124,10 @@
     .lamp-unknown { background: #B7ABA0; }
     .lamp-off { background: transparent; border: 1px solid var(--border); }
     @keyframes lampPulse { 0%,100% { opacity: 1 } 50% { opacity: .35 } }
-    @media (prefers-reduced-motion: reduce) { .lamp-fail { animation: none } }
+    @media (prefers-reduced-motion: reduce) {
+        *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important;
+            transition-duration: .01ms !important; scroll-behavior: auto !important; }
+    }
 
     .stack-flow { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; }
     .stack-card { background: var(--panel2); border: 1px solid var(--border); border-radius: 12px;
@@ -151,9 +162,9 @@
        all but vanished on this light panel; they now take the rule above. */
     .panel-head .tools button[aria-pressed="true"] { border-color: var(--amber); color: var(--ink);
         background: rgba(200,122,30,.12); font-weight: 600; }
-    .panel-head .tools input { font-size: 12px; padding: 5px 10px; border-radius: 8px; border: 1px solid var(--border);
-        background: var(--panel2); color: var(--ink); font-family: var(--sans); outline: none; width: 190px; }
-    .panel-head .tools input:focus { border-color: var(--amber); }
+    .panel-head .tools input { font-size: 12px; min-height: 44px; padding: 5px 10px; border-radius: 8px; border: 1px solid var(--border);
+        background: var(--panel2); color: var(--ink); font-family: var(--sans); width: 190px; }
+    .panel-head .tools input:focus-visible { border-color: var(--amber); }
 
     .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
     /* Same reason as .content's min-width: 0. The Vercel runtime-log table's
@@ -207,6 +218,7 @@
        role="region": Safari never puts a scroll box in the tab order, so rows
        that page scrolling used to reach would be out of a keyboard's reach. */
     .capped { overflow: auto; max-height: 60vh; }
+    .capped tbody tr { content-visibility: auto; contain-intrinsic-size: 38px; }
     /* Under border-collapse the table paints the collapsed border where the row
        was, so a stuck th lost its bottom edge and rows slid under it
        unseparated. The inset shadow is the cell's own and moves with it; the
@@ -232,11 +244,14 @@
     .term-input textarea { flex: 1; resize: vertical; font-family: var(--mono); font-size: 12.5px;
         padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border);
         background: rgba(0,0,0,.22); color: var(--ink); }
-    .term-input textarea:focus { outline: none; border-color: var(--amber-deep); }
+    .term-input textarea:focus-visible { border-color: var(--amber-deep); }
     .term-input button, .btn-ghost { padding: 9px 16px; border-radius: 10px; border: 1px solid var(--border);
         background: transparent; color: var(--ink); font: inherit; font-size: 13px; cursor: pointer; }
     .term-input button:hover, .btn-ghost:hover { border-color: var(--amber-deep); color: var(--amber-glow); }
     .term-input button[disabled] { opacity: .5; cursor: default; }
+    .operator-auth { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 0 0 12px; }
+    .operator-auth input { flex: 1 1 260px; min-height: 44px; padding: 8px 10px; border-radius: 9px;
+        border: 1px solid var(--border); background: var(--panel2); color: var(--ink); font: inherit; }
     tr:hover td { background: rgba(200,122,30,.05); }
     .pill { display: inline-block; background: #FBF3E4; border: 1px solid var(--border); color: var(--amber-deep);
         border-radius: 20px; padding: 1px 8px; font-size: 10.5px; margin: 1px 3px 1px 0; }
@@ -406,27 +421,31 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
 <script defer src="/jp-tracker.js"></script>
 </head>
 <body>
+<a class="skip-link" href="#main-content">Skip to Main Content</a>
 
 <div id="gate" class="gate">
     <h1>Analytics</h1>
     <div class="sub">jaytipargal.tech — enter the dashboard key</div>
-    <input id="keyInput" type="password" placeholder="dashboard key" autocomplete="off">
-    <button id="unlockBtn">Unlock</button>
-    <div class="msg" id="gateMsg"></div>
+    <label class="sr-only" for="keyInput">Dashboard key</label>
+    <input id="keyInput" name="dashboard-key" type="password" placeholder="Dashboard key…" autocomplete="off" spellcheck="false">
+    <button id="unlockBtn" type="button">Unlock</button>
+    <div class="msg" id="gateMsg" role="status" aria-live="polite"></div>
 </div>
 
 <div id="app" style="display:none">
     <div class="topbar">
-        <div class="brand">Analytics<span class="dot">.</span></div>
+        <div class="brand" aria-hidden="true">Analytics<span class="dot">.</span></div>
         <div class="live-pill"><span class="live-dot" id="liveDot"></span><span id="liveLabel">connecting…</span></div>
         <div class="spacer"></div>
         <span class="last-updated" id="lastUpdated"></span>
-        <select id="siteSel" title="Which tracked property to show. Beacons land in Postgres even when DynamoDB rejects the write.">
+        <label class="sr-only" for="siteSel">Tracked property</label>
+        <select id="siteSel" name="site" aria-label="Tracked property" title="Which tracked property to show. Beacons land in Postgres even when DynamoDB rejects the write.">
             <option value="jbt" selected>jaytibirthday.in</option>
             <option value="tech">jaytipargal.tech</option>
             <option value="jp">jaytipargal.com</option>
         </select>
-        <select id="daysSel">
+        <label class="sr-only" for="daysSel">Date range</label>
+        <select id="daysSel" name="days" aria-label="Date range">
             <option value="1">Last 24h</option>
             <option value="7" selected>Last 7 days</option>
             <option value="30">Last 30 days</option>
@@ -476,8 +495,9 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
             <button class="nav-item" data-page="stack"><span class="ico">⛓</span> Product engineering <span id="stackNavDot" class="lamp lamp-unknown" style="margin-left:6px"></span></button>
         </nav>
 
-        <main class="content">
-            <div id="statusBar" style="display:none; padding:10px 14px; border-radius:10px; margin-bottom:14px; font-size:13px;"></div>
+        <main class="content" id="main-content" tabindex="-1">
+            <h1 class="sr-only">Jayti Analytics Dashboard</h1>
+            <div id="statusBar" role="status" aria-live="polite" style="display:none; padding:10px 14px; border-radius:10px; margin-bottom:14px; font-size:13px;"></div>
 
             <!-- OVERVIEW -->
             <section class="page active" id="page-overview">
@@ -533,10 +553,16 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
                         </div>
                         <button id="termNew" class="btn-ghost">New session</button>
                     </div>
-                    <div id="termOut" class="term-out"><div class="state">Ask it something. Output streams here as it works.</div></div>
+                    <div class="operator-auth">
+                        <label for="termOperatorKey">Operator key</label>
+                        <input id="termOperatorKey" name="operator-key" type="password" autocomplete="off" spellcheck="false" placeholder="Operator key for command execution…">
+                        <button id="termForgetKey" class="btn-ghost" type="button">Forget Key</button>
+                    </div>
+                    <div id="termOut" class="term-out" role="log" aria-live="polite"><div class="state">Ask it something. Output streams here as it works.</div></div>
                     <div class="term-input">
-                        <textarea id="termPrompt" rows="2" placeholder="e.g. check disk usage and list the workspace  ·  Enter to send, Shift+Enter for a newline"></textarea>
-                        <button id="termSend">Send</button>
+                        <label class="sr-only" for="termPrompt">Terminal request</label>
+                        <textarea id="termPrompt" name="terminal-request" rows="2" placeholder="For example, check disk usage and list the workspace… Enter to send; Shift+Enter for a newline"></textarea>
+                        <button id="termSend" type="button">Send</button>
                     </div>
                     <div class="hint" id="termFoot" style="margin-top:10px"></div>
                 </div>
@@ -790,7 +816,7 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
 <div class="drawer" id="drawer">
     <div class="drawer-head">
         <h2 id="visitorTitle">Visitor</h2>
-        <button class="close" id="drawerClose">✕</button>
+        <button class="close" id="drawerClose" type="button" aria-label="Close visitor details">✕</button>
     </div>
     <div class="drawer-body" id="drawerBody">
         <div class="state"><div class="spinner"></div>Loading visitor…</div>
@@ -801,23 +827,40 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
 (function () {
     'use strict';
     var KEY_STORAGE = 'jbt_stats_key';
-    var KEY = localStorage.getItem(KEY_STORAGE) || sessionStorage.getItem(KEY_STORAGE) || new URLSearchParams(location.search).get('key') || '';
+    function readDashboardKey() {
+        try {
+            var current = sessionStorage.getItem(KEY_STORAGE) || '';
+            if (current) return current;
+            var legacy = localStorage.getItem(KEY_STORAGE) || '';
+            if (legacy) {
+                sessionStorage.setItem(KEY_STORAGE, legacy);
+                localStorage.removeItem(KEY_STORAGE);
+            }
+            return legacy;
+        } catch (e) { return ''; }
+    }
+    function writeDashboardKey(value) {
+        try { sessionStorage.setItem(KEY_STORAGE, value); localStorage.removeItem(KEY_STORAGE); } catch (e) { /* private mode */ }
+    }
+    function clearDashboardKey() {
+        try { sessionStorage.removeItem(KEY_STORAGE); localStorage.removeItem(KEY_STORAGE); } catch (e) { /* private mode */ }
+    }
+    var KEY = readDashboardKey() || new URLSearchParams(location.search).get('key') || '';
     /* A ?key= left in the address bar is sent as the Referer on same-origin
        fetches, so the credential still reaches API logs even though requests
-       now carry it in a header. Keep it in localStorage (persists across
-       sessions so the dashboard key is entered once) and strip it from
-       the URL before any request goes out. */
+       now carry it in a header. Keep it only in sessionStorage and strip it
+       from the URL before any request goes out. */
     (function stripKeyFromUrl() {
         var params = new URLSearchParams(location.search);
         if (!params.has('key')) return;
-        if (KEY) { try { localStorage.setItem(KEY_STORAGE, KEY); sessionStorage.removeItem(KEY_STORAGE); } catch (e) { /* private mode */ } }
+        if (KEY) writeDashboardKey(KEY);
         params.delete('key');
         var qs = params.toString();
         try {
             history.replaceState(null, '', location.pathname + (qs ? '?' + qs : '') + location.hash);
         } catch (e) { /* nothing else to do; the key is already stored */ }
     })();
-    var SITE = sessionStorage.getItem('jbt_site') || 'jbt';
+    var SITE = sessionStorage.getItem('jbt_site') || 'tech';
     var SITE_HOSTS = { jbt: 'jaytibirthday.in', tech: 'jaytipargal.tech', jp: 'jaytipargal.com' };
     function siteHost() { return SITE_HOSTS[SITE] || SITE_HOSTS.jbt; }
     /* Every API call carries the key in a header, never the query string: a
@@ -921,6 +964,14 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
     }
 
     /* ===== NAVIGATION ===== */
+    var navHistoryMode = 'push';
+    function writeViewToUrl(pageName) {
+        if (navHistoryMode === 'none') return;
+        var params = new URLSearchParams(location.search);
+        if (pageName === 'overview') params.delete('view'); else params.set('view', pageName);
+        var next = location.pathname + (params.toString() ? '?' + params.toString() : '') + location.hash;
+        history[navHistoryMode === 'replace' ? 'replaceState' : 'pushState'](null, '', next);
+    }
     var navItems = document.querySelectorAll('.nav-item');
     navItems.forEach(function (btn) {
         btn.addEventListener('click', function () {
@@ -936,6 +987,7 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
             btn.classList.add('active');
             document.querySelectorAll('.page').forEach(function (p) { p.classList.remove('active'); });
             $('page-' + pageName).classList.add('active');
+            writeViewToUrl(pageName);
             // Firestore page: only poll while it's the active view. Starting a
             // 10 s interval while the user is on Overview would waste requests
             // and burn the STATS_KEY-gated Firestore read quota.
@@ -1067,10 +1119,10 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
 
     // Media now lives in PRIVATE Vercel Blob, so a raw blob_url 404s without a
     // signature. Route every <img>/<video>/<audio>/download through the
-    // key-gated proxy, which redirects to a short-lived presigned URL. Fall
+    // token-gated proxy, which redirects to a short-lived presigned URL. Fall
     // back to blob_url only for legacy public rows that predate the proxy.
     function waMediaSrc(a) {
-        if (a && a.att_id) return '/api/wa-media?att_id=' + encodeURIComponent(a.att_id) + '&key=' + encodeURIComponent(KEY);
+        if (a && a.att_id && a.media_token) return '/api/wa-media?att_id=' + encodeURIComponent(a.att_id) + '&token=' + encodeURIComponent(a.media_token);
         return (a && a.blob_url) || '';
     }
 
@@ -1966,7 +2018,7 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
                     return;
                 }
                 if (authFailed) {
-                    localStorage.removeItem(KEY_STORAGE); KEY = '';
+                    clearDashboardKey(); KEY = '';
                     $('drawerBody').innerHTML =
                         '<div class="state">' + esc(res.body.error || 'Unauthorized') +
                         '<div style="margin-top:12px">Visitor detail is key-protected because it exposes IP, ' +
@@ -2056,7 +2108,7 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
             })
             .then(function (res) {
                 if (res.status === 401) {
-                    localStorage.removeItem(KEY_STORAGE);
+                    clearDashboardKey();
                     KEY = '';
                     $('gateMsg').textContent = 'Invalid key.';
                     showGate();
@@ -2100,7 +2152,7 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
         var v = $('keyInput').value.trim();
         if (!v) { $('gateMsg').textContent = 'Enter a key.'; return; }
         KEY = v;
-        localStorage.setItem(KEY_STORAGE, v);
+        writeDashboardKey(v);
         $('gateMsg').textContent = '';
         showApp();
         load();
@@ -2115,7 +2167,8 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
     });
     $('keyInput').addEventListener('keydown', function (e) { if (e.key === 'Enter') $('unlockBtn').click(); });
     $('lockBtn').addEventListener('click', function () {
-        localStorage.removeItem(KEY_STORAGE);
+        clearDashboardKey();
+        clearOperatorKey();
         KEY = '';
         $('keyInput').value = '';
         showGate();
@@ -2992,7 +3045,7 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
                    alone let a slower answer repaint under the wrong pill. */
                 if (waAttState.chatId !== chatId || waAttState.kind !== kind) return;
                 if (res.status === 401) {
-                    localStorage.removeItem(KEY_STORAGE); KEY = '';
+                    clearDashboardKey(); KEY = '';
                     $('waAttHint').textContent = '';
                     $('gateMsg').textContent = 'Invalid key.';
                     showGate();
@@ -3067,7 +3120,7 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
                 if (waMsgState.reqId !== token || waMsgState.chatId !== chatId) return;
                 waMsgState.loading = false;
                 if (res.status === 401) {
-                    localStorage.removeItem(KEY_STORAGE); KEY = '';
+                    clearDashboardKey(); KEY = '';
                     list.innerHTML = ''; $('waMsgHint').textContent = '';
                     if (more) more.style.display = 'none';
                     $('gateMsg').textContent = 'Invalid key.';
@@ -3144,7 +3197,7 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
             .then(function (res) {
                 if (token !== waDetailReq) return;
                 if (res.status === 401) {
-                    localStorage.removeItem(KEY_STORAGE); KEY = '';
+                    clearDashboardKey(); KEY = '';
                     $('waDetailName').textContent = 'Chat';
                     $('waDetailHint').textContent = '';
                     $('gateMsg').textContent = 'Invalid key.';
@@ -3231,7 +3284,7 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
                    than reporting a generic failure. */
                 if (res.status === 401) {
                     var hadKey = !!KEY;
-                    localStorage.removeItem(KEY_STORAGE);
+                    clearDashboardKey();
                     KEY = '';
                     if (runTag) runTag.textContent = '';
                     $('gateMsg').textContent = hadKey ? 'Invalid key.' : 'Dashboard key required — enter it to load WhatsApp.';
@@ -3276,6 +3329,18 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
        by hand: events are blank-line separated, with `event:` and `data:` lines. */
     var TERM_SESSION = null;
     var termBusy = false;
+    var OPERATOR_KEY_STORAGE = 'jbt_operator_key';
+
+    function readOperatorKey() {
+        try { return sessionStorage.getItem(OPERATOR_KEY_STORAGE) || ''; } catch (e) { return ''; }
+    }
+    function writeOperatorKey(value) {
+        try { sessionStorage.setItem(OPERATOR_KEY_STORAGE, value); } catch (e) { /* private mode */ }
+    }
+    function clearOperatorKey() {
+        try { sessionStorage.removeItem(OPERATOR_KEY_STORAGE); } catch (e) { /* private mode */ }
+        if ($('termOperatorKey')) $('termOperatorKey').value = '';
+    }
 
     function termEl(cls, html) {
         var d = document.createElement('div');
@@ -3296,6 +3361,13 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
         if (termBusy) return;
         var prompt = $('termPrompt').value.trim();
         if (!prompt) return;
+        var operatorKey = $('termOperatorKey').value.trim();
+        if (!operatorKey) {
+            $('termFoot').textContent = 'Enter the separate operator key before running commands.';
+            $('termOperatorKey').focus();
+            return;
+        }
+        writeOperatorKey(operatorKey);
 
         var first = $('termOut').querySelector('.state');
         if (first) first.remove();
@@ -3309,7 +3381,7 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
         try {
             var res = await fetch('/api/agent-run', {
                 method: 'POST',
-                headers: authHeaders({ 'content-type': 'application/json' }),
+                headers: { 'content-type': 'application/json', 'x-operator-key': operatorKey },
                 body: JSON.stringify({ prompt: prompt, session_id: TERM_SESSION })
             });
 
@@ -3319,8 +3391,9 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
             if (!res.ok) {
                 var j = {};
                 try { j = await res.json(); } catch (e) {}
+                if (res.status === 401) clearOperatorKey();
                 var note = res.status === 503
-                    ? 'Agent not configured yet' + (j.missing ? ' — missing ' + esc(j.missing.join(', ')) : '')
+                    ? (j.error || 'Agent or operator authentication is not configured') + (j.missing ? ' — missing ' + esc(j.missing.join(', ')) : '')
                     : (j.error || ('HTTP ' + res.status));
                 termEl('t-err', esc(note));
                 return;
@@ -3375,6 +3448,20 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
             if ($('termFoot').textContent === 'working…') $('termFoot').textContent = '';
         }
     }
+
+    $('termOperatorKey').value = readOperatorKey();
+    $('termForgetKey').addEventListener('click', function () {
+        clearOperatorKey();
+        $('termFoot').textContent = 'Operator key removed from this tab.';
+    });
+    window.addEventListener('popstate', function () {
+        var pageName = new URLSearchParams(location.search).get('view') || 'overview';
+        var btn = document.querySelector('.nav-item[data-page="' + pageName.replace(/[^a-z-]/g, '') + '"]');
+        if (!btn) return;
+        navHistoryMode = 'none';
+        btn.click();
+        navHistoryMode = 'push';
+    });
 
     /* ---------- Product engineering panel ----------
        Polls /api/jp-stack on the dashboard's normal 10 s cadence. The timer runs
@@ -3476,7 +3563,7 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
     async function loadStack() {
         try {
             var r = await fetch('/api/jp-stack', { headers: authHeaders() });
-            if (r.status === 401) { localStorage.removeItem(KEY_STORAGE); KEY = ''; showGate(); return; }
+            if (r.status === 401) { clearDashboardKey(); KEY = ''; showGate(); return; }
             var d = await r.json();
             if (!d.success) throw new Error(d.error || 'failed');
             renderStack(d);
@@ -3523,7 +3610,7 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
             .then(function (r) { return r.json().then(function (b) { return { status: r.status, body: b }; }); })
             .then(function (res) {
                 if (res.status === 401) {
-                    localStorage.removeItem(KEY_STORAGE);
+                    clearDashboardKey();
                     KEY = '';
                     $('gateMsg').textContent = 'Invalid key.';
                     showGate();
@@ -4004,6 +4091,14 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
 
     /* ===== INIT ===== */
     $('siteSel').value = SITE;
+    (function restoreViewFromUrl() {
+        var pageName = new URLSearchParams(location.search).get('view') || 'overview';
+        var btn = document.querySelector('.nav-item[data-page="' + pageName.replace(/[^a-z-]/g, '') + '"]');
+        if (!btn || pageName === 'overview') return;
+        navHistoryMode = 'replace';
+        btn.click();
+        navHistoryMode = 'push';
+    })();
     /* Every private dashboard endpoint fails closed on STATS_KEY. Opening the
        app before a key exists only flashes empty panels and causes a burst of
        predictable 401s, so start at the gate unless this browser already has

@@ -63,7 +63,15 @@ function t(name, fn) {
   catch (e) { console.log('  FAIL ' + name + ' -> ' + e.message); process.exitCode = 1; }
 }
 
-const sha256 = (p) => createHash('sha256').update(readFileSync(p)).digest('hex');
+const sha256 = (p) => {
+  const bytes = readFileSync(p);
+  // The Windows installers canonicalize the plain-text dependency manifest
+  // before hashing, so a Git CRLF checkout cannot invalidate a signed kit.
+  const canonical = p.endsWith('.txt')
+    ? Buffer.from(bytes.toString('utf8').replace(/\r\n/g, '\n'), 'utf8')
+    : bytes;
+  return createHash('sha256').update(canonical).digest('hex');
+};
 
 function pins(installer) {
   const src = readFileSync(join(ROOT, installer.file), 'utf8');

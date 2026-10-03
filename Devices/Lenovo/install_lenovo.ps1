@@ -263,6 +263,18 @@ Write-Host "[ok] hardware guard: $Manufacturer $Model"
 $BootstrapPython = Get-CompatiblePython
 New-Item -ItemType Directory -Path $Target,(Split-Path -Parent $LogPath) -Force | Out-Null
 
+function Get-ArtifactHash([string]$Path) {
+    $Bytes = [System.IO.File]::ReadAllBytes($Path)
+    # Git may check the requirements file out with CRLF on Windows while the
+    # reviewed release artifact uses LF. Hash its canonical UTF-8 LF form so
+    # the integrity check protects content, not a workstation's Git EOL mode.
+    if ([System.IO.Path]::GetExtension($Path) -ieq '.txt') {
+        $Utf8 = [System.Text.UTF8Encoding]::new($false)
+        $Bytes = $Utf8.GetBytes($Utf8.GetString($Bytes).Replace("`r`n", "`n"))
+    }
+    return -join ([System.Security.Cryptography.SHA256]::Create().ComputeHash($Bytes) | ForEach-Object { $_.ToString('x2') })
+}
+
 foreach ($Artifact in $Artifacts) {
     $Source = Join-Path $Here $Artifact.Name
     $Destination = Join-Path $Target $Artifact.Name
@@ -270,7 +282,7 @@ foreach ($Artifact in $Artifacts) {
         throw "Deploy kit is incomplete: missing $($Artifact.Name)."
     }
     Copy-Item -LiteralPath $Source -Destination $Destination -Force
-    $ActualHash = (Get-FileHash -LiteralPath $Destination -Algorithm SHA256).Hash
+    $ActualHash = Get-ArtifactHash $Destination
     if ($ActualHash -ne $Artifact.Hash) {
         Remove-Item -LiteralPath $Destination -Force
         throw "Integrity check failed for $($Artifact.Name)."

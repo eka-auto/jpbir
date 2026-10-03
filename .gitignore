@@ -1,6 +1,9 @@
 node_modules/
 .env
 *.log
+test-output.txt
+test-results/
+playwright-report/
 
 # Built WhatsApp inventory: real contact names, straight from the recovery
 # dump to Neon. It is written here for convenience and must never be committed.

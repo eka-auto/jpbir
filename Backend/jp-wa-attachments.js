@@ -12,6 +12,7 @@
 //   GET /api/jp-wa-attachments?chat_id=<id>&kind=<kind>&limit=<n>&before=<iso>
 import { requireKey } from './_auth.js';
 import { query, isConfigured } from '../Integrations/postgres.js';
+import { issueMediaToken } from './lib/media-auth.js';
 
 const KINDS = new Set(['image', 'video', 'audio', 'ptt', 'document', 'sticker', 'other']);
 
@@ -100,6 +101,7 @@ export default async function handler(req, res) {
       blob_url: a.blob_url,
       sent_at: a.sent_at ? new Date(a.sent_at).toISOString() : null,
       device_id: a.device_id || null,
+      media_token: issueMediaToken(a.att_id),
     }));
 
     // Built from the raw row: ingested_at is deliberately not carried on the

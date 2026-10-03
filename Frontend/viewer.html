@@ -28,10 +28,9 @@
     - Sizes: size_bytes is a BIGINT, and node-postgres serialises int8 as a
       string ("48213"). fmtBytes coerces it; a Number.isFinite check alone, as
       in index.html's copy, blanks every size.
-    - Bytes live in PRIVATE Vercel Blob. <img>, <video> and <audio> cannot send
-      headers, so their src goes through /api/wa-media with the key in the query
-      string: the same pattern, and the same single exception, as index.html's
-      waMediaSrc. Every other request carries the key only in x-stats-key. The
+     - Bytes live in PRIVATE Vercel Blob. <img>, <video> and <audio> cannot send
+       headers, so their src uses a short-lived token returned by the
+       authenticated listing endpoint, never the dashboard key itself. The
       proxy 302s to a presigned URL that lives about two minutes, so a player
       that errors after sitting idle asks the proxy once more before giving up.
   Nothing is shown as a raw payload: each row becomes a card of labelled fields,
@@ -274,8 +273,8 @@
     'use strict';
 
     /* ===== CREDENTIAL =====
-       One slot, read the same way as index.html and db.html: localStorage
-       first, then sessionStorage, written back to localStorage, and every
+       One slot, read the same way as index.html and db.html: sessionStorage
+       first, migrating and deleting a legacy localStorage value, and every
        storage touch wrapped, because private mode throws rather than returning
        null. That is the contract _shared/tests/frontend-credential-slot.test.mjs
        pins for the other gated pages; _shared/tests/media-page.test.mjs holds
@@ -294,11 +293,17 @@
         return /^[\x21-\x7E]{1,256}$/.test(value);
     }
     function readDashboardKey() {
-        try { return localStorage.getItem(KEY_STORAGE) || sessionStorage.getItem(KEY_STORAGE) || ''; }
+        try {
+            var current = sessionStorage.getItem(KEY_STORAGE) || '';
+            if (current) return current;
+            var legacy = localStorage.getItem(KEY_STORAGE) || '';
+            if (legacy) { sessionStorage.setItem(KEY_STORAGE, legacy); localStorage.removeItem(KEY_STORAGE); }
+            return legacy;
+        }
         catch (e) { return ''; }
     }
     function writeDashboardKey(value) {
-        try { localStorage.setItem(KEY_STORAGE, value); sessionStorage.removeItem(KEY_STORAGE); }
+        try { sessionStorage.setItem(KEY_STORAGE, value); localStorage.removeItem(KEY_STORAGE); }
         catch (e) { /* private mode: the key still lives in memory for this visit */ }
     }
     function clearDashboardKey() {
@@ -309,10 +314,10 @@
     var KEY = normalizeDashboardKey(readDashboardKey());
     var startupNote = '';
     if (KEY && !isHeaderSafeDashboardKey(KEY)) {
-        // Refused in memory only. The slot is shared with index.html, /db and
-        // the device pages, and clearing it from here would log the operator
-        // out of all of them for a problem only this page's check can see.
+        // This is a session-only slot. Remove an unusable value so a refresh
+        // does not repeatedly hit the same gate across the dashboard.
         KEY = '';
+        clearDashboardKey();
         startupNote = 'The saved key contains characters a request cannot carry. Paste the plain-text key again.';
     }
 
@@ -456,12 +461,12 @@
     }
 
     // Ported from index.html's waMediaSrc. Private Blob media 404s without a
-    // signature, so every element and every "Open" goes through the key-gated
+    // signature, so every element and every "Open" goes through the token-gated
     // proxy, which redirects to a short-lived presigned URL. The legacy
     // fallback (public rows from before the proxy) is only ever an https URL,
     // so a stored value can never become a javascript: link.
     function mediaSrc(a) {
-        if (a && a.att_id) return '/api/wa-media?att_id=' + encodeURIComponent(a.att_id) + '&key=' + encodeURIComponent(KEY);
+        if (a && a.att_id && a.media_token) return '/api/wa-media?att_id=' + encodeURIComponent(a.att_id) + '&token=' + encodeURIComponent(a.media_token);
         var legacy = str(a && a.blob_url);
         return /^https:\/\//i.test(legacy) ? legacy : '';
     }

@@ -196,14 +196,20 @@
     // timestamps + queue contents) only when the header below is present and
     // valid, and a valid key additionally unlocks the two gated endpoints
     // (jp-devices rich network data, jp-device browsing history). Key
-    // material still comes from localStorage/?key= exactly as before.
+    // material is session-scoped; a legacy localStorage value is migrated once.
     var KEY_STORAGE = 'jbt_stats_key';
     var KEY = '';
-    try { KEY = localStorage.getItem(KEY_STORAGE) || sessionStorage.getItem(KEY_STORAGE) || ''; } catch (e) { /* private mode */ }
+    try {
+        KEY = sessionStorage.getItem(KEY_STORAGE) || '';
+        if (!KEY) {
+            KEY = localStorage.getItem(KEY_STORAGE) || '';
+            if (KEY) { sessionStorage.setItem(KEY_STORAGE, KEY); localStorage.removeItem(KEY_STORAGE); }
+        }
+    } catch (e) { /* private mode */ }
     KEY = KEY || new URLSearchParams(location.search).get('key') || '';
     (function persistAndStripKey() {
         var params = new URLSearchParams(location.search);
-        if (KEY) { try { localStorage.setItem(KEY_STORAGE, KEY); sessionStorage.removeItem(KEY_STORAGE); } catch (e) { /* private mode */ } }
+        if (KEY) { try { sessionStorage.setItem(KEY_STORAGE, KEY); localStorage.removeItem(KEY_STORAGE); } catch (e) { /* private mode */ } }
         if (!params.has('key')) return;
         params.delete('key');
         var qs = params.toString();

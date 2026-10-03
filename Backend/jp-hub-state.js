@@ -17,6 +17,16 @@ const upstreamConfig = () => ({
   key: _env['AGENT_API_' + 'KEY'] || '',
 });
 
+async function fetchWithTimeout(url, init = {}, timeoutMs = 12_000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 // A state read is a couple of SQL counts upstream; nothing like generation.
 export const config = { maxDuration: 60 };
 
@@ -38,7 +48,7 @@ export default async function handler(req, res) {
   const headers = { Accept: 'application/json', ...(key ? { 'X-API-Key': key } : {}) };
 
   try {
-    const upstream = await fetch(`${url}/state`, { headers });
+    const upstream = await fetchWithTimeout(`${url}/state`, { headers });
     const text = await upstream.text();
     let data = {};
     try { data = text ? JSON.parse(text) : {}; } catch { data = { raw: text }; }
@@ -52,6 +62,7 @@ export default async function handler(req, res) {
     }
     return res.status(200).json({ success: true, ...data });
   } catch (error) {
-    return res.status(502).json({ success: false, error: error.message || 'Agent state request failed' });
+    const timedOut = error?.name === 'AbortError';
+    return res.status(timedOut ? 504 : 502).json({ success: false, error: timedOut ? 'Agent state request timed out' : (error.message || 'Agent state request failed') });
   }
 }

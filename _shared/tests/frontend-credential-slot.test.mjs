@@ -3,11 +3,8 @@
 // Four slots had drifted apart across eight pages, and the symptom was pages
 // that looked dead:
 //
-//   index.html       'jbt_stats_key' in localStorage, and it actively DELETES
-//                    the sessionStorage copy (index.html:719)
-//   s24 / vivobook   'jbt_stats_key' in sessionStorage ONLY -- so unlocking the
-//   / agent          main dashboard and clicking through hit the gate again,
-//                    because index.html had just cleared the slot they read
+//   index.html       'jbt_stats_key' in localStorage, while device pages drifted
+//                    between localStorage and sessionStorage
 //   jteka            'jbt_site' -- which is index.html's SITE SELECTOR, not a
 //                    credential. After any visit to the main dashboard this
 //                    page sent `x-stats-key: jbt` and took a flat 401
@@ -72,18 +69,22 @@ t('index.html keeps jbt_site strictly for site selection, never as a key', () =>
 });
 
 for (const page of GATED) {
-  t(`${page} reads localStorage, so a key set by the main dashboard reaches it`, () => {
+  t(`${page} reads the shared key from sessionStorage`, () => {
     const src = code(read(page));
-    assert.match(src, /localStorage\.getItem\(\s*(KEY_STORAGE|KEY_STORE|'jbt_stats_key'|"jbt_stats_key")/,
-      `${page} never reads the slot from localStorage; index.html canonicalises it there`);
+    assert.match(src, /sessionStorage\.getItem\(\s*(KEY_STORAGE|KEY_STORE|'jbt_stats_key'|"jbt_stats_key")/,
+      `${page} never reads the slot from sessionStorage`);
   });
 }
 
-for (const page of ['s24.html', 'vivobook.html', 'agent.html', 'jteka.html', 'viewer.html']) {
-  t(`${page} writes the key to localStorage, not only sessionStorage`, () => {
+for (const page of GATED) {
+  t(`${page} writes the key only to sessionStorage and removes any legacy persistent copy`, () => {
     const src = code(read(page));
-    assert.match(src, /localStorage\.setItem\(\s*(KEY_STORAGE|KEY_STORE)/,
-      `${page} writes only to sessionStorage; index.html:719 clears that copy`);
+    assert.match(src, /sessionStorage\.setItem\(\s*(KEY_STORAGE|KEY_STORE)/,
+      `${page} never writes the shared session slot`);
+    assert.doesNotMatch(src, /localStorage\.setItem\(\s*(KEY_STORAGE|KEY_STORE)/,
+      `${page} persists the dashboard key across browser restarts`);
+    assert.match(src, /localStorage\.removeItem\(\s*(KEY_STORAGE|KEY_STORE)/,
+      `${page} does not clear the legacy persistent key`);
   });
 }
 
