@@ -112,7 +112,9 @@ delete process.env.AGENT_API_KEY;
 /* ---------- routing ---------- */
 const routes = vercel.routes;
 const idx = (pred) => routes.findIndex(pred);
-const catchAll = idx((r) => r.src === '/(.*)' && !r.has);
+// A header-only route intentionally runs first with continue:true; the actual
+// catch-all is the route that supplies a destination.
+const catchAll = idx((r) => r.src === '/(.*)' && r.dest);
 const page = idx((r) => r.src === '/agent');
 check('/agent serves the chat page before the catch-all',
   page !== -1 && page < catchAll && routes[page].dest === '/Frontend/agent.html', `index ${page} vs ${catchAll}`);
