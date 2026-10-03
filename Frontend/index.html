@@ -730,7 +730,6 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
             </section>
 
             <!-- AGENT -->
-            <!-- WHATSAPP -->
             <!-- PRODUCT ENGINEERING -->
             <section class="page" id="page-stack">
                 <div class="panel">
@@ -757,80 +756,17 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
 
             <section class="page" id="page-whatsapp">
                 <div class="panel">
-                    <div class="panel-head"><div><h2>WhatsApp</h2><div class="hint" id="waHint">Chats and message counts ingested into the Neon store from the S24 daemon or the owner's laptop.</div></div>
-                        <div style="display:flex;gap:8px;align-items:center">
-                            <span id="waRunTag" style="font-size:11px;color:rgba(244,233,220,.55)"></span>
-                            <button id="waRefreshBtn" style="font-family:var(--sans);font-size:12px;color:#F4E9DC;background:rgba(255,248,238,.07);border:1px solid rgba(240,185,104,.3);border-radius:9px;padding:7px 12px;cursor:pointer">Refresh</button>
-                        </div>
-                    </div>
+                    <div class="panel-head"><div><h2>WhatsApp archive</h2><div class="hint" id="waHint">Live data from Neon. Readable text is shown before recovery metadata.</div></div><button id="waRefreshBtn" class="btn">Refresh</button></div>
                     <div id="waTotals" class="kv-grid"></div>
                 </div>
-                <div class="grid2">
-                    <div class="panel"><h2>By kind</h2><div id="waByKind"></div></div>
-                    <!-- 360px cap: 20 runs, some with a drop-warning note, made this
-                         panel ~1,100px tall and stretched "By kind" beside it.
-                         tabindex/role for keyboard scrolling, as on .capped. -->
-                    <div class="panel"><h2>Recent sync runs</h2><div id="waRuns" tabindex="0" role="region" aria-label="Recent sync runs" style="max-height:360px;overflow-y:auto"><div class="hint">No runs recorded yet.</div></div></div>
-                </div>
                 <div class="panel">
-                    <div class="panel-head"><div><h2>Chats</h2><div class="hint" id="waChatsHint">Ordered by message count. Click a row for the chat's details.</div></div>
-                        <input id="waFilter" type="text" placeholder="Filter by name…" style="padding:8px 12px;border:1px solid var(--border);border-radius:9px;background:var(--panel2);color:var(--ink);font-family:var(--sans);font-size:12.5px;outline:none;width:220px">
-                    </div>
-                    <div id="waChatsWrap" class="capped" tabindex="0" role="region" aria-label="WhatsApp chats">
-                        <div id="waChatsEmpty" class="hint">Loading…</div>
-                        <table id="waChatsTable" style="display:none;width:100%;border-collapse:collapse;font-size:13px">
-                            <thead>
-                                <tr>
-                                    <th style="text-align:left;padding:8px 10px;font-weight:600">Name</th>
-                                    <th style="text-align:left;padding:8px 10px;font-weight:600">Kind</th>
-                                    <th style="text-align:right;padding:8px 10px;font-weight:600">Messages</th>
-                                    <th style="text-align:right;padding:8px 10px;font-weight:600">Readable</th>
-                                    <th style="text-align:right;padding:8px 10px;font-weight:600">Media</th>
-                                    <th style="text-align:right;padding:8px 10px;font-weight:600">Audio</th>
-                                    <th style="text-align:right;padding:8px 10px;font-weight:600">Calls</th>
-                                    <th style="text-align:right;padding:8px 10px;font-weight:600">Members</th>
-                                    <th style="text-align:left;padding:8px 10px;font-weight:600">First</th>
-                                    <th style="text-align:left;padding:8px 10px;font-weight:600">Last</th>
-                                </tr>
-                            </thead>
-                            <tbody id="waChatsBody"></tbody>
-                        </table>
-                    </div>
+                    <div class="panel-head"><div><h2>Chats</h2><div class="hint" id="waChatsHint">Select a chat to open its live message history.</div></div><input id="waFilter" type="search" placeholder="Filter chats…" style="padding:8px 12px;border:1px solid var(--border);border-radius:9px;background:var(--panel2);color:var(--ink);font-family:var(--sans);font-size:12.5px;outline:none;width:220px"></div>
+                    <div id="waChatsWrap" class="capped" tabindex="0" role="region" aria-label="WhatsApp chats"><div id="waChatsEmpty" class="hint">Loading…</div><table id="waChatsTable" style="display:none;width:100%;border-collapse:collapse;font-size:13px"><thead><tr><th>Name</th><th>Kind</th><th style="text-align:right">Messages</th><th style="text-align:right">Readable</th><th style="text-align:right">Media</th><th>Last</th></tr></thead><tbody id="waChatsBody"></tbody></table></div>
                 </div>
-
-                <!-- scroll-margin-top: loadWaChat() scrolls this panel to the top of
-                     the viewport, where the sticky .topbar (one ~57px row at every
-                     width) covered its heading and Close button. -->
                 <div class="panel" id="waDetail" style="margin-top:14px;display:none;scroll-margin-top:70px">
-                    <div class="panel-head">
-                        <div><h2 id="waDetailName">Chat</h2><div class="hint" id="waDetailHint"></div></div>
-                        <div class="tools"><button id="waDetailClose" type="button">Close</button></div>
-                    </div>
+                    <div class="panel-head"><div><h2 id="waDetailName">Chat</h2><div class="hint" id="waDetailHint"></div></div><button id="waDetailClose" type="button">Close</button></div>
                     <div id="waDetailKpis" class="kv-grid" style="margin-top:12px"></div>
-                    <div class="grid2" style="margin-top:14px">
-                        <div class="panel"><h2>By type</h2><div id="waDetailKinds"><div class="hint">Loading…</div></div></div>
-                        <div class="panel"><h2>Activity by month</h2><div id="waDetailMonths"><div class="hint">Loading…</div></div></div>
-                    </div>
-                    <div class="panel" style="margin-top:14px">
-                        <div class="panel-head">
-                            <div><h2>Media &amp; audio</h2><div class="hint" id="waAttHint">Uploaded from the phone into Vercel Blob.</div></div>
-                            <div class="tools" id="waAttKinds"></div>
-                        </div>
-                        <div id="waAttGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;margin-top:12px"></div>
-                        <div id="waAttEmpty" class="hint" style="margin-top:10px;display:none"></div>
-                        <div style="margin-top:10px"><button id="waAttMore" style="display:none">Load more</button></div>
-                    </div>
-                    <div class="panel" style="margin-top:14px">
-                        <div class="panel-head">
-                            <div><h2>Messages</h2><div class="hint" id="waMsgHint">Recovery metadata timeline. Readable text appears after a WhatsApp Chat Export import.</div></div>
-                            <div class="tools">
-                                <input id="waMsgSearch" type="text" placeholder="Search body…" style="padding:6px 10px;border:1px solid var(--border);border-radius:9px;background:var(--panel2);color:var(--ink);font-family:var(--sans);font-size:12px;outline:none;width:180px">
-                            </div>
-                        </div>
-                        <div id="waMsgList" class="wa-message-list" aria-live="polite"></div>
-                        <div id="waMsgEmpty" class="hint" style="margin-top:10px;display:none"></div>
-                        <div class="wa-message-actions"><button id="waMsgMore" type="button" style="display:none">Load older messages</button></div>
-                    </div>
+                    <div class="panel" style="margin-top:14px"><div class="panel-head"><div><h2>Messages</h2><div class="hint" id="waMsgHint">Loading real message data…</div></div><input id="waMsgSearch" type="search" placeholder="Search body…" style="padding:6px 10px;border:1px solid var(--border);border-radius:9px;background:var(--panel2);color:var(--ink);font-family:var(--sans);font-size:12px;outline:none;width:180px"></div><div id="waMsgList" class="wa-message-list" aria-live="polite"></div><div id="waMsgEmpty" class="hint" style="margin-top:10px;display:none"></div><div class="wa-message-actions"><button id="waMsgMore" type="button" style="display:none">Load older messages</button></div></div>
                 </div>
             </section>
 
@@ -3148,7 +3084,9 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
                     if (more) more.style.display = 'none';
                     $('waMsgHint').textContent = 'wa_messages table not migrated yet.'; empty.textContent = 'Run npm run db:migrate.'; empty.style.display = 'block'; return;
                 }
-                var batch = j.messages || [];
+                var batch = (j.messages || []).slice().sort(function (a, b) {
+                    return (b.readable === true) - (a.readable === true) || String(b.sent_at || '').localeCompare(String(a.sent_at || ''));
+                });
                 if (!batch.length) {
                     if (more) more.style.display = 'none';
                     if (append) { waMsgState.before = null; return; }
@@ -3196,12 +3134,8 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
         $('waDetailName').textContent = 'Loading…';
         $('waDetailHint').textContent = '';
         $('waDetailKpis').innerHTML = '';
-        $('waDetailKinds').innerHTML = '<div class="hint">Loading…</div>';
-        $('waDetailMonths').innerHTML = '<div class="hint">Loading…</div>';
-        $('waAttGrid').innerHTML = ''; $('waAttEmpty').style.display = 'none'; $('waAttKinds').innerHTML = ''; $('waAttHint').textContent = 'Loading…';
         var msgSearch = $('waMsgSearch'); if (msgSearch) msgSearch.value = '';
         try { d.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (e) { /* no-op */ }
-        loadAttachments(chatId, '');
         loadMessages(chatId, '');
         /* Key in the header, never the query string. */
         fetch('/api/jp-wa-chat?' + new URLSearchParams({ chat_id: chatId }).toString(),
@@ -3234,14 +3168,7 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
                     + waKvi('Media', fmt(c.media_count))
                     + waKvi('Audio', fmt(c.audio_count))
                     + waKvi('Calls', fmt(c.call_count));
-                var km = Math.max.apply(null, (x.kinds || []).map(function (r) { return r.n; }).concat([0]));
-                $('waDetailKinds').innerHTML = (x.kinds || []).length
-                    ? (x.kinds || []).map(function (r) { return waBar(r.kind, r.n, km); }).join('')
-                    : '<div class="hint">No wa_messages rows for this chat yet.</div>';
-                var mm = Math.max.apply(null, (x.months || []).map(function (r) { return r.n; }).concat([0]));
-                $('waDetailMonths').innerHTML = (x.months || []).length
-                    ? (x.months || []).map(function (r) { return waBar(r.month, r.n, mm); }).join('')
-                    : '<div class="hint">No dated messages for this chat.</div>';
+
             })
             .catch(function (e) {
                 if (token !== waDetailReq) return;
