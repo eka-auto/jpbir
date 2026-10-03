@@ -220,7 +220,7 @@ $Artifacts = @(
     [pscustomobject]@{ Name = 'broker_client.py'; Hash = 'E380867C5843E49C21D7E46704DB20607389A9F1FAAD4B3CF61F9B4EAB173BB1' },
     [pscustomobject]@{ Name = 'signer.py'; Hash = '64C56FA828DC56656CE6E28A116A43386781A1A0F737E5D794BEC587DB4927FA' },
     [pscustomobject]@{ Name = 'single_instance.py'; Hash = '287FE1C114488E847F0252C89170067E6FE5B33650780C72E8A8F00F7B63843A' },
-    [pscustomobject]@{ Name = 'requirements-broker.txt'; Hash = '1940BA363C2B88D6CAE8EEECF14BDA2479268122A65F8B548147201883F76977' }
+    [pscustomobject]@{ Name = 'requirements-broker.txt'; Hash = '37B13C7D746D596E7DA6E73098DFBA792EAB1A49C8ACC7E0A5AB287B56B107D5' }
 )
 
 function Get-CompatiblePython {
@@ -263,6 +263,18 @@ Write-Host "[ok] hardware guard: $Manufacturer $Model"
 $BootstrapPython = Get-CompatiblePython
 New-Item -ItemType Directory -Path $Target,(Split-Path -Parent $LogPath) -Force | Out-Null
 
+function Get-ArtifactHash([string]$Path) {
+    $Bytes = [System.IO.File]::ReadAllBytes($Path)
+    # Git may check the requirements file out with CRLF on Windows while the
+    # reviewed release artifact uses LF. Hash its canonical UTF-8 LF form so
+    # the integrity check protects content, not a workstation's Git EOL mode.
+    if ([System.IO.Path]::GetExtension($Path) -ieq '.txt') {
+        $Utf8 = [System.Text.UTF8Encoding]::new($false)
+        $Bytes = $Utf8.GetBytes($Utf8.GetString($Bytes).Replace("`r`n", "`n"))
+    }
+    return -join ([System.Security.Cryptography.SHA256]::Create().ComputeHash($Bytes) | ForEach-Object { $_.ToString('x2') })
+}
+
 foreach ($Artifact in $Artifacts) {
     $Source = Join-Path $Here $Artifact.Name
     $Destination = Join-Path $Target $Artifact.Name
@@ -270,7 +282,7 @@ foreach ($Artifact in $Artifacts) {
         throw "Deploy kit is incomplete: missing $($Artifact.Name)."
     }
     Copy-Item -LiteralPath $Source -Destination $Destination -Force
-    $ActualHash = (Get-FileHash -LiteralPath $Destination -Algorithm SHA256).Hash
+    $ActualHash = Get-ArtifactHash $Destination
     if ($ActualHash -ne $Artifact.Hash) {
         Remove-Item -LiteralPath $Destination -Force
         throw "Integrity check failed for $($Artifact.Name)."
