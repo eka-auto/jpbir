@@ -3119,8 +3119,8 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
             more.textContent = append ? 'Loading older…' : 'Load older messages';
             if (!append) more.style.display = 'none';
         }
-        var params = { chat_id: chatId, limit: 200 };
-        if (q) params.q = q;
+                var params = { chat_id: chatId, limit: 200, readable_first: 1 };
+                if (q) params.q = q;
         if (append && waMsgState.before) params.before = waMsgState.before;
         /* Message bodies are the most sensitive thing on this page: key in the
            header, never the query string. */
@@ -3162,7 +3162,7 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
                 waMsgState.before = j.next_before || null;
                 $('waMsgHint').textContent = 'Showing ' + fmt(waMsgState.shown) + ' of ' + fmt(waMsgState.total) + ' records · '
                     + fmt(j.total_readable_count || 0) + ' readable text · '
-                    + fmt(j.total_metadata_count || 0) + ' metadata only' + (q ? ' matching "' + q + '"' : '') + ' · newest first.';
+                    + fmt(j.total_metadata_count || 0) + ' metadata only' + (q ? ' matching "' + q + '"' : '') + ' · readable text first.';
                 /* A chat with no readable bodies needs one precise explanation,
                    not hundreds of identical placeholder bubbles. Use the full
                    query total from the API, not just the first page. */

@@ -58,6 +58,7 @@ export default async function handler(req, res) {
   const limit = Number.isFinite(rawLimit) ? Math.min(500, Math.max(1, Math.trunc(rawLimit))) : 100;
   const before = String(req.query.before || '').trim();
   const q = String(req.query.q || '').trim().slice(0, 200);
+  const readableFirst = String(req.query.readable_first || '1') !== '0';
 
   if (!isConfigured()) {
     return res.status(503).json({ ok: false, error: 'DATABASE_URL not set on this deployment' });
@@ -90,6 +91,7 @@ export default async function handler(req, res) {
       }
     }
     if (q) { params.push(`%${q}%`); conds.push(`m.body ILIKE $${params.length}`); }
+    if (readableFirst) params.push(MESSAGE_BODY_PLACEHOLDERS);
     params.push(limit);
 
     const countConds = baseConds.slice();
@@ -104,7 +106,8 @@ export default async function handler(req, res) {
            FROM wa_messages m
            JOIN wa_chats c ON c.chat_id = m.chat_id
           WHERE ${conds.join(' AND ')}
-          ORDER BY m.sent_at DESC NULLS LAST, m.msg_id DESC
+          ORDER BY ${readableFirst ? `CASE WHEN m.body <> ALL($${params.length - 1}::text[]) THEN 0 ELSE 1 END,` : ''}
+                   m.sent_at DESC NULLS LAST, m.msg_id DESC
           LIMIT $${params.length}`,
         params
       ),
