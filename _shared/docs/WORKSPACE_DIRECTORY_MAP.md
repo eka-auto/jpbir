@@ -211,7 +211,7 @@
 ---
 
 ### ⚪ `C:\Users\abcom\jarvis\`
-**Purpose:** Unknown (possibly related to `jarvis7.web.app` web app)
+**Purpose:** Unknown
 
 **Status:** Unknown — need user confirmation
 
