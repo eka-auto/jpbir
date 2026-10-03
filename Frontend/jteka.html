@@ -55,9 +55,13 @@
   .kv dd{margin:0;font-family:var(--mono);word-break:break-word}
   .reason{color:var(--soft);font-size:11.5px;margin-top:10px;font-style:italic}
   @media(max-width:520px){.meta{margin-left:0;width:100%}}
+  /* Keyboard skip link: matches index.html so the house pattern is consistent across pages. */
+  .skip-link{position:fixed;left:12px;top:12px;z-index:200;transform:translateY(-180%);background:#FFF8EE;color:#221A15;padding:10px 14px;border-radius:8px;text-decoration:none}
+  .skip-link:focus{transform:none}
 </style>
 </head>
 <body>
+<a class="skip-link" href="#main-content">Skip to main content</a>
 <div class="wrap">
   <header>
     <h1><b>JTEKA</b> — Fleet Status</h1>
@@ -69,10 +73,11 @@
     </div>
   </header>
 
+  <main id="main-content" tabindex="-1">
   <section id="gate" class="gate" hidden>
     <h2>Enter dashboard key</h2>
     <p>This panel reads device fleet status from <code>/api/jp-devices</code>. It uses the same key as the main dashboard.</p>
-    <input id="key" type="password" placeholder="dashboard key" autocomplete="off" />
+    <input id="key" type="password" placeholder="dashboard key" autocomplete="off" aria-label="Dashboard key" />
     <div class="row"><button id="unlock" type="button">Unlock</button></div>
     <div class="err" id="gateErr"></div>
   </section>
@@ -81,6 +86,7 @@
   <div class="grid" id="grid" hidden></div>
   <p class="note" id="footErr" hidden></p>
   <p class="note" id="changeWrap" hidden><a class="link" href="#" id="change">Change key</a> · JTEKA fleet status · device liveness, battery &amp; check-in only — no message, media, call or contact data.</p>
+  </main>
 </div>
 
 <script>

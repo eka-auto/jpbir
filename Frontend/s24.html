@@ -97,9 +97,14 @@
     @keyframes spin { to { transform: rotate(360deg); } }
 
     @media (max-width: 700px) { .kpis { grid-template-columns: 1fr 1fr; } .content { padding: 14px; } }
+    /* Keyboard skip link: matches index.html so the house pattern is consistent across pages. */
+    .skip-link { position: fixed; left: 12px; top: 12px; z-index: 200; transform: translateY(-180%);
+        background: #FFF8EE; color: #221A15; padding: 10px 14px; border-radius: 8px; text-decoration: none; }
+    .skip-link:focus { transform: none; }
 </style>
 </head>
 <body>
+<a class="skip-link" href="#main-content">Skip to main content</a>
 
 <div class="topbar">
     <div class="brand">jaytipargal<span class="dot">.</span>tech</div>
@@ -108,7 +113,7 @@
     <a href="/">← Dashboard</a>
 </div>
 
-<div class="content">
+<main class="content" id="main-content" tabindex="-1">
     <div class="device-header">
         <div class="icon">📱</div>
         <div>
@@ -174,7 +179,7 @@
             </table>
         </div>
     </div>
-</div>
+</main>
 
 <!-- S24 device dashboard — open to all visitors via the public projection
      /api/s24-public (no key, PII-free device status). Panels that carry PII —
