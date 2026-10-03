@@ -12,7 +12,8 @@
     "test:browser": "playwright test",
     "db:migrate": "node Database/scripts/migrate.mjs",
     "wa:build": "node Database/scripts/wa-build-inventory.mjs",
-    "wa:import": "node Database/scripts/wa-import.mjs"
+    "wa:import": "node Database/scripts/wa-import.mjs",
+    "wa:export-import": "node Database/scripts/wa-export-import.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.1115.0",
