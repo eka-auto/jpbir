@@ -2156,14 +2156,9 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
         $('gateMsg').textContent = '';
         showApp();
         load();
-        /* A panel that hit 401 is still sitting at "loading…", and these two
-           only reload from a nav click — so unlocking would otherwise leave
-           whichever one is open stuck until the operator clicked it again. */
-        waLoaded = false;
-        var active = document.querySelector('.nav-item.active');
-        var page = active && active.getAttribute('data-page');
-        if (page === 'whatsapp') loadWhatsApp(true);
-        if (page === 'vercel') loadVercel();
+        // A deep-linked protected panel was selected before the gate opened.
+        // Reload the selected view instead of leaving it on a pre-unlock 401.
+        loadActiveView();
     });
     $('keyInput').addEventListener('keydown', function (e) { if (e.key === 'Enter') $('unlockBtn').click(); });
     $('lockBtn').addEventListener('click', function () {
@@ -2871,13 +2866,20 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
        Sessions section stopped opening the visitor drawer. The dead handlers,
        their loadDeviceDetail/renderDeviceNetwork callees, and the invisible
        #deviceDetailPanel container are all gone now. */
+    function loadActiveView() {
+        // A view can be restored from ?view= before the key gate is unlocked.
+        // Do not turn that into private API requests that are guaranteed to 401.
+        if (!KEY) return;
+        var active = document.querySelector('.nav-item.active');
+        var page = active && active.getAttribute('data-page');
+        if (page === 'device') { loadDeviceHistory(); loadLiveDevices(); }
+        if (page === 'vercel') { loadVercel(); }
+        if (page === 'whatsapp') { waLoaded = false; loadWhatsApp(true); }
+        if (page === 'stack') { loadStack(); }
+    }
+
     document.querySelectorAll('.nav-item').forEach(function (btn) {
-        btn.addEventListener('click', function () {
-            if (btn.getAttribute('data-page') === 'device') { loadDeviceHistory(); loadLiveDevices(); }
-            if (btn.getAttribute('data-page') === 'vercel') { loadVercel(); }
-            if (btn.getAttribute('data-page') === 'whatsapp') { loadWhatsApp(); }
-            if (btn.getAttribute('data-page') === 'stack') { loadStack(); }
-        });
+        btn.addEventListener('click', loadActiveView);
     });
 
     /* ===== WHATSAPP =====
@@ -3561,6 +3563,9 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
     }
 
     async function loadStack() {
+        // The stack timer exists while the key gate is visible. Keep a locked
+        // dashboard quiet instead of polling a protected endpoint every 10 s.
+        if (!KEY) return;
         try {
             var r = await fetch('/api/jp-stack', { headers: authHeaders() });
             if (r.status === 401) { clearDashboardKey(); KEY = ''; showGate(); return; }

@@ -401,4 +401,15 @@ t('the banner is driven by every device being offline and named as such', () => 
   assert.match(INDEX, /renderAllStaleBanner\(devices\)/, 'loadLiveDevices no longer calls the banner');
 });
 
+t('a deep-linked protected view waits for the dashboard key and reloads after unlock', () => {
+  const loader = INDEX.slice(INDEX.indexOf('function loadActiveView()'), INDEX.indexOf('/* ===== WHATSAPP ====='));
+  assert.match(loader, /if \(!KEY\) return;/, 'a locked deep link can still poll protected endpoints');
+  assert.match(loader, /page === 'stack'.*loadStack\(\)/, 'the Stack view is not part of the shared reload path');
+  assert.match(loader, /page === 'device'.*loadDeviceHistory\(\)/, 'the Device view is not part of the shared reload path');
+  const unlock = INDEX.slice(INDEX.indexOf("$('unlockBtn').addEventListener"), INDEX.indexOf("$('keyInput').addEventListener"));
+  assert.match(unlock, /loadActiveView\(\);/, 'unlock leaves the selected deep link stale');
+  const stack = INDEX.slice(INDEX.indexOf('async function loadStack()'), INDEX.indexOf('// Expand/collapse is delegated'));
+  assert.match(stack, /if \(!KEY\) return;/, 'the 10-second Stack timer still polls while locked');
+});
+
 console.log('\n  ' + pass + '/' + total + ' passed');
