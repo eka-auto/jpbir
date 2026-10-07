@@ -1,22 +1,16 @@
 // The write side of the Neon warehouse, shared by every path that feeds it.
 //
-// There were two feeds and they did not agree. /api/jp-track wrote each event
-// to DynamoDB only, and /api/db-push copied DynamoDB into Postgres later, by
-// hand, stamping every row with the constant site 'jaytipargal.com'. The result
-// is the state the warehouse is in today: 10,843 rows for jaytibirthday.in
-// (written by the sibling project, live), 3 rows for jaytipargal.com (last
-// touched 2026-08-31), and not one row for jaytipargal.tech — the domain the
-// dashboard itself is served from.
+// The tracker and dashboard use the same indexed Neon event store. Site is
+// derived at ingestion, so one deployment can serve several properties without
+// splitting events into incompatible records.
 //
 // Three rules hold here, because breaking any one of them puts the same visit
 // in the table twice under two different names:
 //
 //   1. `site` is derived from the page's own URL, never from a constant. One
 //      deployment serves several domains; a constant can only be right for one.
-//   2. The row id is `<site>:<source id>`, the shape both existing feeds
-//      already use, and inserts are ON CONFLICT DO NOTHING. So mirroring an
-//      event live and later re-importing the same row from DynamoDB is a
-//      no-op, not a duplicate.
+//   2. The row id is `<site>:<source id>` and inserts are ON CONFLICT DO
+//      NOTHING, so a retried browser beacon is a no-op, not a duplicate.
 //   3. Rollups are RECOMPUTED from `events` for the affected key, never
 //      incremented. db-push's full rebuild does exactly this over every key;
 //      running the same statement scoped to one visitor keeps the live path
@@ -53,12 +47,10 @@ function normaliseHost(host) {
 // the warehouse filled with `*.v0.build` and `*.vercel.run` junk and even a
 // device id (`samsung-s24-ultra`) filed as a website. An allow-list cannot
 // drift that way: a host is a property only if it IS one of ours or a subdomain
-// of one. This is the single choke point every derivation site routes through
-// (jp-track ingest, db-push mirror, jp-stats read), so widening the fleet is a
-// one-line edit here and nowhere else.
+// of one. This is the single choke point every derivation site routes through,
+// so widening the fleet is a one-line edit here and nowhere else.
 //
-// A beacon from any other host records nothing: the mirror skips it, DynamoDB
-// still journals the raw event, so nothing is destroyed.
+// A beacon from any other host records nothing.
 const PROPERTIES = ['jaytibirthday.in', 'jaytipargal.tech', 'jaytipargal.com'];
 function isProperty(host) {
   if (!host) return false;
@@ -68,8 +60,7 @@ function isProperty(host) {
 /**
  * The property an event belongs to. Prefers the page's own URL — that is the
  * only field that survives a proxy, a beacon replayed from another origin, or
- * a later re-import from DynamoDB, so it is the only one that gives the same
- * answer every time the same event is processed.
+ * a retry, so it is the only one that gives the same answer every time.
  *
  * @param {string|null} pageUrl  the tracked page's absolute URL
  * @param {string|null} fallback  request Host/Origin, used when there is no URL
@@ -177,8 +168,7 @@ function campaignOf(pageUrl) {
 }
 
 /**
- * Inserts one telemetry item. `item` is the camelCase shape jp-track builds and
- * stores in DynamoDB, so both feeds hand over the same object.
+ * Inserts one telemetry item. `item` is the camelCase shape jp-track builds.
  *
  * @returns {Promise<boolean>} true when a new row was written; false when the
  *   row already existed or carried no usable timestamp.

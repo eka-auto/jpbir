@@ -78,7 +78,7 @@ Training runs in Colab; moving the notebook does not restore that dependency.
 
 ## Data stores
 
-- DynamoDB: `jaytipargal_telemetry` in `us-west-2` for web telemetry.
+- Neon Postgres: indexed web telemetry and dashboard analytics.
 - Firestore: `eka-agent` for device heartbeats and queued commands.
 
 ## Dependency notes

@@ -1,8 +1,6 @@
 // Read API for the dashboard, served entirely from Neon Postgres.
 //
-// Replaces the three-system fan-out the dashboard used to do per page load:
-// a full-table DynamoDB Scan (jp-stats/jp-visitor/jp-device), a Vercel Blob
-// list + per-object fetch (stats/visitor), and Firestore reads (jp-devices).
+// Provides the indexed Neon query surface for dashboard data views.
 // Every view below is one indexed query against one database.
 //
 // Two rules hold across every view, because breaking either produces numbers

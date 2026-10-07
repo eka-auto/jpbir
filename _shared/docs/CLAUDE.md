@@ -109,10 +109,9 @@ These are hand-rolled Node ESM handlers with no framework. Match the existing sh
 - **New endpoints need a `rewrites` entry in that project's `vercel.json`**, matching the
   existing `/api/x → /api/x.js` pattern.
 
-Data stores in play: DynamoDB `jaytipargal_telemetry` (us-west-2) for web telemetry,
+Data stores in play: Neon Postgres for web telemetry and dashboard analytics,
 Firestore database `eka-agent` (`devices/` docs carry `lastSeen`, `staleAlert`, `commandQueue`)
-for device heartbeats and queued commands, and Vercel Blob for the older
-`jaytibirthday.in` visitor records read by `api/stats.js` and `api/visitor.js`.
+for device heartbeats and queued commands, and Vercel Blob for media objects.
 
 `vercel.json` registers a cron hitting `/api/check-stale` every 5 minutes. That endpoint is
 edge-triggered: it emails only on healthy↔alerted transitions, and it **sends the email before

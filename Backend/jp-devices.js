@@ -10,13 +10,11 @@ import {
 } from './lib/s24-attestation.js';
 import { requireKey } from './_auth.js';
 import { DEVICE_IDS, splitFleet } from './broker.js';
-import { credentialRefusal, documentClient, telemetryTable } from './lib/ddb.js';
-import { scanBounded } from './lib/ddb-scan.js';
+import { query, isConfigured } from '../Integrations/postgres.js';
 
 const _env = (typeof process !== 'undefined' ? process : globalThis['proc' + 'ess']).env;
 const FIREBASE_SA_JSON = _env['FIREBASE_' + 'SERVICE_ACCOUNT_JSON'];
 const FIRESTORE_DB = _env['FIRESTORE_' + 'DB'] || 'eka-agent';
-const TABLE = telemetryTable();
 
 let _tokenCache = { token: null, exp: 0 };
 
@@ -578,111 +576,71 @@ async function handleDevices(req, res) {
 
 async function handleDeviceHistory(req, res) {
   res.setHeader('Cache-Control', 'no-store');
-  // Per-device telemetry, including network and location detail. Keyed for the
-  // same reason the roster is: it is the complete browsing trail.
   if (!requireKey(req, res)) return;
-  const awsRefusal = credentialRefusal('read');
-  if (awsRefusal) {
-    return res.status(503).json({ success: false, error: awsRefusal });
-  }
-
+  if (!isConfigured()) return res.status(503).json({ success: false, error: 'DATABASE_URL not set on this deployment' });
   const days = Math.min(Math.max(parseInt(req.query.days) || 30, 1), 90);
-  const cutoff = Date.now() - days * 86400000;
-
   try {
-    const client = documentClient('read');
-
-    // `truncated` is surfaced, not swallowed. A page ceiling or the time budget
-    // can stop the scan before the table ends, and a partial total presented as
-    // a complete one is worse than an error because nothing looks wrong.
-    const scan = await scanBounded(client, TABLE);
-    const items = scan.items;
-    const historyEvents = items.filter(i =>
-      i.epoch && i.epoch >= cutoff &&
-      (i.eventType === 'browser_history' || i.eventType === 'device_history')
-    );
-
-    const entries = [];
-    for (const d of historyEvents) {
-      const data = d.eventData || {};
-      const list = Array.isArray(data.entries) ? data.entries : (Array.isArray(data.history) ? data.history : []);
-      const idn = resolveIdentity(d.visitorId);
-      for (const e of list) {
-        entries.push({
-          url: e.url || e.title || null,
-          title: e.title || null,
-          visitedAt: e.visitedAt || e.timestamp || d.timestamp || null,
-          browser: e.browser || data.browser || null,
-          device: idn.canonical,
-          deviceLabel: idn.label,
-          ip: idn.ip || d.ip || null,
-        });
-      }
-    }
-
-    entries.sort((a, b) => (b.visitedAt || '').localeCompare(a.visitedAt || ''));
-
-    // device summary: every device that has sent any event in the window
+    const result = await query(
+      `SELECT event_type, occurred_at, visitor_id, page_url, page_title, ip,
+              country, city, user_agent, time_on_page, scroll_percent,
+              fingerprint, browser, event_data, raw_payload
+         FROM events WHERE occurred_at > now() - ($1 || ' days')::interval
+         ORDER BY occurred_at DESC`, [days]);
+    const items = result.rows;
     const deviceMap = new Map();
+    const entries = [];
     for (const d of items) {
-      if (!d.epoch || d.epoch < cutoff) continue;
-      const idn = resolveIdentity(d.visitorId);
+      const idn = resolveIdentity(d.visitor_id);
       const dev = idn.canonical;
       const cur = deviceMap.get(dev) || { device: dev, label: idn.label, events: 0, types: {}, first: null, last: null, ip: null };
       cur.events++;
-      cur.types[d.eventType || 'unknown'] = (cur.types[d.eventType || 'unknown'] || 0) + 1;
-      if (d.timestamp) {
-        if (!cur.first || d.timestamp < cur.first) cur.first = d.timestamp;
-        if (!cur.last || d.timestamp > cur.last) cur.last = d.timestamp;
+      cur.types[d.event_type || 'unknown'] = (cur.types[d.event_type || 'unknown'] || 0) + 1;
+      const timestamp = d.occurred_at instanceof Date ? d.occurred_at.toISOString() : d.occurred_at;
+      if (timestamp) {
+        if (!cur.first || timestamp < cur.first) cur.first = timestamp;
+        if (!cur.last || timestamp > cur.last) cur.last = timestamp;
       }
-      // known identity IP wins over whatever network the event arrived from
       if (idn.ip) cur.ip = idn.ip;
       else if (d.ip) cur.ip = d.ip;
+      const data = d.event_data || {};
+      if (d.event_type === 'browser_history' || d.event_type === 'device_history') {
+        const list = Array.isArray(data.entries) ? data.entries : (Array.isArray(data.history) ? data.history : []);
+        for (const entry of list) entries.push({
+          url: entry.url || entry.title || null, title: entry.title || null,
+          visitedAt: entry.visitedAt || entry.timestamp || timestamp || null,
+          browser: entry.browser || data.browser || d.browser || null,
+          device: idn.canonical, deviceLabel: idn.label, ip: idn.ip || d.ip || null,
+        });
+      }
       deviceMap.set(dev, cur);
     }
+    entries.sort((a, b) => (b.visitedAt || '').localeCompare(a.visitedAt || ''));
     const devices = [...deviceMap.values()].sort((a, b) => (b.last || '').localeCompare(a.last || ''));
-
-    // full event dump for one device when ?device= is given
     let deviceEvents = null;
     const knownCanonicals = new Set();
     const requestedDevice = String(req.query.device || '').trim() || null;
     if (req.query.device) {
       const dev = req.query.device;
-      const evs = items.filter(i => {
-        if (!i.epoch || i.epoch < cutoff) return false;
-        const idn = resolveIdentity(i.visitorId);
-        return idn.canonical === dev;
-      });
-      // Every canonical identity this table can actually yield, whether or not
-      // it had events inside the window -- that is what makes "unknown device"
-      // distinguishable from "quiet device".
-      for (const i of historyEvents) knownCanonicals.add(resolveIdentity(i.visitorId).canonical);
+      const evs = items.filter((item) => resolveIdentity(item.visitor_id).canonical === dev);
+      for (const item of items) knownCanonicals.add(resolveIdentity(item.visitor_id).canonical);
       for (const k of Object.keys(IDENTITY_MAP)) knownCanonicals.add(IDENTITY_MAP[k].canonical);
-      evs.sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''));
-      deviceEvents = evs.map(d => {
-        const idn = resolveIdentity(d.visitorId);
+      deviceEvents = evs.map((d) => {
+        const idn = resolveIdentity(d.visitor_id);
+        const timestamp = d.occurred_at instanceof Date ? d.occurred_at.toISOString() : d.occurred_at;
         return {
-          event_type: d.eventType,
-          timestamp: d.timestamp,
-          url: d.pageUrl || d.eventData?.url || null,
-          title: d.pageTitle || d.eventData?.title || null,
-          browser: d.browser || d.eventData?.browser || null,
-          page_url: d.pageUrl,
-          page_title: d.pageTitle,
+          event_type: d.event_type, timestamp,
+          url: d.page_url || d.event_data?.url || null,
+          title: d.page_title || d.event_data?.title || null,
+          browser: d.browser || d.event_data?.browser || null,
+          page_url: d.page_url, page_title: d.page_title,
           ip: idn.ip || d.ip,
-          // Same percent-encoded DynamoDB rows the visitor drawer reads - decode
-          // here too, or the device table and the drawer disagree on one value.
           country: decodeOne(d.country),
           city: decodeOne(d.city),
-          userAgent: d.userAgent,
-          time_on_page: d.timeOnPage,
-          scroll_percent: d.scrollPercent,
+          userAgent: d.user_agent, time_on_page: d.time_on_page, scroll_percent: d.scroll_percent,
           fingerprint: d.fingerprint,
-          event_data: d.eventData,
-          // Preserve the complete DynamoDB item for the dashboard's raw
-          // payload viewer. The normalized fields above remain unchanged.
+          event_data: d.event_data,
           full_payload: d,
-          visitor_id: d.visitorId,
+          visitor_id: d.visitor_id,
           device_label: idn.label,
         };
       });
@@ -690,24 +648,14 @@ async function handleDeviceHistory(req, res) {
 
     return res.status(200).json({
       success: true,
-      source: 'dynamodb',
-      ...(scan.truncated ? { truncated: true } : {}),
+      source: 'neon',
       generated_at: new Date().toISOString(),
       window_days: days,
-      total_events: historyEvents.length,
+      total_events: items.length,
       total_entries: entries.length,
       entries: entries.slice(0, 500),
       devices,
       device_events: deviceEvents,
-      // Whether the requested device can EVER produce events here, as distinct
-      // from having none in this window.
-      //
-      // device_events is filtered by `resolveIdentity(visitorId).canonical ===
-      // dev`, so a device that never writes to this DynamoDB table -- or whose
-      // browser visitorId is absent from IDENTITY_MAP -- matches nothing however
-      // long the window. Frontend/vivobook.html asks for 'jayti-asus-vivobook'
-      // and rendered the empty result as "No events synced yet", which reads as
-      // a quiet device rather than a query that cannot succeed.
       ...(requestedDevice ? {
         device_requested: requestedDevice,
         device_known: knownCanonicals.has(requestedDevice),

@@ -7,8 +7,8 @@ the dashboard send work to those devices; and a persistent agent runtime does
 longer-running jobs (shell, file edits, git, deploys) that a serverless function
 can't.
 
-The web app (static frontend + serverless API) is hosted on **Vercel**. The
-agent runtime lives on a **DigitalOcean** droplet that Vercel proxies to.
+The web app (static frontend + serverless API) is hosted on **Vercel**. Neon,
+Firestore, and Vercel Blob are its active data services.
 
 ## Architecture
 
@@ -22,16 +22,14 @@ and a file-by-file account of how it was arranged, see
 | Frontend | [`Frontend/`](./Frontend/) | Static dashboard pages, components, styles |
 | Backend | [`Backend/`](./Backend/) | Vercel serverless functions — the API |
 | Database | [`Database/`](./Database/) | Schemas, Firestore helpers, DB tooling |
-| Server | [`Server/`](./Server/) | The `jp-agent` droplet runtime, deploy scripts, nginx/systemd config |
+| Server | [`Server/`](./Server/) | Retained device-support source, not part of the deployed dashboard path |
 | Integrations | [`Integrations/`](./Integrations/) | Shared store clients (`postgres.js`, `wa-store.js`, `s24-store.js`) |
 | _shared | [`_shared/`](./_shared/) | Project-wide config, docs, and tests |
 | Devices | [`Devices/`](./Devices/) | Self-contained per-device installer bundles |
 | archive | [`archive/`](./archive/) | Cold storage: superseded or regenerable files |
 
 ```
-browser (dashboard) ──API──▶ Backend (Vercel serverless) ──▶ Firestore / DynamoDB / Blob
-                                     │
-                                     └── /api/agent-run ──▶ jp-agent runtime (DigitalOcean)
+browser (dashboard) ──API──▶ Backend (Vercel serverless) ──▶ Neon / Firestore / Blob
 ```
 
 > Note: the restructure swept a number of **vendored files** into `Backend/`
@@ -50,7 +48,7 @@ Static HTML served by Vercel from `Frontend/`.
 | `/s24` | `s24.html` | Samsung S24 Ultra device view |
 | `/vivobook` | `vivobook.html` | ASUS Vivobook device view |
 | `/jteka` | `jteka.html` | JTEKA fleet status |
-| `/agent` | `agent.html` | Jayti Agent: the retrieval-grounded jtagent service (`/agent/query`, `/agent/health`, `/agent/state`, proxied to `AGENT_API_URL`). Distinct from the dashboard's Terminal, which posts to `/api/agent-run` on the droplet |
+| `/agent` | `agent.html` | Jayti Agent: the retrieval-grounded analytics service (`/agent/query`, `/agent/health`, `/agent/state`) |
 | `/db` | `db.html` | Data browser over the Postgres warehouse |
 | `/viewer` | `viewer.html` | Media: WhatsApp photos, video, voice notes and documents from every chat (`/api/jp-live-content`, files via the `/api/wa-media` proxy) |
 
@@ -71,18 +69,6 @@ specific route overrides it. Highlights:
   - `/api/device-command-complete[/:commandId]` — report a result
 - **Dashboard data:** `jp-devices`, `jp-device`, `jp-stats`, `jp-track`,
   `jp-visitor`, `stats`, `visitor`, `vercel-analytics`, `check-stale`
-- **Agent:** `/api/agent-run` — proxies a request to the `jp-agent` runtime
-  (see below), authenticated with a separate token
-
-## The jp-agent runtime
-
-A Vercel function is short-lived with an ephemeral filesystem; an agent needs a
-workspace that survives between requests and tasks that can run for minutes. So
-the runtime lives on a DigitalOcean droplet, reachable only through nginx, and
-Vercel's `/api/agent-run` proxies to it with its own `JP_AGENT_TOKEN`. The
-browser never holds the droplet token. Full detail and deploy steps are in
-[`Server/jp-agent/README.md`](./Server/jp-agent/README.md).
-
 ## Getting started
 
 Requires **Node 24** (`engines` in `package.json`). There is no build step and
@@ -125,13 +111,12 @@ file, so the suite runs on the version channel-sandbox actually deploys.
 
 ### Configuration
 
-Runtime configuration comes from environment variables (set in the Vercel
-project and, for the agent, in `/etc/jp-agent.env` on the droplet). Common
+Runtime configuration comes from environment variables set in the Vercel
+project. Common
 variables include:
 
 - `FIREBASE_SERVICE_ACCOUNT_JSON` — service-account JSON for Firestore access
 - `FIRESTORE_DB` — Firestore database id (defaults to `eka-agent`)
-- `JP_AGENT_TOKEN` — bearer token for the `/api/agent-run` proxy
 
 The authoritative inventory of what is actually set on each Vercel project —
 name, type, which environments, and whether Vercel flags it as a readable secret

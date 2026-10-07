@@ -1,142 +1,57 @@
-import { BatchWriteCommand, PutCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
 import { decodeOne } from './lib/geo.js';
-import { credentialRefusal, documentClient, explainDynamoError, telemetryTable } from './lib/ddb.js';
 import { siteFor, recordEvent, botLike } from './lib/warehouse.js';
 import { isConfigured } from '../Integrations/postgres.js';
-
-const TABLE = telemetryTable();
 
 const ALLOWED_ORIGINS = new Set([
   'https://jaytipargal.com',
   'https://www.jaytipargal.com',
   'https://dfa5i945koq3k.cloudfront.net',
-  // This deployment's own domains. They were missing, so a page served from
-  // jaytipargal.tech got 'https://jaytipargal.com' echoed back in
-  // Access-Control-Allow-Origin and its beacons were dropped by the browser -
-  // one reason the warehouse holds no .tech rows at all.
   'https://jaytipargal.tech',
   'https://www.jaytipargal.tech',
   'https://agent.jaytipargal.tech',
-  // jaytibirthday.in is the largest real property (the sibling site writes most
-  // of the warehouse's live rows) yet its origin was absent here, so its own
-  // beacons got the wrong Access-Control-Allow-Origin echoed back.
   'https://jaytibirthday.in',
   'https://www.jaytibirthday.in',
 ]);
 
 function getClientIP(req) {
-  return (
-    req.headers['x-vercel-ip'] ||
+  return req.headers['x-vercel-ip'] ||
     req.headers['x-forwarded-for']?.split(',')[0]?.trim() ||
-    req.headers['x-real-ip'] ||
-    req.socket?.remoteAddress ||
-    'unknown'
-  );
-}
-
-const SNAPSHOT_EVENT_TYPES = new Set(['browser_history', 'device_history']);
-
-/*
- * History uploads are complete snapshots, not an append-only event stream.
- * Keep the newest snapshot for a device and remove its previous snapshots so
- * repeated syncs do not grow the telemetry table forever. Analytics events
- * (pageview, heartbeat, clicks, etc.) are intentionally left untouched.
- */
-async function prunePreviousHistory(client, currentId, visitorId) {
-  if (!visitorId || visitorId === 'anon') return 0;
-
-  const stale = [];
-  let startKey;
-  do {
-    const result = await client.send(new ScanCommand({
-      TableName: TABLE,
-      ProjectionExpression: '#id, #eventType, #visitorId',
-      FilterExpression: '(#eventType = :browserHistory OR #eventType = :deviceHistory) AND #visitorId = :visitorId AND #id <> :currentId',
-      ExpressionAttributeNames: {
-        '#id': 'id',
-        '#eventType': 'eventType',
-        '#visitorId': 'visitorId',
-      },
-      ExpressionAttributeValues: {
-        ':browserHistory': 'browser_history',
-        ':deviceHistory': 'device_history',
-        ':visitorId': visitorId,
-        ':currentId': currentId,
-      },
-      ...(startKey ? { ExclusiveStartKey: startKey } : {}),
-    }));
-    stale.push(...(result.Items || []));
-    startKey = result.LastEvaluatedKey;
-  } while (startKey);
-
-  let removed = 0;
-  for (let offset = 0; offset < stale.length; offset += 25) {
-    let pending = stale.slice(offset, offset + 25).map((item) => ({
-      DeleteRequest: { Key: { id: item.id } },
-    }));
-    for (let attempt = 0; pending.length && attempt < 4; attempt += 1) {
-      const result = await client.send(new BatchWriteCommand({
-        RequestItems: { [TABLE]: pending },
-      }));
-      const remaining = result.UnprocessedItems?.[TABLE] || [];
-      removed += pending.length - remaining.length;
-      pending = remaining;
-    }
-    if (pending.length) throw new Error(`DynamoDB retained ${pending.length} previous history rows after retries`);
-  }
-  return removed;
+    req.headers['x-real-ip'] || req.socket?.remoteAddress || 'unknown';
 }
 
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
-  // Origin only, never Referer: Origin is scheme+host (what ALLOWED_ORIGINS
-  // holds), but Referer is a full URL (scheme+host+path), so a referer-only
-  // request could never match this Set and only ever echoed back the wrong
-  // default — the fallback was dead weight that read like a real gate.
   const origin = req.headers.origin || '';
   res.setHeader('Access-Control-Allow-Origin', ALLOWED_ORIGINS.has(origin) ? origin : 'https://jaytipargal.com');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
+  if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
     return res.status(405).json({ success: false, error: 'Method not allowed' });
   }
+  if (!isConfigured()) {
+    return res.status(503).json({ success: false, error: 'DATABASE_URL not set on this deployment' });
+  }
+
   try {
     let event = req.body || {};
     if (typeof event === 'string') {
       try { event = JSON.parse(event); } catch { event = { raw: event }; }
     }
-
     const now = new Date();
-    const id = `${now.toISOString()}_${Math.random().toString(36).slice(2, 10)}`;
-    const eventType = event.event_type || event.eventType || 'event';
-    const visitorId = event.visitor_id || event.visitorId || event.device_id || event.deviceId || 'anon';
-
     const item = {
-      id,
-      eventType,
+      id: `${now.toISOString()}_${Math.random().toString(36).slice(2, 10)}`,
+      eventType: event.event_type || event.eventType || 'event',
       epoch: now.getTime(),
       timestamp: now.toISOString(),
       sessionId: event.session_id || event.sessionId || 'anon',
-      visitorId,
+      visitorId: event.visitor_id || event.visitorId || event.device_id || event.deviceId || 'anon',
       pageUrl: event.page_url || event.pageUrl || null,
       pageTitle: event.page_title || event.pageTitle || null,
       referrer: event.referrer || null,
       ip: getClientIP(req),
-      // Vercel percent-encodes these, so decode at ingestion - new rows are
-      // stored readable and every reader stops depending on remembering to do
-      // it. The read-side decodes stay because rows written before this change
-      // are still encoded and cannot be rewritten from here.
-      //
-      // decodeOne is NOT idempotent in general: it re-decodes anything still
-      // containing '%', so a double-encoded header would be decoded here and
-      // again on read. Geo-IP city, region, country and timezone values do not
-      // contain a literal '%', so the two decodes cannot compound on this data
-      // - but do not copy this pattern onto a field that can.
       country: decodeOne(req.headers['x-vercel-ip-country']) || null,
       region: decodeOne(req.headers['x-vercel-ip-country-region']) || null,
       city: decodeOne(req.headers['x-vercel-ip-city']) || null,
@@ -157,95 +72,17 @@ export default async function handler(req, res) {
       eventData: event.event_data || event.eventData || {},
       rawPayload: typeof event === 'object' && event.raw ? event.raw : null,
     };
-
-    // Derived once and stored on the row. db-push re-imports these same items
-    // later and has to arrive at the same site - and therefore the same row id
-    // - as the live mirror did, or one visit lands in the warehouse twice under
-    // two names. Null rather than undefined: the document client rejects
-    // undefined values unless removeUndefinedValues is set.
-    item.site = siteFor(item.pageUrl, req.headers.origin || req.headers.referer || req.headers.host) || null;
-
-    // DynamoDB is the raw journal. The dashboard reads Postgres. A rejected
-    // AWS key must not drop the visit: the mirror below still runs, and the
-    // response says which store actually took the row.
-    let client = null;
-    let dynamodb = { ok: false };
-    const awsRefusal = credentialRefusal('write');
-    if (awsRefusal) {
-      dynamodb = { ok: false, error: awsRefusal };
-    } else {
-      try {
-        client = documentClient('write');
-        await client.send(new PutCommand({ TableName: TABLE, Item: item }));
-        dynamodb = { ok: true };
-      } catch (dynamoError) {
-        console.error('[jp-track] dynamodb write failed:', dynamoError);
-        dynamodb = { ok: false, error: explainDynamoError(dynamoError, 'write') };
-      }
+    const site = siteFor(item.pageUrl, req.headers.origin || req.headers.referer || req.headers.host);
+    if (!site) {
+      return res.status(202).json({ success: true, id: item.id, persisted: false, ignored: true, reason: 'unknown property' });
     }
-
-    // The warehouse is the store the dashboard reads. Mirroring here is what
-    // makes a visit visible without waiting for db-push.
-    //
-    // A warehouse failure after a successful DynamoDB write is not fatal: the
-    // journal already has the event, and a 500 would make the browser retry.
-    let warehouse;
-    if (!item.site) {
-      warehouse = { mirrored: false, reason: 'no site could be derived from page_url or origin' };
-    } else if (botLike(item.userAgent)) {
-      // The raw event is already journalled to DynamoDB above; it just does not
-      // reach `events`, because visitors/sessions are recomputed from that
-      // table and a crawler counted there inflates every rollup off it.
-      warehouse = { mirrored: false, site: item.site, reason: 'user agent is an automated client; not mirrored to the warehouse' };
-    } else if (!isConfigured()) {
-      warehouse = { mirrored: false, reason: 'DATABASE_URL not set on this deployment' };
-    } else {
-      try {
-        const { inserted } = await recordEvent(item, { site: item.site, sourceSystem: 'site-api' });
-        warehouse = { mirrored: true, site: item.site, inserted };
-      } catch (mirrorError) {
-        console.error('[jp-track] warehouse mirror failed:', mirrorError);
-        warehouse = { mirrored: false, site: item.site, reason: mirrorError.message };
-      }
+    if (botLike(item.userAgent)) {
+      return res.status(202).json({ success: true, id: item.id, persisted: false, ignored: true, site, reason: 'automated client' });
     }
-
-    let prunedHistory = 0;
-    let retentionWarning = null;
-    if (dynamodb.ok && SNAPSHOT_EVENT_TYPES.has(item.eventType)) {
-      try {
-        prunedHistory = await prunePreviousHistory(client, item.id, item.visitorId);
-      } catch (retentionError) {
-        retentionWarning = retentionError.message || 'history retention cleanup failed';
-        console.error('[jp-track] history retention cleanup failed:', retentionError);
-      }
-    }
-
-    const persisted = dynamodb.ok || warehouse.mirrored === true;
-    if (!persisted) {
-      return res.status(dynamodb.error && !isConfigured() ? 503 : 500).json({
-        success: false,
-        id,
-        persisted: false,
-        dynamodb,
-        warehouse,
-        error: dynamodb.error || warehouse.reason || 'failed to persist',
-      });
-    }
-
-    return res.status(200).json({
-      success: true,
-      id,
-      persisted: true,
-      dynamodb,
-      warehouse,
-      retention: {
-        mode: SNAPSHOT_EVENT_TYPES.has(item.eventType) ? 'latest-history-snapshot-per-device' : 'analytics-events-unchanged',
-        prunedHistory,
-        warning: retentionWarning,
-      },
-    });
+    const { inserted } = await recordEvent(item, { site, sourceSystem: 'site-api' });
+    return res.status(200).json({ success: true, id: item.id, persisted: true, warehouse: { site, inserted } });
   } catch (err) {
-    console.error('[jp-track] error:', err);
-    return res.status(500).json({ success: false, error: err.message || 'failed to persist' });
+    console.error('[jp-track] neon write failed:', err);
+    return res.status(500).json({ success: false, error: 'failed to persist telemetry' });
   }
 }

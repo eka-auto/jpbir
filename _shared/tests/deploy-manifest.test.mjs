@@ -89,19 +89,17 @@ check(
   '',
 );
 
-// 3. The Terminal still calls the route this pipeline is built around. If this
-//    fails, the frontend was rewired and the backend half is now orphaned.
+// 3. The retired remote-command route must not be shipped as a dangling proxy.
 const indexHtml = readFileSync(join(ROOT, 'Frontend', 'index.html'), 'utf8');
 check(
-  "Frontend/index.html calls /api/agent-run",
-  indexHtml.includes("fetch('/api/agent-run"),
-  'the Terminal no longer posts to /api/agent-run',
+  'Frontend/index.html has no remote command proxy',
+  !indexHtml.includes('/api/agent-run'),
+  'the removed remote command route is still referenced by the frontend',
 );
 
 // 4. Explicitly-routed handlers must be built. A route pointing at a file with
 //    no build entry is a 404 that only shows up in production.
 const ROUTED = [
-  'Backend/agent-run.js',
   'Backend/s24-command.js',
   'Backend/broker-command-claim.js',
   'Backend/broker-command-complete.js',

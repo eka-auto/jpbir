@@ -251,6 +251,14 @@ t('manifest keys nothing reads are recorded as known orphans, with a reason', ()
         'vercel_blob_rw_qSrfKqJxsxAzFjXc_<REDACTED>_STORE_ID',
         'vercel_blob_rw_qSrfKqJxsxAzFjXc_<REDACTED>_WEBHOOK_PUBLIC_KEY'],
       'other-unused': ['BLOB_STORE_ID', 'ENDFORM_API_KEY'],
+      // Retired from the source tree in the Neon-only release. They remain in
+      // this inventory until the production deployment has been verified and
+      // the Vercel records are deleted by id.
+      'retired-cloud-runtime (pending production verification)': [
+        'JP_AGENT_TOKEN', 'JP_AGENT_URL',
+        'JP_AWS_ACCESS_KEY_ID', 'JP_AWS_REGION', 'JP_AWS_SECRET_ACCESS_KEY', 'JP_TELEMETRY_TABLE',
+        'JP_WRITE_AWS_ACCESS_KEY_ID', 'JP_WRITE_AWS_SECRET_ACCESS_KEY',
+      ],
     },
     'channel-sandbox': {
       // Set on all three environments; nothing in the repo reads it.

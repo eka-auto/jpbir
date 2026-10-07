@@ -13,14 +13,12 @@ Three cooperating pieces:
    site analytics, and WhatsApp content.
 2. **A serverless API** — Vercel Node functions serving the dashboard and
    receiving device telemetry.
-3. **`jp-agent`** — a persistent agent runtime on a DigitalOcean droplet for
-   long-running work (shell, file edits, git, deploys) that a serverless
-   function cannot do. Vercel proxies to it; the browser never holds the
-   droplet token.
+3. **Neon-backed analytics** — serverless handlers ingest and query telemetry
+   directly through the existing Postgres warehouse.
 
 Stack: Node 24 (ESM throughout), Vercel serverless + static hosting, no build
 step and no frontend framework — pages are hand-written HTML with inline
-vanilla JS. Data lives in Firestore, Postgres (Neon), Vercel Blob, and DynamoDB.
+vanilla JS. Data lives in Firestore, Postgres (Neon), and Vercel Blob.
 
 ## Repository layout
 
@@ -118,15 +116,14 @@ A few Python tests (`test_redact_secrets.py`, `test_scan_secrets.py`,
 
 ## Architecture: data flows and where content actually lives
 
-This is the most commonly misunderstood part of the system. Four separate
+This is the most commonly misunderstood part of the system. Three separate
 stores, and the dashboard reads all of them:
 
 | Store | Contents | Written by | Read by |
 |-------|----------|-----------|---------|
-| **Firestore** (project `intrepid-stage-495117-q1`, db `eka-agent`) | Device telemetry docs + each doc's `commandQueue` | Device daemon heartbeat | `jp-devices`, `jp-agent`'s `s24-tools.mjs` |
-| **Postgres / Neon** | `wa_messages`, `wa_attachments`, `device_telemetry` | `POST /api/wa-ingest` | `jp-live-content`, `jp-whatsapp`, `jp-wa-*` |
+| **Firestore** (project `intrepid-stage-495117-q1`, db `eka-agent`) | Device telemetry docs + each doc's `commandQueue` | Device daemon heartbeat | `jp-devices` |
+| **Postgres / Neon** | Analytics, `wa_messages`, `wa_attachments`, `device_telemetry` | telemetry and ingest APIs | dashboard data routes |
 | **Vercel Blob** | WhatsApp media bytes | `wa-blob-upload` / ingest | via `blob_url` columns |
-| **DynamoDB** | Site analytics events (visitor devices, IPs, pageviews) | `jp-track` | `jp-device`, `stats`, `visitor` |
 
 ```
 Phone daemon / Termux cron ──outbound HTTPS──▶ Vercel API ──▶ Postgres + Blob ──▶ dashboard
@@ -204,12 +201,8 @@ CI workflows in `.github/workflows/`: `ci-cd.yml` (lint + test),
   fresh command ACK). A stored `online: true` or a matching version string is
   not sufficient — a Windows bridge process once spoofed exactly that in
   production. New device-status logic must fail closed the same way.
-- **Secrets never enter the repo, the deploy script, or an agent transcript.**
-  On the droplet, `ANTHROPIC_AUTH_TOKEN` is piped over **stdin**
-  (`printf '%s' "$TOKEN" | python3 /opt/jp-agent/sync-auth-token.py`), never
-  passed as an argument, so it never lands in shell history.
-- Two separate credentials by design: the dashboard key and `JP_AGENT_TOKEN`.
-  Compromising one must not hand over the other.
+- **Secrets never enter the repo, deployment configuration, or an agent transcript.**
+- Dashboard credentials remain scoped to their specific Vercel handlers.
 
 ## Do not touch
 

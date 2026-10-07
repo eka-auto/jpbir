@@ -58,14 +58,12 @@ Three cooperating pieces:
    site analytics, and WhatsApp content.
 2. **A serverless API** — Vercel Node functions serving the dashboard and
    receiving device telemetry.
-3. **`jp-agent`** — a persistent agent runtime on a DigitalOcean droplet for
-   long-running work (shell, file edits, git, deploys) that a serverless
-   function cannot do. Vercel proxies to it; the browser never holds the
-   droplet token.
+3. **Neon-backed analytics** — serverless handlers ingest and query telemetry
+   directly through the existing Postgres warehouse.
 
 Stack: Node 24 (ESM throughout), Vercel serverless + static hosting, no build
 step and no frontend framework — pages are hand-written HTML with inline
-vanilla JS. Data lives in Firestore, Postgres (Neon), Vercel Blob, and DynamoDB.
+vanilla JS. Data lives in Firestore, Postgres (Neon), and Vercel Blob.
 
 ## Repository layout
 
@@ -164,15 +162,14 @@ A few Python tests (`test_redact_secrets.py`, `test_scan_secrets.py`,
 
 ## Architecture: data flows and where content actually lives
 
-This is the most commonly misunderstood part of the system. Four separate
+This is the most commonly misunderstood part of the system. Three separate
 stores, and the dashboard reads all of them:
 
 | Store | Contents | Written by | Read by |
 |-------|----------|-----------|---------|
-| **Firestore** (project `intrepid-stage-495117-q1`, db `eka-agent`) | Device telemetry docs + each doc's `commandQueue` | Device daemon heartbeat | `jp-devices`, `jp-agent`'s `s24-tools.mjs` |
-| **Postgres / Neon** | `wa_messages`, `wa_attachments`, `device_telemetry` | `POST /api/wa-ingest` | `jp-live-content`, `jp-whatsapp`, `jp-wa-*` |
+| **Firestore** (project `intrepid-stage-495117-q1`, db `eka-agent`) | Device telemetry docs + each doc's `commandQueue` | Device daemon heartbeat | `jp-devices` |
+| **Postgres / Neon** | Analytics, `wa_messages`, `wa_attachments`, `device_telemetry` | telemetry and ingest APIs | dashboard data routes |
 | **Vercel Blob** | WhatsApp media bytes | `wa-blob-upload` / ingest | via `blob_url` columns |
-| **DynamoDB** | Site analytics events (visitor devices, IPs, pageviews) | `jp-track` | `jp-device`, `stats`, `visitor` |
 
 ```
 Phone daemon / Termux cron ──outbound HTTPS──▶ Vercel API ──▶ Postgres + Blob ──▶ dashboard
@@ -385,8 +382,7 @@ only by an unreadable Docker socket). The CLI's "Value starts with whitespace"
 warning is real: a leading space makes the parser read the host as `base`.
 Resolved 2026-09-22: variables re-set 19:02–19:05 UTC, production rebuilt as
 `dpl_GDAzXNH83ZFL65sMgZfB6Sphqk3Y` at 19:06 UTC, `/api/verify-db` green at
-19:09 UTC. Nothing is lost meanwhile: `jp-track` still journals to DynamoDB and
-`db-push` re-imports with ON CONFLICT DO NOTHING. Never paste a connection
+19:09 UTC. Telemetry now writes directly to Neon. Never paste a connection
 string into a transcript, PR or commit. The `GATE_*` variables on this project
 belong to `private-file-gate-db` and are unused here.
 
@@ -436,8 +432,7 @@ CI workflows in `.github/workflows/`: `ci-cd.yml` (lint + test),
   env vars or credentials, it masks every value to the last 4 characters — and
   note that in this Vercel team some secrets are embedded in env var *names*, so
   names need masking too.
-- Two separate credentials by design: the dashboard key and `JP_AGENT_TOKEN`.
-  Compromising one must not hand over the other.
+- Dashboard credentials remain scoped to their specific Vercel handlers.
 
 ## Do not touch
 

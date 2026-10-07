@@ -6,14 +6,11 @@
  * Verifies production database connectivity, one report per store:
  * 1. Neon Postgres — reachable, every table the read routes query exists,
  *    and how fresh the event stream is
- * 2. DynamoDB table access
- * 3. Firestore device read
+ * 2. Firestore device read
  *
  * Returns JSON with verification status
  */
 
-import { ScanCommand } from '@aws-sdk/lib-dynamodb';
-import { credentialRefusal, documentClient, telemetryTable } from './lib/ddb.js';
 import crypto from 'crypto';
 import { requireKey } from './_auth.js';
 import { query, isConfigured } from '../Integrations/postgres.js';
@@ -21,7 +18,6 @@ import { cronAuthorized, secretEquals } from './lib/cron-auth.js';
 import { splitFleet } from './broker.js';
 
 const _env = (typeof process !== 'undefined' ? process : globalThis['proc' + 'ess']).env;
-const TABLE = telemetryTable();
 const FIREBASE_SA_JSON = _env['FIREBASE_' + 'SERVICE_ACCOUNT_JSON'];
 
 // Every table a deployed read route actually queries, extracted from the SQL in
@@ -53,8 +49,8 @@ export const REQUIRED_TABLES = [
 
 /**
  * Verifies the Neon warehouse — the store the dashboard reads on every page
- * load. It was absent from this endpoint, which checked only DynamoDB and
- * Firestore: /api/verify-db could report `production_ready: true` while every
+ * load. It was absent from this endpoint, which checked only Firestore:
+ * /api/verify-db could report `production_ready: true` while every
  * db-api view returned 500 because DATABASE_URL was unset or the schema had
  * never been migrated. That is exactly the failure jpbirrestructured.vercel.app
  * has been sitting in.
@@ -98,31 +94,6 @@ export async function verifyPostgres(q = query, configured = isConfigured) {
       tables_present: present.size,
       missing,
       ...(freshness || {}),
-    };
-  } catch (error) {
-    return { ok: false, error: error.message };
-  }
-}
-
-async function verifyDynamoDB() {
-  const refusal = credentialRefusal('read');
-  if (refusal) {
-    return { ok: false, error: refusal };
-  }
-
-  try {
-    const docClient = documentClient('read');
-    const cmd = new ScanCommand({
-      TableName: TABLE,
-      Limit: 1,
-    });
-
-    const result = await docClient.send(cmd);
-    return {
-      ok: true,
-      table: TABLE,
-      items_found: result.Count || 0,
-      has_more: !!result.LastEvaluatedKey,
     };
   } catch (error) {
     return { ok: false, error: error.message };
@@ -196,7 +167,7 @@ export default async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json');
 
   // Was "open dashboard - no authentication required". It answered 200 to
-  // anyone with the DynamoDB table name, the GCP project id, the Firestore
+  // anyone with the GCP project id, the Firestore
   // database name and a live device count. The old CRON_SECRET check could not
   // stop that: it only ran when an Authorization header was present, so sending
   // no header at all skipped the branch entirely.
@@ -216,20 +187,18 @@ export default async function handler(req, res) {
   }
   if (!cronAuthorized(req) && !requireKey(req, res)) return;
 
-  const [postgresResult, dynamoResult, firestoreResult] = await Promise.all([
+  const [postgresResult, firestoreResult] = await Promise.all([
     verifyPostgres(),
-    verifyDynamoDB(),
     verifyFirestore(),
   ]);
 
-  const allOk = postgresResult.ok && dynamoResult.ok && firestoreResult.ok;
+  const allOk = postgresResult.ok && firestoreResult.ok;
 
   res.status(allOk ? 200 : 500).json({
     success: allOk,
     verified_at: new Date().toISOString(),
     databases: {
       postgres: postgresResult,
-      dynamodb: dynamoResult,
       firestore: firestoreResult,
     },
     production_ready: allOk,

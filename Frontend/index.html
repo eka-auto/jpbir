@@ -439,7 +439,7 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
         <div class="spacer"></div>
         <span class="last-updated" id="lastUpdated"></span>
         <label class="sr-only" for="siteSel">Tracked property</label>
-        <select id="siteSel" name="site" aria-label="Tracked property" title="Which tracked property to show. Beacons land in Postgres even when DynamoDB rejects the write.">
+        <select id="siteSel" name="site" aria-label="Tracked property" title="Which tracked property to show. Beacons land directly in Neon.">
             <option value="jbt" selected>jaytibirthday.in</option>
             <option value="tech">jaytipargal.tech</option>
             <option value="jp">jaytipargal.com</option>
@@ -491,7 +491,6 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
             <div class="section-label">Operate</div>
             <button class="nav-item" data-page="agent"><span class="ico">🤖</span> Ask agent</button>
             <a class="nav-item" href="/agent"><span class="ico">✦</span> Jayti Agent</a>
-            <button class="nav-item" data-page="terminal"><span class="ico">▮</span> Terminal</button>
             <button class="nav-item" data-page="stack"><span class="ico">⛓</span> Product engineering <span id="stackNavDot" class="lamp lamp-unknown" style="margin-left:6px"></span></button>
         </nav>
 
@@ -538,33 +537,6 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
                 <div class="grid2">
                     <div class="panel"><h2>Countries</h2><div id="countries"></div></div>
                     <div class="panel"><h2>Cities</h2><div id="cities"></div></div>
-                </div>
-            </section>
-
-            <!-- TERMINAL — the agent that actually does the work, as opposed to
-                 "Ask agent" below, which only answers questions about analytics.
-                 Talks to /api/agent-run, which proxies to the DigitalOcean box. -->
-            <section class="page" id="page-terminal">
-                <div class="panel">
-                    <div class="panel-head">
-                        <div>
-                            <h2>Terminal</h2>
-                            <div class="hint" id="termHint">Runs on the agent host — shell, files, git, deploys.</div>
-                        </div>
-                        <button id="termNew" class="btn-ghost">New session</button>
-                    </div>
-                    <div class="operator-auth">
-                        <label for="termOperatorKey">Operator key</label>
-                        <input id="termOperatorKey" name="operator-key" type="password" autocomplete="off" spellcheck="false" placeholder="Operator key for command execution…">
-                        <button id="termForgetKey" class="btn-ghost" type="button">Forget Key</button>
-                    </div>
-                    <div id="termOut" class="term-out" role="log" aria-live="polite"><div class="state">Ask it something. Output streams here as it works.</div></div>
-                    <div class="term-input">
-                        <label class="sr-only" for="termPrompt">Terminal request</label>
-                        <textarea id="termPrompt" name="terminal-request" rows="2" placeholder="For example, check disk usage and list the workspace… Enter to send; Shift+Enter for a newline"></textarea>
-                        <button id="termSend" type="button">Send</button>
-                    </div>
-                    <div class="hint" id="termFoot" style="margin-top:10px"></div>
                 </div>
             </section>
 
@@ -634,7 +606,7 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
                     <div class="panel-head">
                         <div>
                             <h2>Device Dashboard</h2>
-                            <div class="hint" id="deviceDashHint">Live sync every 10 seconds · Firestore device state + DynamoDB browser history</div>
+                            <div class="hint" id="deviceDashHint">Live sync every 10 seconds · Firestore device state + Neon browser history</div>
                         </div>
                         <div class="tools">
                             <span id="deviceSyncDot" class="live-dot"></span>
@@ -676,10 +648,10 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
                 </div>
 
                 <!-- EXPANDED DEVICE DETAIL (hidden by default) -->
-                <!-- BROWSER HISTORY (from DynamoDB) -->
+                <!-- BROWSER HISTORY (from Neon) -->
                 <div class="panel">
                     <div class="panel-head">
-                        <div><h2>Browser history</h2><div class="hint" id="browserHistoryHint">Synced from device daemons · DynamoDB</div></div>
+                        <div><h2>Browser history</h2><div class="hint" id="browserHistoryHint">Synced from device daemons · Neon</div></div>
                         <div class="tools">
                             <select id="historyDeviceFilter"><option value="all">All devices</option></select>
                             <button id="historyRefreshBtn">Refresh</button>
@@ -2089,7 +2061,7 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
         var days = $('daysSel').value;
         var endpoint = '/api/stats';
         /* The label and the query are the same host. All three properties are
-           read from Postgres, so a DynamoDB outage does not blank the page. */
+           read from Neon. */
         var params = { days: days, site: siteHost() };
         setStatus('Loading analytics…');
         fetch(endpoint + '?' + new URLSearchParams(params).toString(), { headers: authHeaders() })
@@ -2799,7 +2771,7 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
     var _expandedDevice = null;
 
     function loadDeviceHistory() {
-        /* Browser history from DynamoDB */
+        /* Browser history from Neon */
         $('browserHistoryHint').textContent = 'Loading browser history…';
         fetch('/api/jp-device?days=30', { headers: authHeaders() })
             .then(function (r) { return r.json().then(function (j) { return { status: r.status, body: j }; }); })
@@ -3326,136 +3298,6 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
         });
     })();
 
-    /* ===== TERMINAL (agent host, via /api/agent-run) =====
-       EventSource cannot POST, so the SSE stream is read off fetch() and framed
-       by hand: events are blank-line separated, with `event:` and `data:` lines. */
-    var TERM_SESSION = null;
-    var termBusy = false;
-    var OPERATOR_KEY_STORAGE = 'jbt_operator_key';
-
-    function readOperatorKey() {
-        try { return sessionStorage.getItem(OPERATOR_KEY_STORAGE) || ''; } catch (e) { return ''; }
-    }
-    function writeOperatorKey(value) {
-        try { sessionStorage.setItem(OPERATOR_KEY_STORAGE, value); } catch (e) { /* private mode */ }
-    }
-    function clearOperatorKey() {
-        try { sessionStorage.removeItem(OPERATOR_KEY_STORAGE); } catch (e) { /* private mode */ }
-        if ($('termOperatorKey')) $('termOperatorKey').value = '';
-    }
-
-    function termEl(cls, html) {
-        var d = document.createElement('div');
-        d.className = cls;
-        d.innerHTML = html;
-        $('termOut').appendChild(d);
-        $('termOut').scrollTop = $('termOut').scrollHeight;
-        return d;
-    }
-
-    function termReset(msg) {
-        TERM_SESSION = null;
-        $('termOut').innerHTML = '<div class="state">' + esc(msg || 'New session. Ask it something.') + '</div>';
-        $('termFoot').textContent = '';
-    }
-
-    async function termSend() {
-        if (termBusy) return;
-        var prompt = $('termPrompt').value.trim();
-        if (!prompt) return;
-        var operatorKey = $('termOperatorKey').value.trim();
-        if (!operatorKey) {
-            $('termFoot').textContent = 'Enter the separate operator key before running commands.';
-            $('termOperatorKey').focus();
-            return;
-        }
-        writeOperatorKey(operatorKey);
-
-        var first = $('termOut').querySelector('.state');
-        if (first) first.remove();
-        termEl('t-user', '&gt; ' + esc(prompt));
-        $('termPrompt').value = '';
-        termBusy = true;
-        $('termSend').disabled = true;
-        $('termFoot').textContent = 'working…';
-
-        var textNode = null;
-        try {
-            var res = await fetch('/api/agent-run', {
-                method: 'POST',
-                headers: { 'content-type': 'application/json', 'x-operator-key': operatorKey },
-                body: JSON.stringify({ prompt: prompt, session_id: TERM_SESSION })
-            });
-
-            /* 401/503 arrive as JSON, not as a stream. Deliberately NOT calling
-               showGate() — that hides the whole app, and the terminal is one page
-               among many. Same reasoning as the visitor drawer. */
-            if (!res.ok) {
-                var j = {};
-                try { j = await res.json(); } catch (e) {}
-                if (res.status === 401) clearOperatorKey();
-                var note = res.status === 503
-                    ? (j.error || 'Agent or operator authentication is not configured') + (j.missing ? ' — missing ' + esc(j.missing.join(', ')) : '')
-                    : (j.error || ('HTTP ' + res.status));
-                termEl('t-err', esc(note));
-                return;
-            }
-
-            var reader = res.body.getReader();
-            var dec = new TextDecoder();
-            var buf = '';
-            for (;;) {
-                var chunk = await reader.read();
-                if (chunk.done) break;
-                buf += dec.decode(chunk.value, { stream: true });
-                var frames = buf.split('\n\n');
-                buf = frames.pop();              // trailing partial frame
-                for (var i = 0; i < frames.length; i++) {
-                    var ev = 'message', data = '';
-                    frames[i].split('\n').forEach(function (line) {
-                        if (line.indexOf('event:') === 0) ev = line.slice(6).trim();
-                        else if (line.indexOf('data:') === 0) data += line.slice(5).trim();
-                    });
-                    if (!data) continue;
-                    var d;
-                    try { d = JSON.parse(data); } catch (e) { continue; }
-
-                    if (ev === 'start') {
-                        TERM_SESSION = d.session_id;
-                        $('termHint').textContent = d.model + ' · ' + d.workspace;
-                    } else if (ev === 'text') {
-                        /* One node per assistant turn, appended to — so streamed
-                           chunks read as continuous prose rather than a list. */
-                        if (!textNode) textNode = termEl('t-text', '');
-                        textNode.textContent += d.text;
-                        $('termOut').scrollTop = $('termOut').scrollHeight;
-                    } else if (ev === 'tool') {
-                        textNode = null;
-                        termEl('t-tool', '<b>' + esc(d.name) + '</b> ' + esc(d.preview || ''));
-                    } else if (ev === 'done') {
-                        $('termFoot').textContent = d.turns + ' turns · ' +
-                            Math.round((d.duration_ms || 0) / 1000) + 's' +
-                            (d.cost_usd != null ? ' · $' + Number(d.cost_usd).toFixed(4) : '') +
-                            (d.is_error ? ' · ended with an error' : '');
-                    } else if (ev === 'error') {
-                        termEl('t-err', esc(d.error || 'agent error'));
-                    }
-                }
-            }
-        } catch (e) {
-            termEl('t-err', 'Request failed: ' + esc(e.message));
-        } finally {
-            termBusy = false;
-            $('termSend').disabled = false;
-            if ($('termFoot').textContent === 'working…') $('termFoot').textContent = '';
-        }
-    }
-
-    $('termOperatorKey').value = readOperatorKey();
-    $('termForgetKey').addEventListener('click', function () {
-        clearOperatorKey();
-        $('termFoot').textContent = 'Operator key removed from this tab.';
-    });
     window.addEventListener('popstate', function () {
         var pageName = new URLSearchParams(location.search).get('view') || 'overview';
         var btn = document.querySelector('.nav-item[data-page="' + pageName.replace(/[^a-z-]/g, '') + '"]');
@@ -3591,12 +3433,6 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
     var _stackRefresh = $('stackRefreshBtn');
     if (_stackRefresh) _stackRefresh.addEventListener('click', loadStack);
     if (!_stackTimer) _stackTimer = setInterval(loadStack, STACK_POLL_MS);
-
-    $('termSend').addEventListener('click', termSend);
-    $('termNew').addEventListener('click', function () { termReset(); });
-    $('termPrompt').addEventListener('keydown', function (e) {
-        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); termSend(); }
-    });
 
     /* ===== VERCEL (platform-side analytics + logs) ===== */
     function vkpi(label, value) {
@@ -4024,10 +3860,8 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
                 if (!res.body.success) throw new Error(res.body.error || 'failed');
                 var out = thinking.querySelector('div:last-child');
                 out.textContent = res.body.answer;
-                /* The backend reports which of its stores failed or were cut
-                   short. Without showing it, an answer built on an unreadable
-                   DynamoDB reads exactly like one built on a complete picture -
-                   and the most likely such answer is a confident "no devices". */
+                /* The backend reports incomplete data sources so a missing
+                   context never reads like a confirmed absence. */
                 var degraded = (res.body.context && res.body.context.degraded) || [];
                 if (degraded.length) {
                     var warn = document.createElement('div');

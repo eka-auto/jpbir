@@ -14,10 +14,6 @@
   ],
   "crons": [
     {
-      "path": "/api/db-push",
-      "schedule": "30 18 * * *"
-    },
-    {
       "path": "/api/check-stale",
       "schedule": "*/10 * * * *"
     },
@@ -132,14 +128,6 @@
       "use": "@vercel/node"
     },
     {
-      "src": "Backend/agent-run.js",
-      "use": "@vercel/node"
-    },
-    {
-      "src": "Backend/db-push.js",
-      "use": "@vercel/node"
-    },
-    {
       "src": "Backend/db-api.js",
       "use": "@vercel/node"
     },
@@ -219,10 +207,6 @@
     {
       "src": "/agent/state",
       "dest": "Backend/jp-hub-state.js"
-    },
-    {
-      "src": "/api/agent-run",
-      "dest": "Backend/agent-run.js"
     },
     {
       "src": "/api/vercel-analytics",

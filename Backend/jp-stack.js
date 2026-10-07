@@ -32,7 +32,6 @@ import tls from 'node:tls';
 const _env = (typeof process !== 'undefined' ? process : globalThis['proc' + 'ess']).env;
 const FIRESTORE_DB = _env['FIRESTORE_' + 'DB'] || 'eka-agent';
 const FIREBASE_SA_JSON = _env['FIREBASE_' + 'SERVICE_ACCOUNT_JSON'] || _env['FIREBASE_' + 'SA_JSON'];
-const AGENT_URL = _env['JP_AGENT_' + 'URL'] || 'https://runner.jaytipargal.tech';
 
 const OK = 'ok';
 const FAIL = 'fail';
@@ -60,7 +59,7 @@ function withTimeout(label, promise) {
 // ---------------------------------------------------------------- probes
 
 async function probeDns() {
-  const names = [HOSTS.apex, HOSTS.runner];
+  const names = [HOSTS.apex];
   const results = await Promise.all(
     names.map(async (name) => {
       try {
@@ -80,13 +79,12 @@ async function probeDns() {
 
 /**
  * Reads the leaf certificate's expiry off a real handshake. `servername` is set
- * explicitly: without SNI the droplet would serve its default vhost and the
- * cert read would describe the wrong name.
+ * explicitly so the public dashboard certificate is measured directly.
  */
 function probeTls() {
   return new Promise((resolve) => {
     const socket = tls.connect(
-      { host: HOSTS.runner, port: 443, servername: HOSTS.runner, timeout: PROBE_TIMEOUT_MS },
+      { host: HOSTS.apex, port: 443, servername: HOSTS.apex, timeout: PROBE_TIMEOUT_MS },
       () => {
         const cert = socket.getPeerCertificate();
         socket.end();
@@ -96,7 +94,7 @@ function probeTls() {
         const days = Math.floor((new Date(cert.valid_to).getTime() - Date.now()) / 86400000);
         if (days < 0) return resolve({ status: FAIL, problem: 'certificate expired ' + Math.abs(days) + ' days ago' });
         if (days <= TLS_WARN_DAYS) {
-          return resolve({ status: WARN, problem: 'certificate expires in ' + days + ' days — certbot renews at 30, so check certbot.timer' });
+          return resolve({ status: WARN, problem: 'certificate expires in ' + days + ' days' });
         }
         resolve({ status: OK, detail: 'valid ' + days + ' more days' });
       }
@@ -107,26 +105,6 @@ function probeTls() {
       resolve({ status: UNKNOWN, problem: 'TLS handshake timed out' });
     });
   });
-}
-
-/**
- * The droplet's /health. A 404 here is the documented signature of a Host
- * mismatch rather than a dead service (see Server/jp-agent/README.md), so it is
- * called out by name — otherwise the panel sends the operator to debug systemd
- * when the actual fault is DNS or a raw-IP request.
- */
-async function probeAgent() {
-  const res = await fetch(AGENT_URL.replace(/\/$/, '') + '/health', {
-    signal: AbortSignal.timeout(PROBE_TIMEOUT_MS - 200),
-    headers: { 'user-agent': 'jpbir-stack-probe' },
-  });
-  if (res.status === 404) {
-    return { status: FAIL, problem: 'nginx answered 404 — Host header did not match runner.jaytipargal.tech, so this never reached jp-agent' };
-  }
-  if (!res.ok) return { status: FAIL, problem: 'agent /health returned HTTP ' + res.status };
-  const body = await res.json().catch(() => ({}));
-  if (body && body.ok === false) return { status: FAIL, problem: 'agent reports not ok' };
-  return { status: OK, detail: 'HTTP 200 from ' + HOSTS.runner };
 }
 
 async function probePostgres() {
@@ -228,48 +206,6 @@ export function deviceFreshness(firestoreResult) {
   }
   const newestMins = per.reduce((a, p) => (p.mins != null && p.mins < a ? p.mins : a), Infinity);
   return { status: OK, detail: 'all ' + per.length + ' device(s) fresh; newest heartbeat ' + newestMins + ' min ago', byDevice };
-}
-
-/**
- * Real reachability probes for DynamoDB and Vercel Blob.
- *
- * These used to be credential-presence checks that returned UNKNOWN even when
- * the store was healthy - the Product engineering panel then rendered every
- * dynamo/blob file grey and the operator could not tell "credentials never
- * configured" from "table gone". Both stores expose a cheap catalog call that
- * does not depend on any fixture (DescribeTable and list-limit-1), so the
- * honest signal is now the round trip itself: OK on 200, FAIL on auth /
- * network error, UNKNOWN only when the credential is unset.
- *
- * The SDKs are imported lazily so a deployment with no DynamoDB or no Blob
- * still boots the handler in the cold path - the packages are optional-at-runtime
- * from this file's perspective (they are hard deps of jp-track / wa-blob-upload).
- */
-async function probeDynamo() {
-  const { credentialMeta, credentialRefusal, dynamoClient, explainDynamoError, telemetryRegion, telemetryTable } = await import('./lib/ddb.js');
-  const table = telemetryTable();
-  const region = telemetryRegion();
-  const meta = credentialMeta('read');
-  if (!meta.configured) {
-    return { status: UNKNOWN, problem: 'JP_AWS_ACCESS_KEY_ID / JP_AWS_SECRET_ACCESS_KEY not set on this deployment' };
-  }
-  const refusal = credentialRefusal('read');
-  if (refusal) {
-    return { status: FAIL, problem: 'DynamoDB credentials refused before DescribeTable(' + table + '): ' + refusal };
-  }
-  try {
-    const { DescribeTableCommand } = await import('@aws-sdk/client-dynamodb');
-    const client = dynamoClient('read');
-    const res = await client.send(new DescribeTableCommand({ TableName: table }));
-    const state = res.Table && res.Table.TableStatus;
-    if (state !== 'ACTIVE') {
-      return { status: WARN, problem: 'DynamoDB table ' + table + ' status is ' + (state || 'unknown') };
-    }
-    const items = res.Table && res.Table.ItemCount;
-    return { status: OK, detail: table + ' ACTIVE in ' + region + (typeof items === 'number' ? ' (' + items + ' items)' : '') };
-  } catch (e) {
-    return { status: FAIL, problem: 'DynamoDB DescribeTable(' + table + ') failed: ' + explainDynamoError(e, 'read') };
-  }
 }
 
 async function probeBlob() {
@@ -482,13 +418,11 @@ export function buildLayers(probes) {
  * place each.
  */
 export async function runProbes() {
-  const [dns, tlsR, agent, postgres, firestore, dynamo, blob, assets] = await Promise.all([
+  const [dns, tlsR, postgres, firestore, blob, assets] = await Promise.all([
     withTimeout('DNS', probeDns()),
     withTimeout('TLS', probeTls()),
-    withTimeout('agent', probeAgent()),
     withTimeout('Postgres', probePostgres()),
     withTimeout('Firestore', probeFirestore()),
-    withTimeout('DynamoDB', probeDynamo()),
     withTimeout('Blob', probeBlob()),
     withTimeout('assets', probeAssets()),
   ]);
@@ -496,10 +430,8 @@ export async function runProbes() {
   const probes = {
     dns,
     tls: tlsR,
-    agent,
     postgres,
     firestore,
-    dynamo,
     blob,
     assets,
     env: probeEnv(),
