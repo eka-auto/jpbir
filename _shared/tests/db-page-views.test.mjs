@@ -77,17 +77,14 @@ const DATA = {
   video: (q) => ({ total: 1, limit: 100, offset: Number(q.offset) || 0, byClip: [], byPlace: [],
     rows: [{ occurred_at: iso(6e4), video_event: 'intro', event_id: 'vid-1',
       visitor_device: { browser: 'Chrome', os: 'Android', device_type: 'mobile', screen: { w: 412, h: 915 } } }] }),
-  s24: (q) => ({ migrated: true, normalized: true, total: 4, limit: 100, offset: Number(q.offset) || 0, runsTotal: 0,
-    counts: { all: 4, files: 3 }, device: {}, datasets: [], runs: [],
+  s24: (q) => ({ migrated: true, normalized: true, total: 3, limit: 100, offset: Number(q.offset) || 0, runsTotal: 0,
+    counts: { all: 3, files: 1, calls: 1, queue: 1 }, device: {}, datasets: [], runs: [],
     rows: [
-      { dataset: 'firestore_files', record_id: 'f-json', filename: 'result.json', file_type: 'json', content: BIG_JSON,
-        payload: { filename: 'result.json', type: 'json', content: BIG_JSON }, last_seen: iso(6e4) },
-      { dataset: 'firestore_files', record_id: 'f-text', filename: 'notes.txt', file_type: 'txt', content: LONG_TEXT,
-        payload: { filename: 'notes.txt', type: 'txt', content: LONG_TEXT }, last_seen: iso(6e4) },
-      { dataset: 'firestore_files', record_id: 'f-cut', filename: 'big.json', file_type: 'json',
-        content: '{"records": ["' + 'x'.repeat(800), payload: { filename: 'big.json' }, last_seen: iso(6e4) },
-      { dataset: 'firestore_queue', record_id: 'q-1', action: 'ping',
-        payload: { command: 'ping', content: 'short note for the agent' }, last_seen: iso(6e4) },
+      { dataset: 'firestore_files', record_id: 'f-private', filename: 'private.json', content: BIG_JSON, last_seen: iso(6e4) },
+      { dataset: 'firestore_callLogs', record_id: 'call-123456', contact_name: 'Aarav', phone_number: '9876543210',
+        call_type: 'incoming', called_at: iso(6e4), last_seen: iso(6e4) },
+      { dataset: 'firestore_queue', record_id: 'q-123456', action: 'sync-now', status: 'queued',
+        description: 'private sync details', created_at: iso(6e4), last_seen: iso(6e4) },
     ] }),
 };
 const ok = (data) => ({ status: 200, body: { ok: true, data } });
@@ -348,35 +345,32 @@ await t('the Video table summarises an object visitor_device and its drawer show
   assert.match(app.$('drawerBody').innerHTML, /<dt>screen<\/dt><dd><dl class="kv"><dt>w<\/dt><dd>412<\/dd>/);
 });
 
-await t('the S24 drawer shows a stored file once, as a capped tree or a short excerpt, and never the blob', async () => {
-  app.dbg.state.s24Section = 'files';
+await t('the S24 review surface hides stored artifacts, masks personal fields, and filters after a query runs', async () => {
+  app.dbg.state.s24Section = 'calls';
+  app.dbg.state.s24Query = '';
   await app.dbg.RENDER.s24();
   const page = app.$('page-s24');
-  assert.match(page.innerHTML, />All records · 4</);
-  assert.equal(/All JSON|lossless JSON|Lock archive/.test(page.innerHTML), false);
+  assert.equal(page.innerHTML.includes('private.json'), false, 'stored artifact name reached the page');
+  assert.equal(page.innerHTML.includes('9876543210'), false, 'raw phone number reached the page');
+  assert.match(page.innerHTML, /•••• •••• 3210/);
+  assert.match(page.innerHTML, /A•••/);
+  assert.equal(page.rowClicks.length, 2, 'hidden artifact row is still clickable');
 
   page.rowClicks[0]();
-  const json = app.$('drawerBody').innerHTML;
-  assert.match(json, /File content/);
-  assert.match(json, /…and 100 more/);
-  assert.equal(json.split('value-0<').length - 1, 1, 'the file is printed twice (column + payload tree)');
-  assertNoJson(json, 'the S24 JSON file drawer');
+  const call = app.$('drawerBody').innerHTML;
+  assert.match(call, /masked review preview/);
+  assert.equal(call.includes('9876543210'), false, 'raw phone number reached the drawer');
+  assert.equal(call.includes('<dt>payload</dt>'), false, 'storage payload reached the drawer');
 
-  page.rowClicks[1]();
-  const text = app.$('drawerBody').innerHTML;
-  assert.match(text, /Preview · first 500 of/);
-  assert.equal(text.includes('END-OF-FILE-MARKER'), false);
-  assert.equal(text.split('phone log line').length - 1 <= 15, true, 'more than the excerpt reached the drawer');
-
-  page.rowClicks[2]();
-  assert.match(app.$('drawerBody').innerHTML, /Not shown: JSON that does not parse/);
-  assertNoJson(app.$('drawerBody').innerHTML, 'the truncated-file drawer');
-
-  // Not a file: its text `content` stays in its own record.
-  page.rowClicks[3]();
-  const queue = app.$('drawerBody').innerHTML;
-  assert.equal(queue.includes('File content'), false, 'a queue item opened as a file');
-  assert.match(queue, /<dt>content<\/dt><dd>short note for the agent<\/dd>/);
+  app.dbg.state.s24Section = 'all';
+  app.dbg.state.s24Query = 'sync';
+  await app.dbg.RENDER.s24();
+  const filtered = app.$('page-s24').innerHTML;
+  assert.match(filtered, /Review the records, not the storage layer/);
+  assert.match(filtered, /<strong>1<\/strong> of 2 loaded review records/);
+  assert.match(filtered, /sync-now/);
+  assert.equal(filtered.includes('firestore_queue'), false, 'storage metadata reached the query results');
+  assert.equal(filtered.includes('A•••'), false, 'the pre-query row remained on screen');
 });
 
 await t('a slow detail response for one row cannot replace the drawer of a row opened after it', async () => {
@@ -530,7 +524,7 @@ await t('Lock dashboard forgets the key, wipes every drawn page and drops respon
   await settle();
   assert.match(locking.$('page-s24').innerHTML, />Lock dashboard</);
   locking.$('page-s24').rowClicks[1](); // a record is open in the drawer
-  assert.match(locking.$('drawerBody').innerHTML, /notes\.txt/);
+  assert.match(locking.$('drawerBody').innerHTML, /masked review preview/);
   locking.dbg.state.s24Section = 'calls';
   locking.dbg.draw();
   locking.$('s24Lock').fire('click');

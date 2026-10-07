@@ -13,8 +13,8 @@
   :root{
     --bg:#0B0D10; --panel:#12161B; --panel-2:#171C22; --line:#232B34;
     --ink:#E6EDF3; --ink-dim:#8B98A5; --ink-faint:#5A6672;
-    --accent:#4C9AFF; --accent-dim:#1F3A5F;
-    --ok:#3FB950; --warn:#D29922; --bad:#F85149; --violet:#A371F7; --teal:#39C5CF;
+    --accent:#7DD3C7; --accent-dim:#173B3B;
+    --ok:#69C58A; --warn:#E8B967; --bad:#F28B82; --violet:#B8A1FF; --teal:#7DD3C7;
     --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
     --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,sans-serif;
   }
@@ -84,6 +84,16 @@
   .mono{font-family:var(--mono);font-size:11.5px}
   .trunc{max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block;vertical-align:bottom}
   .scroll{max-height:440px;overflow:auto}
+  .review-rail{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:14px;align-items:center;margin:0 0 14px;padding:15px 16px;border:1px solid #29444a;border-radius:10px;background:linear-gradient(105deg,rgba(125,211,199,.13),rgba(18,22,27,.96) 48%)}
+  .review-rail h3{font-size:14px;font-weight:650;letter-spacing:.1px}
+  .review-rail p{margin-top:3px;font-size:11.5px;color:var(--ink-dim)}
+  .query-form{display:flex;gap:7px;align-items:center;min-width:min(100%,440px)}
+  .query-form input{width:260px;min-width:0;padding:8px 10px;border-color:#35575c;background:rgba(11,13,16,.76)}
+  .query-form .btn{padding:8px 11px;border-color:#4c8e89;background:#1b4b4c;color:#ecfffb;font-weight:600}
+  .query-form .btn.ghost{background:transparent;border-color:var(--line);color:var(--ink-dim)}
+  .query-summary{display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--line);font-size:11.5px;color:var(--ink-dim)}
+  .query-summary strong{color:var(--ink);font-weight:600}
+  .masked-note{font-size:11px;color:var(--ink-faint);padding:9px 12px;border-top:1px solid var(--line)}
 
   /* horizontal bar inside a list row — no chart library needed */
   .bars{display:flex;flex-direction:column}
@@ -164,6 +174,8 @@
     .nav{display:flex;padding:8px;flex:1}
     .nav button{width:auto;white-space:nowrap}
     .nav .count,.side-foot{display:none}
+    .review-rail{grid-template-columns:1fr}
+    .query-form input{width:100%}
   }
 </style>
 </head>
@@ -288,7 +300,7 @@
                 // requested `offset=undefined` and its pager computed
                 // `undefined + step` = NaN.
                 offsets: { visitors: 0, sessions: 0, events: 0, video: 0, emails: 0, s24: 0, whatsapp: 0 },
-                type: '', s24Dataset: '', s24Section: 'overview',
+                type: '', s24Dataset: '', s24Section: 'overview', s24Query: '',
                 s24Key: storedDashboardKey || '', counts: {} };
 
   var PAGES = [
@@ -1237,34 +1249,73 @@
     return '<span class="pill ' + cls + '">' + esc(text) + '</span>';
   }
 
-  function fileSize(value) {
-    var n = Number(value);
-    if (!isFinite(n) || n < 0) return '—';
-    if (n < 1024) return num(n) + ' B';
-    if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
-    return (n / 1024 / 1024).toFixed(1) + ' MB';
+  function maskPhone(value) {
+    var digits = String(value == null ? '' : value).replace(/\D/g, '');
+    return digits ? '•••• •••• ' + digits.slice(-4) : '—';
+  }
+
+  function maskPerson(value) {
+    var text = String(value == null ? '' : value).trim();
+    return text ? (text.length === 1 ? '•' : text.slice(0, 1) + '•••') : '—';
+  }
+
+  function maskRecordRef(value) {
+    var text = String(value == null ? '' : value);
+    return text.length > 6 ? text.slice(0, 3) + '••••' + text.slice(-3) : '••••';
+  }
+
+  function reviewableRows(rows) {
+    return (rows || []).filter(function (row) { return row.dataset !== 'firestore_files'; });
+  }
+
+  function matchesS24Query(row, value) {
+    var query = String(value || '').trim().toLocaleLowerCase();
+    if (!query) return true;
+    return [row.dataset, row.action, row.command_type, row.status, row.priority,
+      row.message_type, row.call_type, row.agent_name, row.model, row.provider, row.label]
+      .some(function (field) { return String(field == null ? '' : field).toLocaleLowerCase().includes(query); });
+  }
+
+  function s24ReviewLabel(row) {
+    return row.action || row.agent_name || row.label || row.command_type || 'Record ' + maskRecordRef(row.record_id);
+  }
+
+  function s24RecordType(dataset) {
+    var labels = {
+      device_document: 'Device update',
+      firestore_callLogs: 'Call',
+      firestore_commands: 'Command',
+      firestore_agents: 'Agent',
+      firestore_queue: 'Queue item',
+      direct_call_logs: 'Call',
+      direct_sms: 'Message',
+      direct_location: 'Location'
+    };
+    var knownLabel = labels[dataset];
+    if (knownLabel) return knownLabel;
+    return Object.keys(labels).some(function (key) { return labels[key] === dataset; }) ? dataset : 'Record';
   }
 
   function s24Columns(section) {
     if (section === 'calls') return [
       { label: 'When', render: function (r) { return when(r.called_at); } },
-      { label: 'Contact', render: function (r) { return esc(r.contact_name || 'Unknown'); } },
-      { label: 'Number', render: function (r) { return '<span class="mono">' + esc(r.phone_number || '—') + '</span>'; } },
+      { label: 'Contact', render: function (r) { return esc(maskPerson(r.contact_name)); } },
+      { label: 'Number', render: function (r) { return '<span class="mono">' + esc(maskPhone(r.phone_number)) + '</span>'; } },
       { label: 'Type', render: function (r) { return s24Status(r.call_type); } },
       { label: 'Duration', render: function (r) { return secs(r.duration_sec); } },
-      { label: 'Source', render: function (r) { return '<span class="mono">' + esc(r.dataset) + '</span>'; } }
+      { label: 'Updated', render: function (r) { return ago(r.last_seen); } }
     ];
     if (section === 'sms') return [
       { label: 'When', render: function (r) { return when(r.sent_at); } },
-      { label: 'Correspondent', render: function (r) { return '<span class="mono">' + esc(r.correspondent || '—') + '</span>'; } },
+      { label: 'Correspondent', render: function (r) { return '<span class="mono">' + esc(maskPerson(r.correspondent)) + '</span>'; } },
       { label: 'Direction', render: function (r) { return s24Status(r.message_type); } },
       { label: 'Message', render: function (r) { return '<span class="trunc" style="max-width:440px">' + esc(r.body || '—') + '</span>'; } },
       { label: 'Synced', render: function (r) { return ago(r.last_seen); } }
     ];
     if (section === 'locations') return [
       { label: 'Observed', render: function (r) { return when(r.observed_at); } },
-      { label: 'Latitude', render: function (r) { return r.latitude == null ? '—' : '<span class="mono">' + Number(r.latitude).toFixed(6) + '</span>'; } },
-      { label: 'Longitude', render: function (r) { return r.longitude == null ? '—' : '<span class="mono">' + Number(r.longitude).toFixed(6) + '</span>'; } },
+      { label: 'Latitude', render: function (r) { return r.latitude == null ? '—' : '<span class="mono">' + Number(r.latitude).toFixed(2) + '</span>'; } },
+      { label: 'Longitude', render: function (r) { return r.longitude == null ? '—' : '<span class="mono">' + Number(r.longitude).toFixed(2) + '</span>'; } },
       { label: 'Accuracy', render: function (r) { return r.accuracy_m == null ? '—' : num(r.accuracy_m) + ' m'; } },
       { label: 'Provider', key: 'provider' }
     ];
@@ -1284,14 +1335,6 @@
       { label: 'Requested by', key: 'requested_by' },
       { label: 'Resolved', render: function (r) { return when(r.resolved_at); } }
     ];
-    if (section === 'files') return [
-      { label: 'File', render: function (r) { return '<span class="mono trunc" style="max-width:360px">' + esc(r.filename || r.record_id) + '</span>'; } },
-      { label: 'Type', key: 'file_type' },
-      { label: 'Size', render: function (r) { return fileSize(r.size_bytes); } },
-      { label: 'Status', render: function (r) { return s24Status(r.status); } },
-      { label: 'Created', render: function (r) { return when(r.created_at); } },
-      { label: 'Uploaded', render: function (r) { return when(r.uploaded_at); } }
-    ];
     if (section === 'queue') return [
       { label: 'Created', render: function (r) { return when(r.created_at); } },
       { label: 'Action', render: function (r) { return '<span class="mono">' + esc(r.action || '—') + '</span>'; } },
@@ -1301,10 +1344,10 @@
       { label: 'Description', render: function (r) { return '<span class="trunc" style="max-width:360px">' + esc(r.description || '—') + '</span>'; } }
     ];
     return [
-      { label: 'Dataset', render: function (r) { return '<span class="pill info">' + esc(r.dataset) + '</span>'; } },
+      { label: 'Type', render: function (r) { return '<span class="pill info">' + esc(s24RecordType(r.dataset)) + '</span>'; } },
       { label: 'When', render: function (r) { return when(r.occurred_at || r.last_seen); } },
-      { label: 'Label', render: function (r) { return '<span class="trunc" style="max-width:280px">' + esc(r.label || '—') + '</span>'; } },
-      { label: 'Record id', render: function (r) { return '<span class="mono trunc" style="max-width:220px">' + esc(r.record_id) + '</span>'; } },
+      { label: 'Record', render: function (r) { return '<span class="trunc" style="max-width:280px">' + esc(s24ReviewLabel(r)) + '</span>'; } },
+      { label: 'Review ref', render: function (r) { return '<span class="mono trunc" style="max-width:220px">' + esc(maskRecordRef(r.record_id)) + '</span>'; } },
       { label: 'Last synced', render: function (r) { return ago(r.last_seen); } }
     ];
   }
@@ -1325,35 +1368,38 @@
       var latest = (d.runs || [])[0] || {};
       var counts = d.counts || {};
       var device = d.device || {};
+      var safeDatasets = (d.datasets || []).filter(function (row) { return row.dataset !== 'firestore_files'; });
+      var safeRows = reviewableRows(d.rows);
+      var queryRows = safeRows.filter(function (row) { return matchesS24Query(row, state.s24Query); });
+      var reviewableTotal = Math.max(0, Number(counts.all || 0) - Number(counts.files || 0));
       var sections = [
-        ['overview', 'Overview', counts.all], ['calls', 'Calls', counts.calls],
+        ['overview', 'Overview', reviewableTotal], ['calls', 'Calls', counts.calls],
         ['sms', 'Messages', counts.sms], ['locations', 'Location', counts.locations],
         ['agents', 'Agents', counts.agents], ['commands', 'Commands', counts.commands],
-        // "All records", not "All JSON": this section is a table of the
-        // archive's raw records, each opening as a labelled tree. Nothing on
-        // this page shows JSON, so the label should not promise it.
-        ['files', 'Files', counts.files], ['queue', 'Queue', counts.queue], ['all', 'All records', counts.all]
+        ['queue', 'Queue', counts.queue], ['all', 'All records', reviewableTotal]
       ];
       var sectionNav = '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">' + sections.map(function (item) {
         return '<button class="btn' + (state.s24Section === item[0] ? ' on' : '') + '" data-s24-section="' + item[0] + '">' +
           esc(item[1]) + (item[2] != null ? ' · ' + num(item[2]) : '') + '</button>';
       }).join('') + '</div>';
-      var datasetOptions = '<option value="">All datasets</option>' + (d.datasets || []).map(function (row) {
+      var datasetOptions = '<option value="">All datasets</option>' + safeDatasets.map(function (row) {
         return '<option value="' + esc(row.dataset) + '"' + (state.s24Dataset === row.dataset ? ' selected' : '') + '>' +
-          esc(row.dataset.replace(/_/g, ' ')) + ' · ' + num(row.stored_records) + '</option>';
+          esc(s24RecordType(row.dataset)) + ' · ' + num(row.stored_records) + '</option>';
       }).join('');
-      var coverage = (d.datasets || []).map(function (row) {
+      var coverage = safeDatasets.map(function (row) {
         var cls = row.status === 'ok' ? 'ok' : row.status === 'empty' ? 'mute' : row.status === 'denied' ? 'warn' : 'bad';
         return '<div class="row"><div class="lbl"><span class="pill ' + cls + '">' + esc(row.status) + '</span> ' +
-          '<span class="mono">' + esc(row.dataset) + '</span>' +
+          '<span class="mono">' + esc(s24RecordType(row.dataset)) + '</span>' +
           (row.detail ? '<div style="color:var(--ink-faint);font-size:10.5px;margin-top:3px">' + esc(row.detail) + '</div>' : '') + '</div>' +
           '<div class="val">' + num(row.stored_records) + ' stored / ' + num(row.record_count) + ' seen</div></div>';
       }).join('') || '<div class="empty">No local pull has reached Vercel yet</div>';
       var el = $('page-s24');
       var selectedLabel = (sections.filter(function (item) { return item[0] === state.s24Section; })[0] || ['', 'Records'])[1];
       var recordsCard = '<div class="card"><h3>' + esc(state.s24Section === 'overview' ? 'Recently synchronized records' : selectedLabel) +
-        '<span class="tag">' + num(d.total) + ' matching</span></h3><div class="body flush">' +
-        table(s24Columns(state.s24Section), d.rows, { onRow: true }) + '</div>' + pager('s24', d) + '</div>';
+        '<span class="tag">' + num(queryRows.length) + (state.s24Query ? ' matched' : ' ready') + '</span></h3>' +
+        (state.s24Section === 'all' ? '<div class="query-summary"><strong>' + num(queryRows.length) + '</strong> of ' + num(safeRows.length) + ' loaded review records' + (state.s24Query ? ' · filter: “' + esc(state.s24Query) + '”' : '') + '</div>' : '') +
+        '<div class="body flush">' + table(s24Columns(state.s24Section), queryRows, { onRow: true }) + '</div>' + pager('s24', d) +
+        '<div class="masked-note">Sensitive identifiers, message content and precise locations are masked. Stored artifacts and implementation details are excluded.</div></div>';
       var devicePanel = '<div class="bars">' +
         '<div class="row"><div class="lbl">Runtime attestation</div><div class="val">' + s24Status(device.runtime_is_android === true && device.live_device_verified === true ? 'verified Android' : 'not verified') + '</div></div>' +
         '<div class="row"><div class="lbl">Agent version</div><div class="val mono">' + esc(device.agent_version || '—') + '</div></div>' +
@@ -1403,23 +1449,30 @@
         // clickable run row would index its data-i into the records array and open
         // the wrong record entirely.
         ], d.runs), null, true) +
-        card('Database coverage', '<div class="bars">' + sections.slice(1, 8).map(function (item) {
+        card('Database coverage', '<div class="bars">' + sections.slice(1, 7).map(function (item) {
           return '<div class="row"><div class="lbl">' + esc(item[1]) + '</div><div class="val">' + num(item[2] || 0) + '</div></div>';
         }).join('') + '</div>', d.normalized ? 'typed tables + complete records' : 'migration pending', true) +
         '</div>';
+      var queryRail = state.s24Section === 'all'
+        ? '<div class="review-rail"><div><h3>Review the records, not the storage layer</h3><p>Run a focused query across the safe fields already loaded in this view.</p></div>' +
+          '<form class="query-form" id="s24QueryForm"><input id="s24Query" value="' + esc(state.s24Query) + '" placeholder="Search status, action, agent or type" autocomplete="off">' +
+          '<button class="btn" type="submit">Run query</button>' +
+          (state.s24Query ? '<button class="btn ghost" id="s24QueryClear" type="button">Clear</button>' : '') +
+          '</form></div>'
+        : '';
       el.innerHTML =
         sectionNav +
         '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px">' +
-          (state.s24Section === 'all' ? '<select id="s24DatasetSel" title="Phone dataset">' + datasetOptions + '</select>' : '') +
+          (state.s24Section === 'all' ? '<select id="s24DatasetSel" title="Record type">' + datasetOptions + '</select>' : '') +
           '<button class="btn" id="s24Lock" title="Forgets the shared dashboard key in this browser; every page asks for it again">Lock dashboard</button>' +
           '<span style="color:var(--ink-faint);font-size:11px">phone Termux → Firestore → laptop export → signed HTTPS → Neon</span>' +
         '</div>' +
         '<div class="grid kpis" style="margin-bottom:12px">' +
-          kpi('Stored records', num(counts.all), 'complete source records') +
+          kpi('Review records', num(reviewableTotal), 'safe records available to query') +
           kpi('Calls', num(counts.calls), 'normalized records') +
           kpi('Messages', num(counts.sms), 'normalized records') +
           kpi('Commands', num(counts.commands), 'control history') +
-          kpi('Datasets checked', num((d.datasets || []).length), 'including denied and empty') +
+          kpi('Review groups', num(safeDatasets.length), 'including denied and empty') +
           // d.runs is capped at 25 by db-api; d.runsTotal is the real count. Showing
           // the list length made this tile read "25" forever once 25 runs existed.
           kpi('Sync runs', num(typeof d.runsTotal === 'number' ? d.runsTotal : (d.runs || []).length),
@@ -1427,7 +1480,7 @@
           kpi('Last local pull', latest.started_at ? ago(latest.started_at) : '—', whenText(latest.started_at)) +
           kpi('Phone model', latest.model || '—', latest.android_version ? 'Android ' + latest.android_version : 'not synced') +
           kpi('Signing key', latest.key_id ? latest.key_id.slice(0, 12) + '…' : '—', 'asymmetric upload identity') +
-        '</div>' + (state.s24Section === 'overview' ? overviewPanels : '') + recordsCard;
+        '</div>' + (state.s24Section === 'overview' ? overviewPanels : '') + queryRail + recordsCard;
       Array.prototype.forEach.call(el.querySelectorAll('[data-s24-section]'), function (button) {
         button.addEventListener('click', function () {
           state.s24Section = button.getAttribute('data-s24-section');
@@ -1440,48 +1493,30 @@
           state.offsets.s24 = 0;
           draw();
         });
+      if ($('s24QueryForm')) $('s24QueryForm').addEventListener('submit', function (event) {
+        event.preventDefault();
+        state.s24Query = $('s24Query').value.trim();
+        state.offsets.s24 = 0;
+        draw();
+      });
+      if ($('s24QueryClear')) $('s24QueryClear').addEventListener('click', function () {
+        state.s24Query = '';
+        draw();
+      });
       $('s24Lock').addEventListener('click', lockDashboard);
-      wireRows(el, d.rows, function (row) {
-        var label = row.contact_name || row.correspondent || row.agent_name || row.action || row.filename || row.label || row.record_id;
-        var payload = row.payload && typeof row.payload === 'object' ? row.payload : {};
-        // A file's text arrives twice: as the typed `content` column (Files
-        // section) and as payload.content inside the source record (Files and
-        // the raw All records / Overview listings). kvList skipped the column,
-        // but the payload tree printed the second copy in full, so one result
-        // file filled the drawer. It is shown once, through fileContentHtml,
-        // and taken out of the tree below it.
-        //
-        // payload.content is preferred to the column: s24-store writes the
-        // column through str(), which cuts it at 1,000,000 characters and
-        // turns a non-string into "[object Object]", while raw_payload keeps
-        // the value whole. A non-string content (a map, a list) is left in the
-        // tree, which already renders it as structure.
-        //
-        // Only a FILE record is treated this way. Overview and All records
-        // list every dataset, and a command or queue item whose payload has a
-        // short text `content` would otherwise open under "File content" with
-        // no file name, and lose that text from its own record.
-        var isFile = row.dataset === 'firestore_files' || Boolean(row.filename || payload.filename);
-        var pc = payload.content;
-        var content = !isFile ? null
-          : typeof pc === 'string' && pc !== '' ? pc
-          : ((pc == null || pc === '') && row.content != null && row.content !== '' ? row.content : null);
-        var source = payload;
-        if (content != null && typeof pc === 'string') {
-          source = {};
-          Object.keys(payload).forEach(function (k) { if (k !== 'content') source[k] = payload[k]; });
-        }
-        openDrawer((row.dataset || selectedLabel) + ' · ' + label,
-          kvList(row, ['payload', 'content']) +
-          (content != null
-            ? subHead('File content') + fileContentHtml(content, {
-                filename: row.filename || payload.filename,
-                fileType: row.file_type || payload.type
-              })
-            : '') +
-          subHead('Complete source record') +
-          (source !== payload ? '<p class="muted" style="font-size:11.5px;margin:-3px 0 8px">content — shown under File content above</p>' : '') +
-          treeHtml(source));
+      wireRows(el, queryRows, function (row) {
+        var preview = {
+          type: s24RecordType(row.dataset),
+          review_reference: maskRecordRef(row.record_id),
+          recorded_at: row.occurred_at || row.sent_at || row.called_at || row.requested_at || row.created_at || row.last_seen,
+          status: row.status || row.message_type || row.call_type,
+          action: row.action || row.command_type,
+          message: row.body,
+          details: row.description
+        };
+        openDrawer(s24RecordType(row.dataset) + ' · ' + s24ReviewLabel(row),
+          '<p class="muted" style="font-size:11.5px;margin-bottom:12px">This is a masked review preview. Storage payloads and attachment details are not shown.</p>' +
+          kvList(preview));
       });
     }).catch(function (error) {
       // get() owns every auth failure, 401 and auth-coded 503 alike: by the

@@ -4,6 +4,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Script } from 'node:vm';
 import test from 'node:test';
+import { sanitizeS24Rows } from '../../Backend/db-api.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const html = readFileSync(join(root, 'Frontend', 'db.html'), 'utf8');
@@ -16,11 +17,33 @@ test('database dashboard inline JavaScript parses', () => {
   assert.doesNotThrow(() => new Script(script[1]));
 });
 
-test('all known and fallback S24 sections are present', () => {
-  for (const id of ['overview', 'calls', 'sms', 'locations', 'agents', 'commands', 'files', 'queue', 'all']) {
+test('review sections expose queryable records without a file browser', () => {
+  for (const id of ['overview', 'calls', 'sms', 'locations', 'agents', 'commands', 'queue', 'all']) {
     assert.match(html, new RegExp(`\\['${id}',`), `missing ${id} dashboard section`);
   }
-  assert.match(html, /Complete source record/);
+  assert.doesNotMatch(html, /\['files', 'Files'/);
+  assert.match(html, /Review the records, not the storage layer/);
+  assert.match(html, /Run query/);
+  assert.match(api, /function isReviewableDataset/);
+  assert.match(api, /rows = sanitizeS24Rows\(rows\)/);
+});
+
+test('S24 review response masks identifiers and strips storage artifacts', () => {
+  const rows = sanitizeS24Rows([
+    {
+      dataset: 'firestore_callLogs', record_id: 'record-123456', run_id: 'run-private',
+      contact_name: 'Aarav', phone_number: '+91 98765 43210', payload: { raw: 'private' },
+    },
+    { dataset: 'firestore_files', record_id: 'file-123', filename: 'private.json', content: 'do not return' },
+  ]);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].dataset, 'Call');
+  assert.equal(rows[0].record_id, 'rec••••456');
+  assert.equal(rows[0].contact_name, 'A•••');
+  assert.equal(rows[0].phone_number, '•••• •••• 3210');
+  assert.equal('payload' in rows[0], false);
+  assert.equal('run_id' in rows[0], false);
+  assert.equal('filename' in rows[0], false);
 });
 
 test('typed S24 tables are covered by migration, API, and health inventory', () => {

@@ -18,6 +18,75 @@ import { query, isConfigured } from '../Integrations/postgres.js';
 import { checkKey } from './_auth.js';
 
 const DEFAULT_SITE = 'jaytibirthday.in';
+const FILE_DATASET = 'firestore_files';
+
+// The phone archive is a review surface, not a file browser or a raw-dump
+// endpoint. Keep the fields returned to the browser useful while stripping
+// content, filenames and implementation metadata before they leave Neon.
+function isReviewableDataset(dataset) {
+  return String(dataset || '') !== FILE_DATASET;
+}
+
+function reviewType(dataset) {
+  return {
+    device_document: 'Device update',
+    firestore_callLogs: 'Call',
+    firestore_commands: 'Command',
+    firestore_agents: 'Agent',
+    firestore_queue: 'Queue item',
+    direct_call_logs: 'Call',
+    direct_sms: 'Message',
+    direct_location: 'Location',
+  }[String(dataset || '')] || 'Record';
+}
+
+function maskIdentifier(value) {
+  const text = String(value || '');
+  if (!text) return '—';
+  if (text.length <= 6) return '••••';
+  return `${text.slice(0, 3)}••••${text.slice(-3)}`;
+}
+
+function maskPhone(value) {
+  const digits = String(value || '').replace(/\D/g, '');
+  if (!digits) return '—';
+  return `•••• •••• ${digits.slice(-4)}`;
+}
+
+function maskPerson(value) {
+  const text = String(value || '').trim();
+  if (!text) return '—';
+  return text.length === 1 ? '•' : `${text.slice(0, 1)}•••`;
+}
+
+function coarseCoordinate(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? Number(number.toFixed(2)) : null;
+}
+
+export function sanitizeS24Rows(rows) {
+  return (rows || []).filter((row) => isReviewableDataset(row.dataset)).map((row) => {
+    const {
+      payload, raw_payload, content, filename, file_type, size_bytes,
+      run_id, device_id, first_seen, requested_by, phone_number,
+      contact_name, correspondent, body, latitude, longitude, description,
+      ...safe
+    } = row;
+    return {
+      ...safe,
+      dataset: reviewType(row.dataset),
+      record_id: maskIdentifier(row.record_id),
+      contact_name: contact_name == null ? undefined : maskPerson(contact_name),
+      phone_number: phone_number == null ? undefined : maskPhone(phone_number),
+      correspondent: correspondent == null ? undefined : maskPerson(correspondent),
+      requested_by: requested_by == null ? undefined : maskPerson(requested_by),
+      body: body == null || body === '' ? undefined : `Message stored · ${String(body).length} characters masked`,
+      latitude: coarseCoordinate(latitude),
+      longitude: coarseCoordinate(longitude),
+      description: description == null || description === '' ? undefined : 'Details masked for review',
+    };
+  });
+}
 
 function clampInt(v, def, min, max) {
   const n = Number(v);
@@ -304,12 +373,15 @@ const VIEWS = {
     }
 
     const normalized = Boolean(tableCheck.rows[0].normalized);
-    const selected = ['overview', 'calls', 'sms', 'locations', 'agents', 'commands', 'files', 'queue', 'all'].includes(section)
+    const selected = ['overview', 'calls', 'sms', 'locations', 'agents', 'commands', 'queue', 'all'].includes(section)
       ? section : 'overview';
 
     const rawParams = ['samsung-s24-ultra'];
-    const rawWhere = ['device_id = $1'];
-    if (dataset && selected === 'all') { rawParams.push(dataset); rawWhere.push(`dataset = $${rawParams.length}`); }
+    const rawWhere = ['device_id = $1', `dataset <> '${FILE_DATASET}'`];
+    if (dataset && dataset !== FILE_DATASET && selected === 'all') {
+      rawParams.push(dataset);
+      rawWhere.push(`dataset = $${rawParams.length}`);
+    }
     const rawClause = rawWhere.join(' AND ');
     const rawRows = async () => (await query(
       `SELECT device_id, dataset, record_id, run_id, occurred_at, label, payload,
@@ -357,13 +429,6 @@ const VIEWS = {
                       raw_payload AS payload, last_seen
                  FROM s24_commands ORDER BY requested_at DESC NULLS LAST, last_seen DESC LIMIT $1 OFFSET $2`,
       },
-      files: {
-        count: 'SELECT COUNT(*)::int n FROM s24_files',
-        rows: `SELECT 'firestore_files' AS dataset, record_id, run_id, filename, file_type,
-                      status, size_bytes, created_at, uploaded_at, content,
-                      raw_payload AS payload, last_seen
-                 FROM s24_files ORDER BY uploaded_at DESC NULLS LAST, last_seen DESC LIMIT $1 OFFSET $2`,
-      },
       queue: {
         count: 'SELECT COUNT(*)::int n FROM s24_queue_items',
         rows: `SELECT 'firestore_queue' AS dataset, record_id, run_id, action, item_type,
@@ -381,6 +446,7 @@ const VIEWS = {
       rows = await rawRows();
       total = await rawTotal();
     }
+    rows = sanitizeS24Rows(rows);
 
     const datasets = (await query(
       `WITH latest_run AS (
@@ -395,7 +461,8 @@ const VIEWS = {
          FROM s24_sync_datasets d
          JOIN latest_run l ON l.run_id = d.run_id
          LEFT JOIN stored s ON s.dataset = d.dataset
-        ORDER BY d.dataset`, ['samsung-s24-ultra'])).rows;
+        WHERE d.dataset <> $2
+        ORDER BY d.dataset`, ['samsung-s24-ultra', FILE_DATASET])).rows;
 
     const runs = (await query(
       `SELECT run_id, started_at, finished_at, key_id, host, adb_serial,
@@ -420,13 +487,12 @@ const VIEWS = {
     if (normalized) {
       counts = (await query(
         `SELECT
-          (SELECT COUNT(*)::int FROM s24_records) AS all,
+          (SELECT COUNT(*)::int FROM s24_records WHERE dataset <> '${FILE_DATASET}') AS all,
           (SELECT COUNT(*)::int FROM s24_calls) AS calls,
           (SELECT COUNT(*)::int FROM s24_sms) AS sms,
           (SELECT COUNT(*)::int FROM s24_locations) AS locations,
           (SELECT COUNT(*)::int FROM s24_agents) AS agents,
           (SELECT COUNT(*)::int FROM s24_commands) AS commands,
-          (SELECT COUNT(*)::int FROM s24_files) AS files,
           (SELECT COUNT(*)::int FROM s24_queue_items) AS queue`)).rows[0];
       device = (await query(
         `SELECT observed_at, agent_version, android_version, model, manufacturer,
