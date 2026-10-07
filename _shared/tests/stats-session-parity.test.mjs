@@ -45,15 +45,15 @@ for (const f of RENDERED) {
     assert.match(STATS, new RegExp('\\b' + f + ':'),
       `stats.js never puts ${f} on a session; the column is blank on the default site`);
   });
-  t(`/api/jp-stats carries ${f} on its session rows`, () => {
-    assert.match(JP_STATS, new RegExp('\\b' + f + ':'),
-      `jp-stats.js never puts ${f} on a session`);
+  t(`/api/jp-stats delegates session rows to the shared Neon handler`, () => {
+    assert.match(JP_STATS, /import stats from '\.\/stats\.js'/,
+      'jp-stats.js no longer delegates to the shared stats handler');
   });
 }
 
 t('both endpoints report which property they are scoped to, so the label cannot outrun the data', () => {
   assert.match(STATS, /site:\s*SITE/, 'stats.js stopped reporting its scope');
-  assert.match(JP_STATS, /site:\s*site\s*\|\|\s*'all'/, 'jp-stats.js stopped reporting its scope');
+  assert.match(JP_STATS, /const site = String\(req\.query\?\.site/, 'jp-stats.js stopped selecting its property scope');
 });
 
 console.log(`\n${pass}/${total} checks passed`);

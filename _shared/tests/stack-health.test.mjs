@@ -218,11 +218,11 @@ t('the pages the browser loads are attested by a request, not assumed', () => {
 
 t('a subsystem with genuinely no signal is still left grey', () => {
   // The point of the assets probe was to stop overusing `static`, not to
-  // abolish it. A token piped over stdin on a droplet has no cloud-side
-  // signal, and inventing one would be the exact lie rule 1 forbids.
+  // abolish it. A device runtime contract has no cloud-side signal, and
+  // inventing one would be the exact lie rule 1 forbids.
   const stillStatic = allFiles().filter((f) => f.probe === 'static').map((f) => f.path);
   assert.ok(stillStatic.length > 0, 'static must survive for what truly cannot be probed');
-  for (const p of ['Server/jp-agent/sync-auth-token.py', 'Devices/S24/runtime_contract.json']) {
+  for (const p of ['Devices/S24/runtime_contract.json']) {
     assert.ok(stillStatic.includes(p), p + ' has no live signal and must not have been made green');
   }
 });
