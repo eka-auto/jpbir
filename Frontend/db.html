@@ -685,6 +685,29 @@
     });
   }
 
+  // Inventory deliberately returns counts and names only. It lets the owner
+  // find chats with imported plaintext without putting any message bodies in
+  // the chat list response.
+  function readableWhatsAppInventory() {
+    if (!state.s24Key) return Promise.resolve({ chats: [], totals: {} });
+    return fetch('/api/jp-whatsapp', {
+      cache: 'no-store',
+      headers: { 'x-stats-key': state.s24Key }
+    }).then(function (r) {
+      return r.json().then(function (body) { return { status: r.status, body: body }; });
+    }).then(function (result) {
+      if (result.status === 401) {
+        var auth = new Error('Dashboard key was rejected while finding readable chats.');
+        auth.status = 401;
+        throw auth;
+      }
+      if (!result.body || !result.body.ok) {
+        throw new Error((result.body && result.body.error) || 'Could not load readable-chat inventory.');
+      }
+      return result.body;
+    });
+  }
+
   function readableWhatsAppTable(data) {
     var total = Number(data && data.total_readable_count) || 0;
     var messages = (data && data.messages || []).filter(function (m) { return m.readable === true; });
@@ -708,6 +731,29 @@
               esc(r.display_body || r.body || '—') + '</span>';
           } }
       ], messages);
+  }
+
+  function openWhatsAppDrawer(row) {
+    Promise.all([
+      drawerGet('whatsapp', { id: row.chat_id }),
+      readableWhatsAppMessages(row.chat_id)
+    ]).then(function (result) {
+      var det = result[0];
+      var readable = result[1];
+      openDrawer(row.name || row.chat_id,
+        kvList(det.chat || row, ['raw']) +
+        subHead('Messages by kind') +
+        barList(det.byKind, 'label', 'n') +
+        subHead('Attachments (' + (det.attachments || []).length + ' kinds)') +
+        ((det.attachments || []).length
+          ? table([
+              { label: 'Kind', render: function (r) { return '<span class="pill info">' + esc(r.label) + '</span>'; } },
+              { label: 'Count', key: 'n', num: true },
+              { label: 'Size', render: function (r) { return fileSize(r.bytes); }, num: true }
+            ], det.attachments)
+          : '<div class="empty">No media rows for this chat</div>') +
+        readableWhatsAppTable(readable));
+    }).catch(fail);
   }
   function closeDrawer() {
     // Closing supersedes a detail request still in flight; otherwise its late
@@ -1653,7 +1699,18 @@
   };
 
   RENDER.whatsapp = function () {
-    return get('whatsapp', { limit: 100, offset: state.offsets.whatsapp }).then(function (d) {
+    return Promise.all([
+      get('whatsapp', { limit: 100, offset: state.offsets.whatsapp }),
+      readableWhatsAppInventory()
+    ]).then(function (result) {
+      var d = result[0];
+      var inventory = result[1] || {};
+      var realChats = (inventory.chats || []).filter(function (chat) {
+        return Number(chat.readable_count) > 0;
+      }).sort(function (a, b) {
+        return Number(b.readable_count) - Number(a.readable_count) || String(a.name || '').localeCompare(String(b.name || ''));
+      });
+      var readableTotal = Number((inventory.totals || {}).readable) || 0;
       var t = d.totals || {};
       var el = $('page-whatsapp');
       el.innerHTML =
@@ -1662,6 +1719,7 @@
           kpi('messages', num(t.messages), t.oldest ? whenText(t.oldest).split(',')[0] + ' → ' + whenText(t.newest).split(',')[0] : 'rows') +
           kpi('attachments', num(t.attachments), 'media rows') +
           kpi('sync runs', num(t.runs), 'pushes recorded') +
+          kpi('real text', num(readableTotal), num(realChats.length) + ' chats') +
         '</div>' +
         '<div class="grid cards-2" style="margin-bottom:12px">' +
           card('Chats by kind', barList(d.byKind, 'label', 'n', { sub: 'messages' }), 'groups vs direct', true) +
@@ -1678,7 +1736,17 @@
             { label: 'Device', render: function (r) { return '<span class="mono">' + esc(r.device_id || '—') + '</span>'; } }
           ], d.runs), null, true) +
         '</div>' +
-        '<div class="card">' +
+        '<div class="card" id="readable-wa-chats" style="margin-bottom:12px">' +
+          '<h3>Chats with real text<span class="tag">' + num(realChats.length) + ' chats · ' + num(readableTotal) + ' messages</span></h3>' +
+          '<div class="body flush">' + (realChats.length ? table([
+            { label: 'Chat', render: function (r) { return esc(r.name || '(unnamed)'); } },
+            { label: 'Kind', render: function (r) { return '<span class="pill info">' + esc(r.kind || '—') + '</span>'; } },
+            { label: 'Real text', key: 'readable_count', num: true },
+            { label: 'Stored rows', key: 'stored_count', num: true },
+            { label: 'Last', render: function (r) { return r.last_at ? when(r.last_at).split(',')[0] : '—'; } }
+          ], realChats, { onRow: true }) : '<div class="empty">No imported plaintext message bodies are stored yet.</div>') + '</div>' +
+        '</div>' +
+        '<div class="card" id="all-wa-chats">' +
           '<h3>Chats<span class="tag">' + num(d.total) + ' total · every property</span></h3>' +
           '<div class="body flush">' + table([
             { label: 'Chat', render: function (r) { return esc(r.name || '(unnamed)') + (r.unresolved ? ' <span class="pill warn">unsaved</span>' : ''); } },
@@ -1700,28 +1768,8 @@
           'property\'s traffic — so this page ignores the property selector, the same way Devices and the S24 archive do.' +
         '</div>';
 
-      wireRows(el, d.rows, function (row) {
-        Promise.all([
-          drawerGet('whatsapp', { id: row.chat_id }),
-          readableWhatsAppMessages(row.chat_id)
-        ]).then(function (result) {
-          var det = result[0];
-          var readable = result[1];
-          openDrawer(row.name || row.chat_id,
-            kvList(det.chat || row, ['raw']) +
-            subHead('Messages by kind') +
-            barList(det.byKind, 'label', 'n') +
-            subHead('Attachments (' + (det.attachments || []).length + ' kinds)') +
-            ((det.attachments || []).length
-              ? table([
-                  { label: 'Kind', render: function (r) { return '<span class="pill info">' + esc(r.label) + '</span>'; } },
-                  { label: 'Count', key: 'n', num: true },
-                  { label: 'Size', render: function (r) { return fileSize(r.bytes); }, num: true }
-                ], det.attachments)
-              : '<div class="empty">No media rows for this chat</div>') +
-            readableWhatsAppTable(readable));
-        }).catch(fail);
-      });
+      wireRows($('all-wa-chats'), d.rows, openWhatsAppDrawer);
+      wireRows($('readable-wa-chats'), realChats, openWhatsAppDrawer);
     });
   };
 

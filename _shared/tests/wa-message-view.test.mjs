@@ -42,6 +42,12 @@ const audioMarker = presentMessageRow({
 });
 assert.equal(audioMarker.readable, false, 'audio markers are metadata, not chat text');
 
+const otherMarker = presentMessageRow({
+  msg_id: 'm-other', sent_at: '2026-05-30T16:51:00Z', from_me: true,
+  kind: 'other', encrypted: false, body: '[Other]', chat_name: 'Peer', chat_kind: 'direct',
+});
+assert.equal(otherMarker.readable, false, 'other markers are metadata, not chat text');
+
 const system = presentMessageRow({
   msg_id: 'm3', sent_at: null, from_me: false, sender: '<Undefined>',
   kind: 'system', encrypted: true, body: '[System message]',
@@ -63,8 +69,10 @@ const messageEndpoint = await readFile(new URL('../../Backend/jp-wa-messages.js'
 assert.match(messageEndpoint, /readableOnly/);
 assert.match(messageEndpoint, /m\.body <> ALL/);
 assert.match(dbFrontend, /readableWhatsAppMessages/);
+assert.match(dbFrontend, /readableWhatsAppInventory/);
 assert.match(dbFrontend, /readable: '1'/);
 assert.match(dbFrontend, /Latest readable messages/);
 assert.match(dbFrontend, /m\.readable === true/);
+assert.match(dbFrontend, /Chats with real text/);
 
 console.log('WhatsApp message presentation tests passed');

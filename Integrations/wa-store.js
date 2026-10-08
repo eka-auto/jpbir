@@ -94,6 +94,7 @@ export const MESSAGE_BODY_PLACEHOLDERS = Object.freeze([
   '[Media — image/video]',
   '[Audio message]',
   '[Call]',
+  '[Other]',
 ]);
 
 export function isReadableMessageBody(message = {}) {
