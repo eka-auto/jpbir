@@ -70,3 +70,12 @@ jobs:
             DATABASE_URL FIREBASE_SERVICE_ACCOUNT_JSON SANDBOX_CONFIG_JSON STATS_KEY
           STATIC_ENV_FILES: >-
             {"SANDBOX_CONFIG_JSON":"Devices/sandbox/devices.production.json"}
+
+      - name: Verify channel-sandbox production API
+        env:
+          STATS_KEY: ${{ secrets.STATS_KEY }}
+        run: |
+          test -n "$STATS_KEY"
+          code="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
+            -H "x-stats-key: $STATS_KEY" https://channel-sandbox.vercel.app/api/devices)"
+          test "$code" = 200

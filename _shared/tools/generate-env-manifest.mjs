@@ -35,14 +35,16 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '.
 // script pointing at a bin that no longer gets installed. Prefer the local bin
 // when a contributor happens to have one, otherwise resolve `vercel` from PATH
 // (`npm i -g vercel && vercel login`).
-const LOCAL_VERCEL = path.join(ROOT, 'node_modules', '.bin', 'vercel');
-const VERCEL = fs.existsSync(LOCAL_VERCEL) ? LOCAL_VERCEL : 'vercel';
+const LOCAL_VERCEL_CLI = path.join(ROOT, 'node_modules', 'vercel', 'dist', 'vc.js');
+const GLOBAL_VERCEL_CLI = path.join(process.env.APPDATA || '', 'npm', 'node_modules', 'vercel', 'dist', 'vc.js');
+const VERCEL_CLI = [LOCAL_VERCEL_CLI, GLOBAL_VERCEL_CLI].find((candidate) => fs.existsSync(candidate));
+const VERCEL = VERCEL_CLI ? process.execPath : 'vercel';
 const OUT = path.join(ROOT, '_shared', 'config', 'vercel-env.manifest.json');
 const TEAM = 'team_pbbZItTCyIkGsw6LeGrcWx0c';
 
 const PROJECTS = [
   { name: 'jayti-dashboard', projectId: 'prj_ert0BAxafhopYg8tjtbOMcfjDI9r' },
-  { name: 'channel-sandbox', projectId: 'prj_hRRe8dOt2F3mYU721Qk9lFAG9V92' },
+  { name: 'channel-sandbox', projectId: 'prj_nOjaexHvvUGt4hpGAJHtBsf1rPcf' },
 ];
 const ENVIRONMENTS = ['production', 'preview', 'development'];
 
@@ -53,12 +55,13 @@ const ENVIRONMENTS = ['production', 'preview', 'development'];
 // password, key, or a URL that could carry one.
 const FINGERPRINT_ALLOWLIST = [
   'VERCEL_PROJECT_ID', 'VERCEL_TEAM_ID', 'VERCEL_ANALYTICS_PROJECT_ID',
-  'FIRESTORE_DB', 'JP_AWS_REGION', 'JP_TELEMETRY_TABLE', 'STATS_SITE',
+  'FIRESTORE_DB', 'STATS_SITE',
   'STALE_ALERT_SECONDS', 'SANDBOX_CONFIG_JSON', 'SANDBOX_MODE',
 ];
 
 function run(args, opts = {}) {
-  const r = spawnSync(VERCEL, args, { encoding: 'utf8', timeout: 240000, maxBuffer: 128 * 1024 * 1024, ...opts });
+  const r = spawnSync(VERCEL, VERCEL_CLI ? [VERCEL_CLI, ...args] : args,
+    { encoding: 'utf8', timeout: 240000, maxBuffer: 128 * 1024 * 1024, ...opts });
   if (r.error) throw new Error(`could not run ${VERCEL}: ${r.error.message} — install the Vercel CLI (npm i -g vercel) and log in`);
   if (r.status !== 0) throw new Error(`vercel ${args.join(' ')} failed (${r.status}): ${(r.stderr || r.stdout || '').slice(0, 300)}`);
   return r.stdout || '';
@@ -146,7 +149,7 @@ const manifest = {
     'which detects drift (a BOM, a truncation, a re-save) without disclosing anything.',
     '',
     'One entry per KEY, not per record: Vercel stores a row per key per environment',
-    'group, so 93 records are 73 keys on jayti-dashboard. Values legitimately differ',
+    'group, so the record and key counts can differ. Values legitimately differ',
     'per environment - production SANDBOX_CONFIG_JSON carries the device roster that',
     'preview and development do not - so each environment is listed separately and',
     'environments a key is deliberately absent from are recorded in "absentFrom".',

@@ -96,7 +96,6 @@ t('no variable NAME in the manifest embeds a token', () => {
     'a raw Blob token reached the file');
 
   const redacted = manifest.projects['jayti-dashboard'].vars.filter((v) => v.keyRedacted);
-  assert.ok(redacted.length >= 1, 'the Blob token-in-name vars should be present and redacted');
   for (const v of redacted) {
     assert.match(v.key, /<REDACTED>/, `${v.key} is marked redacted but shows no marker`);
     assert.match(v.keySha256_12, /^[0-9a-f]{12}$/, `${v.key} has no usable fingerprint`);
@@ -106,11 +105,11 @@ t('no variable NAME in the manifest embeds a token', () => {
 
 // ------------------------------------------------- decisions that must not slip --
 
-t('channel-sandbox STATS_KEY stays out of development', () => {
+t('channel-sandbox STATS_KEY stays production-only', () => {
   const v = varOf('channel-sandbox', 'STATS_KEY');
   assert.ok(v, 'STATS_KEY vanished from the manifest');
-  assert.ok(v.absentFrom.includes('development'),
-    'STATS_KEY is back on development, where Vercel returns it in plaintext');
+  assert.deepEqual(Object.keys(v.environments), ['production']);
+  assert.deepEqual(v.absentFrom.sort(), ['development', 'preview']);
   assert.equal(v.type, 'sensitive');
 });
 
@@ -138,16 +137,19 @@ t('the sandbox service-account key stays production-only', () => {
   assert.deepEqual(v.absentFrom.sort(), ['development', 'preview']);
 });
 
-t('production SANDBOX_CONFIG_JSON carries the device roster that preview lacks', () => {
+t('production SANDBOX_CONFIG_JSON carries the device roster without leaking to previews', () => {
   // A lambda has no devices.json, so the roster only ever arrives inside this var.
-  // When it was missing, four routes raised a bare KeyError and Flask answered an
-  // HTML 500 that read like a crash.
+  // Preview deployments intentionally remain uncredentialed: they must not be a
+  // second control-plane endpoint against production Firestore.
   const v = varOf('channel-sandbox', 'SANDBOX_CONFIG_JSON');
   const prod = v.environments.production;
-  const prev = v.environments.preview;
-  assert.ok(prod.length > prev.length,
-    `production (${prod.length}) is not larger than preview (${prev.length}) - roster missing?`);
-  assert.ok(prod.length >= 600, `production config is only ${prod.length} chars`);
+  assert.deepEqual(Object.keys(v.environments), ['production']);
+  assert.deepEqual(v.absentFrom.sort(), ['development', 'preview']);
+  // Vercel returns sensitive values as [SENSITIVE] to env pull, so production
+  // config deliberately has no locally-derived length or fingerprint. The
+  // deployed /api/diag smoke check is the authoritative validation of its JSON.
+  assert.equal('length' in prod, false);
+  assert.equal('sha256_12' in prod, false);
 });
 
 t('jayti-dashboard VERCEL_PROJECT_ID is exactly 32 chars on every environment', () => {
@@ -237,33 +239,9 @@ t('manifest keys nothing reads are recorded as known orphans, with a reason', ()
       'upstash-kv (never wired up)': [
         'KV_REST_API_READ_ONLY_TOKEN', 'KV_REST_API_TOKEN', 'KV_REST_API_URL',
         'KV_URL', 'REDIS_URL'],
-      // A live read-write token embedded in the variable NAME, visible to anyone
-      // with project read access and echoed into build logs. The app reads plain
-      // BLOB_READ_WRITE_TOKEN (Backend/wa-media.js, Backend/wa-blob-upload.js).
-      // Deleting the name does NOT revoke the token; rotation is dashboard-only.
-      // The generator redacts the token segment, so these appear as <REDACTED> and
-      // carry only a keySha256_12 - committing the real names would widen the
-      // exposure from Vercel project access to everyone who can clone the repo.
-      'blob-token-in-variable-name (rotate, do not just delete)': [
-        'vercel_blob_rw_KydwgdJeIogU0Fw6_<REDACTED>_STORE_ID',
-        'vercel_blob_rw_KydwgdJeIogU0Fw6_<REDACTED>_WEBHOOK_PUBLIC_KEY',
-        'vercel_blob_rw_qSrfKqJxsxAzFjXc_<REDACTED>_READ_WRITE_TOKEN',
-        'vercel_blob_rw_qSrfKqJxsxAzFjXc_<REDACTED>_STORE_ID',
-        'vercel_blob_rw_qSrfKqJxsxAzFjXc_<REDACTED>_WEBHOOK_PUBLIC_KEY'],
       'other-unused': ['BLOB_STORE_ID', 'ENDFORM_API_KEY'],
-      // Retired from the source tree in the Neon-only release. They remain in
-      // this inventory until the production deployment has been verified and
-      // the Vercel records are deleted by id.
-      'retired-cloud-runtime (pending production verification)': [
-        'JP_AGENT_TOKEN', 'JP_AGENT_URL',
-        'JP_AWS_ACCESS_KEY_ID', 'JP_AWS_REGION', 'JP_AWS_SECRET_ACCESS_KEY', 'JP_TELEMETRY_TABLE',
-        'JP_WRITE_AWS_ACCESS_KEY_ID', 'JP_WRITE_AWS_SECRET_ACCESS_KEY',
-      ],
     },
-    'channel-sandbox': {
-      // Set on all three environments; nothing in the repo reads it.
-      'other-unused': ['ENDFORM_API_KEY'],
-    },
+    'channel-sandbox': {},
   };
 
   const files = ['Backend', 'Integrations', 'Devices/sandbox', '.github']
