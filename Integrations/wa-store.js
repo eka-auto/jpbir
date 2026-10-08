@@ -92,6 +92,8 @@ export const MESSAGE_BODY_PLACEHOLDERS = Object.freeze([
   ENCRYPTED_PLACEHOLDER,
   '[System message]',
   '[Media — image/video]',
+  '[Audio message]',
+  '[Call]',
 ]);
 
 export function isReadableMessageBody(message = {}) {

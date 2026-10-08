@@ -30,6 +30,18 @@ const incoming = presentMessageRow({
 assert.equal(incoming.sender, null);
 assert.equal(incoming.sender_label, 'Supriya');
 
+const callMarker = presentMessageRow({
+  msg_id: 'm-call', sent_at: '2026-05-30T16:51:00Z', from_me: true,
+  kind: 'call', encrypted: false, body: '[Call]', chat_name: 'Peer', chat_kind: 'direct',
+});
+assert.equal(callMarker.readable, false, 'call markers are metadata, not chat text');
+
+const audioMarker = presentMessageRow({
+  msg_id: 'm-audio', sent_at: '2026-05-30T16:51:00Z', from_me: true,
+  kind: 'audio', encrypted: false, body: '[Audio message]', chat_name: 'Peer', chat_kind: 'direct',
+});
+assert.equal(audioMarker.readable, false, 'audio markers are metadata, not chat text');
+
 const system = presentMessageRow({
   msg_id: 'm3', sent_at: null, from_me: false, sender: '<Undefined>',
   kind: 'system', encrypted: true, body: '[System message]',
