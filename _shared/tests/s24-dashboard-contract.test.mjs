@@ -55,3 +55,10 @@ test('typed S24 tables are covered by migration, API, and health inventory', () 
     assert.match(api, new RegExp(table));
   }
 });
+
+test('agent records are never presented as ready solely because their rows loaded', () => {
+  assert.match(html, /agent record/);
+  assert.doesNotMatch(html, /state\.s24Query \? ' matched' : ' ready'/);
+  assert.match(api, /COALESCE\(activated_at, registered_at\) >= now\(\) - interval '1 hour'/);
+  assert.doesNotMatch(api, /status = 'active' AND last_seen < now\(\) - interval '1 hour'/);
+});

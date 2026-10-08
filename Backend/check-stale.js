@@ -250,15 +250,19 @@ export default async function handler(req, res) {
     }
 
     // ── Neon staleness sweep ────────────────────────────────────────────
-    // Downgrade s24_agents that have been silent for >1h and expire
-    // s24_queue_items that have been pending for >24h without pickup.
+    // Downgrade s24_agents with no recent agent-reported activation and expire
+    // s24_queue_items that have been pending for >24h without pickup.  The
+    // warehouse's last_seen is refreshed by every import, including imports of
+    // an old snapshot, so it is not a liveness signal.
     let neonSweep = null;
     if (pgIsConfigured()) {
       try {
         const [agentResult, queueResult] = await Promise.all([
           pgQuery(
             `UPDATE s24_agents SET status = 'stale'
-             WHERE status = 'active' AND last_seen < now() - interval '1 hour'`
+             WHERE status = 'active'
+               AND (COALESCE(activated_at, registered_at) IS NULL
+                    OR COALESCE(activated_at, registered_at) < now() - interval '1 hour')`
           ),
           pgQuery(
             `UPDATE s24_queue_items SET status = 'expired-stale-check'
