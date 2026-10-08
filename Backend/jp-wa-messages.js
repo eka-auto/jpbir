@@ -59,6 +59,10 @@ export default async function handler(req, res) {
   const before = String(req.query.before || '').trim();
   const q = String(req.query.q || '').trim().slice(0, 200);
   const readableFirst = String(req.query.readable_first || '1') !== '0';
+  // The dashboard's chat drawer uses this to ask specifically for content the
+  // owner can actually read.  Keep it opt-in so the existing timeline keeps
+  // its useful metadata rows and pagination behaviour.
+  const readableOnly = ['1', 'true'].includes(String(req.query.readable || '').toLowerCase());
 
   if (!isConfigured()) {
     return res.status(503).json({ ok: false, error: 'DATABASE_URL not set on this deployment' });
@@ -68,6 +72,10 @@ export default async function handler(req, res) {
     const baseConds = ['m.chat_id = $1', 'm.body IS NOT NULL', "btrim(m.body) <> ''"];
     const conds = baseConds.slice();
     const params = [chatId];
+    if (readableOnly) {
+      params.push(MESSAGE_BODY_PLACEHOLDERS);
+      conds.push(`m.body <> ALL($${params.length}::text[])`);
+    }
     // Keyset pagination over the whole ordering key (sent_at DESC NULLS LAST,
     // msg_id DESC). A cursor of sent_at alone skipped every row sharing the
     // boundary timestamp, re-included all undated rows on each page via the
@@ -131,6 +139,7 @@ export default async function handler(req, res) {
 
     return res.status(200).json({
       ok: true, chat_id: chatId, count: rows.length, next_before: cursor, q: q || null,
+      readable_only: readableOnly,
       readable_count: rows.filter((m) => m.readable).length,
       encrypted_count: rows.filter((m) => !m.readable).length,
       total_count: totals.total | 0,

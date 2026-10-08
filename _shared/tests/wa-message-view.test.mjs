@@ -46,4 +46,13 @@ assert.match(frontend, /total_readable_count/);
 assert.match(frontend, /m\.readable === true/);
 assert.match(frontend, /Inventory gap/);
 
+const dbFrontend = await readFile(new URL('../../Frontend/db.html', import.meta.url), 'utf8');
+const messageEndpoint = await readFile(new URL('../../Backend/jp-wa-messages.js', import.meta.url), 'utf8');
+assert.match(messageEndpoint, /readableOnly/);
+assert.match(messageEndpoint, /m\.body <> ALL/);
+assert.match(dbFrontend, /readableWhatsAppMessages/);
+assert.match(dbFrontend, /readable: '1'/);
+assert.match(dbFrontend, /Latest readable messages/);
+assert.match(dbFrontend, /m\.readable === true/);
+
 console.log('WhatsApp message presentation tests passed');

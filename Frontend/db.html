@@ -656,6 +656,59 @@
       throw e;
     });
   }
+
+  // The generic database API is deliberately broad and keeps recovery
+  // metadata visible.  Message bodies need the more narrowly scoped endpoint
+  // below: it is separately key-gated and can return only bodies that were
+  // actually imported as plaintext.  The dashboard key stays in the request
+  // header, never in a URL or in rendered markup.
+  function readableWhatsAppMessages(chatId) {
+    if (!state.s24Key) {
+      return Promise.resolve({ messages: [], total_readable_count: 0, keyRequired: true });
+    }
+    var q = new URLSearchParams({ chat_id: chatId, limit: 500, readable: '1' });
+    return fetch('/api/jp-wa-messages?' + q.toString(), {
+      cache: 'no-store',
+      headers: { 'x-stats-key': state.s24Key }
+    }).then(function (r) {
+      return r.json().then(function (body) { return { status: r.status, body: body }; });
+    }).then(function (result) {
+      if (result.status === 401) {
+        var auth = new Error('Dashboard key was rejected while loading message text.');
+        auth.status = 401;
+        throw auth;
+      }
+      if (!result.body || !result.body.ok) {
+        throw new Error((result.body && result.body.error) || 'Could not load message text.');
+      }
+      return result.body;
+    });
+  }
+
+  function readableWhatsAppTable(data) {
+    var total = Number(data && data.total_readable_count) || 0;
+    var messages = (data && data.messages || []).filter(function (m) { return m.readable === true; });
+    if (!total) {
+      return subHead('Readable messages') +
+        '<div class="empty">No readable message text is stored for this chat. Its sealed recovery rows do not contain chat text.</div>';
+    }
+    if (!messages.length) {
+      return subHead('Readable messages') +
+        '<div class="empty">' + num(total) + ' readable message bodies exist, but none were returned in this page.</div>';
+    }
+    return subHead('Latest readable messages (' + num(messages.length) + ' of ' + num(total) + ')') +
+      table([
+        { label: 'Sent', render: function (r) { return r.sent_at ? when(r.sent_at) : '—'; } },
+        { label: 'From', render: function (r) {
+            return r.from_me ? '<span class="pill ok">me</span>' : esc(r.sender_label || r.sender || '—');
+          } },
+        { label: 'Kind', render: function (r) { return esc(r.kind || 'text'); } },
+        { label: 'Message', render: function (r) {
+            return '<span style="display:block;max-width:520px;white-space:pre-wrap;overflow-wrap:anywhere">' +
+              esc(r.display_body || r.body || '—') + '</span>';
+          } }
+      ], messages);
+  }
   function closeDrawer() {
     // Closing supersedes a detail request still in flight; otherwise its late
     // response reopened the drawer the operator had just dismissed.
@@ -1648,7 +1701,12 @@
         '</div>';
 
       wireRows(el, d.rows, function (row) {
-        drawerGet('whatsapp', { id: row.chat_id }).then(function (det) {
+        Promise.all([
+          drawerGet('whatsapp', { id: row.chat_id }),
+          readableWhatsAppMessages(row.chat_id)
+        ]).then(function (result) {
+          var det = result[0];
+          var readable = result[1];
           openDrawer(row.name || row.chat_id,
             kvList(det.chat || row, ['raw']) +
             subHead('Messages by kind') +
@@ -1661,19 +1719,7 @@
                   { label: 'Size', render: function (r) { return fileSize(r.bytes); }, num: true }
                 ], det.attachments)
               : '<div class="empty">No media rows for this chat</div>') +
-            subHead('Latest ' + num((det.messages || []).length) + ' messages') +
-            table([
-              { label: 'Sent', render: function (r) { return r.sent_at ? when(r.sent_at) : '—'; } },
-              { label: 'From', render: function (r) { return r.from_me ? '<span class="pill ok">me</span>' : esc(r.sender || '—'); } },
-              { label: 'Kind', render: function (r) { return esc(r.kind); } },
-              // An encrypted row has no body by definition; printing an empty
-              // cell there reads as a load failure rather than a sealed message.
-              { label: 'Body', render: function (r) {
-                  return r.encrypted
-                    ? '<span class="pill warn">sealed</span>'
-                    : '<span class="trunc" style="max-width:340px">' + esc(r.body || '—') + '</span>';
-                } }
-            ], det.messages));
+            readableWhatsAppTable(readable));
         }).catch(fail);
       });
     });
