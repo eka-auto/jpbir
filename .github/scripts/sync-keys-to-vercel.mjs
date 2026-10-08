@@ -12,7 +12,15 @@
 //
 // DRY_RUN=1 reports what would change and writes nothing.
 
-const { VERCEL_TOKEN, VERCEL_TEAM_ID, VERCEL_PROJECT_ID, DRY_RUN, SYNC_KEYS = '', SECRETS_JSON = '{}' } = process.env;
+const {
+  VERCEL_TOKEN,
+  VERCEL_TEAM_ID,
+  VERCEL_PROJECT_ID,
+  DRY_RUN,
+  SYNC_KEYS = '',
+  SECRETS_JSON = '{}',
+  STATIC_ENV_FILES = '{}',
+} = process.env;
 
 if (!VERCEL_TOKEN) {
   console.error('::error::the VERCEL_TOKEN secret is not set');
@@ -33,6 +41,17 @@ async function vercel(path, init = {}) {
 
 const keys = new Set(SYNC_KEYS.split(/\s+/).filter(Boolean));
 const secrets = JSON.parse(SECRETS_JSON);
+const staticFiles = JSON.parse(STATIC_ENV_FILES);
+const staticValues = new Map();
+for (const [key, file] of Object.entries(staticFiles)) {
+  if (!keys.has(key)) throw new Error(`STATIC_ENV_FILES key ${key} is not in SYNC_KEYS`);
+  if (typeof file !== 'string' || !/^[A-Za-z0-9_./-]+$/.test(file) || file.startsWith('/') || file.includes('..')) {
+    throw new Error(`STATIC_ENV_FILES path for ${key} is not a safe repository-relative path`);
+  }
+  const value = await import('node:fs/promises').then(({ readFile }) => readFile(file, 'utf8'));
+  if (!value.trim()) throw new Error(`STATIC_ENV_FILES source for ${key} is empty`);
+  staticValues.set(key, value);
+}
 const [{ envs }, { deployments: [live] }] = await Promise.all([
   vercel(`/v9/projects/${VERCEL_PROJECT_ID}/env`),
   vercel(`/v6/deployments?projectId=${VERCEL_PROJECT_ID}&target=production&state=READY&limit=1`),
@@ -43,7 +62,7 @@ const inProduction = new Set(envs.filter(e => e.target.includes('production')).m
 
 const batch = [];
 for (const key of keys) {
-  const value = secrets[key]?.trim();
+  const value = staticValues.get(key) ?? secrets[key]?.trim();
   if (!value || inProduction.has(key)) continue;
   // A zero-width space spliced into a key has broken auth here before, and a
   // sensitive value can't be inspected once stored. Refuse it; never print it.

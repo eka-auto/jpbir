@@ -32,7 +32,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          sparse-checkout: .github/scripts
+          sparse-checkout: |
+            .github/scripts
+            Devices/sandbox/devices.json
 
       - name: Add missing keys to jayti-dashboard
         run: node .github/scripts/sync-keys-to-vercel.mjs
@@ -52,3 +54,19 @@ jobs:
             GMAIL_APP_PASSWORD HEALTH_CHECK_KEY
             S24_SYNC_PUBLIC_KEYS STALE_ALERT_SECONDS STATS_KEY STATS_SITE
             VERCEL_ANALYTICS_PROJECT_ID VERCEL_API_TOKEN VERCEL_TEAM_ID WA_INGEST_KEY
+
+      # channel-sandbox is a separate Vercel project rooted at Devices/sandbox.
+      # Keep its blast radius small: it receives only the values its Flask
+      # runtime needs, never the dashboard's broader integration credential set.
+      - name: Provision channel-sandbox production
+        run: node .github/scripts/sync-keys-to-vercel.mjs
+        env:
+          DRY_RUN: ${{ (github.event_name != 'workflow_dispatch' || inputs.dry_run) && '1' || '' }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_TEAM_ID: team_pbbZItTCyIkGsw6LeGrcWx0c
+          VERCEL_PROJECT_ID: prj_nOjaexHvvUGt4hpGAJHtBsf1rPcf
+          SECRETS_JSON: ${{ toJSON(secrets) }}
+          SYNC_KEYS: >-
+            DATABASE_URL FIREBASE_SERVICE_ACCOUNT_JSON SANDBOX_CONFIG_JSON STATS_KEY
+          STATIC_ENV_FILES: >-
+            {"SANDBOX_CONFIG_JSON":"Devices/sandbox/devices.json"}
