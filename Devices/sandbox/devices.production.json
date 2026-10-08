@@ -1,0 +1,34 @@
+{
+  "project": "intrepid-stage-495117-q1",
+  "mode": "real",
+  "database": "eka-agent",
+  "collection": "devices",
+  "allow_production_devices": true,
+  "firestore_scope": "https://www.googleapis.com/auth/datastore",
+  "heartbeat_interval_seconds": 15,
+  "command_poll_interval_seconds": 15,
+  "devices": [
+    {
+      "id": "samsung-s24-ultra",
+      "display_name": "Samsung S24 Ultra",
+      "role": "phone",
+      "type": "android",
+      "model": "SM-S928B"
+    },
+    {
+      "id": "jayti-asus-vivobook",
+      "display_name": "Asus VivoBook",
+      "role": "laptop",
+      "type": "windows",
+      "model": "LENOVO"
+    }
+  ],
+  "allowed_commands": [
+    "status-only",
+    "ping",
+    "echo",
+    "wa-push",
+    "wa-media-push",
+    "sync-now"
+  ]
+}

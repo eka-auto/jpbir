@@ -44,7 +44,7 @@ Load the dashboard with `?key=<STATS_KEY>` in the URL; the key persists in
    | Name | Value |
    |---|---|
    | `STATS_KEY` | any long random string; you'll pass it in `?key=` |
-   | `SANDBOX_CONFIG_JSON` | see `.env.example` |
+  | `SANDBOX_CONFIG_JSON` | use `devices.production.json`; it is the only config that explicitly permits the real `devices` collection |
    | `FIREBASE_SERVICE_ACCOUNT_JSON` | paste the service-account JSON as one line |
    | `DATABASE_URL` | the Neon connection string — same name the main backend uses (`POSTGRES_URL` is accepted as a fallback); powers `/api/data/whatsapp` |
 

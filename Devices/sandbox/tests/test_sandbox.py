@@ -6,6 +6,8 @@ import sys
 import tempfile
 import threading
 import unittest
+import json
+from pathlib import Path
 import urllib.error
 from datetime import datetime, timezone
 from pathlib import Path
@@ -214,6 +216,16 @@ class MakeClientConfigTests(unittest.TestCase):
         # missing key file - a different error, proving the guard was passed.
         with self.assertRaises(FileNotFoundError):
             FirestoreClient(**kwargs, allow_production_devices=True)
+
+
+class ProductionConfigTests(unittest.TestCase):
+    def test_deployed_production_config_explicitly_allows_real_devices(self):
+        root = Path(__file__).resolve().parents[1]
+        with (root / "devices.production.json").open(encoding="utf-8") as handle:
+            config = json.load(handle)
+        self.assertEqual(config["mode"], "real")
+        self.assertEqual(config["collection"], "devices")
+        self.assertIs(config.get("allow_production_devices"), True)
 
 
 class MissingRosterTests(unittest.TestCase):

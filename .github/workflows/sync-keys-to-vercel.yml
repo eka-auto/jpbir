@@ -34,7 +34,7 @@ jobs:
         with:
           sparse-checkout: |
             .github/scripts
-            Devices/sandbox/devices.json
+            Devices/sandbox/devices.production.json
 
       - name: Add missing keys to jayti-dashboard
         run: node .github/scripts/sync-keys-to-vercel.mjs
@@ -69,4 +69,4 @@ jobs:
           SYNC_KEYS: >-
             DATABASE_URL FIREBASE_SERVICE_ACCOUNT_JSON SANDBOX_CONFIG_JSON STATS_KEY
           STATIC_ENV_FILES: >-
-            {"SANDBOX_CONFIG_JSON":"Devices/sandbox/devices.json"}
+            {"SANDBOX_CONFIG_JSON":"Devices/sandbox/devices.production.json"}
