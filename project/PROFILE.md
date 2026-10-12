@@ -24,8 +24,8 @@
 - **Data categories:** device telemetry, WhatsApp message content and media (the dashboard ingests WhatsApp), device identifiers, IP/fingerprint data.
 - **Obligations:** India's DPDP Act (personal data). No PCI DSS, no HIPAA. WhatsApp content is the highest-sensitivity data class — it must stay out of logs, traces, prompts and agent context.
 
-## Budgets (owner-approved, Internal tier)
-- To be confirmed by the owner (contract rule 8). Placeholder: AI usage, CI minutes, Vercel, Neon, Firestore, Vercel Blob, droplet. Recorded as Awaiting approval until the owner confirms numbers.
+## Budgets
+- **Removed by the owner (2026-10-12, decision D-11):** no budget ceilings, spend warnings, or cost-approval gates for this run (contract rule 8 not enforced). Owner accepts cost risk.
 
 ## Recovery targets (Internal tier defaults)
 - Availability 99.5%, p95 latency 1 s, RPO 24 h, RTO 24 h, restore drills before first launch then yearly.
@@ -41,3 +41,4 @@
 - D-2: Backup destination = local folder `C:\Users\abcom\.local\share\kilo\cicd-backups` (owner, 2026-10-12). Off-machine copy still needed for 3-2-1; recorded as a task.
 - D-3: GitHub Apps = not created; using the no-CI fallback (orchestrator runs tracker + audit locally). App-dependent platform checks (branch protection, verifier-identity commits) are Blocked pending a CI/scheduler.
 - D-4: Product is live at jaytipargal.tech (owner, 2026-10-12).
+- D-11: Budget constraint removed by the owner (2026-10-12) — contract rule 8 not enforced this run.

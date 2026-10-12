@@ -32,8 +32,10 @@ vercel-jayti2 (team_gcqCiU4UgkhcUJGRGLZYaQiW), firestore-eka-agent (intrepid-sta
 ### D-10: Compliance scope
 Jurisdiction: India. Data: device telemetry, WhatsApp content/media, device identifiers, IP/fingerprint. Obligation: India's DPDP Act. WhatsApp content is the highest-sensitivity class — kept out of logs, traces, prompts and agent context.
 
+### D-11: Budget constraint removed (owner, 2026-10-12)
+The owner removed the budget constraint. Contract rule 8 (hard budget) is NOT enforced for this run: no per-run or monthly budget ceilings, no 50%/80%/100% spend warnings or pauses, no per-task AI usage budget, no cost-estimate approval gate. The owner accepts cost risk. All other contract rules remain in force. The "Budgets" open item is closed as decided.
+
 ### Open items for the owner (Awaiting approval)
-- Budgets per run and per month (contract rule 8): AI usage, Vercel, Neon, Firestore, Vercel Blob, droplet.
 - Off-machine backup copy (3-2-1): upload the bundle to a second location.
 - jp-agent-droplet account/region verification.
 - GitHub Pro upgrade (or make repo public) to unblock T-04 branch protection.
