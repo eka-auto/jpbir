@@ -24,6 +24,25 @@ aws dynamodb scan --table-name jaytipargal_telemetry --region us-west-2 > dynamo
 
 **Item count:** 23 items
 
+## Loading the telemetry backup into Neon
+
+`dynamodb-telemetry-backup.json` is the only surviving copy of those 23 events.
+`Backend/db-push.js` mirrors **live** DynamoDB into Postgres, so it cannot help
+once the table is gone or its credentials are rotated away. The file itself is
+imported instead:
+
+```bash
+npm run db:import-backup                       # Database/backups/dynamodb-telemetry-backup.json
+node Database/scripts/import-telemetry-backup.mjs path/to/other-backup.json
+```
+
+It unmarshals DynamoDB's typed JSON into the camelCase shape `jp-track` writes
+and inserts through `Backend/lib/warehouse.js`, so the rows get the same id,
+site and rollup treatment as the live path. Inserts are `ON CONFLICT DO NOTHING`
+and the `visitors` / `sessions` rollups are recomputed afterwards, so running it
+twice is a no-op. Rows land with `source_system = 'dynamodb-backup'`, which is
+what the dashboard's Health page groups on.
+
 ## 🔄 Migration Plan
 
 ### Step 1: Create Backup

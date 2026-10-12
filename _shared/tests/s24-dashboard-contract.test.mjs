@@ -4,7 +4,6 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Script } from 'node:vm';
 import test from 'node:test';
-import { sanitizeS24Rows } from '../../Backend/db-api.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const html = readFileSync(join(root, 'Frontend', 'db.html'), 'utf8');
@@ -17,33 +16,45 @@ test('database dashboard inline JavaScript parses', () => {
   assert.doesNotThrow(() => new Script(script[1]));
 });
 
-test('review sections expose queryable records without a file browser', () => {
+test('every S24 and warehouse table is read whole: SELECT *, no masking helper', () => {
   for (const id of ['overview', 'calls', 'sms', 'locations', 'agents', 'commands', 'queue', 'all']) {
     assert.match(html, new RegExp(`\\['${id}',`), `missing ${id} dashboard section`);
   }
-  assert.doesNotMatch(html, /\['files', 'Files'/);
   assert.match(html, /Review the records, not the storage layer/);
   assert.match(html, /Run query/);
-  assert.match(api, /function isReviewableDataset/);
-  assert.match(api, /rows = sanitizeS24Rows\(rows\)/);
+  // Whole rows, one statement per table. A column list here is a promise to
+  // keep it in step with the schema, and this is where that promise broke:
+  // 008 added wa_sync_runs.attachments_seen and no list named it.
+  for (const table of ['s24_records', 's24_calls', 's24_sms', 's24_locations', 's24_commands',
+    's24_queue_items', 's24_sync_runs', 's24_device_snapshots', 'wa_chats', 'wa_messages',
+    'wa_attachments', 'wa_sync_runs', 'events', 'visitors', 'sessions', 'letters', 'email_opens',
+    'video_events', 'devices']) {
+    const hits = [];
+    for (let i = api.indexOf('FROM ' + table); i !== -1; i = api.indexOf('FROM ' + table, i + 1)) hits.push(i);
+    assert.ok(hits.length, `${table} is not read by any view`);
+    assert.ok(hits.some((i) => api.slice(Math.max(0, i - 400), i).includes('SELECT *')),
+      `${table} is read with a column list, not SELECT *`);
+  }
+  // Tables with a derived column keep it ALONGSIDE the stored one.
+  assert.match(api, /SELECT \*,/);
+  assert.doesNotMatch(api, /maskPhone|maskPerson|maskIdentifier|coarseCoordinate|sanitizeS24Rows|isReviewableDataset/);
 });
 
-test('S24 review response masks identifiers and strips storage artifacts', () => {
-  const rows = sanitizeS24Rows([
-    {
-      dataset: 'firestore_callLogs', record_id: 'record-123456', run_id: 'run-private',
-      contact_name: 'Aarav', phone_number: '+91 98765 43210', payload: { raw: 'private' },
-    },
-    { dataset: 'firestore_files', record_id: 'file-123', filename: 'private.json', content: 'do not return' },
-  ]);
-  assert.equal(rows.length, 1);
-  assert.equal(rows[0].dataset, 'Call');
-  assert.equal(rows[0].record_id, 'rec••••456');
-  assert.equal(rows[0].contact_name, 'A•••');
-  assert.equal(rows[0].phone_number, '•••• •••• 3210');
-  assert.equal('payload' in rows[0], false);
-  assert.equal('run_id' in rows[0], false);
-  assert.equal('filename' in rows[0], false);
+test('nothing on this path masks, rounds, truncates or filters a stored value', () => {
+  assert.doesNotMatch(api, /maskPhone|maskPerson|maskIdentifier|coarseCoordinate|sanitizeS24Rows|isReviewableDataset/);
+  assert.doesNotMatch(html, /maskPhone|maskPerson|maskRecordRef|reviewableRows/);
+  assert.doesNotMatch(html, /Sensitive identifiers, message content and precise locations are masked/);
+  assert.doesNotMatch(html, /Number\(r\.latitude\)\.toFixed/);
+  assert.doesNotMatch(api, /dataset <> 'firestore_files'/);
+  assert.doesNotMatch(html, /dataset !== 'firestore_files'/);
+  // No tree, cell or file cap left: every one of these replaced a stored value
+  // with a note about the value.
+  assert.match(html, /var TREE_MAX_DEPTH = Infinity;/);
+  assert.match(html, /var TREE_MAX_ENTRIES = Infinity;/);
+  assert.match(html, /var TREE_MAX_NODES = Infinity;/);
+  assert.doesNotMatch(html, /'Not shown/);
+  assert.doesNotMatch(html, /CONTENT_PREVIEW_CHARS/);
+  assert.doesNotMatch(html, /class="[^"]*trunc/);
 });
 
 test('typed S24 tables are covered by migration, API, and health inventory', () => {
