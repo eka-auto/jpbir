@@ -7,42 +7,56 @@
     "approved_by": null,
     "approval": null
   },
-  "events_processed": {},
+  "events_processed": {
+    "devops": 2,
+    "orchestrator": 7
+  },
   "tasks": [
     {
       "id": "T-01",
       "title": "Discover read-only and preserve existing work",
       "step": 0,
       "owner": "orchestrator",
-      "state": "pending"
+      "state": "in_progress",
+      "updated_at": "2026-10-12T02:16:54Z",
+      "note": "Discovery complete: git bundle backup (133.63 MB, 22 refs, SHA-256 8018DA68...), untracked archive (eka-runner-private, eka-runner, jayti). Secret patterns excluded."
     },
     {
       "id": "T-02",
       "title": "Set profile, risk tier, compliance scope, budgets and recovery targets",
       "step": 0,
       "owner": "orchestrator",
-      "state": "pending"
+      "state": "in_progress",
+      "updated_at": "2026-10-12T02:36:27Z",
+      "note": "Owner decision D-11: budget constraint REMOVED. Contract rule 8 (hard budget) is not enforced for this run: no per-run or monthly budget ceilings, no 50/80/100 percent spend warnings or pauses, no per-task AI usage budget, no cost-estimate approval gate. Owner accepts cost risk. All other contract rules remain in force. Budgets open item closed as decided."
     },
     {
       "id": "T-03",
       "title": "Create the environment manifest and the target manifest",
       "step": 0,
       "owner": "orchestrator",
-      "state": "pending"
+      "state": "in_progress",
+      "note": "Environment manifest (Dockerfile node:24.16.0-bookworm-slim, compose.yaml with pinned postgres:16.4, run entry point) and target manifest (5 targets) written.",
+      "updated_at": "2026-10-12T02:15:14Z"
     },
     {
       "id": "T-04",
       "title": "Baseline CI, branch protection and protected controls proven",
       "step": 0,
       "owner": "devops",
-      "state": "pending"
+      "state": "blocked",
+      "updated_at": "2026-10-12T02:27:43Z",
+      "blocker": "CODEOWNERS created and CI workflows (tracker.yml, hod-audit.yml) added, but branch protection on the private repo requires GitHub Pro (HTTP 403). The binding protected-control check (branch protection + required reviews) cannot be proven without a paid plan.",
+      "unblock_by": "owner"
     },
     {
       "id": "T-05",
       "title": "Appoint the HOD; scheduled audit verified running",
       "step": 0,
       "owner": "orchestrator",
-      "state": "pending"
+      "state": "in_progress",
+      "updated_at": "2026-10-12T02:27:38Z",
+      "note": "HOD appointed. Persistent scheduler verified: Windows Task Scheduler task 'jpbir-hod-audit' (daily 08:47 IST = 03:17 UTC) runs project/audit/run-hod-audit.cmd which executes tracker.py selftest + audit. Verified locally: selftest 35/35 PASS, all audit checks PASS, exit 0. HOD runs in its own session from a fresh context (no-CI fallback). GitHub Actions workflows (tracker.yml, hod-audit.yml) also added for when a CI runner is available."
     },
     {
       "id": "T-06",
