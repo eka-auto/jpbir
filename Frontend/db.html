@@ -1487,9 +1487,17 @@
       }).join('');
       var coverage = safeDatasets.map(function (row) {
         var cls = row.status === 'ok' ? 'ok' : row.status === 'empty' ? 'mute' : row.status === 'denied' ? 'warn' : 'bad';
+        // detail, source and collected_at are all selected by db-api for these
+        // rows; only detail was drawn, so a dataset whose pull came from a
+        // different source or stopped being collected looked identical to one
+        // that was fine.
+        var bits = [];
+        if (row.detail) bits.push(esc(row.detail));
+        if (row.collected_at) bits.push('collected ' + when(row.collected_at));
+        if (row.source) bits.push('source ' + esc(row.source));
         return '<div class="row"><div class="lbl"><span class="pill ' + cls + '">' + esc(row.status) + '</span> ' +
           '<span class="mono">' + esc(s24RecordType(row.dataset)) + '</span>' +
-          (row.detail ? '<div style="color:var(--ink-faint);font-size:10.5px;margin-top:3px">' + esc(row.detail) + '</div>' : '') + '</div>' +
+          (bits.length ? '<div style="color:var(--ink-faint);font-size:10.5px;margin-top:3px">' + bits.join(' · ') + '</div>' : '') + '</div>' +
           '<div class="val">' + num(row.stored_records) + ' stored / ' + num(row.record_count) + ' seen</div></div>';
       }).join('') || '<div class="empty">No local pull has reached Vercel yet</div>';
       var el = $('page-s24');
@@ -1508,6 +1516,17 @@
       var devicePanel = '<div class="bars">' +
         '<div class="row"><div class="lbl">Runtime attestation</div><div class="val">' + s24Status(device.runtime_is_android === true && device.live_device_verified === true ? 'verified Android' : 'not verified') + '</div></div>' +
         '<div class="row"><div class="lbl">Agent version</div><div class="val mono">' + esc(device.agent_version || '—') + '</div></div>' +
+        // manufacturer, model, android_version and battery_level were all selected
+        // from s24_device_snapshots and drawn nowhere: the phone's own report of
+        // what it is and what charge it had. The "Phone model" KPI above comes
+        // from the export manifest (s24_sync_runs), which is a different row --
+        // when the two disagree, this is the one the phone wrote about itself.
+        '<div class="row"><div class="lbl">Reported hardware</div><div class="val">' +
+          esc([device.manufacturer, device.model].filter(Boolean).join(' ') || '—') +
+          (device.android_version ? ' <span class="muted">· Android ' + esc(device.android_version) + '</span>' : '') + '</div></div>' +
+        '<div class="row"><div class="lbl">Battery</div><div class="val">' +
+          (device.battery_level == null ? '—' : num(device.battery_level) + '%') + '</div></div>' +
+        '<div class="row"><div class="lbl">Snapshot taken</div><div class="val">' + when(device.observed_at) + '</div></div>' +
         '<div class="row"><div class="lbl">Connection</div><div class="val">' + esc(device.connection_method || '—') + '</div></div>' +
         '<div class="row"><div class="lbl">Heartbeat source</div><div class="val mono">' + esc(device.heartbeat_auth || '—') + ' / ' + esc(device.source_type || '—') + '</div></div>' +
         '<div class="row"><div class="lbl">Last phone evidence</div><div class="val">' + when(device.last_seen) + '</div></div>' +
@@ -1554,6 +1573,16 @@
         // clickable run row would index its data-i into the records array and open
         // the wrong record entirely.
         ], d.runs), null, true) +
+        // The per-chunk ledger. s24_sync_batches records every uploaded chunk of
+        // a run (batch_index of batch_count) and nothing read it: a run that
+        // delivered 12 of 40 chunks showed its own "uploaded" status, and the
+        // missing 28 were visible only by counting rows in the table by hand.
+        card('Batch ledger', table([
+          { label: 'Run', render: function (r) { return '<span class="mono">' + esc((r.run_id || '').slice(0, 10)) + '…</span>'; } },
+          { label: 'Batch', render: function (r) { return num(r.batch_index) + ' / ' + num(r.batch_count); }, num: true },
+          { label: 'Records', key: 'record_count', num: true },
+          { label: 'Received', render: function (r) { return ago(r.received_at); } }
+        ], d.batches), (d.batchesTotal || 0) + ' chunks', true) +
         card('Database coverage', '<div class="bars">' + sections.slice(1, 7).map(function (item) {
           return '<div class="row"><div class="lbl">' + esc(item[1]) + '</div><div class="val">' + num(item[2] || 0) + '</div></div>';
         }).join('') + '</div>', d.normalized ? 'typed tables + complete records' : 'migration pending', true) +
@@ -1724,7 +1753,25 @@
         '<div class="grid cards-2" style="margin-bottom:12px">' +
           card('Chats by kind', barList(d.byKind, 'label', 'n', { sub: 'messages' }), 'groups vs direct', true) +
           card('Recent syncs', table([
-            { label: 'Started', render: function (r) { return when(r.started_at); } },
+            // finished_at is selected by db-api, and a run that never finished has
+            // to read "running…" rather than look like a completed one. The run's
+            // own note rides underneath it, because that is where a partial run
+            // says why -- the difference between a quiet night and a pipeline that
+            // stopped.
+            { label: 'Started', render: function (r) {
+                var base = when(r.started_at);
+                var tail = '';
+                if (!r.finished_at) {
+                  tail = ' <span class="muted">· running…</span>';
+                } else {
+                  var secs = Math.round((new Date(r.finished_at) - new Date(r.started_at)) / 1000);
+                  if (isFinite(secs) && secs >= 0) {
+                    tail = ' <span class="muted">· ' + (secs < 90 ? secs + 's' : Math.round(secs / 60) + 'm') + '</span>';
+                  }
+                }
+                var note = r.note ? '<div style="color:var(--ink-faint);font-size:10.5px;margin-top:3px">' + esc(r.note) + '</div>' : '';
+                return base + tail + note;
+              } },
             // wa_sync_runs has its own two-value vocabulary (running | done);
             // s24Status() maps the device pipeline's words and knows neither.
             { label: 'Status', render: function (r) {
@@ -1733,6 +1780,19 @@
               } },
             { label: 'Chats', key: 'chats_seen', num: true },
             { label: 'Messages', key: 'messages_seen', num: true },
+            // 008_wa_sync_attachment_counts exists for these two numbers: a run
+            // that discarded every attachment used to read exactly like a perfect
+            // one, which is how wa_attachments stayed empty against 18,232 media
+            // messages. Both columns are nullable on purpose -- a run written
+            // before that migration is "unknown", so it prints — and never a 0
+            // that would look like a clean run.
+            { label: 'Attachments', render: function (r) { return num(r.attachments_seen); }, num: true },
+            { label: 'Dropped', render: function (r) {
+                if (r.attachments_skipped == null) return num(r.attachments_skipped);
+                return Number(r.attachments_skipped) > 0
+                  ? '<span class="pill bad">' + num(r.attachments_skipped) + '</span>'
+                  : num(r.attachments_skipped);
+              }, num: true },
             { label: 'Device', render: function (r) { return '<span class="mono">' + esc(r.device_id || '—') + '</span>'; } }
           ], d.runs), null, true) +
         '</div>' +
@@ -1777,6 +1837,24 @@
     return Promise.all([get('health'), get('sites')]).then(function (r) {
       var h = r[0], sites = r[1];
       var cov = h.coverage || {}, total = cov.total || 1;
+      // The events card below answers "is this field arriving" for the one table
+      // the panels hang off. 008 added wa_sync_runs.attachments_seen and nothing
+      // showed it -- a column that lands in no panel and no coverage row cannot
+      // be told apart from data that never arrived. db-api builds this from
+      // information_schema, so the next migration shows up here by itself.
+      var covRows = (h.coverageByTable || []).map(function (t) {
+        var cols = t.columns || [];
+        return {
+          table: t.table,
+          total: t.total,
+          columnCount: cols.length,
+          filled: cols.filter(function (c) { return Number(c.filled) > 0; }).length,
+          empty: cols.filter(function (c) { return !Number(c.filled); }).map(function (c) { return c.name; }),
+          // Every column by name, so a populated new column is still findable
+          // ("is attachments_seen covered?") and not only the empty ones.
+          title: cols.map(function (c) { return c.name + ' ' + num(c.filled); }).join(', ')
+        };
+      });
       var fields = Object.keys(cov).filter(function (k) { return k !== 'total'; });
       var bars = fields.map(function (k) {
         var pct = (cov[k] / total) * 100;
@@ -1797,6 +1875,17 @@
           card('Field coverage on events', bars + '<div style="margin-top:10px;color:var(--ink-faint);font-size:11.5px">' +
             'Share of the ' + num(cov.total) + ' event rows where the column is populated. A panel that looks empty should be checked here first — ' +
             'low coverage means the field is not arriving, not that the UI is broken.</div>') +
+          card('Column coverage by table', table([
+            { label: 'Table', render: function (r) { return '<span class="mono">' + esc(r.table) + '</span>'; } },
+            { label: 'Rows', key: 'total', num: true },
+            { label: 'Columns', render: function (r) {
+                return '<span title="' + esc(r.title) + '">' + num(r.filled) + ' / ' + num(r.columnCount) + '</span>';
+              }, num: true },
+            { label: 'Empty columns', render: function (r) {
+                if (!r.empty.length) return '<span class="muted">all populated</span>';
+                return '<span class="trunc" title="' + esc(r.empty.join(', ')) + '">' + esc(r.empty.join(', ')) + '</span>';
+              } }
+          ], covRows), covRows.length + ' tables', true) +
           card('Where the rows came from', table([
             { label: 'Source', render: function (r) { return '<span class="mono">' + esc(r.source_system) + '</span>'; } },
             { label: 'Rows', key: 'n', num: true },

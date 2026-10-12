@@ -364,7 +364,7 @@ const VIEWS = {
   // with STATS_KEY before any query runs.
   async s24({ limit, offset, dataset, section }) {
     const tableCheck = await query(
-      "SELECT to_regclass('public.s24_sync_runs') AS runs, to_regclass('public.s24_records') AS records, to_regclass('public.s24_calls') AS normalized"
+      "SELECT to_regclass('public.s24_sync_runs') AS runs, to_regclass('public.s24_records') AS records, to_regclass('public.s24_calls') AS normalized, to_regclass('public.s24_sync_batches') AS batches"
     );
     if (!tableCheck.rows[0].runs || !tableCheck.rows[0].records) {
       return { migrated: false, total: 0, limit, offset, rows: [], datasets: [], runs: [] };
@@ -486,6 +486,20 @@ const VIEWS = {
          FROM s24_sync_datasets
         WHERE run_id = (SELECT run_id FROM s24_sync_runs WHERE device_id = $1 ORDER BY started_at DESC LIMIT 1)
         GROUP BY status ORDER BY n DESC`, ['samsung-s24-ultra'])).rows;
+    // The per-chunk ledger. s24_sync_batches records every uploaded chunk of a
+    // run (batch_index of batch_count), and until now nothing read it: a run
+    // that delivered 12 of 40 chunks showed its own "uploaded" status and the
+    // missing 28 were only visible by counting rows in the table by hand.
+    const batches = tableCheck.rows[0].batches ? (await query(
+      `SELECT b.run_id, b.batch_index, b.batch_count, b.record_count, b.received_at
+         FROM s24_sync_batches b
+         JOIN s24_sync_runs r ON r.run_id = b.run_id
+        WHERE r.device_id = $1
+        ORDER BY b.received_at DESC LIMIT 10`, ['samsung-s24-ultra'])).rows : [];
+    const batchesTotal = tableCheck.rows[0].batches ? Number((await query(
+      `SELECT COUNT(*)::int AS n FROM s24_sync_batches b
+         JOIN s24_sync_runs r ON r.run_id = b.run_id
+        WHERE r.device_id = $1`, ['samsung-s24-ultra'])).rows[0].n) || 0 : 0;
     let counts = { all: await rawTotal() };
     let device = null;
     if (normalized) {
@@ -504,7 +518,7 @@ const VIEWS = {
                 runtime_is_android, live_device_verified, last_seen
            FROM s24_device_snapshots ORDER BY observed_at DESC NULLS LAST LIMIT 1`)).rows[0] || null;
     }
-    return { migrated: true, normalized, section: selected, total, limit, offset, rows, datasets, runs, runsTotal, statusCounts, counts, device };
+    return { migrated: true, normalized, section: selected, total, limit, offset, rows, datasets, runs, runsTotal, statusCounts, batches, batchesTotal, counts, device };
   },
 
   // Every table, every column — the "is anything missing" panel.
@@ -554,8 +568,17 @@ const VIEWS = {
       `SELECT kind AS label, COUNT(*)::int n, SUM(msg_count)::int messages
          FROM wa_chats GROUP BY 1 ORDER BY n DESC`)).rows;
 
+    // attachments_seen/attachments_skipped arrived in
+    // Database/schema/008_wa_sync_attachment_counts.sql for one reason: a run
+    // that discarded every attachment -- media metadata with no blob_url, or an
+    // attachment whose chat was never ingested -- read exactly like a perfect
+    // run, which is how wa_attachments stayed empty against 18,232 media
+    // messages without a single run ever flagging it. Both columns are nullable
+    // on purpose, so rows written before that migration are "unknown" rather
+    // than zero and the page must print — for them, never 0.
     const runs = (await query(
-      `SELECT run_id, device_id, started_at, finished_at, chats_seen, messages_seen, status, note
+      `SELECT run_id, device_id, started_at, finished_at, chats_seen, messages_seen,
+              attachments_seen, attachments_skipped, status, note
          FROM wa_sync_runs ORDER BY started_at DESC LIMIT 10`)).rows;
 
     return { total: totals.chats, limit, offset, rows, totals, byKind, runs };
@@ -605,11 +628,40 @@ const VIEWS = {
     const coverage = (await query(
       `SELECT COUNT(*)::int AS total, ${expr} FROM events WHERE site = $1`, [site])).rows[0];
 
+    // The card above only ever covered `events`, so the promise in the comment
+    // above -- that a new migration's column would "appear here by itself" --
+    // held for exactly one table. 008 added wa_sync_runs.attachments_seen and
+    // nothing showed it: a column that lands in no panel and no coverage row is
+    // indistinguishable from data that never arrived. One aggregate per column
+    // per table, so the next migration is visible without another frontend
+    // change. Columns carrying the raw record are skipped -- they are shown in
+    // the drawers, and COUNT() over them costs a full read for a number nobody
+    // reads.
+    const COVERAGE_SKIP = ['id', 'site', 'ingested_at', 'raw_payload', 'event_data', 'payload', 'content'];
+    const coverageByTable = [];
+    for (const t of tables) {
+      if (counts[t] == null) continue; // not migrated here; Health already says so
+      const tableCols = (await query(
+        `SELECT column_name FROM information_schema.columns
+          WHERE table_name = $1 AND table_schema = 'public'
+            AND column_name::text <> ALL($2::text[])
+          ORDER BY ordinal_position`, [t, COVERAGE_SKIP])).rows.map((r) => r.column_name);
+      if (!tableCols.length) continue;
+      const row = (await query(
+        `SELECT COUNT(*)::int AS total, ${tableCols.map((c) => `COUNT("${c}")::int AS "${c}"`).join(', ')} FROM ${t}`
+      )).rows[0];
+      coverageByTable.push({
+        table: t,
+        total: row.total,
+        columns: tableCols.map((c) => ({ name: c, filled: row[c] })),
+      });
+    }
+
     const sources = (await query(
       `SELECT source_system, COUNT(*)::int n, MIN(occurred_at) oldest, MAX(occurred_at) newest
          FROM events GROUP BY 1 ORDER BY n DESC`)).rows;
     const span = (await query('SELECT MIN(occurred_at) oldest, MAX(occurred_at) newest FROM events')).rows[0];
-    return { counts, countsForSite, coverage, sources, span };
+    return { counts, countsForSite, coverage, coverageByTable, sources, span };
   },
 };
 
