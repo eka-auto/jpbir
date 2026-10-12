@@ -36,15 +36,33 @@ const check = (label, ok, detail = '') => {
   console.log(`${ok ? 'PASS' : 'FAIL'}  ${label}${ok ? '' : `\n      ${detail}`}`);
 };
 
-// ---- the API side: is the column even asked for? --------------------------
-check('db-api selects the attachment counts 008 added',
-  /attachments_seen, attachments_skipped/.test(api),
-  'wa_sync_runs is read without the columns that make a dropped attachment visible');
+// ---- the API side: is every column even asked for? ------------------------
+check('db-api reads whole rows: SELECT * for every table a view serves',
+  ['s24_records', 's24_calls', 's24_sms', 's24_locations', 's24_commands', 's24_queue_items',
+    's24_sync_runs', 's24_device_snapshots', 'wa_chats', 'wa_messages', 'wa_attachments',
+    'wa_sync_runs', 'events', 'visitors', 'sessions', 'letters', 'email_opens', 'video_events', 'devices']
+    .every((table) => {
+      const hits = [];
+      for (let i = api.indexOf('FROM ' + table); i !== -1; i = api.indexOf('FROM ' + table, i + 1)) hits.push(i);
+      return hits.some((i) => api.slice(Math.max(0, i - 400), i).includes('SELECT *'));
+    }),
+  'a table is still read with a hand-kept column list, which is how a column goes missing');
+check('db-api has no masking, rounding or dataset filter left',
+  !/maskPhone|maskPerson|maskIdentifier|coarseCoordinate|sanitizeS24Rows|isReviewableDataset|dataset <> 'firestore_files'/.test(api),
+  'a stored value is still being changed on the way out');
 check('db-api returns the per-chunk batch ledger',
   /statusCounts, batches, batchesTotal/.test(api), 's24_sync_batches has no reader');
 check('db-api returns coverage for every table, not only events',
   /coverage, coverageByTable, sources, span/.test(api),
   'a column added by a future migration would have neither a panel nor a coverage row');
+check('db-api exposes one generic view over an allow-list of app tables',
+  /const APP_TABLES = \[/.test(api) && /APP_TABLES\.includes\(table\)/.test(api) && /SELECT \* FROM \$\{table\}/.test(api),
+  'there is no every-column view, or it is not scoped to the app table list');
+check('the handler forwards the table name to the generic view',
+  /name: req\.query\.name/.test(api), 'the every-column view can never be asked for a table');
+check('the coverage queries are scoped to the public schema and the app table list',
+  (api.match(/table_schema = 'public'/g) || []).length >= 2 && !/information_schema\.tables/.test(api),
+  'coverage could report tables this app does not own');
 
 // ---- the page side: does it draw them? ------------------------------------
 const script = html.match(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/)[1];
@@ -106,6 +124,13 @@ const DATA = {
     }],
     rows: [{ chat_id: 'c1', name: 'Chat', kind: 'direct', msg_count: 5, enc_count: 0, media_count: 2, audio_count: 0, call_count: 0, member_count: null, last_at: iso(1) }],
   },
+  table: { table: 'events', total: 1, limit: 100, offset: 0,
+    columns: [
+      { column_name: 'id', data_type: 'text' },
+      { column_name: 'occurred_at', data_type: 'timestamp with time zone' },
+      { column_name: 'brand_new_column', data_type: 'text' }
+    ],
+    rows: [{ id: 'e-1', occurred_at: iso(1), brand_new_column: 'a value that must be on screen' }] },
   s24: {
     migrated: true, normalized: true, section: 'overview', total: 1, limit: 100, offset: 0, rows: [],
     datasets: [{ dataset: 'direct_sms', status: 'ok', record_count: 10, stored_records: 10, source: 'pull_direct_cloud.py', detail: 'all records stored', collected_at: iso(5) }],
@@ -133,6 +158,7 @@ await new Promise((resolve) => setTimeout(resolve, 0));
 
 dbg.state.s24Key = KEY;
 await dbg.RENDER.health();
+await dbg.RENDER.tables();
 await dbg.RENDER.whatsapp();
 await dbg.RENDER.s24();
 
@@ -163,6 +189,14 @@ check('Health covers every table, and names the empty columns',
 check('a populated new column is still findable by name',
   health.includes('attachments_seen 3'),
   'only empty columns are named, so "is this column arriving?" has no answer');
+
+const tablesPage = $('page-tables').innerHTML;
+check('the all-tables page lists every column of the table it opened',
+  ['id', 'occurred_at', 'brand_new_column'].every((c) => tablesPage.includes(c)),
+  'a column of the selected table is not named on the page');
+check('the all-tables page renders the stored value of every column',
+  tablesPage.includes('a value that must be on screen') && tablesPage.includes('e-1'),
+  'a column rendered as a header with no value');
 
 console.log(failures ? `\n${failures} check(s) failed` : '\nall checks passed');
 process.exitCode = failures ? 1 : 0;

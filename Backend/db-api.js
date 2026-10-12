@@ -16,75 +16,26 @@ import { query, isConfigured } from '../Integrations/postgres.js';
 import { checkKey } from './_auth.js';
 
 const DEFAULT_SITE = 'jaytibirthday.in';
-const FILE_DATASET = 'firestore_files';
 
-// The phone archive is a review surface, not a file browser or a raw-dump
-// endpoint. Keep the fields returned to the browser useful while stripping
-// content, filenames and implementation metadata before they leave Neon.
-function isReviewableDataset(dataset) {
-  return String(dataset || '') !== FILE_DATASET;
-}
-
-function reviewType(dataset) {
-  return {
-    device_document: 'Device update',
-    firestore_callLogs: 'Call',
-    firestore_commands: 'Command',
-    firestore_agents: 'Agent',
-    firestore_queue: 'Queue item',
-    direct_call_logs: 'Call',
-    direct_sms: 'Message',
-    direct_location: 'Location',
-  }[String(dataset || '')] || 'Record';
-}
-
-function maskIdentifier(value) {
-  const text = String(value || '');
-  if (!text) return '—';
-  if (text.length <= 6) return '••••';
-  return `${text.slice(0, 3)}••••${text.slice(-3)}`;
-}
-
-function maskPhone(value) {
-  const digits = String(value || '').replace(/\D/g, '');
-  if (!digits) return '—';
-  return `•••• •••• ${digits.slice(-4)}`;
-}
-
-function maskPerson(value) {
-  const text = String(value || '').trim();
-  if (!text) return '—';
-  return text.length === 1 ? '•' : `${text.slice(0, 1)}•••`;
-}
-
-function coarseCoordinate(value) {
-  const number = Number(value);
-  return Number.isFinite(number) ? Number(number.toFixed(2)) : null;
-}
-
-export function sanitizeS24Rows(rows) {
-  return (rows || []).filter((row) => isReviewableDataset(row.dataset)).map((row) => {
-    const {
-      payload, raw_payload, content, filename, file_type, size_bytes,
-      run_id, device_id, first_seen, requested_by, phone_number,
-      contact_name, correspondent, body, latitude, longitude, description,
-      ...safe
-    } = row;
-    return {
-      ...safe,
-      dataset: reviewType(row.dataset),
-      record_id: maskIdentifier(row.record_id),
-      contact_name: contact_name == null ? undefined : maskPerson(contact_name),
-      phone_number: phone_number == null ? undefined : maskPhone(phone_number),
-      correspondent: correspondent == null ? undefined : maskPerson(correspondent),
-      requested_by: requested_by == null ? undefined : maskPerson(requested_by),
-      body: body == null || body === '' ? undefined : `Message stored · ${String(body).length} characters masked`,
-      latitude: coarseCoordinate(latitude),
-      longitude: coarseCoordinate(longitude),
-      description: description == null || description === '' ? undefined : 'Details masked for review',
-    };
-  });
-}
+// Every table this app reads, in one place. It is the allow-list for the
+// generic `table` view below, and the row + column inventory on Health.
+//
+// Deliberately a list rather than "whatever is in public": this Neon database
+// is shared with the sibling jaytibirthday-site deployment, so a dashboard that
+// enumerated the schema would report -- and serve -- another project's tables.
+// A new table is added here once, and from then on it is browsable, counted and
+// covered without another frontend change.
+const APP_TABLES = [
+  'events', 'visitors', 'sessions', 'letters', 'email_opens', 'video_events', 'devices',
+  // Sibling-owned (009_device_telemetry.sql in jaytibirthday-site). Read-only
+  // here, and guarded by to_regclass so an unmigrated database reports it as
+  // absent instead of failing the page.
+  'device_telemetry',
+  'wa_chats', 'wa_messages', 'wa_attachments', 'wa_sync_runs',
+  's24_sync_runs', 's24_sync_datasets', 's24_sync_batches', 's24_records', 's24_ingest_seen',
+  's24_device_snapshots', 's24_calls', 's24_sms', 's24_locations',
+  's24_agents', 's24_commands', 's24_files', 's24_queue_items',
+];
 
 function clampInt(v, def, min, max) {
   const n = Number(v);
@@ -236,10 +187,10 @@ const VIEWS = {
   async visitors({ site, days, limit, offset }) {
     const where = "WHERE site = $1 AND last_seen_at > now() - ($2 || ' days')::interval";
     const rows = (await query(
-      `SELECT visitor_id, first_seen_at, last_seen_at, event_count, session_count,
-              country, region, city, timezone, browser, os, device_type,
-              utm_source, utm_medium, fingerprint, user_agent
-         FROM visitors ${where}
+      // SELECT *: a column list here is a promise to keep it in step with the
+      // schema, and every list that made that promise has already fallen behind
+      // it once. The row is returned whole; the page decides what to show.
+      `SELECT * FROM visitors ${where}
         ORDER BY last_seen_at DESC LIMIT $3 OFFSET $4`, [site, days, limit, offset])).rows;
     const total = (await query(`SELECT COUNT(*)::int n FROM visitors ${where}`, [site, days])).rows[0].n;
     return { total, limit, offset, rows };
@@ -249,14 +200,11 @@ const VIEWS = {
     if (!id) throw new Error('id required');
     const profile = (await query('SELECT * FROM visitors WHERE site = $1 AND visitor_id = $2', [site, id])).rows[0] || null;
     const sessions = (await query(
-      `SELECT session_id, started_at, last_event_at, event_count, entry_page, exit_page
-         FROM sessions WHERE site = $1 AND visitor_id = $2 ORDER BY started_at DESC`, [site, id])).rows;
+      `SELECT * FROM sessions WHERE site = $1 AND visitor_id = $2 ORDER BY started_at DESC`, [site, id])).rows;
     const eventTotal = (await query(
       'SELECT COUNT(*)::int n FROM events WHERE site = $1 AND visitor_id = $2', [site, id])).rows[0].n;
     const events = (await query(
-      `SELECT id, event_type, occurred_at, page_url, page_title, referrer, time_on_page,
-              scroll_percent, interactions, city, country, browser, os, device_type
-         FROM events WHERE site = $1 AND visitor_id = $2
+      `SELECT * FROM events WHERE site = $1 AND visitor_id = $2
         ORDER BY occurred_at DESC LIMIT 500`, [site, id])).rows;
     return { profile, sessions, events, eventTotal, eventLimit: 500 };
   },
@@ -264,8 +212,7 @@ const VIEWS = {
   async sessions({ site, days, limit, offset }) {
     const where = "WHERE site = $1 AND started_at > now() - ($2 || ' days')::interval";
     const rows = (await query(
-      `SELECT session_id, visitor_id, started_at, last_event_at, event_count, entry_page, exit_page,
-              EXTRACT(epoch FROM (last_event_at - started_at))::int duration_seconds
+      `SELECT *, EXTRACT(epoch FROM (last_event_at - started_at))::int duration_seconds
          FROM sessions ${where} ORDER BY started_at DESC LIMIT $3 OFFSET $4`,
       [site, days, limit, offset])).rows;
     const total = (await query(`SELECT COUNT(*)::int n FROM sessions ${where}`, [site, days])).rows[0].n;
@@ -276,9 +223,7 @@ const VIEWS = {
     if (!id) throw new Error('id required');
     const meta = (await query('SELECT * FROM sessions WHERE site = $1 AND session_id = $2', [site, id])).rows[0] || null;
     const events = (await query(
-      `SELECT id, event_type, occurred_at, page_url, page_title, time_on_page, scroll_percent,
-              interactions, event_data
-         FROM events WHERE site = $1 AND session_id = $2 ORDER BY occurred_at ASC`, [site, id])).rows;
+      `SELECT * FROM events WHERE site = $1 AND session_id = $2 ORDER BY occurred_at ASC`, [site, id])).rows;
     return { meta, events };
   },
 
@@ -289,11 +234,7 @@ const VIEWS = {
     else if (!includeNoise) { params.push(NOISE_TYPES); where.push(`event_type <> ALL($${params.length})`); }
     const clause = where.join(' AND ');
     const rows = (await query(
-      `SELECT id, event_type, occurred_at, visitor_id, session_id, page_url, page_title,
-              referrer, country, region, city, timezone, browser, os, device_type,
-              time_on_page, scroll_percent, interactions, utm_source, utm_medium,
-              asn, asn_org, language, page_domain, fingerprint, ip
-         FROM events WHERE ${clause}
+      `SELECT * FROM events WHERE ${clause}
         ORDER BY occurred_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
       params.concat([limit, offset]))).rows;
     const total = (await query(`SELECT COUNT(*)::int n FROM events WHERE ${clause}`, params)).rows[0].n;
@@ -307,9 +248,7 @@ const VIEWS = {
 
   async video({ site, limit, offset }) {
     const rows = (await query(
-      `SELECT event_id, video_event, occurred_at, site, country, city, visitor_device,
-              recorded_by, source_system, ingested_at
-         FROM video_events WHERE site = $1
+      `SELECT * FROM video_events WHERE site = $1
         ORDER BY occurred_at DESC LIMIT $2 OFFSET $3`, [site, limit, offset])).rows;
     const total = (await query('SELECT COUNT(*)::int n FROM video_events WHERE site = $1', [site])).rows[0].n;
     const byClip = (await query(
@@ -323,8 +262,7 @@ const VIEWS = {
 
   async devices() {
     return (await query(
-      `SELECT device_id, display_name, online, last_seen_at, daemon_version, platform,
-              info, source_system, synced_at,
+      `SELECT *,
               CASE
                 WHEN last_seen_at IS NULL THEN 'unknown'
                 WHEN last_seen_at > now() - interval '2 minutes' THEN 'online'
@@ -339,7 +277,7 @@ const VIEWS = {
     // the whole view — the worst failure mode for the only surviving record of
     // a letter, since the blob copy is destroyed on read.
     return (await query(
-      `SELECT token, site, created_at, read_at, deleted_at, source_system, ingested_at, body,
+      `SELECT *,
               body ->> 'email'     AS email,
               body ->> 'expiresAt' AS expires_at,
               body ->> 'viewed'    AS viewed,
@@ -350,8 +288,7 @@ const VIEWS = {
 
   async emails({ limit, offset }) {
     const rows = (await query(
-      `SELECT id, email, opened_at, ip, country, city, user_agent, payload, source_system, ingested_at
-         FROM email_opens ORDER BY opened_at DESC LIMIT $1 OFFSET $2`, [limit, offset])).rows;
+      `SELECT * FROM email_opens ORDER BY opened_at DESC LIMIT $1 OFFSET $2`, [limit, offset])).rows;
     const total = (await query('SELECT COUNT(*)::int n FROM email_opens')).rows[0].n;
     const byRecipient = (await query(
       `SELECT email AS label, COUNT(*)::int n, MAX(opened_at) last_at
@@ -361,7 +298,11 @@ const VIEWS = {
 
   // Private phone data. Unlike aggregate site analytics, this can contain
   // names, numbers, message text and file paths, so the handler gates this view
-  // with STATS_KEY before any query runs.
+  // with STATS_KEY before any query runs -- and once past that gate it returns
+  // the rows whole. Nothing here renames a value, drops a column, rounds a
+  // coordinate or filters a dataset out: a field that was worth storing is worth
+  // showing, and a "review surface" that hides half of a row is how a column
+  // that never arrived looks exactly like a column that was never selected.
   async s24({ limit, offset, dataset, section }) {
     const tableCheck = await query(
       "SELECT to_regclass('public.s24_sync_runs') AS runs, to_regclass('public.s24_records') AS records, to_regclass('public.s24_calls') AS normalized, to_regclass('public.s24_sync_batches') AS batches"
@@ -375,16 +316,14 @@ const VIEWS = {
       ? section : 'overview';
 
     const rawParams = ['samsung-s24-ultra'];
-    const rawWhere = ['device_id = $1', `dataset <> '${FILE_DATASET}'`];
-    if (dataset && dataset !== FILE_DATASET && selected === 'all') {
+    const rawWhere = ['device_id = $1'];
+    if (dataset && selected === 'all') {
       rawParams.push(dataset);
       rawWhere.push(`dataset = $${rawParams.length}`);
     }
     const rawClause = rawWhere.join(' AND ');
     const rawRows = async () => (await query(
-      `SELECT device_id, dataset, record_id, run_id, occurred_at, label, payload,
-              first_seen, last_seen
-         FROM s24_records WHERE ${rawClause}
+      `SELECT * FROM s24_records WHERE ${rawClause}
         ORDER BY occurred_at DESC NULLS LAST, last_seen DESC
         LIMIT $${rawParams.length + 1} OFFSET $${rawParams.length + 2}`,
       rawParams.concat([limit, offset])
@@ -395,49 +334,39 @@ const VIEWS = {
     const sectionSql = {
       calls: {
         count: 'SELECT COUNT(*)::int n FROM s24_calls',
-        rows: `SELECT source_dataset AS dataset, record_id, run_id, called_at, contact_name,
-                      phone_number, call_type, duration_sec, backed_up_at, raw_payload AS payload, last_seen
-                 FROM s24_calls ORDER BY called_at DESC NULLS LAST, last_seen DESC LIMIT $1 OFFSET $2`,
+        rows: `SELECT * FROM s24_calls ORDER BY called_at DESC NULLS LAST, last_seen DESC LIMIT $1 OFFSET $2`,
       },
       sms: {
         count: 'SELECT COUNT(*)::int n FROM s24_sms',
-        rows: `SELECT source_dataset AS dataset, record_id, run_id, sent_at, correspondent,
-                      message_type, body, raw_payload AS payload, last_seen
-                 FROM s24_sms ORDER BY sent_at DESC NULLS LAST, last_seen DESC LIMIT $1 OFFSET $2`,
+        rows: `SELECT * FROM s24_sms ORDER BY sent_at DESC NULLS LAST, last_seen DESC LIMIT $1 OFFSET $2`,
       },
       locations: {
         count: 'SELECT COUNT(*)::int n FROM s24_locations',
-        rows: `SELECT source_dataset AS dataset, record_id, run_id, observed_at, latitude,
-                      longitude, accuracy_m, provider, raw_payload AS payload, last_seen
-                 FROM s24_locations ORDER BY observed_at DESC NULLS LAST, last_seen DESC LIMIT $1 OFFSET $2`,
+        rows: `SELECT * FROM s24_locations ORDER BY observed_at DESC NULLS LAST, last_seen DESC LIMIT $1 OFFSET $2`,
       },
       agents: {
         count: 'SELECT COUNT(*)::int n FROM s24_agents',
-        rows: `SELECT 'firestore_agents' AS dataset, record_id, run_id, agent_name,
+        rows: `SELECT *,
                       -- last_seen is the warehouse import time and is refreshed
                       -- whenever an old snapshot is re-imported. It must not turn
-                      -- an historical "active" value into a live agent.
+                      -- an historical "active" value into a live agent. The stored
+                      -- status is kept alongside it as status_stored, so the
+                      -- derived value never overwrites what the phone reported.
                       CASE WHEN status = 'active'
                                   AND COALESCE(activated_at, registered_at) >= now() - interval '1 hour'
                            THEN 'active'
                            WHEN status = 'active' THEN 'stale'
-                           ELSE status END AS status,
-                      model, api_enabled, bridged, port, registered_at, activated_at,
-                      raw_payload AS payload, last_seen
+                           ELSE status END AS status_stored,
+                      status AS status_raw
                  FROM s24_agents ORDER BY activated_at DESC NULLS LAST, last_seen DESC LIMIT $1 OFFSET $2`,
       },
       commands: {
         count: 'SELECT COUNT(*)::int n FROM s24_commands',
-        rows: `SELECT source_dataset AS dataset, record_id, run_id, action, command_type,
-                      status, priority, requested_at, resolved_at, requested_by,
-                      raw_payload AS payload, last_seen
-                 FROM s24_commands ORDER BY requested_at DESC NULLS LAST, last_seen DESC LIMIT $1 OFFSET $2`,
+        rows: `SELECT * FROM s24_commands ORDER BY requested_at DESC NULLS LAST, last_seen DESC LIMIT $1 OFFSET $2`,
       },
       queue: {
         count: 'SELECT COUNT(*)::int n FROM s24_queue_items',
-        rows: `SELECT 'firestore_queue' AS dataset, record_id, run_id, action, item_type,
-                      status, priority, description, created_at, raw_payload AS payload, last_seen
-                 FROM s24_queue_items ORDER BY created_at DESC NULLS LAST, last_seen DESC LIMIT $1 OFFSET $2`,
+        rows: `SELECT * FROM s24_queue_items ORDER BY created_at DESC NULLS LAST, last_seen DESC LIMIT $1 OFFSET $2`,
       },
     };
 
@@ -450,7 +379,6 @@ const VIEWS = {
       rows = await rawRows();
       total = await rawTotal();
     }
-    rows = sanitizeS24Rows(rows);
 
     const datasets = (await query(
       `WITH latest_run AS (
@@ -460,18 +388,14 @@ const VIEWS = {
          SELECT dataset, COUNT(*)::int stored_records, MAX(last_seen) last_seen
            FROM s24_records WHERE device_id = $1 GROUP BY dataset
        )
-       SELECT d.dataset, d.status, d.record_count, d.source, d.detail, d.collected_at,
-              COALESCE(s.stored_records, 0)::int stored_records, s.last_seen
-         FROM s24_sync_datasets d
-         JOIN latest_run l ON l.run_id = d.run_id
-         LEFT JOIN stored s ON s.dataset = d.dataset
-        WHERE d.dataset <> $2
-        ORDER BY d.dataset`, ['samsung-s24-ultra', FILE_DATASET])).rows;
+       SELECT d.*, COALESCE(s.stored_records, 0)::int stored_records, s.last_seen
+          FROM s24_sync_datasets d
+          JOIN latest_run l ON l.run_id = d.run_id
+          LEFT JOIN stored s ON s.dataset = d.dataset
+         ORDER BY d.dataset`, ['samsung-s24-ultra'])).rows;
 
     const runs = (await query(
-      `SELECT run_id, started_at, finished_at, key_id, host, adb_serial,
-              android_version, model, record_count, uploaded_records, upload_status, uploaded_at, notes
-         FROM s24_sync_runs WHERE device_id = $1
+      `SELECT * FROM s24_sync_runs WHERE device_id = $1
         ORDER BY started_at DESC LIMIT 25`, ['samsung-s24-ultra'])).rows;
     // The LIMIT above is a page, but /db rendered its length as the "Sync runs"
     // KPI -- so once 25 runs existed the tile read "25" forever, on the one
@@ -491,7 +415,7 @@ const VIEWS = {
     // that delivered 12 of 40 chunks showed its own "uploaded" status and the
     // missing 28 were only visible by counting rows in the table by hand.
     const batches = tableCheck.rows[0].batches ? (await query(
-      `SELECT b.run_id, b.batch_index, b.batch_count, b.record_count, b.received_at
+      `SELECT b.*, r.started_at AS run_started_at
          FROM s24_sync_batches b
          JOIN s24_sync_runs r ON r.run_id = b.run_id
         WHERE r.device_id = $1
@@ -503,20 +427,22 @@ const VIEWS = {
     let counts = { all: await rawTotal() };
     let device = null;
     if (normalized) {
+      // Every typed table is counted, including s24_files and the snapshots.
+      // A table left out of this list is a section that silently reads 0 -- the
+      // one number an operator uses to decide there is nothing to look at.
       counts = (await query(
         `SELECT
-          (SELECT COUNT(*)::int FROM s24_records WHERE dataset <> '${FILE_DATASET}') AS all,
+          (SELECT COUNT(*)::int FROM s24_records) AS all,
           (SELECT COUNT(*)::int FROM s24_calls) AS calls,
           (SELECT COUNT(*)::int FROM s24_sms) AS sms,
           (SELECT COUNT(*)::int FROM s24_locations) AS locations,
           (SELECT COUNT(*)::int FROM s24_agents) AS agents,
           (SELECT COUNT(*)::int FROM s24_commands) AS commands,
-          (SELECT COUNT(*)::int FROM s24_queue_items) AS queue`)).rows[0];
+          (SELECT COUNT(*)::int FROM s24_queue_items) AS queue,
+          (SELECT COUNT(*)::int FROM s24_files) AS files,
+          (SELECT COUNT(*)::int FROM s24_device_snapshots) AS snapshots`)).rows[0];
       device = (await query(
-        `SELECT observed_at, agent_version, android_version, model, manufacturer,
-                battery_level, status, connection_method, heartbeat_auth, source_type,
-                runtime_is_android, live_device_verified, last_seen
-           FROM s24_device_snapshots ORDER BY observed_at DESC NULLS LAST LIMIT 1`)).rows[0] || null;
+        `SELECT * FROM s24_device_snapshots ORDER BY observed_at DESC NULLS LAST LIMIT 1`)).rows[0] || null;
     }
     return { migrated: true, normalized, section: selected, total, limit, offset, rows, datasets, runs, runsTotal, statusCounts, batches, batchesTotal, counts, device };
   },
@@ -534,17 +460,24 @@ const VIEWS = {
     if (id) {
       const chat = (await query('SELECT * FROM wa_chats WHERE chat_id = $1', [id])).rows[0] || null;
       if (!chat) throw new Error(`no such chat ${id}`);
+      // SELECT * and no readable-only filter: a sealed body is still a stored
+      // body, and the drawer has to be able to say so with the row in hand.
       const messages = (await query(
-        `SELECT msg_id, sent_at, from_me, sender, kind, encrypted, body
-           FROM wa_messages WHERE chat_id = $1
-          ORDER BY sent_at DESC NULLS LAST LIMIT 50`, [id])).rows;
+        `SELECT * FROM wa_messages WHERE chat_id = $1
+          ORDER BY sent_at DESC NULLS LAST LIMIT 500`, [id])).rows;
       const byKind = (await query(
         `SELECT kind AS label, COUNT(*)::int n FROM wa_messages
           WHERE chat_id = $1 GROUP BY 1 ORDER BY n DESC`, [id])).rows;
       const attachments = (await query(
         `SELECT kind AS label, COUNT(*)::int n, SUM(size_bytes)::bigint bytes
            FROM wa_attachments WHERE chat_id = $1 GROUP BY 1 ORDER BY n DESC`, [id])).rows;
-      return { chat, messages, byKind, attachments };
+      // The rows behind that summary, whole: att_id, mime, file_name, blob_url,
+      // width, height, duration, size and the device that uploaded it were all
+      // stored and none of them were reachable from this page.
+      const attachmentRows = (await query(
+        `SELECT * FROM wa_attachments WHERE chat_id = $1
+          ORDER BY sent_at DESC NULLS LAST LIMIT 500`, [id])).rows;
+      return { chat, messages, byKind, attachments, attachmentRows };
     }
 
     const totals = (await query(
@@ -560,9 +493,7 @@ const VIEWS = {
     // "what is actually in here", and a dormant 20k-message thread matters
     // more to that than yesterday's one-liner.
     const rows = (await query(
-      `SELECT chat_id, name, kind, unresolved, msg_count, enc_count, media_count,
-              audio_count, call_count, member_count, first_at, last_at, updated_at
-         FROM wa_chats ORDER BY msg_count DESC, name ASC LIMIT $1 OFFSET $2`, [limit, offset])).rows;
+      `SELECT * FROM wa_chats ORDER BY msg_count DESC, name ASC LIMIT $1 OFFSET $2`, [limit, offset])).rows;
 
     const byKind = (await query(
       `SELECT kind AS label, COUNT(*)::int n, SUM(msg_count)::int messages
@@ -577,24 +508,48 @@ const VIEWS = {
     // on purpose, so rows written before that migration are "unknown" rather
     // than zero and the page must print — for them, never 0.
     const runs = (await query(
-      `SELECT run_id, device_id, started_at, finished_at, chats_seen, messages_seen,
-              attachments_seen, attachments_skipped, status, note
-         FROM wa_sync_runs ORDER BY started_at DESC LIMIT 10`)).rows;
+      `SELECT * FROM wa_sync_runs ORDER BY started_at DESC LIMIT 10`)).rows;
 
     return { total: totals.chats, limit, offset, rows, totals, byKind, runs };
   },
 
+  // Every column of every table, one table at a time.
+  //
+  // The curated panels above each answer one question with a hand-picked column
+  // list, and a column no panel names is invisible even though it is stored:
+  // 008's wa_sync_runs.attachments_seen reached production and no screen drew
+  // it. This is the floor under those panels -- SELECT * for one allow-listed
+  // table plus its column list from information_schema, so the next migration's
+  // column is readable on the day it lands rather than on the day someone
+  // notices it is missing. The allow-list is APP_TABLES: this database is shared
+  // with the sibling deployment, and the name is checked before it is ever
+  // interpolated into SQL.
+  async table({ name, limit, offset }) {
+    const table = String(name || '');
+    if (!APP_TABLES.includes(table)) {
+      return { table, error: 'not an allow-listed table', allowed: APP_TABLES, columns: [], rows: [], total: 0, limit, offset };
+    }
+    const exists = (await query('SELECT to_regclass($1) AS t', [`public.${table}`])).rows[0].t;
+    if (!exists) {
+      return { table, missing: true, columns: [], rows: [], total: 0, limit, offset };
+    }
+    const columns = (await query(
+      `SELECT column_name, data_type FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = $1
+        ORDER BY ordinal_position`, [table])).rows;
+    const total = Number((await query(`SELECT COUNT(*)::int AS n FROM ${table}`)).rows[0].n) || 0;
+    const rows = (await query(
+      `SELECT * FROM ${table} ORDER BY 1 LIMIT $1 OFFSET $2`, [limit, offset])).rows;
+    return { table, columns, rows, total, limit, offset };
+  },
+
   async health({ site }) {
-    const tables = [
-      'events', 'visitors', 'sessions', 'letters', 'email_opens', 'video_events', 'devices',
-      // 004_whatsapp: shared with jaytibirthday-site's galaxy read path.
-      // wa_attachments arrived in 005 and was never added here, so the one
-      // table Health could not see was the one the media panels read.
-      'wa_chats', 'wa_messages', 'wa_attachments', 'wa_sync_runs',
-      's24_sync_runs', 's24_sync_datasets', 's24_sync_batches', 's24_records', 's24_ingest_seen',
-      's24_device_snapshots', 's24_calls', 's24_sms', 's24_locations',
-      's24_agents', 's24_commands', 's24_files', 's24_queue_items',
-    ];
+    // One list, shared with the generic `table` view, so a table cannot be
+    // countable and unbrowsable (or the reverse). 004_whatsapp is shared with
+    // jaytibirthday-site's galaxy read path; wa_attachments arrived in 005 and
+    // was missing here for a while, which is how the one table the media panels
+    // read became the one table Health could not see.
+    const tables = APP_TABLES;
     const counts = {};
     const countsForSite = {};
     for (const t of tables) {
@@ -622,7 +577,6 @@ const VIEWS = {
     const cols = (await query(
       `SELECT column_name FROM information_schema.columns
         WHERE table_name = 'events' AND table_schema = 'public'
-          AND column_name NOT IN ('id','site','ingested_at','raw_payload','event_data')
         ORDER BY ordinal_position`)).rows.map((r) => r.column_name);
     const expr = cols.map((c) => `COUNT("${c}")::int AS "${c}"`).join(', ');
     const coverage = (await query(
@@ -633,19 +587,17 @@ const VIEWS = {
     // held for exactly one table. 008 added wa_sync_runs.attachments_seen and
     // nothing showed it: a column that lands in no panel and no coverage row is
     // indistinguishable from data that never arrived. One aggregate per column
-    // per table, so the next migration is visible without another frontend
-    // change. Columns carrying the raw record are skipped -- they are shown in
-    // the drawers, and COUNT() over them costs a full read for a number nobody
-    // reads.
-    const COVERAGE_SKIP = ['id', 'site', 'ingested_at', 'raw_payload', 'event_data', 'payload', 'content'];
+    // per table, and no column is skipped: a payload or a stored file is a
+    // column like any other, and a coverage row that omits it is a column this
+    // page cannot report on. Scoped to APP_TABLES, so the sibling deployment's
+    // tables in the same database are never counted, named or read.
     const coverageByTable = [];
     for (const t of tables) {
       if (counts[t] == null) continue; // not migrated here; Health already says so
       const tableCols = (await query(
         `SELECT column_name FROM information_schema.columns
           WHERE table_name = $1 AND table_schema = 'public'
-            AND column_name::text <> ALL($2::text[])
-          ORDER BY ordinal_position`, [t, COVERAGE_SKIP])).rows.map((r) => r.column_name);
+          ORDER BY ordinal_position`, [t])).rows.map((r) => r.column_name);
       if (!tableCols.length) continue;
       const row = (await query(
         `SELECT COUNT(*)::int AS total, ${tableCols.map((c) => `COUNT("${c}")::int AS "${c}"`).join(', ')} FROM ${t}`
@@ -699,6 +651,9 @@ export default async function handler(req, res) {
       type: req.query.type ? String(req.query.type) : null,
       dataset: req.query.dataset ? String(req.query.dataset).slice(0, 80) : null,
       section: req.query.section ? String(req.query.section).slice(0, 40) : null,
+      // The generic table view's table name. Validated against APP_TABLES inside
+      // the view, before it is interpolated into any SQL.
+      name: req.query.name ? String(req.query.name).slice(0, 80) : null,
       includeNoise: req.query.noise === '1',
     });
     return res.status(200).json({ ok: true, view, data });

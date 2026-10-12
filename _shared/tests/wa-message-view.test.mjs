@@ -68,11 +68,11 @@ const dbFrontend = await readFile(new URL('../../Frontend/db.html', import.meta.
 const messageEndpoint = await readFile(new URL('../../Backend/jp-wa-messages.js', import.meta.url), 'utf8');
 assert.match(messageEndpoint, /readableOnly/);
 assert.match(messageEndpoint, /m\.body <> ALL/);
-assert.match(dbFrontend, /readableWhatsAppMessages/);
-assert.match(dbFrontend, /readableWhatsAppInventory/);
-assert.match(dbFrontend, /readable: '1'/);
-assert.match(dbFrontend, /Latest readable messages/);
-assert.match(dbFrontend, /m\.readable === true/);
-assert.match(dbFrontend, /Chats with real text/);
+// The /db explorer reads whole rows from its own API now, so it has no readable
+// side channel to keep in step: the readable-only path belongs to index.html's
+// drill-down (asserted above), and this page shows every stored message body.
+assert.doesNotMatch(dbFrontend, /readableWhatsAppMessages|readableWhatsAppInventory/);
+assert.doesNotMatch(dbFrontend, /readable: '1'/);
+assert.match(dbFrontend, /drawerGet\('whatsapp'/);
 
 console.log('WhatsApp message presentation tests passed');

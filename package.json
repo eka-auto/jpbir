@@ -11,6 +11,7 @@
     "test": "node _shared/tests/run-all.mjs",
     "test:browser": "playwright test",
     "db:migrate": "node Database/scripts/migrate.mjs",
+    "db:import-backup": "node Database/scripts/import-telemetry-backup.mjs",
     "wa:build": "node Database/scripts/wa-build-inventory.mjs",
     "wa:import": "node Database/scripts/wa-import.mjs",
     "wa:export-import": "node Database/scripts/wa-export-import.mjs"

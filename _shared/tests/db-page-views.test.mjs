@@ -202,40 +202,39 @@ await t('a TEXT column holding JSON, like events.screen, renders as a labelled t
   assertNoJson(out, 'the tree');
 });
 
-await t('text that only starts with a bracket stays text, while JSON cut short is summarised rather than printed', () => {
+await t('text that only starts with a bracket stays text, and unparseable JSON is shown in full as well as described', () => {
   for (const line of ['[INFO] daemon started', '[2026-09-22 10:00] daemon started', '[123456] is your OTP', '[-] failed']) {
     assert.equal(visible(treeHtml(line)), line, `a log line or message was hidden: ${line}`);
   }
   const cut = treeHtml('{"records": ["abc", "de');
   assert.match(cut, /does not parse/);
-  assertNoJson(cut, 'a truncated JSON string');
+  // A note about a value is not the value: the stored text follows the note.
+  assert.match(visible(cut), /records/, 'the stored text was replaced by a note about it');
 });
 
-await t('nesting past the depth cap collapses to a shape summary instead of printing JSON.stringify', () => {
+await t('a deep tree renders every level: no depth cap and no shape summary', () => {
   let deep = { leaf: { a: 1, b: 2 } };
   for (let i = 0; i < 8; i++) deep = { level: deep };
   const out = treeHtml(deep);
-  assert.match(out, /\{ 1 key \}/);
+  assert.match(out, /<dt>a<\/dt><dd>1<\/dd>/, 'the deepest leaf is rendered');
+  assert.equal(out.includes('{ 1 key }'), false, 'a level was replaced by its shape');
   assertNoJson(out, 'a deep tree');
-  assert.match(treeHtml([[[[[[[1, 2, 3]]]]]]]), /\[ 3 items \]|\[ 1 item \]/);
 });
-
-await t('a long object or list stops at the entry cap and says how many more there are', () => {
+await t('a long object or list renders every entry: no entry cap and no count of what was left out', () => {
   const obj = treeHtml(JSON.parse(BIG_JSON));
-  assert.equal((obj.match(/<dt>/g) || []).length, app.dbg.TREE_MAX_ENTRIES);
-  assert.match(obj, /…and 100 more/);
+  assert.equal((obj.match(/<dt>/g) || []).length, 300, 'every key is rendered');
+  assert.equal(obj.includes('more'), false, 'entries were replaced by a count of entries');
   const list = treeHtml(Array.from({ length: 250 }, (_, i) => i));
-  assert.match(list, /…and 50 more/);
+  assert.equal((list.match(/<li>/g) || []).length, 250, 'every item is rendered');
 });
-
-await t('a structure small at every level but huge in total stays inside one render budget', () => {
+await t('a structure small at every level but huge in total renders in full: no node budget', () => {
   const cube = Array.from({ length: 30 }, () => Array.from({ length: 30 }, () => Array.from({ length: 30 }, () => 1)));
   const out = treeHtml(cube);
   const rows = (out.match(/<li>/g) || []).length;
-  assert.ok(rows <= app.dbg.TREE_MAX_NODES, `${rows} rows for a 27,000-cell cube`);
-  assert.match(out, /\[ 30 items \]/, 'past the budget, lists collapse to their shape');
+  // 30 outer items + 900 + 27,000 leaves: every level of the cube is rendered.
+  assert.equal(rows, 30 + 900 + 27000, `${rows} rows for a 27,000-cell cube`);
+  assert.equal(out.includes('[ 30 items ]'), false, 'a level was collapsed to its shape');
 });
-
 await t('timestamps are dates under _at, last_seen, camelCase At/Time/timestamp keys and as ISO strings anywhere', () => {
   const at = '2026-09-22T10:00:00.000Z';
   const out = treeHtml({ created_at: at, last_seen: at, first_seen: at, uploadedAt: at, timestamp: at, note: at,
@@ -271,42 +270,41 @@ await t('interactions and visitor_device get a one-line summary in a table cell 
   assert.equal(briefHtml(0), '0');
 });
 
-await t('a stored JSON file renders as a capped tree under a summary, never as the file text', () => {
+await t('a stored JSON file renders as a full tree under a summary, every key included', () => {
   const out = fileContentHtml(BIG_JSON, { filename: 'result.json', fileType: 'json' });
   assert.match(out, /JSON object with 300 keys/);
-  assert.match(out, /…and 100 more/);
-  assert.equal(out.includes('value-250'), false, 'entries past the cap are rendered');
+  assert.match(out, /value-250/, 'entries past the old cap are rendered');
+  assert.equal(out.includes('more'), false, 'entries were replaced by a count of entries');
   assertNoJson(out, 'the JSON file');
 });
-
-await t('a plain-text file shows its name, type, length and a labelled 500-character excerpt only', () => {
+await t('a plain-text file shows its name, type, length and its whole content', () => {
   const out = fileContentHtml(LONG_TEXT, { filename: 'notes.txt', fileType: 'txt' });
   assert.match(out, /<dd>notes\.txt<\/dd>/);
   assert.match(out, /<dd>txt<\/dd>/);
-  assert.match(out, new RegExp('Preview · first 500 of ' + LONG_TEXT.length.toLocaleString('en-IN') + ' characters'));
-  assert.equal(out.includes('END-OF-FILE-MARKER'), false, 'the full file reached the drawer');
+  assert.match(out, new RegExp('Content \u00b7 ' + LONG_TEXT.length.toLocaleString('en-IN') + ' characters'));
+  assert.match(out, /END-OF-FILE-MARKER/, 'the whole file reaches the drawer');
   assert.equal(/<pre[\s>]/.test(out), false);
 });
-
-await t('a PDF stored as text, base64, or JSON cut short by the store, is described and not shown', () => {
-  assert.match(fileContentHtml('%PDF-1.7\n' + 'x'.repeat(900)), /Not shown: a PDF document/);
+await t('a PDF, base64 or unparseable JSON stored as text is shown as text', () => {
+  const pdf = fileContentHtml('%PDF-1.7\n' + 'x'.repeat(900));
+  assert.match(pdf, /%PDF-1\.7/);
+  assert.equal(pdf.includes('Not shown'), false);
   const b64 = Buffer.from(Array.from({ length: 900 }, (_, i) => (i * 37) % 256)).toString('base64').replace(/(.{76})/g, '$1\n');
-  assert.match(fileContentHtml(b64), /Not shown: base64-encoded data/);
+  assert.match(fileContentHtml(b64), /Content \u00b7 /);
+  assert.equal(fileContentHtml(b64).includes('Not shown'), false);
   const cut = fileContentHtml('{"records": ["' + 'x'.repeat(800));
-  assert.match(cut, /Not shown: JSON that does not parse/);
-  assertNoJson(cut, 'truncated file content');
+  assert.match(cut, /records/);
+  assert.equal(cut.includes('Not shown'), false);
 });
-
-await t('a file that is only a list of numbers or ids is still excerpted, not mistaken for base64', () => {
+await t('a file that is only a list of numbers or ids is shown in full, like any other text', () => {
   const numbers = Array.from({ length: 40 }, (_, i) => '98765' + String(10000 + i)).join('\n');
-  assert.match(fileContentHtml(numbers), /Preview · first/);
+  assert.match(fileContentHtml(numbers), /9876510000/);
   const ids = Array.from({ length: 40 }, (_, i) => 'Rec' + i + 'AbC9x').join('\n');
-  assert.match(fileContentHtml(ids), /Preview · first/);
-  const hashes = '0123456789abcdef'.repeat(20); // one long line, but no upper case
-  assert.match(fileContentHtml(hashes), /Preview · first/);
+  assert.match(fileContentHtml(ids), /Rec0AbC9x/);
+  assert.match(fileContentHtml(ids), /Rec39AbC9x/, 'the last line is rendered too');
+  const hashes = '0123456789abcdef'.repeat(20);
+  assert.match(fileContentHtml(hashes), /0123456789abcdef/);
 });
-
-// ---------- rendered pages and drawers ----------
 await t('the Events table and the Session and Visitor drawers show time_on_page in seconds, and interactions as a count by type', async () => {
   await app.dbg.RENDER.events();
   const events = app.$('page-events').innerHTML;
@@ -336,43 +334,41 @@ await t('the event drawer shows the screen column as a width/height tree', async
   assertNoJson(body, 'the event drawer');
 });
 
-await t('the Video table summarises an object visitor_device and its drawer shows the whole value', async () => {
+await t('the Video table renders an object visitor_device whole, and its drawer shows the same value', async () => {
   await app.dbg.RENDER.video();
   const page = app.$('page-video').innerHTML;
-  assert.match(page, /browser: Chrome · os: Android · device_type: mobile/);
+  assert.match(page, /<dt>browser<\/dt><dd>Chrome<\/dd>/, 'the cell carries the whole value, not a summary');
+  assert.match(page, /<dt>device_type<\/dt><dd>mobile<\/dd>/);
   assertNoJson(page, 'the video table');
   app.$('page-video').rowClicks[0]();
   assert.match(app.$('drawerBody').innerHTML, /<dt>screen<\/dt><dd><dl class="kv"><dt>w<\/dt><dd>412<\/dd>/);
 });
-
-await t('the S24 review surface hides stored artifacts, masks personal fields, and filters after a query runs', async () => {
+await t('the S24 surface shows stored artifacts, personal fields and every row, and filters only when asked', async () => {
   app.dbg.state.s24Section = 'calls';
   app.dbg.state.s24Query = '';
   await app.dbg.RENDER.s24();
   const page = app.$('page-s24');
-  assert.equal(page.innerHTML.includes('private.json'), false, 'stored artifact name reached the page');
-  assert.equal(page.innerHTML.includes('9876543210'), false, 'raw phone number reached the page');
-  assert.match(page.innerHTML, /•••• •••• 3210/);
-  assert.match(page.innerHTML, /A•••/);
-  assert.equal(page.rowClicks.length, 2, 'hidden artifact row is still clickable');
+  assert.match(page.innerHTML, /private\.json/, 'a stored artifact name is shown');
+  assert.match(page.innerHTML, /9876543210/, 'the stored number is shown as stored');
+  assert.match(page.innerHTML, /Aarav/, 'the stored contact name is shown');
+  assert.equal(page.innerHTML.includes('\u2022\u2022\u2022\u2022'), false, 'a value is still masked');
+  assert.equal(page.rowClicks.length, 3, 'every stored row is on the page and clickable');
 
-  page.rowClicks[0]();
+  page.rowClicks[1]();
   const call = app.$('drawerBody').innerHTML;
-  assert.match(call, /masked review preview/);
-  assert.equal(call.includes('9876543210'), false, 'raw phone number reached the drawer');
-  assert.equal(call.includes('<dt>payload</dt>'), false, 'storage payload reached the drawer');
+  assert.match(call, /9876543210/, 'the raw number reaches the drawer');
+  assert.match(call, /<dt>phone_number<\/dt>/, 'the column is named, not hidden');
+  assert.match(call, /Every stored field of this record/, 'the drawer says what it is showing');
 
   app.dbg.state.s24Section = 'all';
   app.dbg.state.s24Query = 'sync';
   await app.dbg.RENDER.s24();
   const filtered = app.$('page-s24').innerHTML;
   assert.match(filtered, /Review the records, not the storage layer/);
-  assert.match(filtered, /<strong>1<\/strong> of 2 loaded review records/);
+  assert.match(filtered, /<strong>1<\/strong> of 3 loaded records/, 'the query filters the loaded rows');
   assert.match(filtered, /sync-now/);
-  assert.equal(filtered.includes('firestore_queue'), false, 'storage metadata reached the query results');
-  assert.equal(filtered.includes('A•••'), false, 'the pre-query row remained on screen');
+  assert.equal(filtered.includes('Aarav'), false, 'the pre-query row is gone');
 });
-
 await t('a slow detail response for one row cannot replace the drawer of a row opened after it', async () => {
   const slow = deferred();
   const racing = await load({ key: KEY, handler: async (q) => {
@@ -524,7 +520,7 @@ await t('Lock dashboard forgets the key, wipes every drawn page and drops respon
   await settle();
   assert.match(locking.$('page-s24').innerHTML, />Lock dashboard</);
   locking.$('page-s24').rowClicks[1](); // a record is open in the drawer
-  assert.match(locking.$('drawerBody').innerHTML, /masked review preview/);
+  assert.match(locking.$('drawerBody').innerHTML, /Every stored field of this record/);
   locking.dbg.state.s24Section = 'calls';
   locking.dbg.draw();
   locking.$('s24Lock').fire('click');
