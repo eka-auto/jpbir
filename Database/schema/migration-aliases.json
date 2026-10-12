@@ -1,0 +1,7 @@
+{
+  "_comment": "Equivalent migration identities in the shared jpbir/jaytibirthday-site schema_migrations ledger. The runner never executes SQL when any listed identity is already recorded; it only converges the missing names when run with --ledger-only.",
+  "004_whatsapp.sql": ["002_whatsapp.sql", "003_whatsapp.sql"],
+  "005_wa_attachments.sql": ["006_wa_attachments.sql"],
+  "006_s24_normalized.sql": ["007_s24_normalized.sql"],
+  "008_wa_sync_attachment_counts.sql": ["010_wa_sync_attachment_counts.sql"]
+}
