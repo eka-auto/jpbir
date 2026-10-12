@@ -1,7 +1,0 @@
-#!/usr/bin/env sh
-# Run any command inside the project environment (contract rule 3).
-# This is the only way anyone builds, tests or lints.
-set -eu
-if [ "${PROJECT_ENV:-}" = 1 ]; then exec "$@"; fi   # already inside the environment
-cd "$(dirname "$0")"
-exec docker compose -f compose.yaml run --rm dev "$@"

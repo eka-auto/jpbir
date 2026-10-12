@@ -300,3 +300,29 @@ export async function recordEvent(item, { site, sourceSystem, db = query }) {
   if (item.sessionId) await rollupSessions({ site, sessionId: String(item.sessionId), db });
   return { inserted: true };
 }
+
+// Durable cursors for bounded import jobs. The value is JSON rather than an
+// opaque string because DynamoDB's LastEvaluatedKey is an attribute map. A
+// failed invocation deliberately leaves its previous checkpoint in place:
+// insertEvent is idempotent, so retrying that bounded slice cannot duplicate
+// rows and cannot skip the remainder of the source table.
+export async function readSyncCursor(name, { db = query } = {}) {
+  const result = await db(
+    'SELECT cursor FROM warehouse_sync_state WHERE name = $1',
+    [name]
+  );
+  return result.rows[0]?.cursor || null;
+}
+
+export async function writeSyncCursor(name, cursor, { db = query } = {}) {
+  await db(
+    `INSERT INTO warehouse_sync_state (name, cursor, updated_at)
+     VALUES ($1, $2::jsonb, now())
+     ON CONFLICT (name) DO UPDATE SET cursor = EXCLUDED.cursor, updated_at = EXCLUDED.updated_at`,
+    [name, JSON.stringify(cursor)]
+  );
+}
+
+export async function clearSyncCursor(name, { db = query } = {}) {
+  await db('DELETE FROM warehouse_sync_state WHERE name = $1', [name]);
+}

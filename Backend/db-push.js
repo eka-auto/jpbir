@@ -15,7 +15,10 @@ import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, ScanCommand } from '@aws-sdk/lib-dynamodb';
 import { STSClient, GetCallerIdentityCommand } from '@aws-sdk/client-sts';
 import { query, isConfigured } from '../Integrations/postgres.js';
-import { siteFor, insertEvent, rollupVisitors, rollupSessions } from './lib/warehouse.js';
+import {
+  siteFor, insertEvent, rollupVisitors, rollupSessions,
+  readSyncCursor, writeSyncCursor, clearSyncCursor,
+} from './lib/warehouse.js';
 import { cronAuthorized, secretEquals } from './lib/cron-auth.js';
 
 const _env = (typeof process !== 'undefined' ? process : globalThis['proc' + 'ess']).env;
@@ -34,6 +37,7 @@ function credsFor(which) {
 }
 const AWS_REGION = _env['JP_AWS_' + 'REGION'] || 'us-west-2';
 const TABLE = _env['JP_TELEMETRY_' + 'TABLE'] || 'jaytipargal_telemetry';
+const REPAIR_CURSOR = 'dynamodb-telemetry-repair';
 
 // Last resort only. Rows written before jp-track started stamping a site
 // carry no page URL either, and 'jaytipargal.com' is the property this table
@@ -130,8 +134,13 @@ export default async function handler(req, res) {
         credentials: credsFor(which),
       }));
 
-      // The caller hands back the previous response's `nextKey` to continue.
-      let key = req.query.nextKey ? JSON.parse(String(req.query.nextKey)) : undefined;
+      // An operator can still choose an explicit starting key, but the nightly
+      // cron has no request body and no nextKey consumer. Its checkpoint lives
+      // in Neon, so the next run resumes after the last bounded slice instead
+      // of rereading the first eight pages forever.
+      const requestedKey = req.query.nextKey ? JSON.parse(String(req.query.nextKey)) : null;
+      const savedKey = requestedKey ? null : await readSyncCursor(REPAIR_CURSOR);
+      let key = requestedKey || savedKey || undefined;
       const pages = Math.min(Number(req.query.pages) || 8, 40);
 
       let scanned = 0;
@@ -154,7 +163,12 @@ export default async function handler(req, res) {
       } while (key && page < pages);
 
       const done = !key;
-      if (done) await rebuildRollups();
+      if (done) {
+        await clearSyncCursor(REPAIR_CURSOR);
+        await rebuildRollups();
+      } else {
+        await writeSyncCursor(REPAIR_CURSOR, key);
+      }
 
       // Was a single count for the hardcoded site. Rows now carry whichever
       // property their page URL names, so one number would hide the split.
@@ -171,6 +185,7 @@ export default async function handler(req, res) {
         insertedThisCall: inserted,
         totalsBySite: totals,
         done,
+        resumedFromCheckpoint: Boolean(savedKey),
         nextKey: key ? JSON.stringify(key) : null,
       });
     }
