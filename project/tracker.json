@@ -1,0 +1,251 @@
+{
+  "schema_version": 1,
+  "skill_version": "2.2.0",
+  "release": {
+    "id": "R1",
+    "scope_frozen": false,
+    "approved_by": null,
+    "approval": null
+  },
+  "events_processed": {},
+  "tasks": [
+    {
+      "id": "T-01",
+      "title": "Discover read-only and preserve existing work",
+      "step": 0,
+      "owner": "orchestrator",
+      "state": "pending"
+    },
+    {
+      "id": "T-02",
+      "title": "Set profile, risk tier, compliance scope, budgets and recovery targets",
+      "step": 0,
+      "owner": "orchestrator",
+      "state": "pending"
+    },
+    {
+      "id": "T-03",
+      "title": "Create the environment manifest and the target manifest",
+      "step": 0,
+      "owner": "orchestrator",
+      "state": "pending"
+    },
+    {
+      "id": "T-04",
+      "title": "Baseline CI, branch protection and protected controls proven",
+      "step": 0,
+      "owner": "devops",
+      "state": "pending"
+    },
+    {
+      "id": "T-05",
+      "title": "Appoint the HOD; scheduled audit verified running",
+      "step": 0,
+      "owner": "orchestrator",
+      "state": "pending"
+    },
+    {
+      "id": "T-06",
+      "title": "BRD and TRD with measurable acceptance criteria and traceability",
+      "step": 1,
+      "owner": "orchestrator",
+      "state": "pending"
+    },
+    {
+      "id": "T-07",
+      "title": "Write STANDARDS.md and GLOSSARY.md for this stack",
+      "step": 1,
+      "owner": "orchestrator",
+      "state": "pending"
+    },
+    {
+      "id": "T-08",
+      "title": "Mark every go-live capability (applicability and status)",
+      "step": 1,
+      "owner": "orchestrator",
+      "state": "pending"
+    },
+    {
+      "id": "T-09",
+      "title": "THREAT_MODEL.md approved by the HOD",
+      "step": 1,
+      "owner": "security",
+      "state": "pending"
+    },
+    {
+      "id": "T-10",
+      "title": "Reconcile both codebases and live production on a named integration branch",
+      "step": 2,
+      "owner": "orchestrator",
+      "state": "pending"
+    },
+    {
+      "id": "T-11",
+      "title": "Baseline of inherited violations and characterization tests on the integration branch",
+      "step": 2,
+      "owner": "qa",
+      "state": "pending"
+    },
+    {
+      "id": "T-12",
+      "title": "Lock shared contracts and plan the slices",
+      "step": 3,
+      "owner": "orchestrator",
+      "state": "pending"
+    },
+    {
+      "id": "T-13",
+      "title": "Assign department agents",
+      "step": 3,
+      "owner": "orchestrator",
+      "state": "pending"
+    },
+    {
+      "id": "T-14",
+      "title": "Department preflight for development",
+      "step": 4,
+      "owner": "orchestrator",
+      "state": "pending"
+    },
+    {
+      "id": "T-15",
+      "title": "Infrastructure as code for every environment, with drift detection",
+      "step": 4,
+      "owner": "devops",
+      "state": "pending"
+    },
+    {
+      "id": "T-16",
+      "title": "Walking skeleton live on staging through the real pipeline",
+      "step": 4,
+      "owner": "devops",
+      "state": "pending"
+    },
+    {
+      "id": "T-17",
+      "title": "Database: schema, tables and migrations complete",
+      "step": 4,
+      "owner": "database",
+      "state": "pending"
+    },
+    {
+      "id": "T-18",
+      "title": "Backend complete",
+      "step": 4,
+      "owner": "backend",
+      "state": "pending"
+    },
+    {
+      "id": "T-19",
+      "title": "Frontend complete",
+      "step": 4,
+      "owner": "frontend",
+      "state": "pending"
+    },
+    {
+      "id": "T-20",
+      "title": "Design complete",
+      "step": 4,
+      "owner": "design",
+      "state": "pending"
+    },
+    {
+      "id": "T-21",
+      "title": "All slices integrated on main, green",
+      "step": 4,
+      "owner": "orchestrator",
+      "state": "pending"
+    },
+    {
+      "id": "T-22",
+      "title": "Full pipeline complete; standards gate passes",
+      "step": 5,
+      "owner": "devops",
+      "state": "pending"
+    },
+    {
+      "id": "T-23",
+      "title": "Automated tests green, including authorization and failure cases",
+      "step": 5,
+      "owner": "qa",
+      "state": "pending"
+    },
+    {
+      "id": "T-24",
+      "title": "Source security scanning clean",
+      "step": 5,
+      "owner": "security",
+      "state": "pending"
+    },
+    {
+      "id": "T-25",
+      "title": "Compliance and privacy controls mapped to evidence",
+      "step": 5,
+      "owner": "security",
+      "state": "pending"
+    },
+    {
+      "id": "T-26",
+      "title": "Release candidate built, scanned, signed and attested",
+      "step": 6,
+      "owner": "devops",
+      "state": "pending"
+    },
+    {
+      "id": "T-27",
+      "title": "Staging verified on the exact artifacts; restore drill passed",
+      "step": 7,
+      "owner": "devops",
+      "state": "pending"
+    },
+    {
+      "id": "T-28",
+      "title": "Performance, accessibility and DAST verified against the TRD",
+      "step": 7,
+      "owner": "qa",
+      "state": "pending"
+    },
+    {
+      "id": "T-29",
+      "title": "Monitoring and alerting verified end to end",
+      "step": 7,
+      "owner": "devops",
+      "state": "pending"
+    },
+    {
+      "id": "T-30",
+      "title": "Release approval",
+      "step": 7,
+      "owner": "owner",
+      "state": "pending"
+    },
+    {
+      "id": "T-31",
+      "title": "Release to production with automated halt rules",
+      "step": 8,
+      "owner": "devops",
+      "state": "pending"
+    },
+    {
+      "id": "T-32",
+      "title": "Post-release verification against service levels",
+      "step": 8,
+      "owner": "devops",
+      "state": "pending"
+    },
+    {
+      "id": "T-33",
+      "title": "Handover pack and runbooks proven by a fresh session",
+      "step": 9,
+      "owner": "documentation",
+      "state": "pending"
+    },
+    {
+      "id": "T-34",
+      "title": "Owner handover accepted; operations and feedback loop live",
+      "step": 9,
+      "owner": "orchestrator",
+      "state": "pending"
+    }
+  ]
+}
