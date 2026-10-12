@@ -67,7 +67,23 @@ check('the coverage queries are scoped to the public schema and the app table li
 // ---- the page side: does it draw them? ------------------------------------
 const script = html.match(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/)[1];
 const instrumented = script.replace(/\}\)\(\);\s*$/,
-  'globalThis.__dbg = { RENDER: RENDER, state: state };\n})();');
+  'globalThis.__dbg = { RENDER: RENDER, state: state, PAGES: PAGES };\n})();');
+
+// The /db explorer's page inventory, pinned.
+//
+// db-page-render.test.mjs iterates PAGES and checks that every entry has a
+// renderer and a section. That loop is driven by whatever PAGES currently
+// holds, so DELETING a page removes its own check instead of failing the
+// suite: thirteen checks quietly became twelve, every suite stayed green, and
+// a view the operator read every day simply vanished from the nav. This list
+// is the inventory, not a summary of what is there.
+//
+// A page added to the explorer belongs in this list in the same commit. A page
+// removed from it has to be removed here on purpose, by someone who knows it
+// is being withdrawn.
+const EXPECTED_PAGES = ['overview', 'audience', 'geo', 'pages', 'sessions', 'events', 'video',
+  'devices', 's24', 'whatsapp', 'letters', 'emails', 'health', 'tables'];
+
 
 const elements = new Map();
 const mkEl = (id) => {
@@ -85,6 +101,11 @@ const mkEl = (id) => {
 const $ = (id) => { if (!elements.has(id)) elements.set(id, mkEl(id)); return elements.get(id); };
 const pages = [...html.matchAll(/<section class="page( on)?" id="(page-[a-z0-9]+)"/g)]
   .map((m) => { const p = $(m[2]); if (m[1]) p.classList.add('on'); return p; });
+
+check('the /db explorer keeps every page it has ever had',
+  EXPECTED_PAGES.every((id) => html.includes(`id="page-${id}"`)),
+  'a page section is gone from db.html, so its data has no screen:\n      missing: '
+  + EXPECTED_PAGES.filter((id) => !html.includes(`id="page-${id}"`)).join(', '));
 
 globalThis.document = {
   getElementById: $,
@@ -197,6 +218,20 @@ check('the all-tables page lists every column of the table it opened',
 check('the all-tables page renders the stored value of every column',
   tablesPage.includes('a value that must be on screen') && tablesPage.includes('e-1'),
   'a column rendered as a header with no value');
+
+// The inventory, the other way round: PAGES is the nav. A page that has a
+// section but no nav entry is unreachable by anyone who cannot guess its id,
+// and PAGES is also what db-page-render iterates -- so this is the list whose
+// loop quietly shortens when a page is deleted.
+const livePages = (globalThis.__dbg.PAGES || []).map((p) => p[0]);
+check('the nav lists exactly the pages the explorer has',
+  EXPECTED_PAGES.every((id) => livePages.includes(id)) && livePages.every((id) => EXPECTED_PAGES.includes(id)),
+  'the nav and the page set have drifted apart:\n      nav: ' + livePages.join(', ')
+  + '\n      expected: ' + EXPECTED_PAGES.join(', '));
+check('every page in the inventory still has a renderer',
+  EXPECTED_PAGES.every((id) => typeof globalThis.__dbg.RENDER[id] === 'function'),
+  'a section would render as a blank tab:\n      missing renderer: '
+  + EXPECTED_PAGES.filter((id) => typeof globalThis.__dbg.RENDER[id] !== 'function').join(', '));
 
 console.log(failures ? `\n${failures} check(s) failed` : '\nall checks passed');
 process.exitCode = failures ? 1 : 0;
