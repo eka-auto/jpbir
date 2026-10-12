@@ -16,6 +16,9 @@
     "wa:export-import": "node Database/scripts/wa-export-import.mjs"
   },
   "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.1149.0",
+    "@aws-sdk/client-sts": "^3.1149.0",
+    "@aws-sdk/lib-dynamodb": "^3.1149.0",
     "@vercel/blob": "^2.8.0",
     "@vercel/connect": "^2.0.1",
     "nodemailer": "^10.0.14",

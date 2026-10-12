@@ -18,6 +18,10 @@
       "schedule": "*/10 * * * *"
     },
     {
+      "path": "/api/db-push",
+      "schedule": "30 18 * * *"
+    },
+    {
       "path": "/api/s24-sync-cron",
       "schedule": "17 */6 * * *"
     },
@@ -129,6 +133,10 @@
     },
     {
       "src": "Backend/db-api.js",
+      "use": "@vercel/node"
+    },
+    {
+      "src": "Backend/db-push.js",
       "use": "@vercel/node"
     },
     {
