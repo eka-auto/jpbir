@@ -1,4 +1,4 @@
-name: Sync keys to Vercel
+name: Sync keys to jpbir production
 
 # Configure a key in GitHub and Vercel production, then redeploy:
 #   gh secret set NAME -R jaytipargal/jpbir
@@ -34,16 +34,15 @@ jobs:
         with:
           sparse-checkout: |
             .github/scripts
-            Devices/sandbox/devices.production.json
 
-      - name: Add missing keys to jayti-dashboard
+      - name: Add missing keys to jpbir production
         run: node .github/scripts/sync-keys-to-vercel.mjs
         env:
           # Pushes only report; a dispatch writes unless dry_run is ticked.
           DRY_RUN: ${{ (github.event_name != 'workflow_dispatch' || inputs.dry_run) && '1' || '' }}
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          VERCEL_TEAM_ID: team_pbbZItTCyIkGsw6LeGrcWx0c
-          VERCEL_PROJECT_ID: prj_ert0BAxafhopYg8tjtbOMcfjDI9r
+          VERCEL_TEAM_ID: team_gcqCiU4UgkhcUJGRGLZYaQiW
+          VERCEL_PROJECT_ID: prj_47peuCvcDnURmUqhU3aFlaBP351J
           SECRETS_JSON: ${{ toJSON(secrets) }}
           # Every key the deployed code (Backend/, Integrations/) reads.
           SYNC_KEYS: >-
@@ -54,28 +53,3 @@ jobs:
             GMAIL_APP_PASSWORD HEALTH_CHECK_KEY
             S24_SYNC_PUBLIC_KEYS STALE_ALERT_SECONDS STATS_KEY STATS_SITE
             VERCEL_ANALYTICS_PROJECT_ID VERCEL_API_TOKEN VERCEL_TEAM_ID WA_INGEST_KEY
-
-      # channel-sandbox is a separate Vercel project rooted at Devices/sandbox.
-      # Keep its blast radius small: it receives only the values its Flask
-      # runtime needs, never the dashboard's broader integration credential set.
-      - name: Provision channel-sandbox production
-        run: node .github/scripts/sync-keys-to-vercel.mjs
-        env:
-          DRY_RUN: ${{ (github.event_name != 'workflow_dispatch' || inputs.dry_run) && '1' || '' }}
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          VERCEL_TEAM_ID: team_pbbZItTCyIkGsw6LeGrcWx0c
-          VERCEL_PROJECT_ID: prj_nOjaexHvvUGt4hpGAJHtBsf1rPcf
-          SECRETS_JSON: ${{ toJSON(secrets) }}
-          SYNC_KEYS: >-
-            DATABASE_URL FIREBASE_SERVICE_ACCOUNT_JSON SANDBOX_CONFIG_JSON STATS_KEY
-          STATIC_ENV_FILES: >-
-            {"SANDBOX_CONFIG_JSON":"Devices/sandbox/devices.production.json"}
-
-      - name: Verify channel-sandbox production API
-        env:
-          STATS_KEY: ${{ secrets.STATS_KEY }}
-        run: |
-          test -n "$STATS_KEY"
-          code="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
-            -H "x-stats-key: $STATS_KEY" https://channel-sandbox.vercel.app/api/devices)"
-          test "$code" = 200

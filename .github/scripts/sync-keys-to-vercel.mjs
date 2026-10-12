@@ -12,6 +12,8 @@
 //
 // DRY_RUN=1 reports what would change and writes nothing.
 
+import { createPrivateKey, createPublicKey } from 'node:crypto';
+
 const {
   VERCEL_TOKEN,
   VERCEL_TEAM_ID,
@@ -51,6 +53,24 @@ for (const [key, file] of Object.entries(staticFiles)) {
   const value = await import('node:fs/promises').then(({ readFile }) => readFile(file, 'utf8'));
   if (!value.trim()) throw new Error(`STATIC_ENV_FILES source for ${key} is empty`);
   staticValues.set(key, value);
+}
+
+// The CI signer is intentionally private to GitHub Actions. The deployed
+// endpoint needs only its public half, and GitHub Actions never exposes secret
+// values for readback. Derive that public key during the controlled sync so a
+// newly linked Vercel project is not left unable to verify scheduled S24
+// exports. An explicit S24_SYNC_PUBLIC_KEYS value still wins, which preserves
+// deliberate multi-key rotation when it is configured.
+if (keys.has('S24_SYNC_PUBLIC_KEYS') && !staticValues.has('S24_SYNC_PUBLIC_KEYS') &&
+    !secrets.S24_SYNC_PUBLIC_KEYS?.trim() && secrets.S24_SYNC_PRIVATE_KEY_PEM?.trim()) {
+  try {
+    const privateKey = createPrivateKey(secrets.S24_SYNC_PRIVATE_KEY_PEM);
+    const publicKey = createPublicKey(privateKey).export({ type: 'spki', format: 'pem' });
+    staticValues.set('S24_SYNC_PUBLIC_KEYS', publicKey);
+  } catch {
+    console.log('::error::could not derive S24_SYNC_PUBLIC_KEYS from S24_SYNC_PRIVATE_KEY_PEM');
+    process.exitCode = 1;
+  }
 }
 const [{ envs }, { deployments: [live] }] = await Promise.all([
   vercel(`/v9/projects/${VERCEL_PROJECT_ID}/env`),
