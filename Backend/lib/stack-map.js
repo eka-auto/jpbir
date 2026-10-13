@@ -83,7 +83,7 @@ export const REQUIRED_ENV = [
   { name: 'STATS_KEY', layer: 'env', why: 'Dashboard auth; 503 when unset' },
   { name: 'DATABASE_URL', layer: 'db', why: 'Neon pooled endpoint', alt: 'POSTGRES_URL' },
   { name: 'FIREBASE_SERVICE_ACCOUNT_JSON', layer: 'db', why: 'Firestore access', alt: 'FIREBASE_SA_JSON' },
-  { name: 'BLOB_READ_WRITE_TOKEN', layer: 'db', why: 'Vercel Blob media', alt: 'BLOB_TOKEN' },
+  { name: 'BLOB_READ_WRITE_TOKEN', layer: 'db', why: 'Vercel Blob media', alt: ['BLOB_TOKEN', 'BLOB_STORE_ID'] },
   { name: 'CRON_SECRET', layer: 'env', why: 'Authenticates Vercel crons' },
 ];
 
