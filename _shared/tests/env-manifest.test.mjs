@@ -239,7 +239,7 @@ t('manifest keys nothing reads are recorded as known orphans, with a reason', ()
       'upstash-kv (never wired up)': [
         'KV_REST_API_READ_ONLY_TOKEN', 'KV_REST_API_TOKEN', 'KV_REST_API_URL',
         'KV_URL', 'REDIS_URL'],
-      'other-unused': ['BLOB_STORE_ID', 'ENDFORM_API_KEY'],
+      'other-unused': ['ENDFORM_API_KEY'],
     },
     'channel-sandbox': {},
   };

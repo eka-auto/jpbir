@@ -67,8 +67,8 @@ export default async function handler(req, res) {
   const contentType = req.headers['content-type'] || 'application/octet-stream';
   const fileName = safeName(req.query.file_name || 'file');
 
-  if (!_env.BLOB_READ_WRITE_TOKEN) {
-    return res.status(503).json({ ok: false, error: 'BLOB_READ_WRITE_TOKEN not configured on this deployment' });
+  if (!(_env.BLOB_READ_WRITE_TOKEN || _env.BLOB_TOKEN || _env.BLOB_STORE_ID)) {
+    return res.status(503).json({ ok: false, error: 'Blob is not configured on this deployment' });
   }
 
   let buf;
@@ -92,10 +92,12 @@ export default async function handler(req, res) {
     // dashboard reads media through /api/wa-media, which checks STATS_KEY and
     // mints a short-lived presigned URL — so WhatsApp media is never openable
     // by anyone who merely guesses or is handed a blob URL.
+    const blobToken = _env.BLOB_READ_WRITE_TOKEN || _env.BLOB_TOKEN;
     const { url } = await put(pathname, buf, {
       access: 'private',
       contentType,
       addRandomSuffix: false,
+      ...(blobToken ? { token: blobToken } : {}),
     });
     return res.status(200).json({ ok: true, blob_url: url, size_bytes: buf.length });
   } catch (err) {

@@ -210,15 +210,18 @@ export function deviceFreshness(firestoreResult) {
 
 async function probeBlob() {
   const token = _env['BLOB_' + 'READ_WRITE_TOKEN'] || _env['BLOB_' + 'TOKEN'];
-  if (!token) {
-    return { status: UNKNOWN, problem: 'BLOB_READ_WRITE_TOKEN is not set on this deployment' };
+  const storeId = _env['BLOB_' + 'STORE_ID'];
+  if (!token && !storeId) {
+    return { status: UNKNOWN, problem: 'no Blob token or OIDC store connection is configured on this deployment' };
   }
   try {
     const { list } = await import('@vercel/blob');
-    const res = await list({ token, limit: 1 });
+    // OIDC-connected projects receive a short-lived credential at runtime. Keep
+    // the token branch for legacy/local deployments, but never require it here.
+    const res = await list(token ? { token, limit: 1 } : { limit: 1 });
     const sample = res && res.blobs ? res.blobs.length : 0;
     const more = res && res.hasMore ? ' (more paginated)' : '';
-    return { status: OK, detail: 'Vercel Blob reachable — sample of ' + sample + more };
+    return { status: OK, detail: 'Vercel Blob reachable' + (token ? '' : ' through OIDC') + ' — sample of ' + sample + more };
   } catch (e) {
     const name = e && e.name ? e.name : 'Error';
     const msg = String((e && e.message) || e).slice(0, 140);
@@ -358,7 +361,10 @@ export async function probeAssets() {
 }
 
 function probeEnv() {
-  const missing = REQUIRED_ENV.filter((v) => !_env[v.name] && !(v.alt && _env[v.alt]));
+  const isPresent = (v) => [v.name, ...(Array.isArray(v.alt) ? v.alt : [v.alt])]
+    .filter(Boolean)
+    .some((name) => Boolean(_env[name]));
+  const missing = REQUIRED_ENV.filter((v) => !isPresent(v));
   if (missing.length) {
     return {
       status: FAIL,
