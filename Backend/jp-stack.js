@@ -361,7 +361,10 @@ export async function probeAssets() {
 }
 
 function probeEnv() {
-  const missing = REQUIRED_ENV.filter((v) => !_env[v.name] && !(v.alt && _env[v.alt]));
+  const isPresent = (v) => [v.name, ...(Array.isArray(v.alt) ? v.alt : [v.alt])]
+    .filter(Boolean)
+    .some((name) => Boolean(_env[name]));
+  const missing = REQUIRED_ENV.filter((v) => !isPresent(v));
   if (missing.length) {
     return {
       status: FAIL,
