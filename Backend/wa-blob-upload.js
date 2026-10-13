@@ -67,8 +67,8 @@ export default async function handler(req, res) {
   const contentType = req.headers['content-type'] || 'application/octet-stream';
   const fileName = safeName(req.query.file_name || 'file');
 
-  if (!_env.BLOB_READ_WRITE_TOKEN) {
-    return res.status(503).json({ ok: false, error: 'BLOB_READ_WRITE_TOKEN not configured on this deployment' });
+  if (!(_env.BLOB_READ_WRITE_TOKEN || _env.BLOB_TOKEN || _env.BLOB_STORE_ID)) {
+    return res.status(503).json({ ok: false, error: 'Blob is not configured on this deployment' });
   }
 
   let buf;
