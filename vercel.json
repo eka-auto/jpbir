@@ -104,6 +104,10 @@
       "use": "@vercel/node"
     },
     {
+      "src": "Backend/track.js",
+      "use": "@vercel/node"
+    },
+    {
       "src": "Backend/jp-visitor.js",
       "use": "@vercel/node"
     },

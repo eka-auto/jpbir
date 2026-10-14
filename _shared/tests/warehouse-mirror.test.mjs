@@ -10,6 +10,7 @@ import {
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const track = readFileSync(join(ROOT, 'Backend', 'jp-track.js'), 'utf8');
+const trackCompat = readFileSync(join(ROOT, 'Backend', 'track.js'), 'utf8');
 let failures = 0;
 const check = (label, ok, detail = '') => {
   if (!ok) failures++;
@@ -48,6 +49,7 @@ check('scheduled DynamoDB repair resumes from a durable cursor',
   /clearSyncCursor\(REPAIR_CURSOR\)/.test(dbPush) && /warehouse_sync_state/.test(stateSchema));
 check('tracker writes directly through the warehouse', /await recordEvent\(item, \{ site, sourceSystem: 'site-api' \}\)/.test(track));
 check('tracker contains no AWS client or copy job', !/@aws-sdk|dynamodb|PutCommand|db-push/i.test(track));
+check('legacy /api/track route delegates to the same handler', /from '\.\/jp-track\.js'/.test(trackCompat));
 for (const origin of ['https://jaytipargal.tech', 'https://www.jaytipargal.tech', 'https://jaytibirthday.in']) {
   check(`${origin} remains a permitted origin`, track.includes(`'${origin}'`));
 }
