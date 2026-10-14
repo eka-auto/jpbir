@@ -1,0 +1,47 @@
+name: Deploy to jp-agent Droplet
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Deploy jp-agent to droplet
+    runs-on: [self-hosted, jp-agent-droplet]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Install Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24.x'
+          cache: 'npm'
+          cache-dependency-path: Server/jp-agent/package-lock.json
+
+      - name: Install Python (for sync-auth-token tests)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+
+      - name: Run jp-agent tests
+        working-directory: Server/jp-agent
+        run: |
+          npm ci
+          node --test "tests/*.test.mjs"
+          python3 -m unittest discover -s tests -p 'test_*.py' -v
+          node --check server.mjs
+          node --input-type=module -e "await import('./s24-tools.mjs')"
+
+      - name: Deploy to droplet
+        working-directory: Server/jp-agent
+        env:
+          S24_FIRESTORE_KEY: ${{ secrets.S24_FIRESTORE_KEY }}
+          ANTHROPIC_AUTH_TOKEN: ${{ secrets.ANTHROPIC_AUTH_TOKEN }}
+        run: |
+          # This runs ON the droplet via the self-hosted runner.
+          # deploy-local.sh handles file copying, npm ci, env creation,
+          # service installation, and health checks — all without SSH.
+          bash deploy-local.sh
