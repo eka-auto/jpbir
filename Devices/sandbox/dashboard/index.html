@@ -207,28 +207,36 @@
     (function bootstrapKey() {
       const params = new URLSearchParams(location.search);
       const fromUrl = params.get('key');
-      if (fromUrl) {
+      if (params.has('key')) {
         setKey(fromUrl);
         params.delete('key');
         const qs = params.toString();
         history.replaceState(null, '', location.pathname + (qs ? '?' + qs : '') + location.hash);
       }
     })();
+    function normalizeKey(value) {
+      // Copying from formatted text can add invisible Unicode format characters
+      // that trim() alone retains. Keep case and all meaningful key characters.
+      return String(value || '').replace(/\p{Cf}/gu, '').trim();
+    }
     function getKey() {
       try {
-        const current = sessionStorage.getItem('SANDBOX_KEY') || '';
-        if (current) return current;
-        const legacy = localStorage.getItem('SANDBOX_KEY') || '';
-        if (legacy) {
-          sessionStorage.setItem('SANDBOX_KEY', legacy);
-          localStorage.removeItem('SANDBOX_KEY');
-        }
+        const current = normalizeKey(sessionStorage.getItem('SANDBOX_KEY'));
+        if (current) { setKey(current); return current; }
+        sessionStorage.removeItem('SANDBOX_KEY');
+        const legacy = normalizeKey(localStorage.getItem('SANDBOX_KEY'));
+        setKey(legacy);
         return legacy;
       }
       catch (_) { return ''; }
     }
     function setKey(v) {
-      try { sessionStorage.setItem('SANDBOX_KEY', v); localStorage.removeItem('SANDBOX_KEY'); } catch (_) {}
+      const key = normalizeKey(v);
+      try {
+        if (key) sessionStorage.setItem('SANDBOX_KEY', key);
+        else sessionStorage.removeItem('SANDBOX_KEY');
+        localStorage.removeItem('SANDBOX_KEY');
+      } catch (_) {}
     }
     function clearKey() {
       try { localStorage.removeItem('SANDBOX_KEY'); sessionStorage.removeItem('SANDBOX_KEY'); } catch (_) {}
@@ -448,7 +456,7 @@
     }
 
     document.getElementById('key-unlock').addEventListener('click', function () {
-      const v = document.getElementById('key-input').value.trim();
+      const v = normalizeKey(document.getElementById('key-input').value);
       if (!v) return;
       setKey(v);
       document.getElementById('key-input').value = '';
