@@ -1,0 +1,62 @@
+name: DB Push Backfill
+
+on:
+  workflow_dispatch:
+    inputs:
+      max_passes:
+        description: Maximum number of push passes
+        type: number
+        default: 20
+
+permissions:
+  contents: read
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Backfill DynamoDB -> Postgres
+        env:
+          DB_ADMIN_KEY: ${{ secrets.DB_ADMIN_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${DB_ADMIN_KEY:-}" ]; then
+            echo "DB_ADMIN_KEY is not configured"
+            exit 1
+          fi
+          MAX="${{ inputs.max_passes }}"
+          if [ -z "$MAX" ]; then MAX=20; fi
+          pass=1
+          total_scanned=0
+          total_inserted=0
+          while [ "$pass" -le "$MAX" ]; do
+            echo "=== pass $pass/$MAX ==="
+            body=$(curl -sS -H "x-db-admin-key: $DB_ADMIN_KEY" \
+              "https://jaytipargal.tech/api/db-push?action=push&pages=40")
+            ok=$(echo "$body" | jq -r '.ok // false')
+            if [ "$ok" != "true" ]; then
+              echo "db-push returned non-ok payload:"
+              echo "$body"
+              exit 1
+            fi
+            scanned=$(echo "$body" | jq -r '.scannedThisCall // 0')
+            inserted=$(echo "$body" | jq -r '.insertedThisCall // 0')
+            done=$(echo "$body" | jq -r '.done // false')
+            resumed=$(echo "$body" | jq -r '.resumedFromCheckpoint // false')
+            total_scanned=$((total_scanned + scanned))
+            total_inserted=$((total_inserted + inserted))
+            echo "scanned=$scanned inserted=$inserted done=$done resumedFromCheckpoint=$resumed"
+            if [ "$done" = "true" ]; then
+              break
+            fi
+            pass=$((pass + 1))
+            sleep 1
+          done
+          echo "=== totals ==="
+          echo "total_scanned=$total_scanned"
+          echo "total_inserted=$total_inserted"
+          counts=$(curl -sS -H "x-db-admin-key: $DB_ADMIN_KEY" \
+            "https://jaytipargal.tech/api/db-push?action=counts")
+          echo "$counts" | jq '{ok, postgres, eventsBySite}'
+
