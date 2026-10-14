@@ -37,7 +37,18 @@ def main():
         finally:
             if os.path.exists(temporary):
                 os.unlink(temporary)
+        # Restart every unit that reads ANTHROPIC_AUTH_TOKEN from this file.
+        # jp-agent is mandatory and checked: without its restart the new token
+        # never takes effect. s24-mcp shares the same env file and would
+        # otherwise keep authenticating with the rotated-away credential — but
+        # its unit only exists on a box that a deploy.sh which installs it has
+        # already touched, so a not-yet-redeployed box must still be able to
+        # rotate its token. Hence the tolerant second restart.
         subprocess.run(['systemctl', 'restart', 'jp-agent'], check=True, capture_output=True)
+        mcp = subprocess.run(['systemctl', 'restart', 's24-mcp'], capture_output=True)
+        if mcp.returncode != 0:
+            print('note: s24-mcp was not restarted (unit absent or failed); '
+                  'run ./deploy.sh to install it', file=sys.stderr)
     subprocess.run(['systemctl', 'is-active', '--quiet', 'jp-agent'], check=True, capture_output=True)
     print('Cloud token synchronized; service active')
 

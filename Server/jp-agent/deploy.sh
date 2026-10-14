@@ -28,15 +28,32 @@ KEY="${2:-$HOME/.ssh/jayat_laptop_key}"
 SSH=(ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -i "$KEY" "root@$IP")
 
 echo "==> shipping service files"
-"${SSH[@]}" "install -d -o jpagent -g jpagent /opt/jp-agent"
+"${SSH[@]}" "install -d -o jpagent -g jpagent /opt/jp-agent /opt/s24-mcp"
 scp -o BatchMode=yes -o StrictHostKeyChecking=accept-new -i "$KEY" \
   "$(dirname "$0")/server.mjs" "$(dirname "$0")/s24-tools.mjs" \
   "$(dirname "$0")/device-health.mjs" "$(dirname "$0")/s24-attestation.js" \
   "$(dirname "$0")/sync-auth-token.py" \
   "$(dirname "$0")/package.json" "$(dirname "$0")/package-lock.json" \
   "root@$IP:/opt/jp-agent/"
+# s24-mcp is a separate process with its own systemd unit, so it gets its own
+# directory. It imports ./device-health.mjs relatively, and both files must sit
+# in the same directory for that to resolve — so the droplet copy of
+# device-health.mjs is shipped here too. They stay byte-identical: the copy in
+# /opt/jp-agent is what jp-agent's in-process fallback loads, and this one is
+# what the standalone HTTP server loads. s24-attestation.test.mjs asserts the
+# repo-side copies match; the two droplet copies are shipped from that same
+# source, so they cannot diverge either.
+scp -o BatchMode=yes -o StrictHostKeyChecking=accept-new -i "$KEY" \
+  "$(dirname "$0")/s24-mcp-server.mjs" "$(dirname "$0")/device-health.mjs" \
+  "root@$IP:/opt/s24-mcp/"
 scp -o BatchMode=yes -o StrictHostKeyChecking=accept-new -i "$KEY" \
   "$(dirname "$0")/jp-agent.service" "root@$IP:/etc/systemd/system/jp-agent.service"
+# The unit's ExecStart must name s24-mcp-server.mjs. It used to say server.mjs,
+# which does not exist in /opt/s24-mcp, so systemctl start would have failed with
+# "file not found" even once the file was shipped. s24-mcp.service and the file
+# shipped above are kept in step here.
+scp -o BatchMode=yes -o StrictHostKeyChecking=accept-new -i "$KEY" \
+  "$(dirname "$0")/s24-mcp.service" "root@$IP:/etc/systemd/system/s24-mcp.service"
 scp -o BatchMode=yes -o StrictHostKeyChecking=accept-new -i "$KEY" \
   "$(dirname "$0")/nginx-jp-agent.conf" "root@$IP:/etc/nginx/sites-available/jp-agent.new"
 
@@ -76,10 +93,16 @@ fi
 if [ ! -f /etc/jp-agent.env ]; then
   echo "==> creating /etc/jp-agent.env"
   TOKEN="$(openssl rand -hex 32)"
+  # A second, independent token for the standalone s24-mcp HTTP server. Generated
+  # separately from JP_AGENT_TOKEN on purpose: the browser-facing dashboard key and
+  # the MCP loopback key have different blast radii, so one leaking should not
+  # authenticate the other. Read it with: grep S24_MCP_TOKEN /etc/jp-agent.env
+  MCP_TOKEN="$(openssl rand -hex 32)"
   cat > /etc/jp-agent.env <<ENV
-# Fill ANTHROPIC_AUTH_TOKEN securely, then: systemctl restart jp-agent
+# Fill ANTHROPIC_AUTH_TOKEN securely, then: systemctl restart jp-agent s24-mcp
 ANTHROPIC_AUTH_TOKEN=
 JP_AGENT_TOKEN=$TOKEN
+S24_MCP_TOKEN=$MCP_TOKEN
 JP_AGENT_WORKSPACE=/srv/workspace
 JP_AGENT_PORT=8790
 S24_SERVICE_ACCOUNT_KEY=/etc/jp-agent-firestore-key.json
@@ -88,6 +111,7 @@ S24_FIRESTORE_DB=eka-agent
 ENV
   chmod 600 /etc/jp-agent.env
   echo "    generated JP_AGENT_TOKEN (read it with: grep JP_AGENT_TOKEN /etc/jp-agent.env)"
+  echo "    generated S24_MCP_TOKEN (read it with: grep S24_MCP_TOKEN /etc/jp-agent.env)"
 else
   echo "==> /etc/jp-agent.env already present, left untouched"
   # Upgrade path for a box deployed before the s24-connect tools existed: add
@@ -97,6 +121,16 @@ S24_SERVICE_ACCOUNT_KEY=/etc/jp-agent-firestore-key.json
 S24_PROJECT_ID=intrepid-stage-495117-q1
 S24_FIRESTORE_DB=eka-agent
 ENV
+  # Same for a box deployed before the standalone s24-mcp unit existed. Without
+  # this the unit exits 1 on startup (it refuses to serve unauthenticated), and
+  # the failure looks like a missing file rather than a missing token.
+  if ! grep -q "^S24_MCP_TOKEN=" /etc/jp-agent.env; then
+    echo "==> generating S24_MCP_TOKEN (s24-mcp refuses to start without it)"
+    # Append before chmod'ing again so the file is never briefly world-readable.
+    printf 'S24_MCP_TOKEN=%s\n' "$(openssl rand -hex 32)" >> /etc/jp-agent.env
+    chmod 600 /etc/jp-agent.env
+    echo "    read it with: grep S24_MCP_TOKEN /etc/jp-agent.env"
+  fi
 fi
 
 if [ ! -f /etc/jp-agent-firestore-key.json ]; then
@@ -123,12 +157,43 @@ rm -f /etc/nginx/sites-enabled/default
 nginx -t
 systemctl reload nginx
 
+# s24-mcp needs its own node_modules: it is a separate process in a separate
+# directory, and it imports @modelcontextprotocol/sdk, which jp-agent itself
+# does not use. Ship the same package.json/package-lock.json so `npm ci` pins
+# identical versions rather than re-resolving the ^ ranges on the box.
+if [ ! -f /opt/s24-mcp/package.json ]; then
+  echo "==> seeding /opt/s24-mcp/package.json"
+  cp /opt/jp-agent/package.json /opt/jp-agent/package-lock.json /opt/s24-mcp/
+fi
+echo "==> installing s24-mcp dependencies"
+cd /opt/s24-mcp
+sudo -u jpagent npm ci --omit=dev --no-audit --no-fund --silent
+
 systemctl daemon-reload
 systemctl enable jp-agent >/dev/null
 systemctl restart jp-agent
 sleep 2
 systemctl is-active jp-agent && echo "==> jp-agent active"
 curl -sf http://127.0.0.1:8790/health && echo
+
+systemctl enable s24-mcp >/dev/null
+systemctl restart s24-mcp
+sleep 2
+if systemctl is-active --quiet s24-mcp; then
+  echo "==> s24-mcp active"
+  # 401 without a bearer token is the healthy answer: it proves the listener is
+  # up and refusing anonymous callers. A connection error or 404 would not.
+  code="$(curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:8792/mcp)"
+  echo "    unauthenticated POST /mcp -> $code (401 expected)"
+  if [ "$code" != "401" ]; then
+    echo "    WARNING: expected 401 from /mcp without a token; got $code"
+    echo "    check: journalctl -u s24-mcp -n 40 --no-pager"
+  fi
+else
+  echo "==> WARNING: s24-mcp is not active"
+  echo "    check: journalctl -u s24-mcp -n 40 --no-pager"
+  echo "    a missing S24_MCP_TOKEN in /etc/jp-agent.env is the usual cause"
+fi
 REMOTE
 
 echo "==> done"
