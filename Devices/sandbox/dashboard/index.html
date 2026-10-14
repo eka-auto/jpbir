@@ -15,7 +15,7 @@
     .subtitle { opacity: 0.8; }
     .devices-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 20px; margin-bottom: 30px; }
     .device-card { background: #1a1a1a; border-radius: 12px; padding: 25px; border: 1px solid #333; }
-    .device-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+    .device-header { display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; align-items: center; margin-bottom: 20px; }
     .device-name { font-size: 1.3rem; font-weight: 600; }
     .status-badge { padding: 6px 12px; border-radius: 20px; font-size: 0.85rem; font-weight: 600; }
     .status-online { background: #22c55e; color: #000; }
@@ -58,6 +58,7 @@
     <header>
       <h1>🔗 Device Dashboard</h1>
       <p class="subtitle">Real-time device monitoring and data synchronization</p>
+      <p class="subtitle">Heartbeat status reports agent telemetry, not the phone's internet connection or verified hardware identity.</p>
     </header>
 
     <!-- Unlock gate. Without it, opening this page with no ?key= produced a 401
@@ -297,17 +298,37 @@
       try {
         const device = devices[deviceKey];
         const response = await apiFetch(`/devices/${device.deviceId}/status`);
+        // Authentication errors already locked both panels in apiFetch. Do not
+        // overwrite that state with a claim that the physical device is offline.
+        if (response.status === 401) return;
+        if (!response.ok) throw new Error('HTTP ' + response.status);
         const data = await response.json();
         
-        if (data.status) {
+        if (data.status && typeof data.status === 'object' && !Array.isArray(data.status)) {
           updateDeviceUI(deviceKey, data.status);
         } else {
-          setDeviceOffline(deviceKey);
+          setDeviceUnavailable(deviceKey);
         }
       } catch (error) {
         console.error(`Error fetching ${deviceKey} status:`, error);
-        setDeviceOffline(deviceKey);
+        setDeviceUnavailable(deviceKey);
       }
+    }
+
+    function heartbeatState(device) {
+      // The production S24 document can contain only command/web evidence, and
+      // an old laptop document can retain online=true indefinitely. Neither is
+      // a current heartbeat. Use the canonical five-minute freshness window,
+      // reject future timestamps, and never equate missing evidence to Offline.
+      const timestamp = typeof device.lastSeen === 'string' ? Date.parse(device.lastSeen) : NaN;
+      const age = Date.now() - timestamp;
+      if (!Number.isFinite(timestamp) || age < 0 || typeof device.online !== 'boolean') {
+        return { label: 'Heartbeat unavailable', style: 'connecting' };
+      }
+      if (age > 300000) return { label: 'Heartbeat stale', style: 'connecting' };
+      return device.online
+        ? { label: 'Heartbeat fresh', style: 'online' }
+        : { label: 'Offline', style: 'offline' };
     }
 
     function updateDeviceUI(deviceKey, device) {
@@ -316,15 +337,14 @@
       const batteryEl = document.getElementById(`${deviceKey}-battery`);
       const agentEl = document.getElementById(`${deviceKey}-agent`);
       
-      if (device.online) {
-        statusEl.textContent = 'Online';
-        statusEl.className = 'status-badge status-online';
-      } else {
-        statusEl.textContent = 'Offline';
-        statusEl.className = 'status-badge status-offline';
-      }
+      const heartbeat = heartbeatState(device);
+      statusEl.textContent = heartbeat.label;
+      statusEl.className = 'status-badge status-' + heartbeat.style;
       
-      lastseenEl.textContent = device.lastSeen ? new Date(device.lastSeen).toLocaleString() : 'Never';
+      const timestamp = typeof device.lastSeen === 'string' ? Date.parse(device.lastSeen) : NaN;
+      lastseenEl.textContent = !device.lastSeen ? 'No heartbeat recorded'
+        : !Number.isFinite(timestamp) || timestamp > Date.now() ? 'Invalid heartbeat timestamp'
+        : new Date(timestamp).toLocaleString();
       batteryEl.textContent = device.batteryLevel ? `${device.batteryLevel}% ${device.batteryCharging ? '(Charging)' : ''}` : 'N/A';
       agentEl.textContent = device.agentVersion || 'Unknown';
       
@@ -333,10 +353,12 @@
       }
     }
 
-    function setDeviceOffline(deviceKey) {
+    function setDeviceUnavailable(deviceKey) {
+      if (!getKey()) { setLocked(true); return; }
       const statusEl = document.getElementById(`${deviceKey}-status`);
-      statusEl.textContent = 'Offline';
-      statusEl.className = 'status-badge status-offline';
+      statusEl.textContent = 'Status unavailable';
+      statusEl.className = 'status-badge status-connecting';
+      document.getElementById(`${deviceKey}-lastseen`).textContent = '--';
     }
 
     // Send command to device
