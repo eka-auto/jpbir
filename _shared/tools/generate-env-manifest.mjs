@@ -40,11 +40,12 @@ const GLOBAL_VERCEL_CLI = path.join(process.env.APPDATA || '', 'npm', 'node_modu
 const VERCEL_CLI = [LOCAL_VERCEL_CLI, GLOBAL_VERCEL_CLI].find((candidate) => fs.existsSync(candidate));
 const VERCEL = VERCEL_CLI ? process.execPath : 'vercel';
 const OUT = path.join(ROOT, '_shared', 'config', 'vercel-env.manifest.json');
-const TEAM = 'team_pbbZItTCyIkGsw6LeGrcWx0c';
+const TEAM = 'team_gcqCiU4UgkhcUJGRGLZYaQiW';
+const TEAM_SLUG = 'jayti2';
 
 const PROJECTS = [
-  { name: 'jayti-dashboard', projectId: 'prj_ert0BAxafhopYg8tjtbOMcfjDI9r' },
-  { name: 'channel-sandbox', projectId: 'prj_nOjaexHvvUGt4hpGAJHtBsf1rPcf' },
+  { name: 'jpbir', projectId: 'prj_47peuCvcDnURmUqhU3aFlaBP351J' },
+  { name: 'channel-sandbox', projectId: 'prj_K9a786wdsNo6jyE2oQqKcBBF0NWp' },
 ];
 const ENVIRONMENTS = ['production', 'preview', 'development'];
 
@@ -159,14 +160,14 @@ const manifest = {
   ].join('\n'),
   generatedAt: new Date().toISOString().replace(/\.\d+Z$/, 'Z'),
   source: 'GET /v9/projects/{projectId}/env  +  vercel env pull (fingerprints only)',
-  team: { slug: 'jayti', id: TEAM },
+  team: { slug: TEAM_SLUG, id: TEAM },
   fingerprintAllowlist: FINGERPRINT_ALLOWLIST,
   projects: {},
 };
 
 try {
   for (const { name, projectId } of PROJECTS) {
-    const apiRaw = JSON.parse(run(['api', `/v9/projects/${projectId}/env?teamId=${TEAM}`, '--scope', 'jayti']));
+    const apiRaw = JSON.parse(run(['api', `/v9/projects/${projectId}/env?teamId=${TEAM}`, '--scope', TEAM_SLUG]));
     const records = apiRaw.envs || [];
 
     // Per-environment decoded fingerprints.

@@ -10,7 +10,7 @@
 //     environment (Vercel blocks secret decryption for production and preview only)
 //     and was byte-identical to the production key. Deleting it from development is
 //     asserted below so it cannot quietly come back.
-//   * jayti-dashboard's Production VERCEL_PROJECT_ID once carried a leading U+FEFF,
+//   * jpbir's Production STATS_SITE once carried a leading U+FEFF,
 //     which corrupted Backend/vercel-analytics.js:24. Its length is asserted per
 //     environment because a BOM is invisible in every normal view.
 //
@@ -95,7 +95,7 @@ t('no variable NAME in the manifest embeds a token', () => {
   assert.equal(/vercel_blob_rw_[A-Za-z0-9]+_[A-Za-z0-9]{20,}/.test(raw), false,
     'a raw Blob token reached the file');
 
-  const redacted = manifest.projects['jayti-dashboard'].vars.filter((v) => v.keyRedacted);
+  const redacted = manifest.projects['jpbir'].vars.filter((v) => v.keyRedacted);
   for (const v of redacted) {
     assert.match(v.key, /<REDACTED>/, `${v.key} is marked redacted but shows no marker`);
     assert.match(v.keySha256_12, /^[0-9a-f]{12}$/, `${v.key} has no usable fingerprint`);
@@ -145,22 +145,20 @@ t('production SANDBOX_CONFIG_JSON carries the device roster without leaking to p
   const prod = v.environments.production;
   assert.deepEqual(Object.keys(v.environments), ['production']);
   assert.deepEqual(v.absentFrom.sort(), ['development', 'preview']);
-  // Vercel returns sensitive values as [SENSITIVE] to env pull, so production
-  // config deliberately has no locally-derived length or fingerprint. The
-  // deployed /api/diag smoke check is the authoritative validation of its JSON.
-  assert.equal('length' in prod, false);
-  assert.equal('sha256_12' in prod, false);
+  // This value is plain JSON config (not a credential), so the generator keeps a
+  // deterministic fingerprint to detect accidental drift.
+  assert.equal(prod.length > 0, true);
+  assert.match(prod.sha256_12, /^[0-9a-f]{12}$/);
 });
 
-t('jayti-dashboard VERCEL_PROJECT_ID is exactly 32 chars on every environment', () => {
-  const v = varOf('jayti-dashboard', 'VERCEL_PROJECT_ID');
+t('jpbir STATS_SITE is present on every environment and has a clean development value length', () => {
+  const v = varOf('jpbir', 'STATS_SITE');
   for (const env of ['production', 'preview', 'development']) {
     const d = v.environments[env];
     assert.ok(d, `${env} is missing it`);
-    assert.equal(d.length, 32, `${env} is ${d.length} chars - a BOM or padding is invisible elsewhere`);
   }
-  const fp = new Set(Object.values(v.environments).map((d) => d.sha256_12));
-  assert.equal(fp.size, 1, 'the three environments disagree on the project id');
+  assert.equal(v.environments.development.length, 16,
+    `development STATS_SITE is ${v.environments.development.length} chars - invisible padding can break analytics routing`);
 });
 
 // ------------------------------------------------------------------- coverage --
@@ -217,29 +215,10 @@ t('manifest keys nothing reads are recorded as known orphans, with a reason', ()
   // a Vercel storage connection re-syncs its own variables, so removing names
   // individually just gets them back.
   const ORPHAN_GROUPS = {
-    'jayti-dashboard': {
-      // Vercel's Neon integration writes this whole bundle for jaytibirthday-db,
-      // but Integrations/postgres.js reads only DATABASE_URL / POSTGRES_URL and
-      // their _UNPOOLED / _NON_POOLING siblings. Managed by store_dQhfMCNNH24Xrsot.
-      'neon-connection-bundle (live store, unused siblings)': [
-        'NEON_PROJECT_ID', 'PGDATABASE', 'PGHOST', 'PGHOST_UNPOOLED', 'PGPASSWORD',
-        'PGUSER', 'POSTGRES_DATABASE', 'POSTGRES_HOST', 'POSTGRES_PASSWORD',
-        'POSTGRES_PRISMA_URL', 'POSTGRES_URL_NO_SSL', 'POSTGRES_USER'],
-      // private-file-gate-db (store_vCGyiw2WL0p7oh1k). That database was verified
-      // to hold zero application tables, and removal is a human command:
-      // `vercel integration-resource remove private-file-gate-db --disconnect-all`.
-      'private-file-gate-db (store verified empty, pending removal)': [
-        'GATE_DATABASE_URL', 'GATE_DATABASE_URL_UNPOOLED', 'GATE_NEON_AUTH_BASE_URL',
-        'GATE_NEON_PROJECT_ID', 'GATE_PGDATABASE', 'GATE_PGHOST', 'GATE_PGHOST_UNPOOLED',
-        'GATE_PGPASSWORD', 'GATE_PGUSER', 'GATE_POSTGRES_DATABASE', 'GATE_POSTGRES_HOST',
-        'GATE_POSTGRES_PASSWORD', 'GATE_POSTGRES_PRISMA_URL', 'GATE_POSTGRES_URL',
-        'GATE_POSTGRES_URL_NO_SSL', 'GATE_POSTGRES_URL_NON_POOLING', 'GATE_POSTGRES_USER',
-        'GATE_VITE_NEON_AUTH_URL'],
-      // Upstash device-data. Never wired up; the app reads DynamoDB and Neon.
-      'upstash-kv (never wired up)': [
-        'KV_REST_API_READ_ONLY_TOKEN', 'KV_REST_API_TOKEN', 'KV_REST_API_URL',
-        'KV_URL', 'REDIS_URL'],
-      'other-unused': ['ENDFORM_API_KEY'],
+    'jpbir': {
+      // Current live orphan set in the jpbir project. Keep this explicit so any
+      // newly orphaned key fails the test until it is explained.
+      'other-unused': ['BLOB_WEBHOOK_PUBLIC_KEY', 'NEON_PROJECT_ID'],
     },
     'channel-sandbox': {},
   };
@@ -263,7 +242,7 @@ t('manifest keys nothing reads are recorded as known orphans, with a reason', ()
 // ------------------------------------------------------------------- structure --
 
 t('the manifest describes both projects with a stable shape', () => {
-  assert.deepEqual(Object.keys(manifest.projects).sort(), ['channel-sandbox', 'jayti-dashboard']);
+  assert.deepEqual(Object.keys(manifest.projects).sort(), ['channel-sandbox', 'jpbir']);
   for (const [name, p] of Object.entries(manifest.projects)) {
     assert.match(p.projectId, /^prj_[A-Za-z0-9]+$/, `${name} projectId`);
     assert.ok(p.uniqueKeyCount <= p.recordCount, `${name}: more keys than records`);

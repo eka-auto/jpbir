@@ -1,10 +1,10 @@
 {
   "$comment": "Declarative inventory of every Vercel environment variable on both deployed\nprojects, so drift is detectable and a re-provision is verifiable against\nsomething instead of against tribal knowledge.\n\nNO SECRET VALUES ARE STORED HERE AND NONE MAY EVER BE ADDED. Vercel type\n\"encrypted\" is still READABLE IN PLAINTEXT by anyone with project access, so a\nvalue copied into this file would be a credential committed to the repo. Only an\nexplicit allowlist of non-credential identifiers carries length + sha256_12,\nwhich detects drift (a BOM, a truncation, a re-save) without disclosing anything.\n\nOne entry per KEY, not per record: Vercel stores a row per key per environment\ngroup, so the record and key counts can differ. Values legitimately differ\nper environment - production SANDBOX_CONFIG_JSON carries the device roster that\npreview and development do not - so each environment is listed separately and\nenvironments a key is deliberately absent from are recorded in \"absentFrom\".\n\nRegenerate: node _shared/tools/generate-env-manifest.mjs   (needs `vercel` auth)\nVerify offline: node _shared/tests/env-manifest.test.mjs",
-  "generatedAt": "2026-10-08T00:17:27Z",
+  "generatedAt": "2026-10-14T18:20:09Z",
   "source": "GET /v9/projects/{projectId}/env  +  vercel env pull (fingerprints only)",
   "team": {
-    "slug": "jayti",
-    "id": "team_pbbZItTCyIkGsw6LeGrcWx0c"
+    "slug": "jayti2",
+    "id": "team_gcqCiU4UgkhcUJGRGLZYaQiW"
   },
   "fingerprintAllowlist": [
     "VERCEL_PROJECT_ID",
@@ -17,59 +17,45 @@
     "SANDBOX_MODE"
   ],
   "projects": {
-    "jayti-dashboard": {
-      "projectId": "prj_ert0BAxafhopYg8tjtbOMcfjDI9r",
-      "recordCount": 81,
-      "uniqueKeyCount": 61,
+    "jpbir": {
+      "projectId": "prj_47peuCvcDnURmUqhU3aFlaBP351J",
+      "recordCount": 29,
+      "uniqueKeyCount": 27,
       "byType": {
-        "sensitive": 61,
-        "plain": 2,
-        "encrypted": 18
+        "sensitive": 27,
+        "plain": 2
       },
-      "readableSecrets": [
-        "GATE_NEON_AUTH_BASE_URL",
-        "GATE_VITE_NEON_AUTH_URL",
-        "KV_REST_API_READ_ONLY_TOKEN",
-        "KV_REST_API_TOKEN",
-        "KV_URL",
-        "REDIS_URL"
-      ],
+      "readableSecrets": [],
       "vars": [
         {
           "key": "AGENT_API_KEY",
           "type": "sensitive",
           "visibility": "secret",
           "environments": {
-            "development": {
-              "updatedAt": "2026-09-18T14:57:05Z"
-            },
-            "preview": {
-              "updatedAt": "2026-09-18T14:57:05Z"
-            },
             "production": {
-              "updatedAt": "2026-09-17T12:22:24Z"
+              "updatedAt": "2026-10-12T19:56:11Z"
             }
           },
-          "absentFrom": [],
-          "updatedAt": "2026-09-18T14:57:05Z"
+          "absentFrom": [
+            "preview",
+            "development"
+          ],
+          "updatedAt": "2026-10-12T19:56:11Z"
         },
         {
           "key": "AGENT_API_URL",
-          "type": "encrypted+sensitive",
-          "visibility": "config",
+          "type": "sensitive",
+          "visibility": "secret",
           "environments": {
-            "development": {
-              "updatedAt": "2026-09-19T04:00:19Z"
-            },
-            "preview": {
-              "updatedAt": "2026-09-19T04:00:16Z"
-            },
             "production": {
-              "updatedAt": "2026-09-17T11:20:05Z"
+              "updatedAt": "2026-10-12T19:56:11Z"
             }
           },
-          "absentFrom": [],
-          "updatedAt": "2026-09-19T04:00:19Z"
+          "absentFrom": [
+            "preview",
+            "development"
+          ],
+          "updatedAt": "2026-10-12T19:56:11Z"
         },
         {
           "key": "ANTHROPIC_API_KEY",
@@ -77,49 +63,53 @@
           "visibility": "secret",
           "environments": {
             "development": {
-              "updatedAt": "2026-09-18T10:09:19Z"
+              "updatedAt": "2026-10-10T15:55:20Z"
             },
             "preview": {
-              "updatedAt": "2026-09-18T10:09:19Z"
+              "updatedAt": "2026-10-10T15:55:20Z"
             },
             "production": {
-              "updatedAt": "2026-09-18T10:09:19Z"
+              "updatedAt": "2026-10-10T15:55:20Z"
             }
           },
           "absentFrom": [],
-          "updatedAt": "2026-09-18T10:09:19Z"
-        },
-        {
-          "key": "BLOB_READ_WRITE_TOKEN",
-          "type": "sensitive",
-          "visibility": "secret",
-          "environments": {
-            "production": {
-              "updatedAt": "2026-08-29T17:37:31Z"
-            }
-          },
-          "absentFrom": [
-            "preview",
-            "development"
-          ],
-          "updatedAt": "2026-08-29T17:37:31Z"
+          "updatedAt": "2026-10-10T15:55:20Z"
         },
         {
           "key": "BLOB_STORE_ID",
-          "type": "encrypted",
-          "visibility": "config",
+          "type": "plain",
+          "visibility": null,
           "environments": {
             "development": {
-              "updatedAt": "2026-09-18T14:58:29Z"
+              "updatedAt": "2026-10-10T15:51:15Z"
             },
             "preview": {
-              "updatedAt": "2026-09-18T14:58:29Z"
+              "updatedAt": "2026-10-10T15:51:15Z"
+            },
+            "production": {
+              "updatedAt": "2026-10-10T15:51:15Z"
             }
           },
-          "absentFrom": [
-            "production"
-          ],
-          "updatedAt": "2026-09-18T14:58:29Z"
+          "absentFrom": [],
+          "updatedAt": "2026-10-10T15:51:15Z"
+        },
+        {
+          "key": "BLOB_WEBHOOK_PUBLIC_KEY",
+          "type": "plain",
+          "visibility": null,
+          "environments": {
+            "development": {
+              "updatedAt": "2026-10-10T15:51:15Z"
+            },
+            "preview": {
+              "updatedAt": "2026-10-10T15:51:15Z"
+            },
+            "production": {
+              "updatedAt": "2026-10-10T15:51:15Z"
+            }
+          },
+          "absentFrom": [],
+          "updatedAt": "2026-10-10T15:51:15Z"
         },
         {
           "key": "CONNECT_CLIENT_ID",
@@ -127,32 +117,32 @@
           "visibility": "secret",
           "environments": {
             "production": {
-              "updatedAt": "2026-09-02T22:12:27Z"
+              "updatedAt": "2026-10-12T19:56:11Z"
             }
           },
           "absentFrom": [
             "preview",
             "development"
           ],
-          "updatedAt": "2026-09-02T22:12:27Z"
+          "updatedAt": "2026-10-12T19:56:11Z"
         },
         {
           "key": "CONNECT_CONNECTOR_UID",
-          "type": "sensitive+encrypted",
+          "type": "sensitive",
           "visibility": "secret",
           "environments": {
             "development": {
-              "updatedAt": "2026-09-18T14:49:11Z"
+              "updatedAt": "2026-10-10T15:55:23Z"
             },
             "preview": {
-              "updatedAt": "2026-09-18T14:49:11Z"
+              "updatedAt": "2026-10-10T15:55:23Z"
             },
             "production": {
-              "updatedAt": "2026-10-08T00:09:31Z"
+              "updatedAt": "2026-10-10T15:55:23Z"
             }
           },
           "absentFrom": [],
-          "updatedAt": "2026-10-08T00:09:31Z"
+          "updatedAt": "2026-10-10T15:55:23Z"
         },
         {
           "key": "CRON_SECRET",
@@ -160,17 +150,17 @@
           "visibility": "secret",
           "environments": {
             "development": {
-              "updatedAt": "2026-09-18T14:21:57Z"
+              "updatedAt": "2026-10-10T15:55:27Z"
             },
             "preview": {
-              "updatedAt": "2026-09-18T14:21:57Z"
+              "updatedAt": "2026-10-10T15:55:27Z"
             },
             "production": {
-              "updatedAt": "2026-10-02T20:25:21Z"
+              "updatedAt": "2026-10-10T15:55:27Z"
             }
           },
           "absentFrom": [],
-          "updatedAt": "2026-10-02T20:25:21Z"
+          "updatedAt": "2026-10-10T15:55:27Z"
         },
         {
           "key": "DATABASE_URL",
@@ -178,17 +168,17 @@
           "visibility": "secret",
           "environments": {
             "development": {
-              "updatedAt": "2026-09-22T19:02:35Z"
+              "updatedAt": "2026-10-10T15:55:02Z"
             },
             "preview": {
-              "updatedAt": "2026-09-22T19:02:35Z"
+              "updatedAt": "2026-10-10T15:55:02Z"
             },
             "production": {
-              "updatedAt": "2026-09-22T19:02:35Z"
+              "updatedAt": "2026-10-10T15:55:02Z"
             }
           },
           "absentFrom": [],
-          "updatedAt": "2026-09-22T19:02:35Z"
+          "updatedAt": "2026-10-10T15:55:02Z"
         },
         {
           "key": "DATABASE_URL_UNPOOLED",
@@ -196,17 +186,17 @@
           "visibility": "secret",
           "environments": {
             "development": {
-              "updatedAt": "2026-09-22T19:04:55Z"
+              "updatedAt": "2026-10-10T15:55:09Z"
             },
             "preview": {
-              "updatedAt": "2026-09-22T19:04:55Z"
+              "updatedAt": "2026-10-10T15:55:09Z"
             },
             "production": {
-              "updatedAt": "2026-09-22T19:04:55Z"
+              "updatedAt": "2026-10-10T15:55:09Z"
             }
           },
           "absentFrom": [],
-          "updatedAt": "2026-09-22T19:04:55Z"
+          "updatedAt": "2026-10-10T15:55:09Z"
         },
         {
           "key": "DB_ADMIN_KEY",
@@ -214,35 +204,17 @@
           "visibility": "secret",
           "environments": {
             "development": {
-              "updatedAt": "2026-09-18T14:21:56Z"
+              "updatedAt": "2026-10-10T15:55:30Z"
             },
             "preview": {
-              "updatedAt": "2026-09-18T14:21:56Z"
+              "updatedAt": "2026-10-10T15:55:30Z"
             },
             "production": {
-              "updatedAt": "2026-09-14T14:23:56Z"
+              "updatedAt": "2026-10-10T15:55:30Z"
             }
           },
           "absentFrom": [],
-          "updatedAt": "2026-09-18T14:21:56Z"
-        },
-        {
-          "key": "ENDFORM_API_KEY",
-          "type": "sensitive",
-          "visibility": "secret",
-          "environments": {
-            "development": {
-              "updatedAt": "2026-09-19T17:00:54Z"
-            },
-            "preview": {
-              "updatedAt": "2026-09-19T17:00:54Z"
-            },
-            "production": {
-              "updatedAt": "2026-09-19T17:00:54Z"
-            }
-          },
-          "absentFrom": [],
-          "updatedAt": "2026-09-19T17:00:54Z"
+          "updatedAt": "2026-10-10T15:55:30Z"
         },
         {
           "key": "FIREBASE_SERVICE_ACCOUNT_JSON",
@@ -250,369 +222,55 @@
           "visibility": "secret",
           "environments": {
             "development": {
-              "updatedAt": "2026-09-18T14:21:58Z"
+              "updatedAt": "2026-10-10T19:06:38Z"
             },
             "preview": {
-              "updatedAt": "2026-09-18T14:21:58Z"
+              "updatedAt": "2026-10-10T19:06:38Z"
             },
             "production": {
-              "updatedAt": "2026-09-13T09:54:01Z"
+              "updatedAt": "2026-10-10T19:06:38Z"
             }
           },
           "absentFrom": [],
-          "updatedAt": "2026-09-18T14:21:58Z"
+          "updatedAt": "2026-10-10T19:06:38Z"
         },
         {
           "key": "FIRESTORE_DB",
-          "type": "sensitive+encrypted",
+          "type": "sensitive",
           "visibility": "secret",
           "environments": {
             "development": {
               "length": 9,
               "sha256_12": "d43ec10865b4",
-              "updatedAt": "2026-09-18T14:49:04Z"
+              "updatedAt": "2026-10-10T15:55:38Z"
             },
             "preview": {
-              "length": 9,
-              "sha256_12": "d43ec10865b4",
-              "updatedAt": "2026-09-18T14:49:04Z"
+              "updatedAt": "2026-10-10T15:55:38Z"
             },
             "production": {
-              "updatedAt": "2026-10-08T00:09:31Z"
+              "updatedAt": "2026-10-10T15:55:38Z"
             }
           },
           "absentFrom": [],
-          "updatedAt": "2026-10-08T00:09:31Z"
+          "updatedAt": "2026-10-10T15:55:38Z"
         },
         {
-          "key": "GATE_DATABASE_URL",
+          "key": "github_token",
           "type": "sensitive",
           "visibility": "secret",
           "environments": {
             "development": {
-              "updatedAt": "2026-09-20T17:23:11Z"
+              "updatedAt": "2026-10-10T14:19:44Z"
             },
             "preview": {
-              "updatedAt": "2026-09-20T17:23:11Z"
+              "updatedAt": "2026-10-10T14:19:44Z"
             },
             "production": {
-              "updatedAt": "2026-09-20T17:23:11Z"
+              "updatedAt": "2026-10-10T14:19:44Z"
             }
           },
           "absentFrom": [],
-          "updatedAt": "2026-09-20T17:23:11Z"
-        },
-        {
-          "key": "GATE_DATABASE_URL_UNPOOLED",
-          "type": "sensitive",
-          "visibility": "secret",
-          "environments": {
-            "development": {
-              "updatedAt": "2026-09-20T17:23:11Z"
-            },
-            "preview": {
-              "updatedAt": "2026-09-20T17:23:11Z"
-            },
-            "production": {
-              "updatedAt": "2026-09-20T17:23:11Z"
-            }
-          },
-          "absentFrom": [],
-          "updatedAt": "2026-09-20T17:23:11Z"
-        },
-        {
-          "key": "GATE_NEON_AUTH_BASE_URL",
-          "type": "encrypted",
-          "visibility": null,
-          "environments": {
-            "development": {
-              "updatedAt": "2026-09-20T17:20:07Z"
-            },
-            "preview": {
-              "updatedAt": "2026-09-20T17:20:07Z"
-            },
-            "production": {
-              "updatedAt": "2026-09-20T17:20:07Z"
-            }
-          },
-          "absentFrom": [],
-          "securityIssues": [
-            "readable-secret"
-          ],
-          "updatedAt": "2026-09-20T17:20:07Z"
-        },
-        {
-          "key": "GATE_NEON_PROJECT_ID",
-          "type": "plain",
-          "visibility": null,
-          "environments": {
-            "development": {
-              "updatedAt": "2026-09-20T17:23:15Z"
-            },
-            "preview": {
-              "updatedAt": "2026-09-20T17:23:15Z"
-            },
-            "production": {
-              "updatedAt": "2026-09-20T17:23:15Z"
-            }
-          },
-          "absentFrom": [],
-          "updatedAt": "2026-09-20T17:23:15Z"
-        },
-        {
-          "key": "GATE_PGDATABASE",
-          "type": "sensitive",
-          "visibility": "secret",
-          "environments": {
-            "development": {
-              "updatedAt": "2026-09-20T17:23:12Z"
-            },
-            "preview": {
-              "updatedAt": "2026-09-20T17:23:12Z"
-            },
-            "production": {
-              "updatedAt": "2026-09-20T17:23:12Z"
-            }
-          },
-          "absentFrom": [],
-          "updatedAt": "2026-09-20T17:23:12Z"
-        },
-        {
-          "key": "GATE_PGHOST",
-          "type": "sensitive",
-          "visibility": "secret",
-          "environments": {
-            "development": {
-              "updatedAt": "2026-09-20T17:23:12Z"
-            },
-            "preview": {
-              "updatedAt": "2026-09-20T17:23:12Z"
-            },
-            "production": {
-              "updatedAt": "2026-09-20T17:23:12Z"
-            }
-          },
-          "absentFrom": [],
-          "updatedAt": "2026-09-20T17:23:12Z"
-        },
-        {
-          "key": "GATE_PGHOST_UNPOOLED",
-          "type": "sensitive",
-          "visibility": "secret",
-          "environments": {
-            "development": {
-              "updatedAt": "2026-09-20T17:23:12Z"
-            },
-            "preview": {
-              "updatedAt": "2026-09-20T17:23:12Z"
-            },
-            "production": {
-              "updatedAt": "2026-09-20T17:23:12Z"
-            }
-          },
-          "absentFrom": [],
-          "updatedAt": "2026-09-20T17:23:12Z"
-        },
-        {
-          "key": "GATE_PGPASSWORD",
-          "type": "sensitive",
-          "visibility": "secret",
-          "environments": {
-            "development": {
-              "updatedAt": "2026-09-20T17:23:13Z"
-            },
-            "preview": {
-              "updatedAt": "2026-09-20T17:23:13Z"
-            },
-            "production": {
-              "updatedAt": "2026-09-20T17:23:13Z"
-            }
-          },
-          "absentFrom": [],
-          "updatedAt": "2026-09-20T17:23:13Z"
-        },
-        {
-          "key": "GATE_PGUSER",
-          "type": "sensitive",
-          "visibility": "secret",
-          "environments": {
-            "development": {
-              "updatedAt": "2026-09-20T17:23:13Z"
-            },
-            "preview": {
-              "updatedAt": "2026-09-20T17:23:13Z"
-            },
-            "production": {
-              "updatedAt": "2026-09-20T17:23:13Z"
-            }
-          },
-          "absentFrom": [],
-          "updatedAt": "2026-09-20T17:23:13Z"
-        },
-        {
-          "key": "GATE_POSTGRES_DATABASE",
-          "type": "sensitive",
-          "visibility": "secret",
-          "environments": {
-            "development": {
-              "updatedAt": "2026-09-20T17:23:14Z"
-            },
-            "preview": {
-              "updatedAt": "2026-09-20T17:23:14Z"
-            },
-            "production": {
-              "updatedAt": "2026-09-20T17:23:14Z"
-            }
-          },
-          "absentFrom": [],
-          "updatedAt": "2026-09-20T17:23:14Z"
-        },
-        {
-          "key": "GATE_POSTGRES_HOST",
-          "type": "sensitive",
-          "visibility": "secret",
-          "environments": {
-            "development": {
-              "updatedAt": "2026-09-20T17:23:15Z"
-            },
-            "preview": {
-              "updatedAt": "2026-09-20T17:23:15Z"
-            },
-            "production": {
-              "updatedAt": "2026-09-20T17:23:15Z"
-            }
-          },
-          "absentFrom": [],
-          "updatedAt": "2026-09-20T17:23:15Z"
-        },
-        {
-          "key": "GATE_POSTGRES_PASSWORD",
-          "type": "sensitive",
-          "visibility": "secret",
-          "environments": {
-            "development": {
-              "updatedAt": "2026-09-20T17:23:14Z"
-            },
-            "preview": {
-              "updatedAt": "2026-09-20T17:23:14Z"
-            },
-            "production": {
-              "updatedAt": "2026-09-20T17:23:14Z"
-            }
-          },
-          "absentFrom": [],
-          "updatedAt": "2026-09-20T17:23:14Z"
-        },
-        {
-          "key": "GATE_POSTGRES_PRISMA_URL",
-          "type": "sensitive",
-          "visibility": "secret",
-          "environments": {
-            "development": {
-              "updatedAt": "2026-09-20T17:23:09Z"
-            },
-            "preview": {
-              "updatedAt": "2026-09-20T17:23:09Z"
-            },
-            "production": {
-              "updatedAt": "2026-09-20T17:23:09Z"
-            }
-          },
-          "absentFrom": [],
-          "updatedAt": "2026-09-20T17:23:09Z"
-        },
-        {
-          "key": "GATE_POSTGRES_URL",
-          "type": "sensitive",
-          "visibility": "secret",
-          "environments": {
-            "development": {
-              "updatedAt": "2026-09-20T17:23:10Z"
-            },
-            "preview": {
-              "updatedAt": "2026-09-20T17:23:10Z"
-            },
-            "production": {
-              "updatedAt": "2026-09-20T17:23:10Z"
-            }
-          },
-          "absentFrom": [],
-          "updatedAt": "2026-09-20T17:23:10Z"
-        },
-        {
-          "key": "GATE_POSTGRES_URL_NO_SSL",
-          "type": "sensitive",
-          "visibility": "secret",
-          "environments": {
-            "development": {
-              "updatedAt": "2026-09-20T17:23:10Z"
-            },
-            "preview": {
-              "updatedAt": "2026-09-20T17:23:10Z"
-            },
-            "production": {
-              "updatedAt": "2026-09-20T17:23:10Z"
-            }
-          },
-          "absentFrom": [],
-          "updatedAt": "2026-09-20T17:23:10Z"
-        },
-        {
-          "key": "GATE_POSTGRES_URL_NON_POOLING",
-          "type": "sensitive",
-          "visibility": "secret",
-          "environments": {
-            "development": {
-              "updatedAt": "2026-09-20T17:23:11Z"
-            },
-            "preview": {
-              "updatedAt": "2026-09-20T17:23:11Z"
-            },
-            "production": {
-              "updatedAt": "2026-09-20T17:23:11Z"
-            }
-          },
-          "absentFrom": [],
-          "updatedAt": "2026-09-20T17:23:11Z"
-        },
-        {
-          "key": "GATE_POSTGRES_USER",
-          "type": "sensitive",
-          "visibility": "secret",
-          "environments": {
-            "development": {
-              "updatedAt": "2026-09-20T17:23:14Z"
-            },
-            "preview": {
-              "updatedAt": "2026-09-20T17:23:14Z"
-            },
-            "production": {
-              "updatedAt": "2026-09-20T17:23:14Z"
-            }
-          },
-          "absentFrom": [],
-          "updatedAt": "2026-09-20T17:23:14Z"
-        },
-        {
-          "key": "GATE_VITE_NEON_AUTH_URL",
-          "type": "encrypted",
-          "visibility": null,
-          "environments": {
-            "development": {
-              "updatedAt": "2026-09-20T17:20:07Z"
-            },
-            "preview": {
-              "updatedAt": "2026-09-20T17:20:07Z"
-            },
-            "production": {
-              "updatedAt": "2026-09-20T17:20:07Z"
-            }
-          },
-          "absentFrom": [],
-          "securityIssues": [
-            "readable-secret"
-          ],
-          "updatedAt": "2026-09-20T17:20:07Z"
+          "updatedAt": "2026-10-10T14:19:44Z"
         },
         {
           "key": "HEALTH_CHECK_KEY",
@@ -620,290 +278,68 @@
           "visibility": "secret",
           "environments": {
             "production": {
-              "updatedAt": "2026-09-18T12:21:14Z"
+              "updatedAt": "2026-10-12T19:56:11Z"
             }
           },
           "absentFrom": [
             "preview",
             "development"
           ],
-          "updatedAt": "2026-09-18T12:21:14Z"
+          "updatedAt": "2026-10-12T19:56:11Z"
         },
         {
-          "key": "KV_REST_API_READ_ONLY_TOKEN",
-          "type": "encrypted",
-          "visibility": null,
+          "key": "JP_AWS_REGION",
+          "type": "sensitive",
+          "visibility": "secret",
           "environments": {
             "development": {
-              "updatedAt": "2026-09-18T18:56:42Z"
+              "updatedAt": "2026-10-10T15:55:41Z"
             },
             "preview": {
-              "updatedAt": "2026-09-18T18:56:42Z"
+              "updatedAt": "2026-10-10T15:55:41Z"
             },
             "production": {
-              "updatedAt": "2026-09-18T18:56:42Z"
+              "updatedAt": "2026-10-10T15:55:41Z"
             }
           },
           "absentFrom": [],
-          "securityIssues": [
-            "readable-secret"
-          ],
-          "updatedAt": "2026-09-18T18:56:42Z"
+          "updatedAt": "2026-10-10T15:55:41Z"
         },
         {
-          "key": "KV_REST_API_TOKEN",
-          "type": "encrypted",
-          "visibility": null,
+          "key": "JP_TELEMETRY_TABLE",
+          "type": "sensitive",
+          "visibility": "secret",
           "environments": {
             "development": {
-              "updatedAt": "2026-09-18T18:56:42Z"
+              "updatedAt": "2026-10-10T15:55:45Z"
             },
             "preview": {
-              "updatedAt": "2026-09-18T18:56:42Z"
+              "updatedAt": "2026-10-10T15:55:45Z"
             },
             "production": {
-              "updatedAt": "2026-09-18T18:56:42Z"
+              "updatedAt": "2026-10-10T15:55:45Z"
             }
           },
           "absentFrom": [],
-          "securityIssues": [
-            "readable-secret"
-          ],
-          "updatedAt": "2026-09-18T18:56:42Z"
-        },
-        {
-          "key": "KV_REST_API_URL",
-          "type": "encrypted",
-          "visibility": null,
-          "environments": {
-            "development": {
-              "updatedAt": "2026-09-18T18:56:42Z"
-            },
-            "preview": {
-              "updatedAt": "2026-09-18T18:56:42Z"
-            },
-            "production": {
-              "updatedAt": "2026-09-18T18:56:42Z"
-            }
-          },
-          "absentFrom": [],
-          "updatedAt": "2026-09-18T18:56:42Z"
-        },
-        {
-          "key": "KV_URL",
-          "type": "encrypted",
-          "visibility": null,
-          "environments": {
-            "development": {
-              "updatedAt": "2026-09-18T18:56:42Z"
-            },
-            "preview": {
-              "updatedAt": "2026-09-18T18:56:42Z"
-            },
-            "production": {
-              "updatedAt": "2026-09-18T18:56:42Z"
-            }
-          },
-          "absentFrom": [],
-          "securityIssues": [
-            "readable-secret"
-          ],
-          "updatedAt": "2026-09-18T18:56:42Z"
+          "updatedAt": "2026-10-10T15:55:45Z"
         },
         {
           "key": "NEON_PROJECT_ID",
-          "type": "plain",
-          "visibility": null,
-          "environments": {
-            "development": {
-              "updatedAt": "2026-09-20T17:23:09Z"
-            },
-            "preview": {
-              "updatedAt": "2026-09-20T17:23:09Z"
-            },
-            "production": {
-              "updatedAt": "2026-09-20T17:23:09Z"
-            }
-          },
-          "absentFrom": [],
-          "updatedAt": "2026-09-20T17:23:09Z"
-        },
-        {
-          "key": "OPERATOR_KEY",
-          "type": "sensitive",
-          "visibility": "secret",
-          "environments": {
-            "production": {
-              "updatedAt": "2026-10-03T13:58:05Z"
-            }
-          },
-          "absentFrom": [
-            "preview",
-            "development"
-          ],
-          "updatedAt": "2026-10-03T13:58:05Z"
-        },
-        {
-          "key": "PGDATABASE",
           "type": "sensitive",
           "visibility": "secret",
           "environments": {
             "development": {
-              "updatedAt": "2026-09-20T17:23:06Z"
+              "updatedAt": "2026-10-10T15:55:16Z"
             },
             "preview": {
-              "updatedAt": "2026-09-20T17:23:06Z"
+              "updatedAt": "2026-10-10T15:55:16Z"
             },
             "production": {
-              "updatedAt": "2026-09-20T17:23:06Z"
+              "updatedAt": "2026-10-10T15:55:16Z"
             }
           },
           "absentFrom": [],
-          "updatedAt": "2026-09-20T17:23:06Z"
-        },
-        {
-          "key": "PGHOST",
-          "type": "sensitive",
-          "visibility": "secret",
-          "environments": {
-            "development": {
-              "updatedAt": "2026-09-20T17:23:06Z"
-            },
-            "preview": {
-              "updatedAt": "2026-09-20T17:23:06Z"
-            },
-            "production": {
-              "updatedAt": "2026-09-20T17:23:06Z"
-            }
-          },
-          "absentFrom": [],
-          "updatedAt": "2026-09-20T17:23:06Z"
-        },
-        {
-          "key": "PGHOST_UNPOOLED",
-          "type": "sensitive",
-          "visibility": "secret",
-          "environments": {
-            "development": {
-              "updatedAt": "2026-09-20T17:23:06Z"
-            },
-            "preview": {
-              "updatedAt": "2026-09-20T17:23:06Z"
-            },
-            "production": {
-              "updatedAt": "2026-09-20T17:23:06Z"
-            }
-          },
-          "absentFrom": [],
-          "updatedAt": "2026-09-20T17:23:06Z"
-        },
-        {
-          "key": "PGPASSWORD",
-          "type": "sensitive",
-          "visibility": "secret",
-          "environments": {
-            "development": {
-              "updatedAt": "2026-09-20T17:23:07Z"
-            },
-            "preview": {
-              "updatedAt": "2026-09-20T17:23:07Z"
-            },
-            "production": {
-              "updatedAt": "2026-09-20T17:23:07Z"
-            }
-          },
-          "absentFrom": [],
-          "updatedAt": "2026-09-20T17:23:07Z"
-        },
-        {
-          "key": "PGUSER",
-          "type": "sensitive",
-          "visibility": "secret",
-          "environments": {
-            "development": {
-              "updatedAt": "2026-09-20T17:23:07Z"
-            },
-            "preview": {
-              "updatedAt": "2026-09-20T17:23:07Z"
-            },
-            "production": {
-              "updatedAt": "2026-09-20T17:23:07Z"
-            }
-          },
-          "absentFrom": [],
-          "updatedAt": "2026-09-20T17:23:07Z"
-        },
-        {
-          "key": "POSTGRES_DATABASE",
-          "type": "sensitive",
-          "visibility": "secret",
-          "environments": {
-            "development": {
-              "updatedAt": "2026-09-20T17:23:07Z"
-            },
-            "preview": {
-              "updatedAt": "2026-09-20T17:23:07Z"
-            },
-            "production": {
-              "updatedAt": "2026-09-20T17:23:07Z"
-            }
-          },
-          "absentFrom": [],
-          "updatedAt": "2026-09-20T17:23:07Z"
-        },
-        {
-          "key": "POSTGRES_HOST",
-          "type": "sensitive",
-          "visibility": "secret",
-          "environments": {
-            "development": {
-              "updatedAt": "2026-09-20T17:23:09Z"
-            },
-            "preview": {
-              "updatedAt": "2026-09-20T17:23:09Z"
-            },
-            "production": {
-              "updatedAt": "2026-09-20T17:23:09Z"
-            }
-          },
-          "absentFrom": [],
-          "updatedAt": "2026-09-20T17:23:09Z"
-        },
-        {
-          "key": "POSTGRES_PASSWORD",
-          "type": "sensitive",
-          "visibility": "secret",
-          "environments": {
-            "development": {
-              "updatedAt": "2026-09-20T17:23:08Z"
-            },
-            "preview": {
-              "updatedAt": "2026-09-20T17:23:08Z"
-            },
-            "production": {
-              "updatedAt": "2026-09-20T17:23:08Z"
-            }
-          },
-          "absentFrom": [],
-          "updatedAt": "2026-09-20T17:23:08Z"
-        },
-        {
-          "key": "POSTGRES_PRISMA_URL",
-          "type": "sensitive",
-          "visibility": "secret",
-          "environments": {
-            "development": {
-              "updatedAt": "2026-09-20T17:23:03Z"
-            },
-            "preview": {
-              "updatedAt": "2026-09-20T17:23:03Z"
-            },
-            "production": {
-              "updatedAt": "2026-09-20T17:23:03Z"
-            }
-          },
-          "absentFrom": [],
-          "updatedAt": "2026-09-20T17:23:03Z"
+          "updatedAt": "2026-10-10T15:55:16Z"
         },
         {
           "key": "POSTGRES_URL",
@@ -911,35 +347,17 @@
           "visibility": "secret",
           "environments": {
             "development": {
-              "updatedAt": "2026-09-22T19:02:39Z"
+              "updatedAt": "2026-10-10T15:55:05Z"
             },
             "preview": {
-              "updatedAt": "2026-09-22T19:02:39Z"
+              "updatedAt": "2026-10-10T15:55:05Z"
             },
             "production": {
-              "updatedAt": "2026-09-22T19:02:39Z"
+              "updatedAt": "2026-10-10T15:55:05Z"
             }
           },
           "absentFrom": [],
-          "updatedAt": "2026-09-22T19:02:39Z"
-        },
-        {
-          "key": "POSTGRES_URL_NO_SSL",
-          "type": "sensitive",
-          "visibility": "secret",
-          "environments": {
-            "development": {
-              "updatedAt": "2026-09-20T17:23:04Z"
-            },
-            "preview": {
-              "updatedAt": "2026-09-20T17:23:04Z"
-            },
-            "production": {
-              "updatedAt": "2026-09-20T17:23:04Z"
-            }
-          },
-          "absentFrom": [],
-          "updatedAt": "2026-09-20T17:23:04Z"
+          "updatedAt": "2026-10-10T15:55:05Z"
         },
         {
           "key": "POSTGRES_URL_NON_POOLING",
@@ -947,56 +365,17 @@
           "visibility": "secret",
           "environments": {
             "development": {
-              "updatedAt": "2026-09-22T19:04:59Z"
+              "updatedAt": "2026-10-10T15:55:12Z"
             },
             "preview": {
-              "updatedAt": "2026-09-22T19:04:59Z"
+              "updatedAt": "2026-10-10T15:55:12Z"
             },
             "production": {
-              "updatedAt": "2026-09-22T19:04:59Z"
+              "updatedAt": "2026-10-10T15:55:12Z"
             }
           },
           "absentFrom": [],
-          "updatedAt": "2026-09-22T19:04:59Z"
-        },
-        {
-          "key": "POSTGRES_USER",
-          "type": "sensitive",
-          "visibility": "secret",
-          "environments": {
-            "development": {
-              "updatedAt": "2026-09-20T17:23:08Z"
-            },
-            "preview": {
-              "updatedAt": "2026-09-20T17:23:08Z"
-            },
-            "production": {
-              "updatedAt": "2026-09-20T17:23:08Z"
-            }
-          },
-          "absentFrom": [],
-          "updatedAt": "2026-09-20T17:23:08Z"
-        },
-        {
-          "key": "REDIS_URL",
-          "type": "encrypted",
-          "visibility": null,
-          "environments": {
-            "development": {
-              "updatedAt": "2026-09-18T18:56:42Z"
-            },
-            "preview": {
-              "updatedAt": "2026-09-18T18:56:42Z"
-            },
-            "production": {
-              "updatedAt": "2026-09-18T18:56:42Z"
-            }
-          },
-          "absentFrom": [],
-          "securityIssues": [
-            "readable-secret"
-          ],
-          "updatedAt": "2026-09-18T18:56:42Z"
+          "updatedAt": "2026-10-10T15:55:12Z"
         },
         {
           "key": "S24_SYNC_PUBLIC_KEYS",
@@ -1004,36 +383,34 @@
           "visibility": "secret",
           "environments": {
             "production": {
-              "updatedAt": "2026-09-20T21:41:41Z"
+              "updatedAt": "2026-10-12T19:56:11Z"
             }
           },
           "absentFrom": [
             "preview",
             "development"
           ],
-          "updatedAt": "2026-09-20T21:41:41Z"
+          "updatedAt": "2026-10-12T19:56:11Z"
         },
         {
           "key": "STALE_ALERT_SECONDS",
-          "type": "sensitive+encrypted",
+          "type": "sensitive",
           "visibility": "secret",
           "environments": {
             "development": {
               "length": 3,
               "sha256_12": "284b7e6d788f",
-              "updatedAt": "2026-09-18T14:49:14Z"
+              "updatedAt": "2026-10-10T15:55:48Z"
             },
             "preview": {
-              "length": 3,
-              "sha256_12": "284b7e6d788f",
-              "updatedAt": "2026-09-18T14:49:14Z"
+              "updatedAt": "2026-10-10T15:55:48Z"
             },
             "production": {
-              "updatedAt": "2026-10-08T00:09:31Z"
+              "updatedAt": "2026-10-10T15:55:48Z"
             }
           },
           "absentFrom": [],
-          "updatedAt": "2026-10-08T00:09:31Z"
+          "updatedAt": "2026-10-10T15:55:48Z"
         },
         {
           "key": "STATS_KEY",
@@ -1041,130 +418,92 @@
           "visibility": "secret",
           "environments": {
             "development": {
-              "updatedAt": "2026-09-18T14:55:00Z"
+              "updatedAt": "2026-10-14T03:29:45Z"
             },
             "preview": {
-              "updatedAt": "2026-09-18T14:55:00Z"
+              "updatedAt": "2026-10-14T03:29:45Z"
             },
             "production": {
-              "updatedAt": "2026-09-14T09:38:21Z"
+              "updatedAt": "2026-10-14T03:29:45Z"
             }
           },
           "absentFrom": [],
-          "updatedAt": "2026-09-18T14:55:00Z"
+          "updatedAt": "2026-10-14T03:29:45Z"
         },
         {
           "key": "STATS_SITE",
-          "type": "sensitive+encrypted",
+          "type": "sensitive",
           "visibility": "secret",
           "environments": {
             "development": {
               "length": 16,
               "sha256_12": "a2557849a554",
-              "updatedAt": "2026-09-18T14:49:24Z"
+              "updatedAt": "2026-10-10T15:55:56Z"
             },
             "preview": {
-              "length": 16,
-              "sha256_12": "a2557849a554",
-              "updatedAt": "2026-09-18T14:49:24Z"
+              "updatedAt": "2026-10-10T15:55:56Z"
             },
             "production": {
-              "updatedAt": "2026-10-08T00:09:31Z"
+              "updatedAt": "2026-10-10T15:55:56Z"
             }
           },
           "absentFrom": [],
-          "updatedAt": "2026-10-08T00:09:31Z"
+          "updatedAt": "2026-10-10T15:55:56Z"
         },
         {
           "key": "VERCEL_API_TOKEN",
           "type": "sensitive",
           "visibility": "secret",
           "environments": {
-            "development": {
-              "updatedAt": "2026-09-18T14:57:29Z"
-            },
-            "preview": {
-              "updatedAt": "2026-09-18T14:57:29Z"
-            },
             "production": {
-              "updatedAt": "2026-09-12T03:40:40Z"
+              "updatedAt": "2026-10-12T19:56:11Z"
             }
           },
-          "absentFrom": [],
-          "updatedAt": "2026-09-18T14:57:29Z"
-        },
-        {
-          "key": "VERCEL_PROJECT_ID",
-          "type": "encrypted",
-          "visibility": "config",
-          "environments": {
-            "development": {
-              "length": 32,
-              "sha256_12": "4b1a532e24c4",
-              "updatedAt": "2026-09-19T04:00:13Z"
-            },
-            "preview": {
-              "length": 32,
-              "sha256_12": "4b1a532e24c4",
-              "updatedAt": "2026-09-19T04:00:09Z"
-            },
-            "production": {
-              "length": 32,
-              "sha256_12": "4b1a532e24c4",
-              "updatedAt": "2026-09-19T08:23:34Z"
-            }
-          },
-          "absentFrom": [],
-          "updatedAt": "2026-09-19T08:23:34Z"
+          "absentFrom": [
+            "preview",
+            "development"
+          ],
+          "updatedAt": "2026-10-12T19:56:11Z"
         },
         {
           "key": "VERCEL_TEAM_ID",
-          "type": "sensitive+encrypted",
+          "type": "sensitive",
           "visibility": "secret",
           "environments": {
-            "development": {
-              "length": 5,
-              "sha256_12": "62e651467a6c",
-              "updatedAt": "2026-09-18T14:49:07Z"
-            },
-            "preview": {
-              "length": 5,
-              "sha256_12": "62e651467a6c",
-              "updatedAt": "2026-09-18T14:49:07Z"
-            },
             "production": {
-              "updatedAt": "2026-10-08T00:09:31Z"
+              "updatedAt": "2026-10-12T19:56:11Z"
             }
           },
-          "absentFrom": [],
-          "updatedAt": "2026-10-08T00:09:31Z"
+          "absentFrom": [
+            "preview",
+            "development"
+          ],
+          "updatedAt": "2026-10-12T19:56:11Z"
         },
         {
           "key": "WA_INGEST_KEY",
           "type": "sensitive",
           "visibility": "secret",
           "environments": {
-            "development": {
-              "updatedAt": "2026-09-18T14:57:13Z"
-            },
-            "preview": {
-              "updatedAt": "2026-09-18T14:57:13Z"
-            },
             "production": {
-              "updatedAt": "2026-09-17T08:11:06Z"
+              "updatedAt": "2026-10-12T19:56:11Z"
             }
           },
-          "absentFrom": [],
-          "updatedAt": "2026-09-18T14:57:13Z"
+          "absentFrom": [
+            "preview",
+            "development"
+          ],
+          "updatedAt": "2026-10-12T19:56:11Z"
         }
       ]
     },
     "channel-sandbox": {
-      "projectId": "prj_nOjaexHvvUGt4hpGAJHtBsf1rPcf",
+      "projectId": "prj_K9a786wdsNo6jyE2oQqKcBBF0NWp",
       "recordCount": 4,
       "uniqueKeyCount": 4,
       "byType": {
-        "sensitive": 4
+        "sensitive": 3,
+        "plain": 1
       },
       "readableSecrets": [],
       "vars": [
@@ -1174,14 +513,14 @@
           "visibility": "secret",
           "environments": {
             "production": {
-              "updatedAt": "2026-10-08T00:09:33Z"
+              "updatedAt": "2026-10-13T22:34:13Z"
             }
           },
           "absentFrom": [
             "preview",
             "development"
           ],
-          "updatedAt": "2026-10-08T00:09:33Z"
+          "updatedAt": "2026-10-13T22:34:13Z"
         },
         {
           "key": "FIREBASE_SERVICE_ACCOUNT_JSON",
@@ -1189,29 +528,31 @@
           "visibility": "secret",
           "environments": {
             "production": {
-              "updatedAt": "2026-10-08T00:09:33Z"
+              "updatedAt": "2026-10-13T22:34:10Z"
             }
           },
           "absentFrom": [
             "preview",
             "development"
           ],
-          "updatedAt": "2026-10-08T00:09:33Z"
+          "updatedAt": "2026-10-13T22:34:10Z"
         },
         {
           "key": "SANDBOX_CONFIG_JSON",
-          "type": "sensitive",
-          "visibility": "secret",
+          "type": "plain",
+          "visibility": null,
           "environments": {
             "production": {
-              "updatedAt": "2026-10-08T00:15:07Z"
+              "length": 606,
+              "sha256_12": "77379edb80a0",
+              "updatedAt": "2026-10-13T22:34:17Z"
             }
           },
           "absentFrom": [
             "preview",
             "development"
           ],
-          "updatedAt": "2026-10-08T00:15:07Z"
+          "updatedAt": "2026-10-13T22:34:17Z"
         },
         {
           "key": "STATS_KEY",
@@ -1219,14 +560,14 @@
           "visibility": "secret",
           "environments": {
             "production": {
-              "updatedAt": "2026-10-08T00:09:33Z"
+              "updatedAt": "2026-10-14T18:20:04Z"
             }
           },
           "absentFrom": [
             "preview",
             "development"
           ],
-          "updatedAt": "2026-10-08T00:09:33Z"
+          "updatedAt": "2026-10-14T18:20:04Z"
         }
       ]
     }
