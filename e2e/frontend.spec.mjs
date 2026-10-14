@@ -38,7 +38,7 @@ test('agent page has labelled controls and a bounded locked state', async ({ pag
 // live phone attestation. The old locked-screen smoke tests could not catch a
 // command-only production document being labelled Offline or stale online=true.
 const sandboxTestKey = 'synthetic-browser-test-key';
-async function sandboxApi(page, { s24, deviceStatus = 200 } = {}) {
+async function sandboxApi(page, { s24, deviceStatus = 200, dataOverrides = {} } = {}) {
   const paths = new Set();
   await page.route('**/api/**', async route => {
     const request = route.request();
@@ -58,6 +58,8 @@ async function sandboxApi(page, { s24, deviceStatus = 200 } = {}) {
       '/api/data/calls': { data: [{ name: 'Synthetic contact', type: 'Call', duration_seconds: 3 }] },
       '/api/data/sms': { data: [] },
       '/api/data/contacts': { data: [], collected: false, note: 'Contacts are not collected' },
+      '/api/data/sources': { ok: true, tables: [{ table: 's24_calls', endpoint: '/api/data/calls', schemaMatches: true, record_count: '12', latest_record_at: '2026-10-01T00:00:00Z' }] },
+      ...dataOverrides,
     };
     expect(payloads[path]).toBeDefined();
     return route.fulfill({ json: payloads[path] });
@@ -103,4 +105,31 @@ test('rejected sandbox key keeps both device panels locked, not offline', async 
   await expect(page.locator('#key-gate-msg')).toContainText(/key/);
   await expect(page.locator('#s24-status')).toHaveText('Locked');
   await expect(page.locator('#vivobook-status')).toHaveText('Locked');
+});
+
+test('database linkage audit uses authenticated GET and shows table-to-endpoint counts', async ({ page }) => {
+  const paths = await sandboxApi(page, { s24: {} });
+  await page.goto('/sandbox');
+  await expect(page.getByRole('button', { name: 'Verify database linkage' })).toBeDisabled();
+  await page.getByLabel('Dashboard key').fill(sandboxTestKey);
+  await page.getByRole('button', { name: 'Unlock', exact: true }).click();
+  await page.getByRole('button', { name: 'Verify database linkage' }).click();
+  await expect(page.locator('#source-audit')).toContainText('Database linkage verified.');
+  await expect(page.locator('#source-audit')).toContainText('s24_calls → /api/data/calls: 12 stored records');
+  expect(paths.has('/api/data/sources')).toBe(true);
+  expect(await noHorizontalOverflow(page)).toBe(true);
+});
+
+test('archived and partial results remain visible without masquerading as live collection', async ({ page }) => {
+  await sandboxApi(page, { s24: {}, dataOverrides: {
+    '/api/data/calls': { data: [{ name: 'Synthetic archived contact', duration_seconds: 9 }], partial: true, sources: [{ source: 'neon_archive', archival: true }] },
+    '/api/data/sms': { data: [], partial: true, sources: [] },
+  } });
+  await page.goto('/sandbox');
+  await page.getByLabel('Dashboard key').fill(sandboxTestKey);
+  await page.getByRole('button', { name: 'Unlock', exact: true }).click();
+  await expect(page.locator('#calls-list .data-item')).toHaveCount(1);
+  await expect(page.locator('#calls-list')).toContainText('Source: Postgres archive');
+  await expect(page.locator('#calls-list')).toContainText('Partial result');
+  await expect(page.locator('#sms-list')).toContainText('Data unavailable from one or more sources');
 });

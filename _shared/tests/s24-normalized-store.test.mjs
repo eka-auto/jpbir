@@ -22,6 +22,22 @@ test('every known S24 dataset has a typed destination', () => {
   assert.equal(specializedTableForDataset('future_dataset'), null);
 });
 
+test('normalized call durations keep the live daemon duration_seconds field including zero', async () => {
+  for (const duration_seconds of [0, 37]) {
+    let parameters;
+    await ingestBatch(async (sql, params) => {
+      if (sql.includes('INSERT INTO s24_calls')) parameters = params;
+      return { rowCount: 1, rows: [] };
+    }, {
+      run: { run_id: 'duration-test', device_id: 'samsung-s24-ultra', started_at: '2026-10-01T00:00:00Z' },
+      upload: { batch_index: 1, batch_count: 1 },
+      datasets: [{ dataset: 'direct_call_logs', status: 'ok', record_count: 1 }],
+      records: [{ dataset: 'direct_call_logs', record_id: 'test-call', payload: { duration_seconds, duration: 999 } }],
+    }, { keyId: 'test' });
+    assert.equal(parameters[8], duration_seconds);
+  }
+});
+
 test('ingest keeps every record in JSON and mirrors known datasets into typed tables', async () => {
   const records = [
     { dataset: 'device_document', record_id: 'device', payload: { model: 'SM-S928B' } },
