@@ -50,8 +50,9 @@ function page({ session = '', legacy = '', search = '', denied = false } = {}) {
     console: { error: () => {} },
     fetch: async (url, opts) => {
       requests.push({ url, opts });
+      if (context.networkError) throw new Error('simulated transport failure');
       const status = context.responseStatus || (opts.headers['X-Stats-Key'] === key ? 200 : 401);
-      return { status, ok: status === 200, json: async () => ({ data: [] }) };
+      return { status, ok: status === 200, json: async () => context.payload || ({ data: [] }) };
     }
   });
   vm.runInContext(script, context);
@@ -150,4 +151,53 @@ await t('unavailable session storage stays fail closed without protected startup
   assert.equal(p.context.getKey(), '');
   assert.equal(p.element('key-gate').hidden, false);
 });
-console.log(`\n${pass}/${total} sandbox key normalization checks passed`);
+await t('a production-shaped command-only S24 document is unknown, not offline', () => {
+  const p = page();
+  p.context.updateDeviceUI('s24', { commandQueue: {}, evidence: { capturedBy: 'web-analytics-import' } });
+  assert.equal(p.element('s24-status').textContent, 'Heartbeat unavailable');
+  assert.equal(p.element('s24-lastseen').textContent, 'No heartbeat recorded');
+});
+await t('a stored online flag cannot hide a stale heartbeat on either device', () => {
+  const p = page();
+  for (const device of ['s24', 'vivobook']) {
+    p.context.updateDeviceUI(device, { online: true, lastSeen: new Date(Date.now() - 301000).toISOString() });
+    assert.equal(p.element(device + '-status').textContent, 'Heartbeat stale');
+  }
+});
+await t('missing, malformed and future heartbeat timestamps cannot claim online or offline', () => {
+  const p = page();
+  for (const online of [true, false, 'true', undefined]) {
+    for (const lastSeen of [null, '', 'not-a-time', new Date(Date.now() + 60000).toISOString()]) {
+      p.context.updateDeviceUI('s24', { online, lastSeen });
+      assert.equal(p.element('s24-status').textContent, 'Heartbeat unavailable');
+    }
+  }
+});
+await t('fresh reported heartbeats are labelled as evidence, not physical-device attestation', () => {
+  const p = page();
+  const lastSeen = new Date(Date.now() - 1000).toISOString();
+  p.context.updateDeviceUI('s24', { online: true, lastSeen });
+  assert.equal(p.element('s24-status').textContent, 'Heartbeat fresh');
+  p.context.updateDeviceUI('s24', { online: false, lastSeen });
+  assert.equal(p.element('s24-status').textContent, 'Offline');
+  p.context.updateDeviceUI('s24', { lastSeen });
+  assert.equal(p.element('s24-status').textContent, 'Heartbeat unavailable');
+});
+await t('transport, server and malformed-response errors are unavailable, not offline', async () => {
+  for (const setup of [{ responseStatus: 500 }, { networkError: true }, { payload: {} }]) {
+    const p = page();
+    p.context.setKey(key);
+    Object.assign(p.context, setup);
+    await p.context.fetchDeviceStatus('s24');
+    assert.equal(p.element('s24-status').textContent, 'Status unavailable');
+    assert.equal(p.element('s24-lastseen').textContent, '--');
+  }
+});
+await t('a rejected key keeps device panels locked instead of labelling devices offline', async () => {
+  const p = page();
+  p.context.setKey(key);
+  p.context.responseStatus = 401;
+  await p.context.fetchDeviceStatus('s24');
+  assert.equal(p.element('s24-status').textContent, 'Locked');
+});
+console.log(`\n${pass}/${total} sandbox dashboard checks passed`);
