@@ -1,0 +1,16 @@
+{
+  "identities": {
+    "orchestrator": ["223556219+Copilot@users.noreply.github.com"],
+    "hod": ["223556219+Copilot@users.noreply.github.com"],
+    "devops": ["223556219+Copilot@users.noreply.github.com"],
+    "security": ["223556219+Copilot@users.noreply.github.com"],
+    "qa": ["223556219+Copilot@users.noreply.github.com"],
+    "backend": ["223556219+Copilot@users.noreply.github.com"],
+    "frontend": ["223556219+Copilot@users.noreply.github.com"],
+    "database": ["223556219+Copilot@users.noreply.github.com"],
+    "design": ["223556219+Copilot@users.noreply.github.com"],
+    "documentation": ["223556219+Copilot@users.noreply.github.com"]
+  },
+  "since": null,
+  "accepted_rewrites": []
+}

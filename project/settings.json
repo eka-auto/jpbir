@@ -1,0 +1,8 @@
+{
+  "project_folder": "project",
+  "default_branch": "main",
+  "state_branch": "project-state",
+  "verifier_branch": "project-verifier",
+  "git_host": "github",
+  "ci": "github-actions"
+}

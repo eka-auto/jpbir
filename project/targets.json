@@ -1,0 +1,14 @@
+{
+  "targets": [
+    {
+      "name": "source",
+      "environment": "source",
+      "provider": "github",
+      "account_id": "jaytipargal",
+      "resource_ids": {
+        "repository": "jaytipargal/jpbir",
+        "repository_id": "1350770272"
+      }
+    }
+  ]
+}
