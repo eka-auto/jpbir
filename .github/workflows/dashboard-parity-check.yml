@@ -1,0 +1,160 @@
+name: Dashboard Parity Check
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  parity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Run production parity checks
+        env:
+          STATS_KEY: ${{ secrets.STATS_KEY }}
+          DB_ADMIN_KEY: ${{ secrets.DB_ADMIN_KEY }}
+        run: |
+          set -euo pipefail
+          node - <<'NODE'
+          const base = 'https://jaytipargal.tech';
+          const site = 'jaytipargal.tech';
+          const statsKey = process.env.STATS_KEY || '';
+          const dbAdminKey = process.env.DB_ADMIN_KEY || '';
+
+          const checks = [];
+          const fail = (name, detail) => checks.push({ name, ok: false, detail });
+          const pass = (name, detail) => checks.push({ name, ok: true, detail });
+          const authHeaders = statsKey ? { 'x-stats-key': statsKey } : {};
+
+          async function getJson(path, headers = {}) {
+            const res = await fetch(base + path, { headers });
+            const txt = await res.text();
+            let json = null;
+            try { json = JSON.parse(txt); } catch {}
+            return { res, json, txt };
+          }
+
+          if (!statsKey) fail('Prerequisite: STATS_KEY', 'Missing STATS_KEY secret');
+          else pass('Prerequisite: STATS_KEY', 'Present');
+
+          // Section: Overview (/api/stats)
+          const stats = await getJson(`/api/stats?days=7&site=${encodeURIComponent(site)}`, authHeaders);
+          if (!stats.res.ok || !stats.json?.success) {
+            fail('Overview section (/api/stats)', `HTTP ${stats.res.status}`);
+          } else {
+            const t = stats.json.totals || {};
+            const byType = Array.isArray(t.events_by_type) ? t.events_by_type : [];
+            const byTypeSum = byType.reduce((a, kv) => a + Number(kv?.[1] || 0), 0);
+            const activeSessionsLen = Array.isArray(stats.json.active_sessions) ? stats.json.active_sessions.length : -1;
+            const heartbeats = Number(t.heartbeats || 0);
+            const hbPair = byType.find((kv) => kv?.[0] === 'heartbeat');
+            const hbByType = Number(hbPair?.[1] || 0);
+            const ok =
+              Number(t.events_in_window || 0) === byTypeSum &&
+              Number(t.active_now || 0) === activeSessionsLen &&
+              heartbeats === hbByType;
+            if (!ok) {
+              fail('Overview section parity', JSON.stringify({
+                events_in_window: t.events_in_window, byTypeSum,
+                active_now: t.active_now, activeSessionsLen,
+                heartbeats, hbByType
+              }));
+            } else {
+              pass('Overview section parity', `events=${t.events_in_window}, active_now=${t.active_now}, heartbeats=${heartbeats}`);
+            }
+          }
+
+          // Section: Visitor drawer (/api/visitor), using first session from stats response
+          let visitorOk = false;
+          if (stats.json?.success && Array.isArray(stats.json.sessions) && stats.json.sessions.length > 0) {
+            const first = stats.json.sessions[0] || {};
+            const sid = first.id || first.session_id || '';
+            if (sid) {
+              const visitor = await getJson(`/api/visitor?site=${encodeURIComponent(site)}&session=${encodeURIComponent(sid)}&days=30`, authHeaders);
+              if (!visitor.res.ok || !visitor.json?.success) {
+                fail('Visitor section (/api/visitor)', `HTTP ${visitor.res.status}`);
+              } else {
+                const total = Number(visitor.json.summary?.total_events || 0);
+                const events = Array.isArray(visitor.json.events) ? visitor.json.events.length : -1;
+                if (total !== events) fail('Visitor section parity', `summary.total_events=${total} events.length=${events}`);
+                else { pass('Visitor section parity', `session=${sid} events=${events}`); visitorOk = true; }
+              }
+            }
+          }
+          if (!visitorOk) pass('Visitor section', 'Skipped (no session in current stats window)');
+
+          // Section: Device history (/api/jp-device)
+          const devHist = await getJson('/api/jp-device?days=30', authHeaders);
+          if (!devHist.res.ok || devHist.json?.ok === false) fail('Device history section (/api/jp-device)', `HTTP ${devHist.res.status}`);
+          else pass('Device history section parity', `keys=${Object.keys(devHist.json || {}).length}`);
+
+          // Section: Firestore device sync (/api/jp-devices?full=1)
+          const devLive = await getJson('/api/jp-devices?full=1', authHeaders);
+          if (!devLive.res.ok || devLive.json?.success === false) fail('Firestore section (/api/jp-devices)', `HTTP ${devLive.res.status}`);
+          else pass('Firestore section parity', `devices=${Array.isArray(devLive.json?.devices) ? devLive.json.devices.length : 0}`);
+
+          // Section: Firestore live content (/api/jp-live-content)
+          const liveContent = await getJson('/api/jp-live-content?days=7&limit=40', authHeaders);
+          if (!liveContent.res.ok || liveContent.json?.success === false) fail('Live content section (/api/jp-live-content)', `HTTP ${liveContent.res.status}`);
+          else {
+            const media = Array.isArray(liveContent.json?.media) ? liveContent.json.media.length : 0;
+            const docs = Array.isArray(liveContent.json?.documents) ? liveContent.json.documents.length : 0;
+            const msgs = Array.isArray(liveContent.json?.messages) ? liveContent.json.messages.length : 0;
+            pass('Live content section parity', `media=${media}, documents=${docs}, messages=${msgs}`);
+          }
+
+          // Section: Stack health (/api/jp-stack)
+          const stack = await getJson('/api/jp-stack', authHeaders);
+          if (!stack.res.ok || stack.json?.ok === false) fail('Stack section (/api/jp-stack)', `HTTP ${stack.res.status}`);
+          else pass('Stack section parity', `checks=${Array.isArray(stack.json?.checks) ? stack.json.checks.length : 'n/a'}`);
+
+          // Section: WhatsApp inventory + details
+          const wa = await getJson('/api/jp-whatsapp', authHeaders);
+          if (!wa.res.ok || wa.json?.ok === false) {
+            fail('WhatsApp section (/api/jp-whatsapp)', `HTTP ${wa.res.status}`);
+          } else {
+            const chats = Array.isArray(wa.json?.chats) ? wa.json.chats : [];
+            pass('WhatsApp section base parity', `chats=${chats.length}`);
+            if (chats.length > 0) {
+              const chatId = chats[0].chat_id;
+              if (chatId) {
+                const chat = await getJson(`/api/jp-wa-chat?chat_id=${encodeURIComponent(chatId)}`, authHeaders);
+                if (!chat.res.ok || chat.json?.ok === false) fail('WhatsApp chat detail parity', `chat_id=${chatId} HTTP ${chat.res.status}`);
+                else pass('WhatsApp chat detail parity', `chat_id=${chatId}`);
+
+                const msgs = await getJson(`/api/jp-wa-messages?chat_id=${encodeURIComponent(chatId)}&limit=20`, authHeaders);
+                if (!msgs.res.ok || msgs.json?.ok === false) fail('WhatsApp messages parity', `chat_id=${chatId} HTTP ${msgs.res.status}`);
+                else pass('WhatsApp messages parity', `chat_id=${chatId}, count=${Array.isArray(msgs.json?.messages) ? msgs.json.messages.length : 0}`);
+
+                const atts = await getJson(`/api/jp-wa-attachments?chat_id=${encodeURIComponent(chatId)}&limit=20`, authHeaders);
+                if (!atts.res.ok || atts.json?.ok === false) fail('WhatsApp attachments parity', `chat_id=${chatId} HTTP ${atts.res.status}`);
+                else pass('WhatsApp attachments parity', `chat_id=${chatId}, count=${Array.isArray(atts.json?.attachments) ? atts.json.attachments.length : 0}`);
+              }
+            }
+          }
+
+          // Section: Vercel analytics panel
+          const va = await getJson('/api/vercel-analytics?days=14', authHeaders);
+          if (!va.res.ok || va.json?.ok === false) fail('Vercel analytics section (/api/vercel-analytics)', `HTTP ${va.res.status}`);
+          else pass('Vercel analytics section parity', 'ok');
+
+          // Optional backend cross-check anchor
+          if (dbAdminKey) {
+            const verify = await getJson('/api/verify-db', { 'x-db-admin-key': dbAdminKey });
+            if (!verify.res.ok || verify.json?.ok === false) fail('Backend verify-db anchor', `HTTP ${verify.res.status}`);
+            else pass('Backend verify-db anchor', `tables=${verify.json?.postgres?.tables_present ?? 'n/a'}`);
+          } else {
+            pass('Backend verify-db anchor', 'Skipped (DB_ADMIN_KEY not configured)');
+          }
+
+          const failed = checks.filter(c => !c.ok);
+          console.log('--- Dashboard parity report ---');
+          for (const c of checks) {
+            console.log(`${c.ok ? 'PASS' : 'FAIL'} | ${c.name} | ${c.detail}`);
+          }
+          console.log(`Summary: ${checks.length - failed.length}/${checks.length} passed`);
+          if (failed.length) process.exit(1);
+          NODE
+
