@@ -16,6 +16,14 @@
 //
 // Auth: Authorization: Bearer $S24_MCP_TOKEN (constant-time compare), same
 // pattern as jp-agent. Binds 127.0.0.1 only; nginx terminates TLS.
+//
+// The device-health import below is RELATIVE, not absolute. It used to be
+// '/opt/jp-agent/device-health.mjs', which pinned this module to one droplet
+// directory and meant no test could ever import it: every suite had to
+// regex-read the source instead of executing it, which is exactly how the
+// missing-dependency and never-deployed bugs in this file went unnoticed.
+// Relative resolves both on the droplet (deploy.sh lands both files flat in
+// /opt/jp-agent) and in the test suite from this directory.
 
 import { createServer } from 'node:http';
 import { createHash, createSign, randomUUID, timingSafeEqual } from 'node:crypto';
@@ -23,7 +31,7 @@ import { readFileSync } from 'node:fs';
 import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
-import { deviceHealth, commandItem, actionGateError, splitFleet } from '/opt/jp-agent/device-health.mjs';
+import { deviceHealth, commandItem, actionGateError, splitFleet } from './device-health.mjs';
 
 const PORT = Number(process.env.S24_MCP_PORT || 8792);
 const HOST = '127.0.0.1';

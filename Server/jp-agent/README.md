@@ -29,7 +29,7 @@ compromising the dashboard key does not hand over the agent.
 | | |
 |---|---|
 | Droplet | `jp-agent`, blr1, s-1vcpu-2gb |
-| Service | `/opt/jp-agent`, systemd unit `jp-agent` |
+| Services | `/opt/jp-agent` (unit `jp-agent`, :8790) and `/opt/s24-mcp` (unit `s24-mcp`, :8792) |
 | Workspace | `/srv/workspace` |
 | Secrets | `/etc/jp-agent.env`, root-owned `0600` |
 
@@ -40,11 +40,23 @@ compromising the dashboard key does not hand over the agent.
 ```
 
 Idempotent. Ships `server.mjs`, `s24-tools.mjs`, `device-health.mjs`,
-`sync-auth-token.py`, the unit and the nginx config, installs dependencies, and
-restarts. It creates `/etc/jp-agent.env` on first run only, so re-running never
-clobbers a key already in place.
+`sync-auth-token.py`, both unit files and the nginx config, installs
+dependencies, and restarts. It creates `/etc/jp-agent.env` on first run only, so
+re-running never clobbers a key already in place.
 
-## The two secrets
+Two units come out of one deploy, because the MCP server is a separate process:
+
+| Unit | Dir | Port | Role |
+|---|---|---|---|
+| `jp-agent` | `/opt/jp-agent` | 8790 | Agent runtime behind the dashboard |
+| `s24-mcp` | `/opt/s24-mcp` | 8792 | Standalone streamable-HTTP MCP server for the device registry |
+
+`s24-mcp-server.mjs` imports `./device-health.mjs` relatively, so
+`device-health.mjs` is shipped into **both** directories. `s24-attestation.test.mjs`
+asserts the two repo-side copies are byte-identical, so the droplet copies cannot
+drift either. Both bind `127.0.0.1`; nginx is the only ingress.
+
+## The three secrets
 
 Deliberately not in this repo, not in the deploy script, and not passed through
 any agent transcript.
