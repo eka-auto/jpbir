@@ -3653,7 +3653,7 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
                 var syncDot = $('deviceSyncDot');
                 if (syncDot) syncDot.className = 'live-dot';
                 $('deviceDashHint').textContent = devices.length + ' devices · ' + (res.body.database || 'eka-agent') +
-                    ' · synced ' + fmtTime(res.body.generated_at) +
+                    ' · fetched ' + fmtTime(res.body.generated_at) +
                     (liveSync ? ' · newest device ' + fmtAgo(liveSync) : '');
 
                 /* All-devices-offline banner. Uses each device's own `live`
