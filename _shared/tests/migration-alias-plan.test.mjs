@@ -38,6 +38,17 @@ check('a reconciled ledger is a no-op', second.every((step) => step.action === '
 const fresh = planMigrations(files, new Set(), aliases);
 check('a new database applies every local migration exactly once', fresh.length === files.length && fresh.every((step) => step.action === 'apply'));
 check('ledger-only mode rejects unknown migration history', (() => { try { assertLedgerOnly(fresh); return false; } catch { return true; } })());
+const missingCheckpoint = new Set(historical);
+missingCheckpoint.delete('009_dynamodb_repair_state.sql');
+const missingCheckpointPlan = planMigrations(files, missingCheckpoint, aliases);
+check('missing checkpoint migration is explicitly identified before ledger-only reconciliation', (() => {
+  try {
+    assertLedgerOnly(missingCheckpointPlan);
+    return false;
+  } catch (err) {
+    return /009_dynamodb_repair_state\.sql/.test(String(err?.message || ''));
+  }
+})());
 
 console.log(failures ? `\n${failures} check(s) failed.` : '\nMigration alias plan verified.');
 process.exitCode = failures ? 1 : 0;

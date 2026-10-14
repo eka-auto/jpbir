@@ -48,9 +48,9 @@ export function planMigrations(files, appliedNames, aliasesByFile) {
 }
 
 export function assertLedgerOnly(plan) {
-  const pending = plan.filter((step) => step.action === 'apply');
+  const pending = plan.filter((step) => step.action === 'apply').map((step) => step.file);
   if (pending.length) {
-    throw new Error(`Ledger-only reconciliation refused: ${pending.length} migration(s) have no applied record`);
+    throw new Error(`Ledger-only reconciliation refused: ${pending.length} migration(s) have no applied record: ${pending.join(', ')}`);
   }
 }
 
