@@ -36,6 +36,30 @@ jobs:
       - name: Run browser checks
         run: npm run test:browser
 
+  s24-mcp-runtime:
+    name: S24 MCP compatibility (Python ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      matrix:
+        python: ['3.12', '3.14']
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Setup Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install isolated MCP dependencies
+        run: |
+          python -m venv "$RUNNER_TEMP/s24-mcp"
+          "$RUNNER_TEMP/s24-mcp/bin/python" -m pip install -r Integrations/s24-connect-mcp/requirements.txt
+      - name: Exercise real MCP stdio handshake and fail-closed ping
+        run: '"$RUNNER_TEMP/s24-mcp/bin/python" Integrations/s24-connect-mcp/smoke_test.py'
+
   # Nothing ever validated the workflow files themselves, and it cost a release.
   #
   # s24-export-sync.yml shipped with `SYNC_ROOT: ${{ runner.temp }}/s24-sync` in

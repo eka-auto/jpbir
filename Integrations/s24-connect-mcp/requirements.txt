@@ -1,0 +1,6 @@
+# FastMCP v1 imports do not exist in MCP SDK v2. Install in a dedicated venv,
+# never downgrade the shared interpreter used by unrelated MCP servers.
+mcp==1.28.0
+cryptography==49.0.0
+pydantic==2.13.4
+pydantic-core==2.46.4
