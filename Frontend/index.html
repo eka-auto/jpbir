@@ -2118,6 +2118,7 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
         $('gate').style.display = 'none';
         $('app').style.display = 'block';
         startAutoRefresh();
+        loadStack();
     }
 
     $('unlockBtn').addEventListener('click', function () {
@@ -3411,7 +3412,21 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
         try {
             var r = await fetch('/api/jp-stack', { headers: authHeaders() });
             if (r.status === 401) { clearDashboardKey(); KEY = ''; showGate(); return; }
-            var d = await r.json();
+            var text = await r.text();
+            var d;
+            try {
+                d = JSON.parse(text);
+            } catch (parseErr) {
+                throw new Error(r.status === 404
+                    ? 'Stack API endpoint is unavailable (404).'
+                    : 'Invalid JSON response (HTTP ' + r.status + ')');
+            }
+            if (r.status === 503 && /^auth_/.test((d && d.code) || '')) {
+                clearDashboardKey(); KEY = '';
+                $('gateMsg').textContent = d.error || 'Authentication is not configured on the server.';
+                showGate();
+                return;
+            }
             if (!d.success) throw new Error(d.error || 'failed');
             renderStack(d);
         } catch (e) {
