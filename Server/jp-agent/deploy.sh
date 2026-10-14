@@ -36,15 +36,15 @@ scp -o BatchMode=yes -o StrictHostKeyChecking=accept-new -i "$KEY" \
   "$(dirname "$0")/package.json" "$(dirname "$0")/package-lock.json" \
   "root@$IP:/opt/jp-agent/"
 # s24-mcp is a separate process with its own systemd unit, so it gets its own
-# directory. It imports ./device-health.mjs relatively, and both files must sit
-# in the same directory for that to resolve — so the droplet copy of
-# device-health.mjs is shipped here too. They stay byte-identical: the copy in
-# /opt/jp-agent is what jp-agent's in-process fallback loads, and this one is
-# what the standalone HTTP server loads. s24-attestation.test.mjs asserts the
-# repo-side copies match; the two droplet copies are shipped from that same
-# source, so they cannot diverge either.
+# directory. s24-mcp-server.mjs imports ./device-health.mjs relatively, and
+# device-health.mjs in turn imports ./s24-attestation.js — so the whole
+# transitive closure has to land in one directory or node fails at startup with
+# ERR_MODULE_NOT_FOUND. These are the same files shipped to /opt/jp-agent above;
+# s24-attestation.test.mjs asserts the repo-side copies are byte-identical, so
+# the two droplet copies cannot drift either.
 scp -o BatchMode=yes -o StrictHostKeyChecking=accept-new -i "$KEY" \
   "$(dirname "$0")/s24-mcp-server.mjs" "$(dirname "$0")/device-health.mjs" \
+  "$(dirname "$0")/s24-attestation.js" \
   "root@$IP:/opt/s24-mcp/"
 scp -o BatchMode=yes -o StrictHostKeyChecking=accept-new -i "$KEY" \
   "$(dirname "$0")/jp-agent.service" "root@$IP:/etc/systemd/system/jp-agent.service"
