@@ -127,5 +127,12 @@ for (const page of ['s24.html', 'vivobook.html']) {
   });
 }
 
+t('the main device dashboard labels generated_at as fetched, not a device sync', () => {
+  const index = readFileSync(join(FRONTEND, 'index.html'), 'utf8');
+  assert.match(index, /' · fetched ' \+ fmtTime\(res\.body\.generated_at\)/);
+  assert.doesNotMatch(index, /' · synced ' \+ fmtTime\(res\.body\.generated_at\)/);
+  assert.match(index, /var liveSync = newestLastSeen\(devices\)/);
+});
+
 console.log(`\n${pass}/${total} checks passed`);
 if (pass !== total) process.exitCode = 1;

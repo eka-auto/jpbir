@@ -1412,6 +1412,13 @@
       var latest = (d.runs || [])[0] || {};
       var counts = d.counts || {};
       var device = d.device || {};
+      // Neon holds imported snapshots, not a live phone probe. A restored
+      // status="connected" (or old verification flags) must not become a
+      // current liveness verdict merely because today's export succeeded.
+      var hasPhoneEvidence = Object.keys(device).length > 0;
+      var unavailableDatasets = (d.datasets || []).filter(function (row) {
+        return row.status !== 'ok' && row.status !== 'empty';
+      }).length;
       // No dataset is filtered out and no row is dropped: the stored-file
       // dataset is a dataset like any other, and a row the operator cannot see
       // is a row they cannot check.
@@ -1457,7 +1464,7 @@
       var recordsTag = state.s24Section === 'agents'
         ? num(queryRows.length) + ' agent record' + (queryRows.length === 1 ? '' : 's')
         : num(queryRows.length) + (state.s24Query ? ' matched' : ' records');
-      var recordsCard = '<div class="card"><h3>' + esc(state.s24Section === 'overview' ? 'Recently synchronized records' : selectedLabel) +
+      var recordsCard = '<div class="card"><h3>' + esc(state.s24Section === 'overview' ? 'Stored archive records' : selectedLabel) +
         '<span class="tag">' + recordsTag + '</span></h3>' +
         (state.s24Section === 'all' ? '<div class="query-summary"><strong>' + num(queryRows.length) + '</strong> of ' + num(allRows.length) + ' loaded records' + (state.s24Query ? ' · filter: “' + esc(state.s24Query) + '”' : '') + '</div>' : '') +
         '<div class="body flush">' +
@@ -1466,7 +1473,9 @@
             queryRows, { onRow: true })) + '</div>' + pager('s24', d) +
         '<div class="masked-note">Every stored field is shown: identifiers, message content, coordinates, storage payloads and file details included.</div></div>';
       var devicePanel = '<div class="bars">' +
-        '<div class="row"><div class="lbl">Runtime attestation</div><div class="val">' + s24Status(device.runtime_is_android === true && device.live_device_verified === true ? 'verified Android' : 'not verified') + '</div></div>' +
+        '<p class="masked-note">Historical evidence — not live verified. Archive pull and upload times do not prove current phone activity. <a href="/s24">Check current device status</a>.</p>' +
+        '<div class="row"><div class="lbl">Recorded status</div><div class="val">' + esc(device.status || '—') + '</div></div>' +
+        '<div class="row"><div class="lbl">Recorded attestation</div><div class="val">' + s24Status(device.runtime_is_android === true && device.live_device_verified === true ? 'verification claimed in snapshot' : 'not verified') + '</div></div>' +
         '<div class="row"><div class="lbl">Agent version</div><div class="val mono">' + esc(device.agent_version || '—') + '</div></div>' +
         // manufacturer, model, android_version and battery_level were all selected
         // from s24_device_snapshots and drawn nowhere: the phone's own report of
@@ -1484,8 +1493,8 @@
         '<div class="row"><div class="lbl">Last phone evidence</div><div class="val">' + when(device.last_seen) + '</div></div>' +
         '</div>';
       var overviewPanels = '<div class="grid cards-2" style="margin-bottom:12px">' +
-        card('Phone runtime evidence', devicePanel, device.status || 'stored snapshot', true) +
-        card('Latest pull coverage', '<div class="bars">' + coverage + '</div>', 'no silent gaps', true) +
+        card('Archived phone evidence', devicePanel, hasPhoneEvidence ? 'historical snapshot' : 'no phone evidence', true) +
+        card('Latest pull coverage', '<div class="bars">' + coverage + '</div>', unavailableDatasets ? unavailableDatasets + ' unavailable' : allDatasets.length ? 'coverage reported' : 'no coverage evidence', true) +
         card('Local sync runs', table([
           // finished_at was selected by db-api and rendered nowhere. Shown as the
           // run's duration, which is its useful form: a run that never finished
@@ -1563,7 +1572,7 @@
           // the list length made this tile read "25" forever once 25 runs existed.
           kpi('Sync runs', num(typeof d.runsTotal === 'number' ? d.runsTotal : (d.runs || []).length),
               (latest.upload_status || 'none yet') + ((d.runsTotal || 0) > (d.runs || []).length ? ' · showing latest ' + (d.runs || []).length : '')) +
-          kpi('Last local pull', latest.started_at ? ago(latest.started_at) : '—', whenText(latest.started_at)) +
+          kpi('Last archive pull', latest.started_at ? ago(latest.started_at) : '—', 'Export time, not a phone heartbeat · ' + whenText(latest.started_at)) +
           kpi('Phone model', latest.model || '—', latest.android_version ? 'Android ' + latest.android_version : 'not synced') +
           kpi('Signing key', latest.key_id ? latest.key_id.slice(0, 12) + '…' : '—', 'asymmetric upload identity') +
         '</div>' + (state.s24Section === 'overview' ? overviewPanels : '') + queryRail + recordsCard;

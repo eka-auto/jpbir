@@ -133,3 +133,74 @@ test('archived and partial results remain visible without masquerading as live c
   await expect(page.locator('#calls-list')).toContainText('Partial result');
   await expect(page.locator('#sms-list')).toContainText('Data unavailable from one or more sources');
 });
+
+// The database explorer reads an imported Neon archive. Even a recent export
+// of status=connected is not a current signed phone heartbeat. All fixtures
+// and credentials below are synthetic and stay on the local test server.
+const archiveTestKey = 'k'.repeat(40);
+async function archiveApi(page, { device = {}, status = 200 } = {}) {
+  const views = new Set();
+  await page.route('**/api/db-api**', async route => {
+    const request = route.request();
+    expect(request.method()).toBe('GET');
+    expect(request.headers()['x-stats-key']).toBe(archiveTestKey);
+    const view = new URL(request.url()).searchParams.get('view');
+    views.add(view);
+    if (view === 's24' && status !== 200) {
+      return route.fulfill({ status, json: { ok: false, error: 'Archive source unavailable' } });
+    }
+    const data = {
+      sites: [],
+      health: { counts: { s24_records: 74 }, countsForSite: {}, coverage: {}, sources: [], span: {} },
+      overview: { totals: {}, daily: [], hourly: [], byType: [], topPages: [], countries: [], cities: [], browsers: [], oses: [], devices: [], referrers: [], utm: [], languages: [], isps: [], timezones: [], domains: [], screens: [] },
+      s24: {
+        migrated: true, normalized: true, section: 'overview', total: 0, limit: 100, offset: 0,
+        rows: [], counts: { all: 74, calls: 32, sms: 0, commands: 31 }, device,
+        datasets: [{ dataset: 'direct_sms', status: 'unavailable', record_count: 0, stored_records: 0, detail: 'phone attestation failed' }],
+        runs: [{ started_at: new Date().toISOString(), upload_status: 'complete' }],
+        runsTotal: 1, batches: [], batchesTotal: 0,
+      },
+    }[view];
+    expect(data).toBeDefined();
+    return route.fulfill({ json: { ok: true, view, data } });
+  });
+  await page.addInitScript(key => sessionStorage.setItem('jbt_stats_key', key), archiveTestKey);
+  return views;
+}
+
+for (const scenario of [
+  { name: 'stale connected snapshot', device: { status: 'connected', observed_at: '2000-01-01T00:00:00Z', last_seen: '2000-01-01T00:00:00Z' } },
+  { name: 'recent stored verification flags', device: () => ({ status: 'connected', observed_at: new Date().toISOString(), last_seen: new Date().toISOString(), runtime_is_android: true, live_device_verified: true }) },
+  { name: 'future-dated stored verification flags', device: { status: 'connected', observed_at: '2099-01-01T00:00:00Z', last_seen: '2099-01-01T00:00:00Z', runtime_is_android: true, live_device_verified: true } },
+  { name: 'missing phone snapshot', device: {} },
+]) {
+  test(`database explorer treats ${scenario.name} as historical, not live`, async ({ page }) => {
+    const device = typeof scenario.device === 'function' ? scenario.device() : scenario.device;
+    const views = await archiveApi(page, { device });
+    const errors = [];
+    page.on('pageerror', error => errors.push(error.message));
+    await page.goto('/db');
+    await page.locator('button[data-page="s24"]').click();
+    const archive = page.locator('#page-s24');
+    const evidence = archive.locator('.card').filter({ has: page.getByRole('heading', { name: /Archived phone evidence/ }) });
+    await expect(evidence).toContainText('Historical evidence — not live verified.');
+    await expect(evidence.locator('h3 .tag')).toHaveText(device.status ? 'historical snapshot' : 'no phone evidence');
+    await expect(evidence.getByRole('link', { name: 'Check current device status' })).toHaveAttribute('href', '/s24');
+    if (device.status) await expect(evidence).toContainText('Recorded statusconnected');
+    await expect(archive).toContainText('Export time, not a phone heartbeat');
+    await expect(archive).toContainText('1 unavailable');
+    await expect(archive).not.toContainText('no silent gaps');
+    await expect(archive.locator('.kpi').filter({ hasText: 'Records' }).first()).toContainText('74');
+    await expect(archive.locator('.kpi').filter({ hasText: 'Calls' }).first()).toContainText('32');
+    expect(views.has('s24')).toBe(true);
+    expect(errors).toEqual([]);
+  });
+}
+
+test('failed archive API is visible and never paints a connected phone', async ({ page }) => {
+  await archiveApi(page, { status: 500 });
+  await page.goto('/db');
+  await page.locator('button[data-page="s24"]').click();
+  await expect(page.locator('#err')).toContainText('Archive source unavailable');
+  await expect(page.locator('#page-s24')).not.toContainText('historical snapshot');
+});

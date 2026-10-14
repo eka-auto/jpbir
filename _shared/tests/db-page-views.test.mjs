@@ -554,5 +554,38 @@ await t('a request from before the lock that fails afterwards puts no error bann
   assert.match(locking.$('page-s24').innerHTML, /Dashboard locked\./);
 });
 
+for (const [name, device] of [
+  ['stale connected snapshot', { status: 'connected', observed_at: iso(30 * 86400e3), last_seen: iso(30 * 86400e3) }],
+  ['recent snapshot with stored verification flags', { status: 'connected', observed_at: iso(1000), last_seen: iso(1000), runtime_is_android: true, live_device_verified: true }],
+  ['future-dated snapshot', { status: 'connected', observed_at: '2099-01-01T00:00:00Z', last_seen: '2099-01-01T00:00:00Z', runtime_is_android: true, live_device_verified: true }],
+  ['missing snapshot', {}],
+]) {
+  await t(`${name} remains archive evidence, never a current connected verdict`, async () => {
+    const archived = await load({ key: KEY, handler: (q) => q.view === 's24' ? ok({
+      ...DATA.s24(q), device,
+      runs: [{ started_at: iso(1000), upload_status: 'complete' }],
+      datasets: [{ dataset: 'direct_sms', status: 'unavailable', record_count: 0, stored_records: 0, detail: 'phone attestation failed' }],
+    }) : answer(q) });
+    await archived.dbg.RENDER.s24();
+    const out = archived.$('page-s24').innerHTML;
+    assert.match(out, /Archived phone evidence/);
+    assert.match(out, /Historical evidence — not live verified/);
+    assert.match(out, /Export time, not a phone heartbeat/);
+    assert.match(out, /href="\/s24"/);
+    assert.match(out, /1 unavailable/);
+    assert.doesNotMatch(out, /no silent gaps|verified Android/);
+    assert.doesNotMatch(out, /<span class="tag">connected<\/span>/);
+    if (device.status) assert.match(out, /Recorded status<\/div><div class="val">connected/);
+    else assert.match(out, /no phone evidence/);
+    if (device.live_device_verified) assert.match(out, /verification claimed in snapshot/);
+  });
+}
+
+await t('an empty pull has no coverage evidence instead of promising no gaps', async () => {
+  const empty = await load({ key: KEY });
+  await empty.dbg.RENDER.s24();
+  assert.match(empty.$('page-s24').innerHTML, /no coverage evidence/);
+});
+
 console.log(`\n${pass}/${total} checks passed`);
 if (pass !== total) process.exitCode = 1;
