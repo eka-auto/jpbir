@@ -14,14 +14,12 @@ jobs:
       - name: Run production parity checks
         env:
           STATS_KEY: ${{ secrets.STATS_KEY }}
-          DB_ADMIN_KEY: ${{ secrets.DB_ADMIN_KEY }}
         run: |
           set -euo pipefail
           node - <<'NODE'
           const base = 'https://jaytipargal.tech';
           const site = 'jaytipargal.tech';
           const statsKey = process.env.STATS_KEY || '';
-          const dbAdminKey = process.env.DB_ADMIN_KEY || '';
 
           const checks = [];
           const fail = (name, detail) => checks.push({ name, ok: false, detail });
@@ -140,13 +138,12 @@ jobs:
           if (!va.res.ok || va.json?.ok === false) fail('Vercel analytics section (/api/vercel-analytics)', `HTTP ${va.res.status}`);
           else pass('Vercel analytics section parity', 'ok');
 
-          // Optional backend cross-check anchor
-          if (dbAdminKey) {
-            const verify = await getJson('/api/verify-db', { 'x-db-admin-key': dbAdminKey });
-            if (!verify.res.ok || verify.json?.ok === false) fail('Backend verify-db anchor', `HTTP ${verify.res.status}`);
-            else pass('Backend verify-db anchor', `tables=${verify.json?.postgres?.tables_present ?? 'n/a'}`);
+          // Backend cross-check anchor (same key gate as dashboard routes)
+          const verify = await getJson('/api/verify-db', authHeaders);
+          if (!verify.res.ok || verify.json?.success === false) {
+            fail('Backend verify-db anchor', `HTTP ${verify.res.status}`);
           } else {
-            pass('Backend verify-db anchor', 'Skipped (DB_ADMIN_KEY not configured)');
+            pass('Backend verify-db anchor', `tables=${verify.json?.databases?.postgres?.tables_present ?? 'n/a'}`);
           }
 
           const failed = checks.filter(c => !c.ok);
@@ -157,4 +154,3 @@ jobs:
           console.log(`Summary: ${checks.length - failed.length}/${checks.length} passed`);
           if (failed.length) process.exit(1);
           NODE
-
