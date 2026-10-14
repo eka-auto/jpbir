@@ -34,8 +34,12 @@ check('the health key reaches the Postgres check', r.statusCode === 503 && r.pay
   `got ${r.statusCode} ${JSON.stringify(r.payload)}`);
 check('and is shown only the Postgres summary',
   JSON.stringify(Object.keys(r.payload || {}).sort()) === '["postgres","success"]'
-    && JSON.stringify(Object.keys(r.payload.postgres).sort()) === '["ok","tables_expected","tables_present"]',
+    && JSON.stringify(Object.keys(r.payload.postgres).sort()) === '["birthday_active_now","newest_event_at","ok","tables_expected","tables_present"]',
   JSON.stringify(r.payload));
+check('health-key payload keeps freshness fields typed and non-sensitive',
+  (r.payload.postgres.newest_event_at === null || typeof r.payload.postgres.newest_event_at === 'string')
+    && (r.payload.postgres.birthday_active_now === null || Number.isInteger(r.payload.postgres.birthday_active_now)),
+  JSON.stringify(r.payload.postgres));
 
 r = await call({ 'x-health-key': 'wrong' });
 check('a wrong health key is refused', r.statusCode === 401, `got ${r.statusCode}`);

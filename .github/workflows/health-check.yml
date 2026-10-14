@@ -82,6 +82,8 @@ jobs:
           JSON=$(echo "$BODY" | sed '$d')
           if [ "$CODE" -eq 200 ] && echo "$JSON" | jq -e '.postgres.ok == true' >/dev/null; then
             echo "✅ Neon answered with the full schema ($(echo "$JSON" | jq -r '.postgres.tables_present') tables)"
+            echo "   newest event: $(echo "$JSON" | jq -r '.postgres.newest_event_at // \"n/a\"')"
+            echo "   birthday active_now (last 120s): $(echo "$JSON" | jq -r '.postgres.birthday_active_now // \"n/a\"')"
 
             # Row counts and write freshness are NOT available here, by design.
             #

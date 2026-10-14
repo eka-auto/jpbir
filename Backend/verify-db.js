@@ -83,7 +83,11 @@ export async function verifyPostgres(q = query, configured = isConfigured) {
         `SELECT COUNT(*)::int AS events,
                 COUNT(DISTINCT site)::int AS sites,
                 MAX(occurred_at) AS newest_event_at,
-                MAX(ingested_at) AS last_write_at
+                MAX(ingested_at) AS last_write_at,
+                COUNT(DISTINCT session_id) FILTER (
+                  WHERE site = 'jaytibirthday.in'
+                    AND occurred_at > now() - interval '120 seconds'
+                )::int AS birthday_active_now
            FROM events`
       )).rows[0];
     }
@@ -182,7 +186,13 @@ export default async function handler(req, res) {
     const pg = await verifyPostgres();
     return res.status(pg.ok ? 200 : 503).json({
       success: pg.ok,
-      postgres: { ok: pg.ok, tables_present: pg.tables_present ?? null, tables_expected: pg.tables_expected ?? null },
+      postgres: {
+        ok: pg.ok,
+        tables_present: pg.tables_present ?? null,
+        tables_expected: pg.tables_expected ?? null,
+        newest_event_at: pg.newest_event_at ?? null,
+        birthday_active_now: pg.birthday_active_now ?? null,
+      },
     });
   }
   if (!cronAuthorized(req) && !requireKey(req, res)) return;
