@@ -480,6 +480,99 @@ class DataRoutesTests(unittest.TestCase):
         self.assertEqual(rows[0]["deviceId"], "known")
         self.firestore.list_docs.assert_not_called()
 
+    def test_empty_live_array_does_not_resurrect_archived_records(self):
+        self.firestore.get_doc.return_value = self._doc_with_direct_sync(sms=[])
+        self.firestore.list_docs.return_value = [{"body": "synthetic stale record"}]
+        with patch.object(dashboard_api, "neon_database_url", return_value=self.NEON_URL), \
+                patch.object(dashboard_api, "neon_query") as query:
+            response = self.http.get("/api/data/sms")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()["data"], [])
+        self.assertEqual(response.get_json()["sources"][0]["source"], "firestore_direct_sync")
+        query.assert_not_called()
+        self.firestore.list_docs.assert_not_called()
+
+    def test_missing_live_array_maps_normalized_postgres_columns_and_binds_device_id(self):
+        self.firestore.get_doc.return_value = {"fields": {}}
+        for kind, table, row, column in [
+            ("calls", "s24_calls", {"number": "synthetic", "duration_seconds": 7, "date": "2026-10-01T00:00:00Z"}, "duration_sec AS duration_seconds"),
+            ("sms", "s24_sms", {"sender": "synthetic", "body": "test", "timestamp": "2026-10-01T00:00:00Z"}, "correspondent AS sender"),
+        ]:
+            with self.subTest(kind=kind), \
+                    patch.object(dashboard_api, "neon_database_url", return_value=self.NEON_URL), \
+                    patch.object(dashboard_api, "neon_query", return_value=[row]) as query:
+                response = self.http.get("/api/data/" + kind)
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.get_json()["data"][0]["deviceId"], "known")
+                self.assertEqual(response.get_json()["data"][0]["source"], "neon_archive")
+                self.assertTrue(response.get_json()["sources"][0]["archival"])
+                self.assertIn("FROM " + table, query.call_args.args[0])
+                self.assertIn(column, query.call_args.args[0])
+                self.assertIn("WHERE device_id = $1", query.call_args.args[0])
+                self.assertEqual(query.call_args.args[1], ["known", 50])
+        self.firestore.list_docs.assert_not_called()
+
+    def test_all_source_failures_are_not_reported_as_an_empty_success(self):
+        self.firestore.get_doc.side_effect = RuntimeError("synthetic failure")
+        self.firestore.list_docs.side_effect = RuntimeError("synthetic failure")
+        with patch.object(dashboard_api, "neon_database_url", return_value=None):
+            response = self.http.get("/api/data/calls")
+        self.assertEqual(response.status_code, 502)
+        self.assertEqual(response.get_json()["error"], "live store unavailable")
+
+    def test_successful_device_is_retained_but_failed_device_is_marked_partial(self):
+        dashboard_api.app.config["SANDBOX_CFG"]["devices"].append({"id": "other"})
+        self.firestore.get_doc.side_effect = [
+            self._doc_with_direct_sync(sms=[{"body": "synthetic", "timestamp": "2026-10-01T00:00:00Z"}]),
+            RuntimeError("synthetic failure"),
+        ]
+        self.firestore.list_docs.side_effect = RuntimeError("synthetic failure")
+        with patch.object(dashboard_api, "neon_database_url", return_value=None):
+            response = self.http.get("/api/data/sms")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.get_json()["data"]), 1)
+        self.assertTrue(response.get_json()["partial"])
+        self.assertEqual(response.get_json()["warnings"][0]["deviceId"], "other")
+
+    def test_record_sorting_uses_actual_time_not_timezone_string_order(self):
+        self.firestore.get_doc.return_value = self._doc_with_direct_sync(sms=[
+            {"body": "older", "timestamp": "2026-10-01T12:00:00+05:30"},
+            {"body": "newer", "timestamp": "2026-10-01T08:00:00Z"},
+        ])
+        response = self.http.get("/api/data/sms")
+        self.assertEqual([r["body"] for r in response.get_json()["data"]], ["newer", "older"])
+
+    def test_database_source_audit_reports_column_mismatches_without_private_rows(self):
+        columns = [{"table_name": "s24_calls", "column_name": column}
+                   for column in ["device_id", "called_at", "contact_name", "phone_number", "call_type"]]
+        with patch.object(dashboard_api, "neon_query", return_value=columns):
+            response = self.http.get("/api/data/sources")
+        self.assertEqual(response.status_code, 200)
+        call_source = next(row for row in response.get_json()["tables"] if row["table"] == "s24_calls")
+        self.assertFalse(call_source["schemaMatches"])
+        self.assertIn("duration_sec", call_source["missingColumns"])
+        self.assertNotIn("data", response.get_json())
+
+    def test_database_source_audit_counts_only_fixed_contract_tables(self):
+        columns = [{"table_name": table, "column_name": column}
+                   for table, contract in dashboard_api.SOURCE_TABLES.items()
+                   for column in contract["columns"]]
+        with patch.object(dashboard_api, "neon_query", side_effect=[columns] + [
+            [{"record_count": "3", "latest_record_at": None}]
+        ] * 4) as query:
+            response = self.http.get("/api/data/sources?sql=DROP%20TABLE%20ignored")
+        self.assertTrue(response.get_json()["ok"])
+        self.assertEqual(len(response.get_json()["tables"]), 4)
+        self.assertTrue(all(row["record_count"] == "3" for row in response.get_json()["tables"]))
+        self.assertTrue(all("DROP" not in call.args[0] for call in query.call_args_list))
+
+    def test_database_source_audit_requires_the_dashboard_key(self):
+        dashboard_api.app.config.pop("SANDBOX_AUTH_DISABLED", None)
+        with patch.dict(os.environ, {"STATS_KEY": "synthetic-test-key"}), \
+                patch.object(dashboard_api, "neon_query") as query:
+            self.assertEqual(self.http.get("/api/data/sources").status_code, 401)
+            query.assert_not_called()
+
     def test_whatsapp_without_database_url_is_server_not_configured(self):
         env = {k: v for k, v in os.environ.items()
                if k not in ("DATABASE_URL", "POSTGRES_URL")}

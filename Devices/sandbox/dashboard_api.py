@@ -493,8 +493,8 @@ DATA_SUBCOLLECTIONS = {
 # Rolling last-50 arrays the phone daemon PATCHes into the device document
 # under the samsungS24DirectSync map on every sync cycle
 # (Backend/s24_phone_direct_cloud.py). These are the always-live source for
-# calls/sms; the Neon s24_calls/s24_sms archives only refresh when the laptop
-# export runs, so the dashboard must not depend on them.
+# calls/sms. The Neon s24_calls/s24_sms projections are an explicitly labelled
+# archive fallback when that live array is absent, not proof of device liveness.
 DIRECT_SYNC_ARRAY_FIELDS = {
     "calls": "callLogs",
     "sms": "sms",
@@ -516,7 +516,7 @@ def neon_database_url():
     return os.environ.get("DATABASE_URL") or os.environ.get("POSTGRES_URL")
 
 
-def neon_query(sql):
+def neon_query(sql, params=None, timeout=20):
     """Run one read-only statement through Neon's SQL-over-HTTP endpoint.
 
     Chosen over psycopg so the Vercel python runtime needs no native wheels:
@@ -524,8 +524,8 @@ def neon_query(sql):
     the ``Neon-Connection-String`` header (same approach as
     @neondatabase/serverless), and it answers on the direct endpoint, so a
     pooled (``-pooler``) DATABASE_URL gets its suffix stripped first. There
-    is no parameter binding — callers interpolate only values they have
-    already clamped to a safe form (e.g. the int limit).
+    Device identifiers and limits are passed as bound parameters, never SQL
+    fragments. Diagnostic callers can use a shorter per-query timeout.
     """
     url = neon_database_url()
     if not url:
@@ -539,7 +539,7 @@ def neon_query(sql):
     # earlier `application/sql` form with the statement as the raw body is not
     # part of that API and never reached a deployment to prove otherwise, so it
     # is corrected here rather than shipped and discovered in production.
-    body = json.dumps({"query": sql, "params": []}).encode("utf-8")
+    body = json.dumps({"query": sql, "params": params or []}).encode("utf-8")
     req = urllib.request.Request(
         f"https://{host}/sql", data=body, method="POST"
     )
@@ -547,7 +547,7 @@ def neon_query(sql):
     req.add_header("Content-Type", "application/json")
     req.add_header("Accept", "application/json")
     try:
-        with urllib.request.urlopen(req, timeout=20) as resp:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
             payload = json.loads(resp.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", "replace")[:300]
@@ -559,6 +559,54 @@ def neon_query(sql):
     return payload["rows"]
 
 
+SOURCE_TABLES = {
+    "wa_chats": {"endpoint": "/api/data/whatsapp", "columns": ["chat_id", "name", "kind"], "time": None},
+    "wa_messages": {"endpoint": "/api/data/whatsapp", "columns": ["msg_id", "chat_id", "sent_at", "from_me", "sender", "kind", "body", "ingested_at"], "time": "sent_at"},
+    "s24_calls": {"endpoint": "/api/data/calls", "columns": ["device_id", "called_at", "contact_name", "phone_number", "call_type", "duration_sec", "backed_up_at"], "time": "called_at"},
+    "s24_sms": {"endpoint": "/api/data/sms", "columns": ["device_id", "sent_at", "correspondent", "message_type", "body"], "time": "sent_at"},
+}
+
+
+@app.get("/api/data/sources")
+def api_data_sources():
+    """Authenticated, fixed-query schema/count audit; never returns private rows.
+
+    This uses the deployment's existing database connection. There is no SQL
+    input, connection-string output, schema mutation, or new credential path.
+    """
+    try:
+        columns = neon_query(
+            "SELECT table_name, column_name FROM information_schema.columns "
+            "WHERE table_schema = 'public' AND table_name IN "
+            "('wa_chats','wa_messages','s24_calls','s24_sms')",
+            timeout=5,
+        )
+        tables = []
+        for table, contract in SOURCE_TABLES.items():
+            present = {row["column_name"] for row in columns if row["table_name"] == table}
+            missing = sorted(set(contract["columns"]) - present)
+            result = {"table": table, "endpoint": contract["endpoint"],
+                      "schemaMatches": not missing, "missingColumns": missing}
+            if not missing:
+                # Identifiers come exclusively from SOURCE_TABLES above.
+                latest = "MAX(" + contract["time"] + ")::text" if contract["time"] else "NULL::text"
+                try:
+                    counts = neon_query(
+                        "SELECT COUNT(*)::text AS record_count, " + latest + " AS latest_record_at FROM public." + table,
+                        timeout=5,
+                    )
+                    result.update(counts[0])
+                except Exception:  # no raw provider error or credentials in responses
+                    result["error"] = "count unavailable"
+            tables.append(result)
+        return jsonify({"tables": tables, "ok": all(t["schemaMatches"] and not t.get("error") for t in tables),
+                        "contactsCollected": False, "archiveIsDeviceLiveness": False})
+    except ConfigError:
+        raise
+    except Exception:
+        return jsonify({"error": "database audit unavailable"}), 502
+
+
 @app.get("/api/data/<kind>")
 def api_data(kind):
     """Return the latest records for a device data kind.
@@ -566,9 +614,9 @@ def api_data(kind):
     whatsapp — Neon Postgres: the newest ``limit`` rows of wa_messages joined
     to wa_chats for display names (the Firestore whatsappMedia subcollection
     has no writer, so it never has data). Requires DATABASE_URL.
-    calls / sms — the live rolling arrays the phone daemon PATCHes into each
-    device document under samsungS24DirectSync; a device with no such array
-    yet falls back to its legacy subcollection read.
+    calls / sms — direct-sync arrays (including an authoritative empty array),
+    then normalized Neon archives when configured, then legacy subcollections.
+    Every fallback declares its provenance; failed reads are not empty success.
     contacts — nothing collects contacts anywhere (contact names live in
     wa_chats.name), so the response says so instead of faking an empty read.
     """
@@ -612,7 +660,8 @@ def _api_data_whatsapp(limit):
         raise
     except RuntimeError as exc:
         return jsonify({"error": "live store unavailable", "detail": str(exc)}), 502
-    return jsonify({"data": rows, "limit": limit})
+    return jsonify({"data": rows, "limit": limit, "partial": False,
+                    "sources": [{"source": "neon_whatsapp", "archival": True, "recordCount": len(rows)}]})
 
 
 def _normalize_device_record(kind, device_id, rec):
@@ -638,43 +687,92 @@ def _normalize_device_record(kind, device_id, rec):
     return rec
 
 
+def _archive_device_records(kind, device_id, limit):
+    if kind == "calls":
+        sql = (
+            "SELECT contact_name AS name, phone_number AS number, call_type AS type, "
+            "duration_sec AS duration_seconds, called_at AS date, backed_up_at "
+            "FROM s24_calls WHERE device_id = $1 "
+            "ORDER BY called_at DESC NULLS LAST LIMIT $2"
+        )
+    else:
+        sql = (
+            "SELECT correspondent AS sender, message_type AS type, body, sent_at AS timestamp "
+            "FROM s24_sms WHERE device_id = $1 "
+            "ORDER BY sent_at DESC NULLS LAST LIMIT $2"
+        )
+    return neon_query(sql, [device_id, limit])
+
+
+def _record_time(value):
+    try:
+        if isinstance(value, (int, float)) or (isinstance(value, str) and value.isdigit()):
+            number = float(value)
+            return number / 1000 if number > 1e12 else number
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        return (parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)).timestamp()
+    except (ValueError, TypeError, OverflowError):
+        return float("-inf")
+
+
 def _api_data_device_records(kind, limit):
     cfg = app.config["SANDBOX_CFG"]
     client = app.config["FIRESTORE"]
     array_field = DIRECT_SYNC_ARRAY_FIELDS[kind]
     date_key = "date" if kind == "calls" else "timestamp"
     records = []
+    sources = []
+    warnings = []
+    unavailable_devices = []
     for dev in configured_devices(cfg):
         rows = []
+        device_warnings = []
+        direct_present = False
         try:
             doc = client.get_doc(cfg["collection"], dev["id"])
-        except Exception as exc:  # noqa: BLE001 - one device must not break the rest
-            log.warning("doc read failed for %s: %s", dev["id"], exc)
-            continue
+        except Exception:  # noqa: BLE001 - recover via archive without claiming live success
+            doc = None
+            device_warnings.append({"deviceId": dev["id"], "source": "firestore_direct_sync", "error": "unavailable"})
         if doc:
             status = decode_fields(doc.get("fields", {}))
             sync = status.get("samsungS24DirectSync")
             if isinstance(sync, dict) and isinstance(sync.get(array_field), list):
+                direct_present = True
                 rows = [r for r in sync[array_field] if isinstance(r, dict)]
-        if rows:
-            records.extend(
-                _normalize_device_record(kind, dev["id"], rec) for rec in rows
-            )
-            continue
-        # No direct-sync array on the doc (device not yet migrated / daemon
-        # never ran) — fall back to the legacy subcollection so it still
-        # shows what its older exporter wrote.
-        subcollection = DATA_SUBCOLLECTIONS[kind]
-        try:
-            docs = client.list_docs(cfg["collection"], dev["id"], subcollection, limit=limit)
-        except Exception as exc:  # noqa: BLE001 - one device must not break the rest
-            log.warning("data read failed for %s/%s: %s", dev["id"], subcollection, exc)
-            continue
+                if len(rows) != len(sync[array_field]):
+                    device_warnings.append({"deviceId": dev["id"], "source": "firestore_direct_sync", "error": "invalid records"})
+        source = "firestore_direct_sync"
+        if not direct_present:
+            source = "neon_archive"
+            archive_read = False
+            if neon_database_url():
+                try:
+                    rows = _archive_device_records(kind, dev["id"], limit)
+                    archive_read = True
+                except Exception:
+                    device_warnings.append({"deviceId": dev["id"], "source": "neon_archive", "error": "unavailable"})
+            if not rows:
+                source = "firestore_legacy"
+                try:
+                    rows = client.list_docs(cfg["collection"], dev["id"], DATA_SUBCOLLECTIONS[kind], limit=limit)
+                except Exception:
+                    device_warnings.append({"deviceId": dev["id"], "source": "firestore_legacy", "error": "unavailable"})
+                    if not archive_read:
+                        unavailable_devices.append(dev["id"])
+                    else:
+                        source = "neon_archive"
+        warnings.extend(device_warnings)
+        sources.append({"deviceId": dev["id"], "source": source,
+                        "archival": source != "firestore_direct_sync", "recordCount": len(rows),
+                        "available": dev["id"] not in unavailable_devices})
         records.extend(
-            _normalize_device_record(kind, dev["id"], rec) for rec in docs
+            {**_normalize_device_record(kind, dev["id"], rec), "source": source} for rec in rows
         )
-    records.sort(key=lambda rec: rec.get(date_key) or "", reverse=True)
-    return jsonify({"data": records[:limit], "limit": limit})
+    if unavailable_devices and len(unavailable_devices) == len(configured_devices(cfg)):
+        return jsonify({"error": "live store unavailable", "warnings": warnings}), 502
+    records.sort(key=lambda rec: _record_time(rec.get(date_key)), reverse=True)
+    return jsonify({"data": records[:limit], "limit": limit, "sources": sources,
+                    "partial": bool(warnings), "warnings": warnings})
 
 
 @app.post("/api/devices/<device_id>/commands")

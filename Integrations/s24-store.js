@@ -107,7 +107,7 @@ async function writeSpecialized(query, run, record) {
          raw_payload=EXCLUDED.raw_payload, last_seen=now()`,
       [str(record.dataset, 80), str(record.record_id, 400), ...base,
        dateFrom(p, ['date', 'timestamp'], record.occurred_at), str(p.name, 400),
-       str(p.number ?? p.address, 200), str(p.type, 80), number(p.duration, true),
+       str(p.number ?? p.address, 200), str(p.type, 80), number(p.duration_seconds ?? p.duration, true),
        dateFrom(p, ['backed_up_at']), JSON.stringify(p)]
     );
     return;

@@ -45,6 +45,7 @@
     .btn-success { background: #22c55e; color: #000; }
     .btn-success:hover { background: #16a34a; }
     .empty-state { text-align: center; padding: 40px; opacity: 0.5; }
+    .source-note { margin: 8px 0; color: #fbbf24; font-size: 0.85rem; }
     .command-status { min-height: 24px; margin: 0 0 18px; color: #fbbf24; }
     .loading { text-align: center; padding: 20px; opacity: 0.7; }
     .battery-indicator { display: flex; align-items: center; gap: 8px; }
@@ -154,6 +155,8 @@
     <!-- Data Sections -->
     <div class="data-section">
       <h2>📊 Latest Data (Rolling Window - Last 50 Records)</h2>
+      <button id="verify-sources" class="btn-secondary" type="button" disabled>Verify database linkage</button>
+      <div id="source-audit" class="source-note" role="status" aria-live="polite"></div>
       <div class="data-grid">
         <div class="data-card">
           <h3>WhatsApp Messages</h3>
@@ -255,6 +258,7 @@
     }
     function setLocked(locked) {
       document.querySelectorAll('.command-btn').forEach(btn => { btn.disabled = locked; });
+      document.getElementById('verify-sources').disabled = locked;
       if (locked) {
         ['s24', 'vivobook'].forEach(deviceKey => {
           const status = document.getElementById(`${deviceKey}-status`);
@@ -453,13 +457,37 @@
         el.innerHTML = `<div class="empty-state">${escapeHtml(payload.note || 'not collected')}</div>`;
         return;
       }
+      const sourceNames = { neon_archive: 'Postgres archive', firestore_legacy: 'Legacy Firestore archive', neon_whatsapp: 'Postgres WhatsApp records' };
+      const archives = [...new Set(((payload && payload.sources) || []).filter(s => s.archival).map(s => sourceNames[s.source] || 'Stored records'))];
+      const note = (payload && payload.partial ? '<div class="source-note">Partial result: one or more sources unavailable.</div>' : '')
+        + (archives.length ? '<div class="source-note">Source: ' + escapeHtml(archives.join(', ')) + '. Stored records do not prove current device collection.</div>' : '');
       const data = (payload && payload.data) || [];
       if (data.length === 0) {
-        el.innerHTML = '<div class="empty-state">No data available</div>';
+        el.innerHTML = note + '<div class="empty-state">' + (payload && payload.partial ? 'Data unavailable from one or more sources' : 'No data available') + '</div>';
         return;
       }
-      el.innerHTML = data.map(renderFn).join('');
+      el.innerHTML = note + data.map(renderFn).join('');
     }
+
+    document.getElementById('verify-sources').addEventListener('click', async function () {
+      const button = document.getElementById('verify-sources');
+      const output = document.getElementById('source-audit');
+      button.disabled = true;
+      output.textContent = 'Checking database schema and stored record counts…';
+      try {
+        const response = await apiFetch('/data/sources');
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        const audit = await response.json();
+        output.textContent = (audit.ok ? 'Database linkage verified. ' : 'Database linkage needs attention. ')
+          + audit.tables.map(table => table.table + ' → ' + table.endpoint + ': '
+            + (!table.schemaMatches ? 'missing columns: ' + table.missingColumns.join(', ')
+              : table.error || (table.record_count + ' stored records' + (table.latest_record_at ? '; newest ' + table.latest_record_at : '')))).join(' | ');
+      } catch (_) {
+        output.textContent = 'Database linkage could not be verified. No data or credentials were changed.';
+      } finally {
+        button.disabled = !getKey();
+      }
+    });
 
     // Initial fetch and polling. Setup is idempotent so unlocking repeatedly
     // cannot create duplicate 15-second timers.

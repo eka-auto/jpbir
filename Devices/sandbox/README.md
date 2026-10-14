@@ -6,8 +6,8 @@ Directory** `Devices/sandbox`.
 
 Once configured, it runs at
 [`https://channel-sandbox.vercel.app`](https://channel-sandbox.vercel.app).
-Load the dashboard with `?key=<STATS_KEY>` in the URL; the key persists in
-`sessionStorage` for the tab.
+Enter `STATS_KEY` in the dashboard's password field and click **Unlock**;
+the key stays in `sessionStorage` for that tab. Do not put it in shared URLs.
 
 ## What you need before you start
 
@@ -17,11 +17,9 @@ Load the dashboard with `?key=<STATS_KEY>` in the URL; the key persists in
 2. **A Google service account** with `roles/datastore.user` on that database.
    Download its JSON key from GCP Console → IAM & Admin → Service Accounts.
 3. **The Vercel `channel-sandbox` project linked** to this repo with Root
-   Directory `Devices/sandbox`. The original project was deleted at some point
-   before 2026-09-19. It was re-created that day under the same name in team
-   `jayti` (`prj_hRRe8dOt2F3mYU721Qk9lFAG9V92`), which is why the URL changed
-   from `channel-sandbox-one.vercel.app`. The re-created project has **no env
-   vars**, so step 2 is required.
+   Directory `Devices/sandbox`. The current destination is team `jayti2`,
+   project `prj_K9a786wdsNo6jyE2oQqKcBBF0NWp`. Verify the project before
+   changing configuration; older `jayti` ownership notes are historical.
 4. **The repo-root `.vercelignore` must not strip this directory.** Vercel
    applies that file to this project's builds too. If it ignores
    `Devices/sandbox/` or anything inside it, the build "succeeds" with no
@@ -38,15 +36,16 @@ Load the dashboard with `?key=<STATS_KEY>` in the URL; the key persists in
    confirm it's the right credential. A green deployment shows
    `"ok": true`; missing env vars appear as `"set": false`.
 
-2. **Set the three required env vars** on the Vercel project
-   (Settings → Environment Variables → *Production*, *Preview*, *Development*):
+2. **Verify the four required env vars** on the intended Vercel project.
+   Production credentials belong in **Production** only; use separate isolated
+   stores and credentials for Preview and Development.
 
    | Name | Value |
    |---|---|
-   | `STATS_KEY` | any long random string; you'll pass it in `?key=` |
+   | `STATS_KEY` | long random dashboard key; enter it in the password field |
   | `SANDBOX_CONFIG_JSON` | use `devices.production.json`; it is the only config that explicitly permits the real `devices` collection |
    | `FIREBASE_SERVICE_ACCOUNT_JSON` | paste the service-account JSON as one line |
-   | `DATABASE_URL` | the Neon connection string — same name the main backend uses (`POSTGRES_URL` is accepted as a fallback); powers `/api/data/whatsapp` |
+   | `DATABASE_URL` | the existing Neon connection string (`POSTGRES_URL` is accepted as a fallback); powers WhatsApp, archive fallbacks, and the linkage audit |
 
    Optional (only if you use `/api/agent/query`):
    `AGENT_API_URL`, `AGENT_API_KEY`.
@@ -72,10 +71,11 @@ Load the dashboard with `?key=<STATS_KEY>` in the URL; the key persists in
    outright — so following this step as written seeded nothing while looking
    like it had worked.
 
-5. **Verify end-to-end.** Visit
-   `https://channel-sandbox.vercel.app/?key=<STATS_KEY>`. The two
-   device cards should populate. If a card stays "Connecting…", check
-   `/api/diag` — it points at the exact failure without leaking secrets.
+5. **Verify end-to-end.** Open the dashboard, unlock it, and click **Verify
+   database linkage**. It checks the actual table columns, stored row counts,
+   and newest record timestamps through the deployment's existing connection.
+   A database archive or seeded device document is not proof of a running
+   phone agent. Missing heartbeat evidence must not be repaired by inventing it.
 
 ## Route reference
 
@@ -88,14 +88,26 @@ Load the dashboard with `?key=<STATS_KEY>` in the URL; the key persists in
 | `GET /api/devices/<id>/status` | key | one device's current status |
 | `POST /api/devices/<id>/commands` | key | queue a command for the device |
 | `GET /api/data/whatsapp` | key | latest N WhatsApp messages from Neon (`wa_messages` ⨝ `wa_chats`, newest first); requires `DATABASE_URL` |
-| `GET /api/data/calls` | key | live rolling `samsungS24DirectSync.callLogs` array PATCHed into the device doc (falls back to the legacy `callLogs` subcollection only when the array is absent) |
-| `GET /api/data/sms` | key | live rolling `samsungS24DirectSync.sms` array PATCHed into the device doc (same fallback as calls) |
+| `GET /api/data/calls` | key | `samsungS24DirectSync.callLogs`; when absent, normalized `s24_calls`, then legacy `callLogs` |
+| `GET /api/data/sms` | key | `samsungS24DirectSync.sms`; when absent, normalized `s24_sms`, then legacy `sms` |
+| `GET /api/data/sources` | key | fixed, read-only audit of the four Postgres source tables; columns, counts and newest timestamps only, never private rows or credentials |
 | `GET /api/data/contacts` | key | nothing collects contacts — names come from WhatsApp chat names; always answers an explicit not-collected empty state |
 | `POST /api/agent/query` | key + `AGENT_API_KEY` | proxy a RAG query to the external agent |
 
 Every key-gated route returns `401 {"error":"unauthorized"}` without a valid
 key and `503 {"error":"server not configured"}` when a required env var is
 missing.
+
+Calls/SMS responses include `sources`, `partial`, and sanitized `warnings`.
+An empty direct-sync array is authoritative: it must not resurrect old archive
+rows. Archive rows are labelled and cannot establish current device collection.
+When every available source fails the endpoint returns 502, not a healthy empty
+list. Sorting compares actual timestamps, including timezone offsets.
+
+| Postgres column | Dashboard response field |
+|---|---|
+| `s24_calls.called_at`, `contact_name`, `phone_number`, `call_type`, `duration_sec` | `date`, `name`, `number`, `type`, `duration_seconds` |
+| `s24_sms.sent_at`, `correspondent`, `message_type`, `body` | `timestamp`, `sender`, `type`, `body` |
 
 ## Local development
 
