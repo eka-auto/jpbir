@@ -80,6 +80,35 @@ t('deploy.sh ships device-health.mjs alongside the MCP server that imports it', 
     'device-health.mjs is not shipped to /opt/s24-mcp, so the relative import cannot resolve');
 });
 
+t('deploy.sh ships the whole relative-import closure into /opt/s24-mcp', () => {
+  // The direct import is not the whole story: device-health.mjs itself imports
+  // ./s24-attestation.js. Shipping only server + device-health leaves node
+  // failing at startup with ERR_MODULE_NOT_FOUND on s24-attestation.js. This
+  // walks the real import graph instead of hardcoding a list of files.
+  const sh = read(DEPLOY);
+  const block = sh.match(/scp[^\n]*(?:\n\s+[^\n]*)*?\/opt\/s24-mcp\//);
+  assert.ok(block, 'deploy.sh has no scp targeting /opt/s24-mcp/');
+  const shipped = new Set(
+    [...block[0].matchAll(/"([^"\n]+\.(?:mjs|js))"?/g)].map((m) => m[1].split('/').pop()),
+  );
+
+  // Walk ./ relative imports transitively from the entrypoint.
+  const seen = new Set();
+  const queue = ['s24-mcp-server.mjs'];
+  while (queue.length) {
+    const file = queue.pop();
+    if (seen.has(file)) continue;
+    seen.add(file);
+    for (const m of read(`Server/jp-agent/${file}`).matchAll(/from\s+'\.\/([^']+)'/g)) {
+      const dep = m[1];
+      assert.ok(shipped.has(dep),
+        `${file} imports ./${dep}, but deploy.sh does not ship ${dep} to /opt/s24-mcp - node fails at startup with ERR_MODULE_NOT_FOUND (ships: ${[...shipped].join(', ')})`);
+      queue.push(dep);
+    }
+  }
+  assert.ok(seen.size > 1, 'expected s24-mcp-server.mjs to have relative imports to walk');
+});
+
 t("the unit's ExecStart names a file deploy.sh actually ships", () => {
   const unit = read(UNIT);
   const sh = read(DEPLOY);

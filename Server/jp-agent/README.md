@@ -51,10 +51,13 @@ Two units come out of one deploy, because the MCP server is a separate process:
 | `jp-agent` | `/opt/jp-agent` | 8790 | Agent runtime behind the dashboard |
 | `s24-mcp` | `/opt/s24-mcp` | 8792 | Standalone streamable-HTTP MCP server for the device registry |
 
-`s24-mcp-server.mjs` imports `./device-health.mjs` relatively, so
-`device-health.mjs` is shipped into **both** directories. `s24-attestation.test.mjs`
-asserts the two repo-side copies are byte-identical, so the droplet copies cannot
-drift either. Both bind `127.0.0.1`; nginx is the only ingress.
+`s24-mcp-server.mjs` imports `./device-health.mjs` relatively, and
+`device-health.mjs` imports `./s24-attestation.js`, so the whole closure —
+`device-health.mjs` and `s24-attestation.js` — is shipped into **both**
+directories. `s24-attestation.test.mjs` asserts the repo-side copies are
+byte-identical, so the droplet copies cannot drift either, and
+`s24-mcp-deploy.test.mjs` walks the import graph to prove the closure ships.
+Both bind `127.0.0.1`; nginx is the only ingress.
 
 ## The three secrets
 
