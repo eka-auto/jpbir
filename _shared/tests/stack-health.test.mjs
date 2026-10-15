@@ -8,7 +8,7 @@
 // direction.
 
 import assert from 'node:assert/strict';
-import { worst, buildLayers, snapshot, probeAssets, deviceFreshness, logVerdict } from '../../Backend/jp-stack.js';
+import { worst, buildLayers, snapshot, probeAssets, probeRepair, deviceFreshness, logVerdict } from '../../Backend/jp-stack.js';
 import { evaluateStack, failureLines, alertBody } from '../../Backend/stack-cron.js';
 import { LAYERS, REQUIRED_ENV, allFiles } from '../../Backend/lib/stack-map.js';
 import { readFileSync } from 'node:fs';
@@ -294,6 +294,61 @@ t('a device seen 20 min ago warns but does not fail', () => {
 t('an unreadable Firestore probe leaves devices unknown, never green', () => {
   const r = deviceFreshness({ status: 'fail' });
   assert.equal(r.status, 'unknown');
+});
+
+// ── the nightly DynamoDB -> Neon repair is watched ──────────────────────
+// On 2026-10-14 the backfill run answered 503 "JP_AWS_* read credentials not
+// configured" and nothing said so: no probe governed Backend/db-push.js, and
+// health-check.yml never calls the cron route. Every read the dashboard serves
+// for the jaytibirthday.in property comes through that repair, so its silence
+// was the operator's missing-data report. These pin the light that was absent.
+const REPAIR_ENV_NAMES = [
+  'JP_AWS_ACCESS_KEY_ID', 'JP_AWS_SECRET_ACCESS_KEY',
+  'JP_WRITE_AWS_ACCESS_KEY_ID', 'JP_WRITE_AWS_SECRET_ACCESS_KEY',
+];
+
+function withoutRepairEnv(fn) {
+  const saved = {};
+  for (const name of REPAIR_ENV_NAMES) {
+    saved[name] = process.env[name];
+    delete process.env[name];
+  }
+  try { return fn(); }
+  finally {
+    for (const name of REPAIR_ENV_NAMES) {
+      if (saved[name] === undefined) delete process.env[name];
+      else process.env[name] = saved[name];
+    }
+  }
+}
+
+t('an unconfigured warehouse repair is red and names the vars, never green', () => {
+  const r = withoutRepairEnv(() => probeRepair());
+  assert.equal(r.status, 'fail', 'a repair that cannot start must not read green');
+  assert.match(r.problem, /JP_AWS_ACCESS_KEY_ID/);
+  assert.match(r.problem, /JP_AWS_SECRET_ACCESS_KEY/);
+  assert.ok(!r.problem.includes('\n'), 'the panel renders one line per problem');
+  // Names only: a value in this string would end up in the API response.
+  assert.doesNotMatch(r.problem, /fixture/, 'a credential value reached the problem line');
+});
+
+t('a configured repair is green, and reports a read-only pair honestly', () => {
+  const r = withoutRepairEnv(() => {
+    process.env.JP_AWS_ACCESS_KEY_ID = 'fixture';
+    process.env.JP_AWS_SECRET_ACCESS_KEY = 'fixture';
+    return probeRepair();
+  });
+  assert.equal(r.status, 'ok');
+  assert.match(r.detail, /read credentials present/);
+  assert.match(r.detail, /JP_WRITE_AWS_ACCESS_KEY_ID/,
+    'a read-only pair must say the write-credential scan is not configured');
+});
+
+t('Backend/db-push.js is governed by a probe that runs, so the light is earned', () => {
+  const file = allFiles().find((f) => f.path === 'Backend/db-push.js');
+  assert.ok(file, 'the nightly repair is not in the stack map at all');
+  assert.equal(file.probe, 'repair');
+  assert.ok(allOk().repair, 'the repair probe is not registered in runProbes');
 });
 
 // ── a health-check 503 explains itself in the runtime log ───────────────

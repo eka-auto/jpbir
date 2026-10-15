@@ -3,7 +3,7 @@
 export const DEVICES_NOTE =
   'Device-initiated only: nothing here can pull from a phone. A stale light means the daemon stopped, and no cloud-side change fixes it.';
 
-export const PROBES = ['dns', 'tls', 'postgres', 'firestore', 'blob', 'env', 'devices', 'assets', 'static'];
+export const PROBES = ['dns', 'tls', 'postgres', 'firestore', 'blob', 'env', 'devices', 'assets', 'repair', 'static'];
 
 export const LAYERS = [
   {
@@ -61,6 +61,7 @@ export const LAYERS = [
       { path: 'Integrations/s24-store.js', probe: 'postgres', why: 'Device telemetry tables' },
       { path: 'Backend/verify-db.js', probe: 'postgres', why: 'Schema presence check' },
       { path: 'Backend/lib/warehouse.js', probe: 'postgres', why: 'Neon analytics warehouse' },
+      { path: 'Backend/db-push.js', probe: 'repair', why: 'Nightly DynamoDB -> Neon warehouse repair (cron 18:30 UTC)' },
       { path: 'Backend/wa-blob-upload.js', probe: 'blob', why: 'Media bytes to Vercel Blob' },
       { path: 'Backend/wa-media.js', probe: 'blob', why: 'Serves media from Blob' },
       { path: 'Database/scripts/migrate.mjs', probe: 'static', why: 'Migration runner' },
