@@ -376,6 +376,48 @@ function probeEnv() {
   return { status: OK, detail: REQUIRED_ENV.length + '/' + REQUIRED_ENV.length + ' required vars present' };
 }
 
+/**
+ * The nightly DynamoDB -> Neon warehouse repair (`/api/db-push`, cron 18:30 UTC).
+ *
+ * It is the only path that carries telemetry still journalled in DynamoDB into
+ * the Neon warehouse every dashboard read is served from, and nothing watched
+ * it: health-check.yml probes `/`, `/api/jp-devices`, `/api/jp-stats`,
+ * `/api/verify-db` and `/api/jp-stack`, so a cron handler that refuses to start
+ * is invisible from CI — the gap INSPECTION_2026-09-19 §3.3 recorded as "a
+ * silent `db-push` failure is undetectable". On 2026-10-14 the backfill run
+ * answered 503 `JP_AWS_* read credentials not configured`, and the committed env
+ * manifest shows those names absent from the deployment while `JP_AWS_REGION`
+ * and `JP_TELEMETRY_TABLE` are set. The repair had been failing nightly with no
+ * light on any panel and no failing check.
+ *
+ * Configuration, not freshness, is what a serverless function can prove here: a
+ * completed pass DELETES its checkpoint row (`clearSyncCursor`), so "no
+ * checkpoint" cannot be told apart from "finished this morning". The credential
+ * pair the cron's `action=push` reads is the honest signal, and an unset one is
+ * a red light, not a warning — the job cannot run at all.
+ */
+const REPAIR_READ_CREDS = ['JP_AWS_' + 'ACCESS_KEY_ID', 'JP_AWS_' + 'SECRET_ACCESS_KEY'];
+const REPAIR_WRITE_CREDS = ['JP_WRITE_AWS_' + 'ACCESS_KEY_ID', 'JP_WRITE_AWS_' + 'SECRET_ACCESS_KEY'];
+
+export function probeRepair() {
+  const missing = REPAIR_READ_CREDS.filter((name) => !_env[name]);
+  if (missing.length) {
+    return {
+      status: FAIL,
+      // Names only, never a value.
+      problem: missing.join(', ') +
+        ' unset — the nightly DynamoDB -> Neon repair cannot run, so rows still journalled in DynamoDB (the jaytibirthday.in property among them) never reach the warehouse the dashboard reads',
+    };
+  }
+  const writeMissing = REPAIR_WRITE_CREDS.filter((name) => !_env[name]);
+  return {
+    status: OK,
+    detail: 'read credentials present' + (writeMissing.length
+      ? '; ' + writeMissing.join(', ') + ' unset, so only the read-credential scan runs'
+      : ' and write credentials present'),
+  };
+}
+
 // ---------------------------------------------------------------- assembly
 
 /** Worst-of, so a layer is only as green as its weakest file. */
@@ -441,6 +483,7 @@ export async function runProbes() {
     blob,
     assets,
     env: probeEnv(),
+    repair: probeRepair(),
     devices: deviceFreshness(firestore),
     static: { status: UNKNOWN, detail: 'no live signal reachable from a serverless function' },
   };

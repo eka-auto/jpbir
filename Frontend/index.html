@@ -832,7 +832,16 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
             history.replaceState(null, '', location.pathname + (qs ? '?' + qs : '') + location.hash);
         } catch (e) { /* nothing else to do; the key is already stored */ }
     })();
-    var SITE = sessionStorage.getItem('jbt_site') || 'tech';
+    /* Which property the dashboard opens on is declared once, in the markup's
+       own <option selected>. 357185a ("harden dashboard deployment") added a
+       second, hard-coded default here and set it to 'tech' while the selector
+       still declared jbt, so every fresh session opened on jaytipargal.tech and
+       a visit to the birthday website could not appear as a live session until
+       the operator re-picked the property by hand. Read the markup instead of
+       restating it; _shared/tests/frontend-property-default.test.mjs pins the
+       two together. */
+    var siteSelEl = $('siteSel');
+    var SITE = sessionStorage.getItem('jbt_site') || (siteSelEl && siteSelEl.value) || 'jbt';
     var SITE_HOSTS = { jbt: 'jaytibirthday.in', tech: 'jaytipargal.tech', jp: 'jaytipargal.com' };
     function siteHost() { return SITE_HOSTS[SITE] || SITE_HOSTS.jbt; }
     /* Every API call carries the key in a header, never the query string: a
