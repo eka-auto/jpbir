@@ -281,6 +281,35 @@ gh run watch -R jaytipargal/jpbir
 If `gh secret set` prompts for a value, paste it there — never into a transcript,
 a commit or an issue. Nothing in this repository needs the values.
 
+## Addendum, 2026-10-15 16:06Z — the probes did not land in the shared warehouse
+
+After the merge (`main@218a70d`, live on `jaytipargal.tech` from 16:05Z), the
+deployment-triggered health check printed:
+
+```
+newest event: 2026-10-15T09:40:52.805Z
+birthday active_now (last 120s): 0
+⚠️ Stack endpoint reachable; downstream probe failures reported (HTTP 503, cloud_fail=1)
+```
+
+Two readings:
+
+- **The new `repair` probe is live and firing.** `cloud_fail=1` is the missing
+  signal arriving in CI for the first time, and the run still exits 0 (warn, not
+  a gate). That closes the "silent failure" half of P4.
+- **The five beacons this check POSTed to `www.jaytibirthday.in/api/track` at
+  15:41–15:42Z, each of which answered `persisted:true`, left the shared
+  warehouse's `newest event` at 09:40:52Z.** Twenty-five minutes later, the Neon
+  table the dashboard reads had nothing newer. That is the closest thing to
+  direct evidence for P3 available without a warehouse key: whatever that
+  endpoint persists, it is not a row the dashboard can see — which is why a
+  birthday visit shows as "Active now: 0" no matter which property the dashboard
+  is displaying. Caveat, stated plainly: two of those probes carried no
+  `timestamp` field, so a writer that stamps `occurred_at` from the payload could
+  have stored them outside `MAX(occurred_at)`; the probes are therefore strong
+  corroboration, not proof. The `birthday active_now` reading after Q1 is applied
+  is what settles it.
+
 ## Run-state note (pipeline integrity)
 
 `project/settings.json` records `state_branch: project-state` and
