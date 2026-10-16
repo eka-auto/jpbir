@@ -10,14 +10,14 @@ The host session's addendum flagged both of these; they are accepted, with the r
 
 ### 1.1 Intel storage-driver mismatch (item 1)
 
-The original commands — `Win32_PnPSignedDriver` and the uninstall-registry `DisplayVersion` — report the **bound INF package version** and installed graphics software. They would have returned `18.7.0.1002` on both sides and missed the mismatch entirely. The check has to compare the bound INF with the **loaded binaries**:
+The original commands — `Win32_PnPSignedDriver` and the uninstall-registry `DisplayVersion` — report the **bound INF package version** and installed graphics software. Neither reads the installed RST `.sys` file versions, so they can miss the mismatch. The check has to compare the bound INF with the **installed binary files**; file metadata alone does not prove that both drivers are loaded:
 
 ```powershell
 # bound INF package per device
 Get-CimInstance Win32_PnPSignedDriver | Where-Object { $_.DeviceName -match 'RST|VMD|iaStor' } |
   Select-Object DeviceName, DriverVersion, InfName, DriverProviderName, DriverDate | Format-Table -Auto
 
-# the loaded binaries, which is where the reported mismatch lives
+# installed binary files, which is where the reported version mismatch lives
 foreach ($f in 'C:\Windows\System32\drivers\iaStorVD.sys','C:\Windows\System32\drivers\iaStorAfs.sys') {
   $i = Get-Item $f -ErrorAction SilentlyContinue
   if ($i) { $v = $i.VersionInfo
@@ -86,7 +86,7 @@ The host session records that Defender's aggregate threats are all inactive (inc
 
 ### 2.4 Task Scheduler's Operational log is disabled
 
-Five scheduled tasks report nonzero last results — `AnthropicTokenAutoRefresh`, `EkaAgentDaily`, `EkaPanelLaptopFirestoreSync`, `S24_WhatsApp_Export`, `WA_Export_Daemon_Daily` — and the Operational log that would carry their error events is disabled, so their failures have no retained evidence and their causes cannot be diagnosed from history. Enabling the log is a host configuration change for the owner; without it, item 4 of the original report ("several other background jobs report failures; their causes need further diagnosis") cannot be closed on that machine.
+Five scheduled tasks report nonzero last results — `AnthropicTokenAutoRefresh`, `EkaAgentDaily`, `EkaPanelLaptopFirestoreSync`, `S24_WhatsApp_Export`, `WA_Export_Daemon_Daily` — and the Operational log that would carry their error events is disabled. This limits retained Task Scheduler evidence; script and application logs may still establish a cause. Enabling the log is a host configuration change for the owner and captures future events, not the missing past events. Item 4 of the original report ("several other background jobs report failures; their causes need further diagnosis") still needs task-specific failure and repair evidence before it can be closed.
 
 
 ## 3. Verification notes from this session (for the record)
@@ -94,13 +94,13 @@ Five scheduled tasks report nonzero last results — `AnthropicTokenAutoRefresh`
 | Check | Command | Result |
 | --- | --- | --- |
 | PR #165 scope | first-parent diff of `6693bc44`, plus `gh pr view 165` | **2 files, +58, −0** — the 16 Oct report (+2 pointer lines) and the new addendum (+56) |
-| `main` protection | `gh api repos/jaytipargal/jpbir/branches/main --jq .protected` | **`false`** — confirms the addendum; T-04 has no blocker left except the work itself |
+| `main` protection | `gh api repos/jaytipargal/jpbir/branches/main --jq .protected` | **`false`** — confirms the addendum; making the repository public did not apply the required controls |
 | Production – jpbir | `gh api repos/jaytipargal/jpbir/deployments/7128522726` + statuses | `vercel[bot]`, sha `8b1a68a`, latest status **success** |
 | Production – channel-sandbox | `gh api repos/jaytipargal/jpbir/deployments/7128512058` | `vercel[bot]`, sha `8b1a68a` |
 | Runner count `0` | `gh api repos/jaytipargal/jpbir/actions/runners` | **HTTP 403 for this identity** — the addendum's `total_count=0` could not be independently verified here; it is owner-reported |
 | PR #165 CI | `gh run list --branch main` | CI/CD Pipeline and Code Quality Checks **success** on `6693bc44`, plus two Endpoint Health Checks |
 
-Note for future readers: range forms such as `git diff <merge>^..<merge>` mislead on merge commits in this partial clone — the first-parent diff (`git diff <merge>^1 <merge>`) is the reliable form. That mistake produced one false "nothing changed" reading during this verification, caught by cross-checking against `gh pr view`.
+Note for future readers: `git diff <merge>^..<merge>` and `git diff <merge>^1 <merge>` compare the same two endpoints: `^` and `^1` both select the first parent. A partial clone does not change that meaning; an unavailable object should produce an error, not a successful empty diff. The earlier "nothing changed" reading was contradicted by `gh pr view` and is not evidence against either syntax. Use the explicit first-parent form for clarity and check command exit status and the actual revision supplied.
 
 ## 4. Status of the approved work (unchanged by this report)
 
