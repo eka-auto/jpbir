@@ -1,5 +1,7 @@
 # Host and background-job diagnosis — 2026-10-16
 
+**Subsequent verification:** the [17 October post-merge addendum](2026-10-17-post-merge-host-addendum.md) records production deployment evidence and fresh checks from the actual Windows host. The observations below remain the historical container-session diagnosis.
+
 **Report author:** automated session `tsk-01M532NH0WQD2YHSWJ1P14P7WY`, acting on branch `cline/1p14p7wy`
 **Subject revision:** `jaytipargal/jpbir` `main@4e15ff29d73c810c46bf9c66de43466578dce152`
 **Where the checks ran:** a Linux container holding a checkout of the repository (Debian 12, no Windows, no Intel GPU, no systemd, no Task Scheduler)
