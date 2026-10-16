@@ -236,6 +236,8 @@ Nothing here blocks the *diagnosis* above; these unblock the *fixes*. Under rule
 6. **Host items 1, 2, 5, 6:** these concern a machine this session cannot reach. Will you either (a) give the run access to that machine, or (b) run the read-only commands in §5 there and return the output? **Recommend (b)** — it needs no new access, and turns four "Error" verdicts into Pass or Fail. If the answer is NO, the items stay **Not applicable to this repository** and are closed here with that reason.
 
 
+**Answered 2026-10-16: all six YES.** The answers and what each one authorises are recorded in `project/approvals/2026-10-16-owner-answers.md`; question 1 is the keystone, because every Git-host action is stopped by rule 11 until the identity is recorded.
+
 ## 5. Read-only commands to run on the host (settles items 1, 2, 5, 6 and the "other jobs")
 
 These print no secret values. Run in an elevated PowerShell on the machine where the findings were observed; paste the output back.
