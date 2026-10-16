@@ -102,6 +102,8 @@ Five scheduled tasks report nonzero last results — `AnthropicTokenAutoRefresh`
 
 Note for future readers: `git diff <merge>^..<merge>` and `git diff <merge>^1 <merge>` compare the same two endpoints: `^` and `^1` both select the first parent. A partial clone does not change that meaning; an unavailable object should produce an error, not a successful empty diff. The earlier "nothing changed" reading was contradicted by `gh pr view` and is not evidence against either syntax. Use the explicit first-parent form for clarity and check command exit status and the actual revision supplied.
 
+**Cause of that reading, established afterwards:** the `git fetch` and the `git diff` were issued as two concurrent commands, so the diff compared `8b1a68ae` against a local `origin/main` that had not yet been updated and still pointed at `8b1a68ae` — identical endpoints, empty diff, exit 0. A re-test after this merge returns a non-empty diff for the same range form, which confirms the syntax was never the problem. The same session also lost a commit attempt to an `index.lock` race from concurrent git commands. Working rule for this repository: never run a ref-updating command concurrently with a command that reads that ref — run them sequentially, then check the revision actually used.
+
 ## 4. Status of the approved work (unchanged by this report)
 
 | Item | State | Actor |
