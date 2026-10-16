@@ -242,6 +242,8 @@ Nothing here blocks the *diagnosis* above; these unblock the *fixes*. Under rule
 
 ## 5. Read-only commands to run on the host (settles items 1, 2, 5, 6 and the "other jobs")
 
+**Correction (2026-10-17):** the Intel block below and the AzureAiProxy note under it are **superseded** — see [the 17 October corrections](2026-10-17-open-items-and-command-corrections.md) §1. The Intel commands report the bound INF package version and would miss the `.sys` binary mismatch; the Azure check covers the local Task Scheduler account, not cloud identity.
+
 These print no secret values. Run in an elevated PowerShell on the machine where the findings were observed; paste the output back.
 
 ```powershell
