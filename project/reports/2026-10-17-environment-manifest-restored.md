@@ -42,6 +42,12 @@ Pinned digests (resolved from the registry on 2026-10-17, not copied from a tag)
 
 **Not verified here, and stated as such:** the image build itself. This sandbox has **no Docker** (`docker: command not found`), so `project/environment/run` cannot be exercised end to end. The current `.github/workflows/ci-cd.yml` also installs dependencies and runs the checks directly rather than through `project/environment/run`, so this pull request's CI does **not** build the image either. Wiring CI to run inside the environment is Step 0 items 7/9 (baseline CI) and is not part of this change; the image build must be confirmed on a Docker-capable runner before the manifest is called Done.
 
+## 3.1 Independent validation by the onboarding runner (cross-reference, not evidence here)
+
+The cloud-environment onboarding runner separately validated this branch at `8d0c287` on a Docker-capable host and reported: the Dockerfile as committed **builds** (with that host's cloud proxy build options), Python 3.14.6 and the required libraries work, a Postgres query and local page requests pass, and lint, build and **49/49 test suites** pass. Its write-up is `onboarding-validation/pr171-validation.md` in that host's workspace.
+
+That report is **the other runner's own log**. Under contract rule 4, evidence from a runner counts only when it comes from a runner declared in the environment manifest and is uploaded by that executor to the immutable store; this is neither, so it is recorded here as a cross-reference only and is **not** HOD-accepted evidence for T-03. It does, however, remove the practical doubt left in §3 above about whether the image builds.
+
 ## 4. Boundary: the Alpine denial and jaytibirthday-site
 
 - `dl-cdn.alpinelinux.org` is reachable from **this** sandbox (DNS + HTTP 200 on the root, both `APKINDEX` paths, plain http, and an independent mirror; a real `.apk` downloaded and inflated). The `403` is a property of the other runner's proxy, not reproducible here — a platform/owner action, not a repository change.
