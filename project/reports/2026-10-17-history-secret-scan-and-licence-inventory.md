@@ -10,7 +10,7 @@
 | --- | --- |
 | Repository copy | `git clone --mirror` into a scratch directory, **all refs** — 1190 commits, 7879 objects, 14 MB |
 | Blobs scanned | **4107** blobs, **92,038,990** bytes; 0 skipped (none exceeded the 8 MB cap) |
-| Patterns | the repository's own high-confidence set from `_shared/tools/scan_secrets.py`, plus JWT-shaped strings and assignments to known secret variable names |
+| Patterns | the repository's own high-confidence set from `_shared/tools/scan_secrets.py`, plus JWT-shaped strings and assignments to known secret variable names. **That set has no AWS secret-access-key pattern**, so the first pass could not have detected one — see §2a, which adds it |
 | Value handling | **no value is recorded here or anywhere else.** Each finding carries a SHA-256 prefix and a length so the owner can locate it, and context lines are shown with the value replaced by `<REDACTED>` |
 | Not covered | secrets outside the repository (Vercel, Firestore, AWS, WhatsApp stores); whether any value is still valid; the HOD's audit (this ran under the `devops` identity, not the verifier's, and stores no immutable proof) |
 
@@ -29,7 +29,23 @@ Scanning **all** refs matters here: `refs/pull/*/head` keeps old trees fetchable
 | G | `FIREBASE_SERVICE_ACCOUNT_JSON` private keys in `Devices/sandbox/.env.example`, `DASHBOARD_READY.md`, `channel-sandbox/COMPLETE_DEPLOYMENT_PACKAGE.md`, `channel-sandbox/DEPLOYMENT_VERIFICATION_CHECKLIST.md` | mixed | **Placeholders — no action.** Body length 2 (`"..."`) in every case; the header is present, the key is not |
 | H | `"type": "service_account"` markers in docs and tests | mixed | **No action.** Structural marker with no key body |
 
-No live AWS secret access key, Google API key, GitHub token, Slack token, Stripe key or Anthropic key matched anywhere in the history.
+No live AWS secret access key, Google API key, GitHub token, Slack token, Stripe key or Anthropic key matched anywhere in the history — but see §2a: that sentence was not earned for the AWS secret key until the targeted pattern below was run, because the repository's own pattern set does not include one.
+
+## 2a. Two checks added after review (2026-10-17)
+
+**Byte identity, not a hash prefix.** The first version compared 12-hex-character SHA-256 prefixes, which is overwhelming evidence but not proof. Re-run as a true comparison of the values, printing only the verdict, over every version of the file that was ever committed — **four** in total:
+
+| Version | Verdict |
+| --- | --- |
+| `6301da46ca` | **byte-identical** to the value on `main` |
+| `bbcf32e071` | **byte-identical** to the value on `main` |
+| `d844b0730b` | **byte-identical** to the value on `main` |
+| `07abf95fb6` (older) | differs |
+
+So the value now on public `main` is not a recent example: three of the four versions ever committed carried exactly it. **Still unproven:** that any *running* service uses it. That needs the process environment or `/api/diag`'s set/length report, not the repository.
+
+**AWS secret-key material.** A targeted pattern for `aws_secret_access_key`, `JP_AWS_SECRET*`, `JP_WRITE_AWS_SECRET*` (40-character values) and `aws_session_token` / `AWS_SESSION_TOKEN` (40+ characters), run over all **4111** blobs in history: **no match anywhere.** The committed AWS material is therefore access-key **IDs only**, which on their own do not yield usable credentials. Limits: this is pattern-based, so a secret key stored without a recognisable label, split across lines, or in a non-text encoding would not be caught, and nothing outside the repository (Vercel, Firestore, the laptop) is covered. Current IAM status of the two exposed IDs still needs the owner's AWS check.
+
 
 ## 3. Priority actions
 
