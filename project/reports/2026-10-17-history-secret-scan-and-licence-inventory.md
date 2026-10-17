@@ -44,7 +44,27 @@ No live AWS secret access key, Google API key, GitHub token, Slack token, Stripe
 
 So the value now on public `main` is not a recent example: three of the four versions ever committed carried exactly it. **Still unproven:** that any *running* service uses it. That needs the process environment or `/api/diag`'s set/length report, not the repository.
 
-**AWS secret-key material.** A targeted pattern for `aws_secret_access_key`, `JP_AWS_SECRET*`, `JP_WRITE_AWS_SECRET*` (40-character values) and `aws_session_token` / `AWS_SESSION_TOKEN` (40+ characters), run over all **4111** blobs in history: **no match anywhere.** The committed AWS material is therefore access-key **IDs only**, which on their own do not yield usable credentials. Limits: this is pattern-based, so a secret key stored without a recognisable label, split across lines, or in a non-text encoding would not be caught, and nothing outside the repository (Vercel, Firestore, the laptop) is covered. Current IAM status of the two exposed IDs still needs the owner's AWS check.
+**AWS secret-key material.** A targeted pattern for `aws_secret_access_key`, `JP_AWS_SECRET*`, `JP_WRITE_AWS_SECRET*` (40-character values) and `aws_session_token` / `AWS_SESSION_TOKEN` (40+ characters), run over all **4111** blobs in history: **no matches.** 
+
+**What that licenses:** the targeted secret patterns match nothing anywhere in this repository's history. **What it does not license:** "the repository contains only key IDs and no secret key." A negative result from a pattern scan cannot exclude material the patterns miss — unlabelled, split across lines, encoded, or outside git entirely — so that stronger claim is not made here. The access-key **IDs** remain the only AWS material this scan can speak to, and IDs alone do not yield usable credentials. Current IAM status of the two IDs still needs the owner's AWS check.
+
+**Reproduce both checks** (nothing below prints a value):
+
+```bash
+git clone --quiet --mirror https://github.com/jaytipargal/jpbir.git /tmp/jpbir-hist.git
+
+# byte identity of the STATS_KEY line across every version of the file
+git -C /tmp/jpbir-hist.git show refs/heads/main:Devices/sandbox/.env.example | grep '^STATS_KEY=' > /tmp/a
+for b in 6301da46ca bbcf32e071 d844b0730b 07abf95fb6; do
+  git -C /tmp/jpbir-hist.git cat-file blob "$b" | grep '^STATS_KEY=' > /tmp/b
+  cmp -s /tmp/a /tmp/b && echo "$b identical" || echo "$b differs"
+done
+
+# AWS secret-key / session-token patterns over every blob in history (expect 0)
+git -C /tmp/jpbir-hist.git rev-list --objects --all | awk 'NF==2 {print $1}' |
+  while read -r s; do git -C /tmp/jpbir-hist.git cat-file blob "$s" 2>/dev/null; done |
+  grep -acEi '(aws_secret_access_key|jp_aws_secret[a-z_]*|jp_write_aws_secret[a-z_]*)[[:space:]]*[:=][[:space:]]*"?[a-z0-9/+=]{40}|aws_session_token[[:space:]]*[:=][[:space:]]*"?[a-z0-9/+=]{40,}'
+```
 
 
 ## 3. Priority actions
