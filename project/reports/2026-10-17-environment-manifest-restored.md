@@ -40,7 +40,7 @@ Pinned digests (resolved from the registry on 2026-10-17, not copied from a tag)
 | Digests resolve | `HEAD registry-1.docker.io/v2/library/<image>/manifests/<tag>` | all three match the pinned digests |
 | Repo checks unchanged | `npm ci && npm run lint && npm run build && npm test` | lint OK, build OK, **49/49 suites passed** |
 
-**Not verified here, and stated as such:** the image build itself. This sandbox has **no Docker** (`docker: command not found`), so `project/environment/run` cannot be exercised end to end. Per D-8 the digest pin is confirmed "at first build"; the build belongs to CI on this pull request, where the environment is built and the existing build and tests run inside it (Step 0 item 7 ordering).
+**Not verified here, and stated as such:** the image build itself. This sandbox has **no Docker** (`docker: command not found`), so `project/environment/run` cannot be exercised end to end. The current `.github/workflows/ci-cd.yml` also installs dependencies and runs the checks directly rather than through `project/environment/run`, so this pull request's CI does **not** build the image either. Wiring CI to run inside the environment is Step 0 items 7/9 (baseline CI) and is not part of this change; the image build must be confirmed on a Docker-capable runner before the manifest is called Done.
 
 ## 4. Boundary: the Alpine denial and jaytibirthday-site
 
