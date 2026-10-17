@@ -45,6 +45,7 @@ If the deny is observed in a **different** environment (for example the `jaytibi
 
 - Set and publish the allowlist entry there, then restart that environment so the policy is reloaded.
 - No repository change is required: `git grep` over the tracked tree finds **no** occurrence of `dl-cdn.alpinelinux.org`, **no** `FROM alpine` base image and **no** `apk add`; nothing in this repository configures egress. (The only "alpin" byte-substring in the tree is the identifier `posFinalPins` inside the minified vendored bundle `Frontend/assets/PsdViewer-tYgUgujd.js` — a coincidence, not a reference.) There is nothing in the source tree to fix.
+- **Follow-up (same day):** a separate repository defect was found and fixed on this branch — the required environment manifest `project/environment/` was missing entirely. See [Restored the missing project environment manifest](2026-10-17-environment-manifest-restored.md).
 
 ## 5. Status
 
