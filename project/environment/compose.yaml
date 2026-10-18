@@ -1,0 +1,18 @@
+# Environment manifest backing services (contract rule 3) - decision D-8.
+# The dev service builds from the pinned Dockerfile with the repository mounted;
+# postgres is pinned per D-8 (production uses Neon - dev uses this local instance).
+services:
+  dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    working_dir: /workspace
+    volumes:
+      - ../..:/workspace
+    command: ["sleep", "infinity"]
+  postgres:
+    image: postgres:16.4-bookworm
+    environment:
+      POSTGRES_PASSWORD: dev-only-not-a-secret
+    ports:
+      - "127.0.0.1:15432:5432"
