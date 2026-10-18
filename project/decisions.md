@@ -101,3 +101,11 @@ self-review, not independent human approval.
   themselves (D-12 open item stays owner-owned; agents never receive the values).
 - Droplet-record confirmation and PROFILE confirmation were not given this session; they stay
   listed as open items in the tracker decisions list.
+
+### D-16: Release R1 scope direction (owner, 2026-10-18)
+The owner chose "stabilize and harden" for release R1: no new features. R1 delivers the
+inherited-debt fixes (bloated vendored trees, stale documentation, disconnected Vercel
+push-to-deploy, secret hygiene), wiring of the protections and controls this pipeline needs,
+and documentation - with production staying as it is. The formal scope freeze and BRD
+approval happen in Step 1 (T-06); this decision sets the direction. BRD/TRD drafting starts
+from this scope; remaining owner questions get batched there.
