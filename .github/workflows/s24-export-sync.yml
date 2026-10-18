@@ -84,7 +84,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v7
+        uses: actions/checkout@v4
 
       - name: Resolve the shared sync root
         # One run's working area: pull writes <root>/runs/<run_id>/ plus
@@ -96,7 +96,7 @@ jobs:
           echo "sync root: $RUNNER_TEMP/s24-sync"
 
       - name: Setup Python
-        uses: actions/setup-python@v7
+        uses: actions/setup-python@v5
         with:
           python-version: '3.12'
           cache: pip
