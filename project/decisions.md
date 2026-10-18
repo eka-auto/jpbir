@@ -82,3 +82,22 @@ self-review, not independent human approval.
 - Canonical audit after repair: selftest 35/35 PASS, all audit checks PASS (tracker rules,
   STOP, append-only events, events applied, HOD-event match, TRACKER.md current, CONTRACT,
   pinned skill, pointers, targets).
+
+### D-15: Owner decisions on resume (2026-10-18)
+- **Branch protection**: the owner chose to keep the repository private and not upgrade a plan
+  ("keep it private and skip this step no issue"). Per contract rule 1 an owner's refusal parks
+  T-04 as Blocked - it is never Not required, because protected controls cannot be waived.
+  Compensating control found and ACTIVATED: GitHub repository ruleset 25339138
+  ("pipeline-protected-branch") enforces deletion + non-fast-forward protection on the default
+  branch - this works on the free plan. Remaining gap on the free plan: required reviews,
+  required status checks and CODEOWNERS enforcement; the Step 0 gate stays formally open on
+  T-04 until the owner upgrades to GitHub Pro/Team or makes the repository public. Downstream
+  work that does not depend on T-04 continues (Step 1).
+- **Off-machine backup (3-2-1)**: owner approved OneDrive. Both backup files copied to
+  C:\Users\abcom\OneDrive\cicd-backups\jpbir\ and hash-verified byte-identical
+  (bundle 8018DA68..., untracked archive 124A6EE2...). The off-machine copy obligation from
+  D-2 is satisfied via OneDrive sync.
+- **Vercel**: the owner will re-link the GitHub App and set the missing secrets on vercel.com
+  themselves (D-12 open item stays owner-owned; agents never receive the values).
+- Droplet-record confirmation and PROFILE confirmation were not given this session; they stay
+  listed as open items in the tracker decisions list.
