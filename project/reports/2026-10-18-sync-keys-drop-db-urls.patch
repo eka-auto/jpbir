@@ -1,0 +1,36 @@
+From 87028e1442b03340024c78fac494e32e119062ba Mon Sep 17 00:00:00 2001
+From: "cline-cloud[bot]" <cline-cloud[bot]@users.noreply.github.com>
+Date: Sun, 18 Oct 2026 23:31:39 +0000
+Subject: [PATCH] ci(sync-keys): stop syncing database URLs from CI; keep
+ jpbir_live pinned outside CI
+
+---
+ .github/workflows/sync-keys-to-vercel.yml | 5 +++--
+ 1 file changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/.github/workflows/sync-keys-to-vercel.yml b/.github/workflows/sync-keys-to-vercel.yml
+index 66f3eb5..cf5a344 100644
+--- a/.github/workflows/sync-keys-to-vercel.yml
++++ b/.github/workflows/sync-keys-to-vercel.yml
+@@ -44,7 +44,9 @@ jobs:
+           VERCEL_TEAM_ID: team_gcqCiU4UgkhcUJGRGLZYaQiW
+           VERCEL_PROJECT_ID: prj_47peuCvcDnURmUqhU3aFlaBP351J
+           SECRETS_JSON: ${{ toJSON(secrets) }}
+-          # Every key the deployed code (Backend/, Integrations/) reads.
++          # Every key the deployed code (Backend/, Integrations/) reads, except
++          # database URLs: the jpbir_live production database is pinned outside CI
++          # to keep the readable recovered chats intact.
+           #
+           # JP_AWS_* / JP_WRITE_AWS_* are here because Backend/db-push.js reads
+           # them: the nightly DynamoDB -> Neon warehouse repair cannot start
+@@ -57,7 +59,6 @@ jobs:
+           SYNC_KEYS: >-
+             AGENT_API_KEY AGENT_API_URL ANTHROPIC_API_KEY BLOB_READ_WRITE_TOKEN
+             CONNECT_CLIENT_ID CONNECT_CONNECTOR_UID CRON_SECRET
+-            DATABASE_URL DATABASE_URL_UNPOOLED POSTGRES_URL POSTGRES_URL_NON_POOLING
+             DB_ADMIN_KEY FIREBASE_SERVICE_ACCOUNT_JSON FIRESTORE_DB
+             GMAIL_APP_PASSWORD HEALTH_CHECK_KEY
+             JP_AWS_ACCESS_KEY_ID JP_AWS_SECRET_ACCESS_KEY
+-- 
+2.39.5
+
