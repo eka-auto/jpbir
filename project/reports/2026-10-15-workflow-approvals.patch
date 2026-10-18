@@ -1,0 +1,81 @@
+diff --git a/.github/workflows/dashboard-parity-check.yml b/.github/workflows/dashboard-parity-check.yml
+index f7a1630..8a5aef6 100644
+--- a/.github/workflows/dashboard-parity-check.yml
++++ b/.github/workflows/dashboard-parity-check.yml
+@@ -64,6 +64,30 @@ jobs:
+             }
+           }
+ 
++          // Section: the property the dashboard actually opens on.
++          //
++          // Every check in this file names `jaytipargal.tech`, and that is why
++          // the outage the owner reported — no `jaytibirthday.in` rows reaching
++          // the warehouse from 2026-10-09 — passed a green parity run: the panel
++          // he was reading reads THIS property, and nothing asserted it had any
++          // data at all. A 7-day window with zero events is the incident
++          // signature, not a quiet week: the birthday site is the product, and
++          // the owner's own visits are its traffic.
++          const birthday = await getJson('/api/stats?days=7&site=jaytibirthday.in', authHeaders);
++          if (!birthday.res.ok || !birthday.json?.success) {
++            fail('Birthday property (/api/stats?site=jaytibirthday.in)', `HTTP ${birthday.res.status}`);
++          } else {
++            const bt = birthday.json.totals || {};
++            const bEvents = Number(bt.events_in_window || 0);
++            const bNewest = Array.isArray(birthday.json.latest_events) && birthday.json.latest_events[0]
++              ? (birthday.json.latest_events[0].receivedAt || 'no timestamp') : 'none';
++            if (bEvents === 0) {
++              fail('Birthday property ingestion', 'no events in the 7-day window — check the birthday tracker endpoint (the birthday project /api/track, not this project /api/jp-track) and the DynamoDB -> Neon repair at /api/db-push');
++            } else {
++              pass('Birthday property ingestion', `events=${bEvents}, sessions=${bt.unique_sessions}, active_now=${bt.active_now}, newest=${bNewest}`);
++            }
++          }
++
+           // Section: Visitor drawer (/api/visitor), using first session from stats response
+           let visitorOk = false;
+           if (stats.json?.success && Array.isArray(stats.json.sessions) && stats.json.sessions.length > 0) {
+@@ -138,12 +162,16 @@ jobs:
+           if (!va.res.ok || va.json?.ok === false) fail('Vercel analytics section (/api/vercel-analytics)', `HTTP ${va.res.status}`);
+           else pass('Vercel analytics section parity', 'ok');
+ 
+-          // Backend cross-check anchor (same key gate as dashboard routes)
++          // Backend cross-check anchor (same key gate as dashboard routes).
++          // The freshness fields ride along here because this is the one caller
++          // that holds a key able to read them: newest_event_at is warehouse-wide
++          // and birthday_active_now is the birthday property in the last 120 s.
+           const verify = await getJson('/api/verify-db', authHeaders);
+           if (!verify.res.ok || verify.json?.success === false) {
+             fail('Backend verify-db anchor', `HTTP ${verify.res.status}`);
+           } else {
+-            pass('Backend verify-db anchor', `tables=${verify.json?.databases?.postgres?.tables_present ?? 'n/a'}`);
++            const pg = verify.json?.databases?.postgres || {};
++            pass('Backend verify-db anchor', `tables=${pg.tables_present ?? 'n/a'}, newest_event_at=${pg.newest_event_at ?? 'n/a'}, birthday_active_now=${pg.birthday_active_now ?? 'n/a'}`);
+           }
+ 
+           const failed = checks.filter(c => !c.ok);
+diff --git a/.github/workflows/sync-keys-to-vercel.yml b/.github/workflows/sync-keys-to-vercel.yml
+index a94ed3e..66f3eb5 100644
+--- a/.github/workflows/sync-keys-to-vercel.yml
++++ b/.github/workflows/sync-keys-to-vercel.yml
+@@ -45,11 +45,22 @@ jobs:
+           VERCEL_PROJECT_ID: prj_47peuCvcDnURmUqhU3aFlaBP351J
+           SECRETS_JSON: ${{ toJSON(secrets) }}
+           # Every key the deployed code (Backend/, Integrations/) reads.
++          #
++          # JP_AWS_* / JP_WRITE_AWS_* are here because Backend/db-push.js reads
++          # them: the nightly DynamoDB -> Neon warehouse repair cannot start
++          # without the read pair, and it answered 503 "JP_AWS_* read credentials
++          # not configured" on 2026-10-14 with no light on any panel (the 2026-10-10
++          # environment re-provision carried the region and table name across but
++          # not the credentials). Add-only, so a dispatch creates exactly the ones
++          # missing from Production and nothing else. See
++          # project/reports/2026-10-15-live-data-diagnosis.md (P4, Q2, Q3).
+           SYNC_KEYS: >-
+             AGENT_API_KEY AGENT_API_URL ANTHROPIC_API_KEY BLOB_READ_WRITE_TOKEN
+             CONNECT_CLIENT_ID CONNECT_CONNECTOR_UID CRON_SECRET
+             DATABASE_URL DATABASE_URL_UNPOOLED POSTGRES_URL POSTGRES_URL_NON_POOLING
+             DB_ADMIN_KEY FIREBASE_SERVICE_ACCOUNT_JSON FIRESTORE_DB
+             GMAIL_APP_PASSWORD HEALTH_CHECK_KEY
++            JP_AWS_ACCESS_KEY_ID JP_AWS_SECRET_ACCESS_KEY
++            JP_WRITE_AWS_ACCESS_KEY_ID JP_WRITE_AWS_SECRET_ACCESS_KEY
+             S24_SYNC_PUBLIC_KEYS STALE_ALERT_SECONDS STATS_KEY STATS_SITE
+             VERCEL_ANALYTICS_PROJECT_ID VERCEL_API_TOKEN VERCEL_TEAM_ID WA_INGEST_KEY

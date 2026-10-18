@@ -1,0 +1,76 @@
+diff --git a/project/audit/run-hod-audit.cmd b/project/audit/run-hod-audit.cmd
+new file mode 100644
+index 0000000..520083e
+--- /dev/null
++++ b/project/audit/run-hod-audit.cmd
+@@ -0,0 +1,70 @@
++@echo off
++rem ===========================================================================
++rem  jpbir HOD scheduled audit - local wrapper.  PROPOSAL, not applied:
++rem  see project/reports/2026-10-17-q2-audit-enablement.md
++rem
++rem  Runs tracker.py's selftest, then the deterministic HOD audit against both
++rem  run-state branches, and returns the result.
++rem    exit 0 = selftest and audit both passed
++rem    exit 1 = a check failed (the task's last result should then be non-zero)
++rem    exit 2 = precondition missing (state branches, git, python or worktree)
++rem
++rem  NOTE: contract rule 4 says a log from an agent's own machine never counts as
++rem  audit evidence. This wrapper is an early-warning convenience for the machine
++rem  that hosts the task; the auditable run is the hod-audit workflow in CI, on
++rem  the exact revision. It never prints or logs secret values.
++rem ===========================================================================
++setlocal enableextensions
++set "REPO_ROOT=%~dp0..\.."
++set "LOG_DIR=%LOCALAPPDATA%\jpbir-hod-audit"
++set "LOG=%LOG_DIR%\hod-audit-%RANDOM%%RANDOM%.log"
++if not exist "%LOG_DIR%" mkdir "%LOG_DIR%" 2>nul
++
++pushd "%REPO_ROOT%" || goto :no_repo
++
++set "PY=python"
++where python >nul 2>&1 || set "PY=py -3"
++
++echo === jpbir HOD audit %DATE% %TIME% === >> "%LOG%"
++git rev-parse HEAD >> "%LOG%" 2>&1
++git status --porcelain >> "%LOG%" 2>&1
++
++echo --- fetch run-state branches --- >> "%LOG%"
++git fetch origin project-state project-verifier >> "%LOG%" 2>&1
++if errorlevel 1 goto :no_state
++
++set "STATE_WT=%TEMP%\jpbir-state-wt"
++set "VERIF_WT=%TEMP%\jpbir-verifier-wt"
++if exist "%STATE_WT%" git worktree remove --force "%STATE_WT%" >> "%LOG%" 2>&1
++if exist "%VERIF_WT%" git worktree remove --force "%VERIF_WT%" >> "%LOG%" 2>&1
++git worktree add --detach "%STATE_WT%" origin/project-state >> "%LOG%" 2>&1
++if errorlevel 1 goto :no_state
++git worktree add --detach "%VERIF_WT%" origin/project-verifier >> "%LOG%" 2>&1
++if errorlevel 1 goto :no_state
++
++echo --- selftest --- >> "%LOG%"
++%PY% project\audit\tracker.py selftest >> "%LOG%" 2>&1
++set "RC_SELFTEST=%ERRORLEVEL%"
++
++echo --- audit --- >> "%LOG%"
++%PY% project\audit\tracker.py --state "%STATE_WT%\project" --verifier-state "%VERIF_WT%\project" audit >> "%LOG%" 2>&1
++set "RC_AUDIT=%ERRORLEVEL%"
++
++git worktree remove --force "%STATE_WT%" >> "%LOG%" 2>&1
++git worktree remove --force "%VERIF_WT%" >> "%LOG%" 2>&1
++popd
++
++echo selftest=%RC_SELFTEST% audit=%RC_AUDIT%  (log: %LOG%)
++if not "%RC_SELFTEST%"=="0" exit /b 1
++if not "%RC_AUDIT%"=="0" exit /b 1
++exit /b 0
++
++:no_state
++echo PRECONDITION FAILED: project-state / project-verifier unavailable. >> "%LOG%"
++echo PRECONDITION FAILED: project-state / project-verifier unavailable - see project/reports/2026-10-17-q2-audit-enablement.md
++popd
++exit /b 2
++
++:no_repo
++echo PRECONDITION FAILED: cannot enter the repository root from "%~dp0"
++exit /b 2

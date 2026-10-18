@@ -1,0 +1,16 @@
+diff --git a/project/ACCESS.md b/project/ACCESS.md
+--- a/project/ACCESS.md
++++ b/project/ACCESS.md
+@@ -5,3 +5,4 @@
+ | author | Copilot CLI session | GitHub repo `jaytipargal/jpbir` push/PR workflow scope | session | Used for controlled automation changes and CI interactions |
+ | verifier | Pending owner setup | GitHub `project-verifier` and `project-state` branch-scoped write | pending | Must be separate from author for HOD independence |
+ | deployer | Vercel `jayti2/jpbir` project deploy identity | Production deployment only | managed by Vercel | Verified via `vercel whoami` and production redeploy logs |
++| cline-agent | Cline agent sessions (`cline-cloud[bot]`) | GitHub repo `jaytipargal/jpbir`: push/PR on non-protected branches only. No merge, no deploy, no write to protected controls | 2026-11-15 (30 days) | Owner-granted automation identity; acts as the `devops` role only. Recorded so contract rule 11 can pass for unattended Cline sessions |
+diff --git a/project/identities.json b/project/identities.json
+--- a/project/identities.json
++++ b/project/identities.json
+@@ -4,3 +4,3 @@
+     "hod": ["223556219+Copilot@users.noreply.github.com"],
+-    "devops": ["223556219+Copilot@users.noreply.github.com"],
++    "devops": ["223556219+Copilot@users.noreply.github.com", "cline-cloud[bot]@users.noreply.github.com"],
+     "security": ["223556219+Copilot@users.noreply.github.com"],

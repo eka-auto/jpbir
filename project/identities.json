@@ -2,7 +2,7 @@
   "identities": {
     "orchestrator": ["223556219+Copilot@users.noreply.github.com"],
     "hod": ["223556219+Copilot@users.noreply.github.com"],
-    "devops": ["223556219+Copilot@users.noreply.github.com"],
+    "devops": ["223556219+Copilot@users.noreply.github.com", "cline-cloud[bot]@users.noreply.github.com"],
     "security": ["223556219+Copilot@users.noreply.github.com"],
     "qa": ["223556219+Copilot@users.noreply.github.com"],
     "backend": ["223556219+Copilot@users.noreply.github.com"],
