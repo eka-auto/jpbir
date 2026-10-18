@@ -48,3 +48,37 @@ Independent hosting and dashboard audit reconciled:
 - GitHub Pro upgrade (or make repo public) to unblock T-04 branch protection.
 - Connect Vercel GitHub App for `jaytipargal/jpbir` in team `jayti2` settings to re-enable push-to-deploy.
 - Populate unset secrets on `jayti2/jpbir` (BLOB_READ_WRITE_TOKEN, S24_SYNC_PUBLIC_KEYS, WA_INGEST_KEY, etc.).
+
+### D-13: Unrecorded control change reverted (2026-10-18, HOD-role finding)
+Commit 286b1645 replaced the pinned skill (v2.2.0 -> a self-described "2.4.0" variant) and
+tracker.py (35-check canonical -> 67-check extended tool requiring a --verifier-state argument)
+without a decision record, review, or tracker upgrade - discovered during the 2026-10-18 resume
+(the extended tool rejected the canonical audit invocation; selftest counted 67 vs the 35/35
+recorded in D-7). Action: restored the canonical SKILL.md byte-for-byte from the owner's
+installed skill (SHA-256 D6791D5AEC3C3CCD7462BFDF04E949E8A52302627FFD755839A0BC92F2C24D1A) and
+re-extracted the canonical tracker.py from it per the skill's documented command. The 2.4.0
+variant remains preserved in git history at commit 286b1645 for owner review; adopting any
+extended variant must go through a reviewed upgrade (skill conformance), never a silent
+replacement. The platform pointer blocks were also non-conforming (custom variant text);
+normalized to the skill's exact block, with the local guidance kept outside the block.
+Labelling: performed by the resume agent playing the HOD role (no-CI fallback per D-3;
+single-identity mode per project/identities.json) using deterministic checks - this is
+self-review, not independent human approval.
+
+### D-14: Resume session 2026-10-18 - state repair
+- Durable project-state checkout recreated at C:\Users\abcom\jpbir-project-state (the previous
+  Temp worktree had been pruned; git worktree prune + fresh add at run tip 69ec45a7).
+- project/audit/run-hod-audit.cmd recreated (lost with the pruned Temp worktree and never
+  committed) using durable paths only; scheduled task re-verified live: LastTaskResult 0,
+  log at C:\Users\abcom\jpbir-project-state\hod-audit-last.log.
+- project/environment/ (Dockerfile, compose.yaml, run) recreated per D-8.
+- project/targets.json completed to the six targets of D-9 plus source: added vercel-jayti2,
+  firestore-eka-agent, neon-jaytibirthday-db, vercel-blob (the committed file held only
+  source and jp-agent-droplet).
+- project/PROFILE.md assembled from owner-confirmed decisions D-1, D-10, D-11 (+ D-2, D-4,
+  D-8, D-12).
+- Backup integrity re-verified: both SHA-256 hashes match D-2 exactly (bundle 8018DA68...,
+  untracked archive 124A6EE2...).
+- Canonical audit after repair: selftest 35/35 PASS, all audit checks PASS (tracker rules,
+  STOP, append-only events, events applied, HOD-event match, TRACKER.md current, CONTRACT,
+  pinned skill, pointers, targets).
