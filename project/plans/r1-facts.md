@@ -1,7 +1,11 @@
 # R1 Product Fact Sheet — jpbir (Jayti Device Dashboard)
 
 Task 1 of Step 1 (R1 "stabilize and harden"). This is the shared ground truth that
-later R1 tasks (BRD, TRD, threat model, registry) will cite. Written 2026-10-18.
+later R1 tasks (BRD and TRD — the business and technical requirements documents —
+plus the threat model and registry) will cite. Written 2026-10-18.
+
+Every technical term is explained in plain language where it first appears, and
+all of them are collected in the section 9 plain-language glossary at the end.
 
 - Tree scanned: branch `feat/jp-agent-droplet-runner` at commit `2e04c369` (HEAD of
   that branch, which is 5 commits ahead of `origin/feat/jp-agent-droplet-runner`).
@@ -29,24 +33,31 @@ paths and match counts only.
 live pages: `index.html` (analytics dashboard, route `/`), `s24.html` (`/s24`),
 `vivobook.html` (`/vivobook`), `jteka.html` (`/jteka`), `agent.html` (`/agent`),
 `db.html` (`/db`), `viewer.html` (`/viewer`), and `template.html` (page scaffold,
-no route). Pages are hand-written HTML with inline vanilla JS; no frontend
-framework and no build step for them. The remaining ~1,968 files are vendored
-editor/viewer code (see section 2). `vercel.json` sets `outputDirectory` to
+no route). Pages are hand-written HTML with inline vanilla JS (plain JavaScript
+with no libraries); no frontend framework (a prebuilt user-interface toolkit)
+and no build step for them. The remaining ~1,968 files are vendored (third-party
+code copied wholesale into the repository) editor/viewer code (see section 2). `vercel.json` sets `outputDirectory` to
 `Frontend` and maps routes to these pages —
 [inferred-from-code: vercel.json; Frontend/ directory listing].
 
-**Backend/** — the serverless API. 175 tracked files: 39 Node ESM handlers
-named in `vercel.json` `builds` (plus a catch-all route `/api/<name>` →
-`Backend/<name>.js` that reaches further handlers), `Backend/lib/` (8 files of
+**Backend/** — the serverless API (small functions that start on demand on
+Vercel's computers, so there is no always-on machine for us to run). 175 tracked
+files: 39 Node ESM handlers (functions in modern ES-module JavaScript, executed
+by Node) named in `vercel.json` `builds` (plus a catch-all route — a fallback
+rule that sends any unmatched `/api/<name>` address to `Backend/<name>.js` —
+which reaches further handlers), `Backend/lib/` (8 files of
 real product logic: `s24-attestation.js`, `warehouse.js`, `ddb-scan.js`,
 `cron-auth.js`, `media-auth.js`, `stale.js`, `stack-map.js`, `geo.js`), plus
-~90 vendored/drifted files (TypeScript editor providers, i18n locale files,
+~90 vendored/drifted files (TypeScript editor providers, i18n locale files
+(i18n = internationalization: translations for many languages),
 `pdf.js`/`pdf.worker.js`, and Python scripts `eka_*.py` that CLAUDE.md documents as
 drifted copies of `jayti/scripts/`). Key handlers: `broker.js` (device broker,
-P-256 enrollment + hardware attestation, `HARDWARE_RULES` names the three-device
-fleet), `device-enroll.js`, `device-heartbeat.js`, `device-commands-poll.js`,
-`broker-command-claim.js`, `broker-command-complete.js`, `jp-devices.js`,
-`s24-public.js`, `s24-ingest.js`, `wa-ingest.js`, `wa-media.js`, `db-push.js` —
+P-256 enrollment + hardware attestation — devices prove who they are with a
+cryptographic P-256 key sealed in their hardware — and `HARDWARE_RULES` names
+the three-device fleet), `device-enroll.js`, `device-heartbeat.js`,
+`device-commands-poll.js`, `broker-command-claim.js`,
+`broker-command-complete.js`, `jp-devices.js`, `s24-public.js`,
+`s24-ingest.js`, `wa-ingest.js`, `wa-media.js`, `db-push.js` —
 [inferred-from-code: vercel.json builds/routes; Backend/ listing; CLAUDE.md].
 
 **Database/** — schemas and DB tooling. 33 tracked files: `schema/` holds 18
@@ -56,7 +67,8 @@ fleet), `device-enroll.js`, `device-heartbeat.js`, `device-commands-poll.js`,
 `s24_commands`, `s24_files`, `s24_queue_items`, `s24_sync_runs`,
 `s24_sync_datasets`, `s24_sync_batches`, `s24_ingest_seen`; plus
 `warehouse_sync_state`), plus 3 Prisma-demo `CREATE TABLE` statements inside
-`schema/prelude.gql`, 6 GraphQL schema files, and a `migration-aliases.json`.
+`schema/prelude.gql`, 6 GraphQL schema files (GraphQL is an alternative API
+query language; Prisma is a database toolkit), and a `migration-aliases.json`.
 `scripts/migrate.mjs` applies Postgres migrations (`npm run db:migrate`);
 `wa-build-inventory.mjs`/`wa-import.mjs`/`wa-export-import.mjs` build and import
 the WhatsApp inventory; `backups/` holds two committed data dumps
@@ -69,20 +81,29 @@ inbound listeners and encodes the outbound-only transport, `pull_direct_cloud.py
 `push_to_vercel.py`, the Node daemon `s24-agent-daemon.mjs`), `Vivobook/` (10), and
 `sandbox/` (31 — a Python device-agent test rig that is ALSO its own Vercel project:
 it has its own `vercel.json` building `dashboard_api.py` as `@vercel/python`, plus
-`firebase.json` and emulator configs). CLAUDE.md marks the device kits as
-SHA-256-pinned and byte-identical-installer packages that must not be deduplicated —
+`firebase.json` and emulator configs (an emulator is a local fake of a live
+service, used only in tests). CLAUDE.md marks the device kits as
+SHA-256-pinned (each installer verifies every bundled file against a fixed
+SHA-256 checksum — a unique digital fingerprint) and byte-identical-installer
+packages that must not be deduplicated —
 [inferred-from-code: git ls-files Devices; Devices/sandbox/vercel.json; CLAUDE.md
 "Do not touch"].
 
 **Server/** — device-support and droplet runtime. 75 tracked files. The core is
-`Server/jp-agent/` (27 files): an agent runtime for the DigitalOcean droplet
-(entry point `server.mjs`, MCP server `s24-mcp-server.mjs`, `s24-tools.mjs`,
-deploy scripts `deploy.sh`/`deploy-local.sh`, systemd units `jp-agent.service` +
-`s24-mcp.service`, nginx conf, its own package.json depending on
-`@anthropic-ai/claude-agent-sdk` and `@modelcontextprotocol/sdk`). The other ~48
+`Server/jp-agent/` (27 files): an agent runtime for the DigitalOcean droplet (a
+droplet is DigitalOcean's name for a rented Linux server) — entry point
+`server.mjs`, MCP server `s24-mcp-server.mjs` (MCP, the Model Context Protocol,
+is a standard way for AI assistants to use external tools), `s24-tools.mjs`,
+deploy scripts `deploy.sh`/`deploy-local.sh`, systemd units (systemd is the
+Linux service manager; a unit is one of its start-up definitions)
+`jp-agent.service` + `s24-mcp.service`, nginx configuration (nginx is the web
+server that receives requests and forwards them), its own package.json
+depending on `@anthropic-ai/claude-agent-sdk` and `@modelcontextprotocol/sdk`
+(SDKs — prebuilt toolkits for talking to those services). The other ~48
 loose files at `Server/` root are device install scripts (`install_s24.sh`,
 `setup_laptop.ps1`, `*.bat`), systemd/nginx units, and a handful of swept-in
-strays: 6 GitHub workflow files (`main.yml`, `ci-deploy.yml`, `python-publish.yml`,
+strays: 6 GitHub workflow files (a workflow is an automation script GitHub
+runs; `main.yml`, `ci-deploy.yml`, `python-publish.yml`,
 `python-package-conda.yml`, `verify-secrets.yml`, `runner-health-check.yml`) that
 do nothing where they sit (GitHub only reads `.github/workflows/`), plus a vendored
 editor grammar (`nginx.tmLanguage`, `nginxLanguage.ts`) —
@@ -100,24 +121,32 @@ editor grammar (`nginx.tmLanguage`, `nginxLanguage.ts`) —
 `docs/` (33 files, setup guides and historical docs), `tools/` (17 files including
 `scan_secrets.py`, `redact_secrets.py`, `scrub_secrets.py`, and
 `generate-env-manifest.mjs`), `config/vercel-env.manifest.json` (the authoritative
-inventory of Vercel environment-variable names — holds names and fingerprints, no
+inventory of Vercel environment-variable names — environment variables are
+configuration values the running code reads, set outside the code itself; the
+manifest holds names and fingerprints, no
 values), `eslint.config.mjs` (exists but not wired to a root lint script until
 recently — see section 7) — [inferred-from-code: git ls-files _shared; README.md;
 CLAUDE.md].
 
 ### .github/ — CI
 
-11 tracked files: 9 workflows (`ci-cd.yml` — lint+test only, no deploy;
+11 tracked files: 9 workflows (`ci-cd.yml` — lint (automated code-style
+checking) + test only, no deploy;
 `code-quality.yml`; `health-check.yml` — endpoint checks every 15 minutes;
-`device-sandbox-tests.yml`; `sync-keys-to-vercel.yml` — dispatch-only, add-only
+`device-sandbox-tests.yml`; `sync-keys-to-vercel.yml` — dispatch-only (runs
+only when a person manually triggers it), add-only
 key sync then production rebuild; `deploy-droplet.yml` — on push to `main`, runs
-jp-agent tests on a self-hosted runner labeled `jp-agent-droplet` and deploys
+jp-agent tests on a self-hosted runner labeled `jp-agent-droplet` (a runner is
+a machine that executes workflow steps; self-hosted means we own it instead of
+GitHub renting one to us) and deploys
 `Server/jp-agent` to the droplet; `s24-export-sync.yml` — scheduled S24
 export-sync from Firestore to `/api/s24-ingest` with a P-256 signature, requires
 repo secrets `EKA_SERVICE_ACCOUNT_JSON` and `S24_SYNC_PRIVATE_KEY_PEM`;
-`dashboard-parity-check.yml` — dispatch-only production parity checks against
+`dashboard-parity-check.yml` — dispatch-only production parity checks (comparing
+live production behavior with what the repository expects) against
 `jaytipargal.tech` using `STATS_KEY`; `db-push-backfill.yml` — dispatch-only
-DynamoDB → Postgres backfill using secret `DB_ADMIN_KEY`), plus `actionlint.yaml`
+DynamoDB → Postgres backfill (copying historical data across to fill gaps)
+using secret `DB_ADMIN_KEY`), plus `actionlint.yaml`
 and `scripts/sync-keys-to-vercel.mjs`. README.md lists only 5 workflows and also
 describes a doubled-path `endform-e2e.yml` bug that no longer exists —
 [inferred-from-code: git ls-files .github; workflow file headers; README.md;
@@ -132,8 +161,10 @@ scripts: `dev`, `build` → `scripts/build.mjs`, `lint` → `scripts/lint.mjs`,
 `@vercel/connect`, `@aws-sdk/client-dynamodb`, `@aws-sdk/client-sts`,
 `@aws-sdk/lib-dynamodb`, `nodemailer`; one devDependency `@playwright/test`);
 `vercel.json` (the deploy contract, section 4); `.vercelignore` (a long, heavily
-commented guard list for laptop-run CLI deploys); `.gitignore` (guards service
-account keys, env files, data dumps); `playwright.config.mjs`; `e2e/` (1 tracked
+commented guard list for laptop-run CLI deploys — CLI means running commands by
+typing them; here the Vercel command-line tool); `.gitignore` (guards service
+account keys, env files, data dumps); `playwright.config.mjs` (Playwright
+drives a real browser for end-to-end tests); `e2e/` (1 tracked
 Playwright spec for the main dashboard); `scripts/` (`dev-server.mjs`,
 `build.mjs`, `lint.mjs`) — [inferred-from-code: package.json; root listing].
 
@@ -155,7 +186,8 @@ upstream of the drifted `Backend/eka_*.py` copies. 65 files on disk —
 
 **runs/** — run-artifact tree, 5,071 files / 25.5 GB on disk: agent run outputs
 (`automobile_agent/`, `jt_agent/` with exported corpus parts `*.jsonl` covering
-chrome history, drive, phone app, eka tools/cloud), two release snapshots
+chrome history, drive, phone app, eka tools/cloud), two release snapshots (a
+snapshot is a frozen copy of the whole tree at one moment)
 (`frontend-assembly-*`, `frontend-release-*` containing a full node_modules copy),
 and `documents/`. Untracked and NOT covered by .gitignore as a whole (only the
 `*.jsonl` members are); `.vercelignore` excludes it from CLI deploys because a
@@ -224,7 +256,7 @@ Tracked bloat — code that ships in the repo but is not the app:
 | Where | Files | What it is | Why it's there |
 |---|---|---|---|
 | `Frontend/assets/icons/` | 1,320 | icon set from the vscode-office extension | vendored wholesale |
-| `Frontend/assets/` (rest) | 119 | hashed build chunks (`index-*.js/css`), font/ttf, per-provider `.ico` files | generated build output |
+| `Frontend/assets/` (rest) | 119 | hashed build chunks (generated files whose names embed a content fingerprint, `index-*.js/css`), font/ttf, per-provider `.ico` files | generated build output |
 | `Frontend/view/` | 253 | vscode-office webview source (React-based viewer) | vendored source |
 | `Frontend/util/` + root `.ts` files | ~230 (53 + 177) | TypeScript editor/viewer providers, i18n locale `*.ts` (de, es, fr, ja, ko, ru, pt-br, zh-cn, zh-tw), CodeMirror/Vditor logic | vendored source |
 | `Backend/` vendored | ~90 | TS language-service providers, i18n `*_*.js` locales, `pdf.js` + `pdf.worker.js`, `woff2_decompress_binding.js`, excel/xlsx perf tests, `Backend/service/` + `Backend/frontend/` vscode-office TS (48 files) | vendored/drifted |
@@ -265,11 +297,14 @@ machine) — [inferred-from-code: .gitignore; .git/info/exclude; .vercelignore].
 
 **Deploy contract:** `vercel.json` — `outputDirectory: Frontend`; 40 `builds`
 entries (39 Backend handlers as `@vercel/node` + `Frontend/**` as
-`@vercel/static`); 4 cron jobs (`/api/check-stale` every 10 min,
+`@vercel/static`); 4 cron jobs (cron = a scheduler that runs a task on a fixed
+timetable: `/api/check-stale` every 10 min,
 `/api/db-push` daily at 18:30 UTC, `/api/s24-sync-cron` every 6 h at :17,
-`/api/stack-cron` every 5 min); security headers on every route (CSP
-frame-ancestors 'none', X-Frame-Options DENY, nosniff, no-referrer,
-Permissions-Policy); routes map `/s24`, `/vivobook`, `/jteka`, `/db`, `/agent`,
+`/api/stack-cron` every 5 min); security headers on every route (browser-safety
+instructions sent with every page — CSP frame-ancestors 'none' stops other
+sites embedding this one, X-Frame-Options DENY and nosniff block content
+tricks, no-referrer hides which page you came from, Permissions-Policy disables
+camera/microphone/location access); routes map `/s24`, `/vivobook`, `/jteka`, `/db`, `/agent`,
 `/viewer` to the pages, `/agent/*` to `jp-live-agent`/`jp-hub-state`, device
 broker and WhatsApp/S24 ingest routes to Backend handlers, with a fallback
 `/api/(.*)(.js)?` → `Backend/$1.js` — [inferred-from-code: vercel.json].
@@ -283,7 +318,8 @@ targets.json "vercel-jayti2"]. `/api/s24-public` returning 200 with Firestore
 device data was confirmed live — [owner-confirmed (D-4)].
 
 **A second Vercel project builds from this repo:** `channel-sandbox`, with Root
-Directory `Devices/sandbox/` (its own `vercel.json`, re-created 2026-09-19 per
+Directory `Devices/sandbox/` (Root Directory = the folder inside the repository
+that Vercel builds this project from) (its own `vercel.json`, re-created 2026-09-19 per
 INTEGRATION.md; the repo-root `.vercelignore` once stripped its files and was
 fixed for it). `targets.json` does not record this project — [inferred-from-code:
 .vercelignore Devices/* comment; Devices/sandbox/vercel.json; INTEGRATION.md;
@@ -312,10 +348,13 @@ DigitalOcean droplet on every push to `main` via a self-hosted runner labeled
 "jp-agent-droplet" note: self-hosted GitHub Actions runner registered with
 labels jp-agent,droplet,deploy]. `sync-keys-to-vercel.yml` syncs add-only keys
 to Vercel on dispatch — [inferred-from-code: .github/workflows/
-sync-keys-to-vercel.yml]. CLAUDE.md records that CLI deploys from CI were
+sync-keys-to-vercel.yml]. CLAUDE.md records that CLI deploys from CI
+(continuous integration — the automated checks and builds GitHub runs on every
+code change) were
 deliberately removed and must not be re-added — [inferred-from-code: CLAUDE.md
 Deployment section, citing `.github/workflows/ci-cd.yml` comment]. D-3 records
-there is no CI runner on this machine; the no-CI fallback runs tracker.py
+there is no CI runner on this machine; the no-CI fallback runs tracker.py (the
+audit and status tool from the pinned skill)
 locally via Windows Task Scheduler (`jpbir-hod-audit`, daily) —
 [owner-confirmed (D-3); owner-confirmed (D-5)].
 
@@ -331,9 +370,12 @@ owner-confirmed (D-12)]. `FIREBASE_SERVICE_ACCOUNT_JSON` and `FIRESTORE_DB`
 
 ## 4. Data stores (as visible from code and config)
 
-**Firestore** — project `intrepid-stage-495117-q1`, database `eka-agent`.
-Collections in use: `devices` (one doc per device; the S24 doc carries the
-`commandQueue` map that device daemons poll) and `deviceKeys` (broker enrollment
+**Firestore** (Google's document database) — project `intrepid-stage-495117-q1`,
+database `eka-agent`.
+Collections in use (a collection is a folder-like group of records):
+`devices` (one doc per device; the S24 doc carries the
+`commandQueue` map that device daemons — small always-running programs on each
+device — poll, meaning check on a schedule) and `deviceKeys` (broker enrollment
 keys, read/written by `device-enroll.js` and every broker route via
 `fsGet("/deviceKeys/<keyId>")`). Python tools in `Backend/` and `Database/` also
 read `devices` — [inferred-from-code: Backend/broker-command-claim.js:60,
@@ -341,7 +383,8 @@ Backend/device-enroll.js:145,167, Backend/device-heartbeat.js:108,
 Backend/connect_and_freeze.py:74, Database/freeze_device.py:87; owner-confirmed
 (D-9) targets.json "firestore-eka-agent"; CLAUDE.md data-flow table].
 
-**Postgres (Neon)** — project `fancy-cloud-99501540`, role `neondb_owner`
+**Postgres (Neon)** — Postgres is the table-based relational database; Neon
+hosts it for us. Project `fancy-cloud-99501540`, role `neondb_owner`
 (shared with the `jaytibirthday-site` Vercel project; password rotation there
 has twice broken this dashboard until re-pasted — CLAUDE.md documents the
 mechanism). Tables defined in `Database/schema/`: 17 s24_/wa_ tables +
@@ -350,13 +393,15 @@ telemetry/ingest handlers and the daily `db-push` cron; read by dashboard data
 routes — [inferred-from-code: Database/schema/004-009; vercel.json crons;
 owner-confirmed (D-9) targets.json "neon-jaytibirthday-db"; CLAUDE.md].
 
-**Vercel Blob** — two stores `store_vxETiZ3lYBeN`, `store_y8X2dcvEtuqy` (team
+**Vercel Blob** (Vercel's file storage for large items such as photos, video
+and voice notes) — two stores `store_vxETiZ3lYBeN`, `store_y8X2dcvEtuqy` (team
 `jayti2`); holds WhatsApp media bytes; written by `wa-blob-upload`, read via the
 `wa-media` proxy and `blob_url` columns — [inferred-from-code: Backend/
 jp-agent.js, Backend/jp-stack.js, Backend/wa-blob-upload.js, Backend/wa-media.js
 (git grep "vercel/blob"); owner-confirmed (D-9) targets.json "vercel-blob"].
 
-**AWS DynamoDB** — a fourth store visible in code but absent from targets.json
+**AWS DynamoDB** (Amazon's key–value database, which stores records looked up
+by ID) — a fourth store visible in code but absent from targets.json
 and from the README/CLAUDE data-flow story: dependency
 `@aws-sdk/client-dynamodb` in package.json; `Backend/db-push.js`,
 `Backend/backup-db.js`, `Backend/lib/ddb-scan.js`, `Backend/lib/warehouse.js`,
@@ -366,13 +411,19 @@ DynamoDB → Postgres", secret `DB_ADMIN_KEY`); `Database/schema/
 The evidence pattern suggests DynamoDB was the older telemetry store being
 migrated into Postgres — [inferred-from-code: files above; open question Q-1].
 
-**Other local stores (not production):** `data/*.db` SQLite files (ignored),
-`Database/eka_vector_db.py` uses a Chroma-style local vector store —
+**Other local stores (not production):** `data/*.db` SQLite files (SQLite is a
+small single-file database; these are local only, ignored via `*.db`),
+`Database/eka_vector_db.py` uses a Chroma-style local vector store (a local
+database for AI-style similarity search) —
 [inferred-from-code: .gitignore; Database/eka_vector_db.py].
 
 ---
 
 ## 5. Secret hygiene scan
+
+This section is written for reviewers, so it names the exact patterns checked;
+plain-language explanations of every specialized term are in the section 9
+glossary.
 
 Method: `git grep` over tracked files only (the repo as committed), case as
 noted, binary files skipped, `archive/` excluded per the task brief. Untracked
@@ -393,7 +444,7 @@ could not be scanned — [inferred-from-code: scan commands run 2026-10-18].
 | Anthropic/OpenAI `sk-`-style keys | 0 | clean |
 | AWS key ids (`AKIA/ASIA`) | 0 | clean |
 | Slack tokens (`xox…`) | 0 | clean |
-| PEM `PRIVATE KEY` blocks | 3 files: Devices/sandbox/.env.example (1), _shared/tests/test_redact_secrets.py (2), _shared/tests/test_scan_secrets.py (1) | all placeholder/fixture content (`.env.example` template with `...` values; scanner test fixtures) |
+| PEM `PRIVATE KEY` blocks | 3 files: Devices/sandbox/.env.example (1), _shared/tests/test_redact_secrets.py (2), _shared/tests/test_scan_secrets.py (1) | all placeholder/fixture content (a fixture is a sample file made for tests; the `.env.example` template uses `...` values, and the two test files exist to exercise the repo's own secret scanner) |
 | Connection strings | 3 files: Devices/sandbox/.env.example:73, Devices/sandbox/tests/test_sandbox.py:396, _shared/tests/postgres-ssl.test.mjs:23 | all placeholders/test strings (`user:password@…`, `user:pass@ep-demo…`, `user:${PW}@…`) |
 | Generic `key/secret/token/password = "…"` assignments | 14 files | placeholders (`YOUR_API_KEY` in Backend/eka_agent_pull.py:29, Backend/eka_agent_push.py:29, Backend/eka_agent_server.py:36, Server/setup_vps_db.sh:10), test fixtures (_shared/tests/…), and vendored-library internals (Backend/pdf.worker.js, Backend/woff2_decompress_binding.js, Frontend/public/woff2_decompress_binding.js) |
 | Jayti Hub key shape (`jt_…`) | 4 files (Backend/run_final_s24.py, Backend/run_phone_app.py, Integrations/hf_bucket_credential_audit.py, Server/merge_after_crawl.sh) | all are directory/bucket path names containing "jt_agent…", not API keys |
@@ -456,7 +507,7 @@ dumps). Verified absent on disk at this commit: `app/` (deleted),
 | `QWEN.md` | Same overview as CLAUDE.md; its deployment section still names `jayti-dashboard` and lists an `npm run deploy` → `vercel --prod` script that no longer exists in package.json. Kept "as Qwen wrote it" by policy. | [inferred-from-code: QWEN.md deployment section vs package.json] |
 | `GEMINI.md`, `AGENTS.md` | 11 lines each: the required pipeline pointer block + a local note only. Current (pointer normalized per D-13/D-14). No product content to go stale. | [inferred-from-code: file contents] |
 | `INTEGRATION.md` + `RESTRUCTURE_STATE.json` | Last refreshed 2026-09-19 against `main@87ba028`; state counts (2520 total; _shared 137, Backend 166, Database 23, Server 61, Integrations 7) drift from today's 2566/109/175/33/75/11. Directionally correct; counts stale. | [inferred-from-code: RESTRUCTURE_STATE.json; INTEGRATION.md; git ls-files] |
-| Root strays | `SKILL (11).md` and `CICD_DevOps_Pipeline_Skill_v2.2_for_review (3).md` are tracked review copies of the pinned skill (canonical: `project/audit/SKILL.md`, pinned per D-7, restored byte-for-byte per D-13). Candidate clutter. | [inferred-from-code: root listing; owner-confirmed (D-7)/(D-13)] |
+| Root strays | `SKILL (11).md` and `CICD_DevOps_Pipeline_Skill_v2.2_for_review (3).md` are tracked review copies of the pinned skill (pinned = fixed to one exact, hash-verified version; canonical: `project/audit/SKILL.md`, pinned per D-7, restored byte-for-byte per D-13). Candidate clutter. | [inferred-from-code: root listing; owner-confirmed (D-7)/(D-13)] |
 | `_shared/docs/` (33 files) | Mixture: setup guides referenced by README (`ADD_FIREBASE_SECRET_TO_GITHUB.md`, `GITHUB_ACTIONS_SETUP.md`) plus historical docs (`INSPECTION_2026-09-19.md`, `SAFE_TO_DELETE_FILES.md`, `WORKSPACE_DIRECTORY_MAP.md`, Chinese/Taiwanese README mirrors, Vditor docs). A staleness audit of each is not part of this fact sheet; flagged for the docs task. | [inferred-from-code: git ls-files _shared/docs] |
 | `Server/jp-agent/README.md`, `Devices/*/README.md`, `Devices/S24/DAEMON_ARCHITECTURE.md`, `Database/backups/README.md` | Present and referenced by README/CLAUDE/INTEGRATION as entry-point docs; contents not audited here. | [inferred-from-code: file presence] |
 
@@ -477,19 +528,24 @@ dumps). Verified absent on disk at this commit: `app/` (deleted),
   Backend/broker.js HARDWARE_RULES via CLAUDE.md; corroborated by AGENTS.md
   global device registry].
 - **Targets (6)**: GitHub `jaytipargal/jpbir` (repo id 1350770272); vercel-jayti2;
-  firestore-eka-agent (SA key-id prefix `95f094fa2830…`); neon-jaytibirthday-db
+  firestore-eka-agent (SA = service account, an identity Google issues for
+  automated access; key-id prefix `95f094fa2830…`); neon-jaytibirthday-db
   (`fancy-cloud-99501540`); vercel-blob (2 stores); jp-agent-droplet
   (`runner.jaytipargal.tech`, region blr1, s-1vcpu-2gb, systemd services on ports
   8790/8792, self-hosted Actions runner) — [owner-confirmed (D-9);
   project/targets.json].
 - **Risk tier**: Internal; one agent may play every role with self-review;
-  availability 99.5%, p95 1 s, RPO/RTO 24 h — [owner-confirmed (D-1)].
+  availability 99.5%, p95 1 s (95% of responses arrive within one second),
+  RPO/RTO 24 h (recovery-point/time objectives: after a failure at most 24
+  hours of data may be lost, and the service must be back within 24 hours) —
+  [owner-confirmed (D-1)].
 - **Compliance**: India / DPDP Act; WhatsApp content is the highest-sensitivity
   class, kept out of logs, traces, prompts, agent context — [owner-confirmed
   (D-10)].
 - **Budget**: constraint removed 2026-10-12; contract rule 8 not enforced this
   run — [owner-confirmed (D-11)].
-- **Backup**: local bundle + untracked archive at
+- **Backup**: local bundle (a git bundle is a single-file archive of the whole
+  repository) + untracked archive at
   `C:\Users\abcom\.local\share\kilo\cicd-backups` (SHA-256 recorded in D-2),
   re-verified 2026-10-18; off-machine copy satisfied via OneDrive
   (`C:\Users\abcom\OneDrive\cicd-backups\jpbir\`), hash-verified —
@@ -497,15 +553,20 @@ dumps). Verified absent on disk at this commit: `app/` (deleted),
 - **No CI runner on this machine** (D-3); tracker runs locally; scheduled audit
   via Windows Task Scheduler task `jpbir-hod-audit` (D-5), repaired 2026-10-18
   with durable paths (D-14) — [owner-confirmed (D-3)/(D-5)/(D-14)].
-- **Branch protection**: T-04 formally Blocked — owner chose to keep the repo
+- **Branch protection** (rules that stop unprotected changes from landing on
+  the main branch): T-04 formally Blocked — owner chose to keep the repo
   private and not upgrade (D-15); compensating control ACTIVE: GitHub ruleset
   25339138 ("pipeline-protected-branch") enforces deletion + non-fast-forward
-  protection on the default branch; remaining free-plan gaps: required reviews,
-  required status checks, CODEOWNERS enforcement — [owner-confirmed (D-6);
+  protection (blocks pushes that would rewrite or erase existing commit
+  history) on the default branch; remaining free-plan gaps: required reviews,
+  required status checks, CODEOWNERS enforcement (CODEOWNERS is a file naming
+  the reviewers who must approve changes to specific paths) —
+  [owner-confirmed (D-6);
   owner-confirmed (D-15)].
 - **Controls**: pinned skill v2.2.0 restored byte-for-byte after an unrecorded
   2.4.0 replacement (D-13, preserved in history at commit 286b1645); pointer
-  blocks normalized (D-13/D-14); environment manifest per D-8 —
+  blocks normalized (D-13/D-14); environment manifest (one committed definition
+  of every machine and environment the project runs on) per D-8 —
   [owner-confirmed (D-7)/(D-8)/(D-13)/(D-14)].
 - **R1 scope direction**: "stabilize and harden" — no new features; inherited
   debt (bloated vendored trees, stale documentation, disconnected Vercel
@@ -595,7 +656,161 @@ Recommendation: (a) — no code evidence contradicts them.
 
 ---
 
+## 9. Plain-language glossary
+
+Every technical term in this document is explained where it first appears and
+collected here. One or two plain sentences each, alphabetically.
+
+- **API** — how two programs talk to each other over the web; this product's
+  API is the set of `/api/...` addresses the dashboard and the devices call.
+- **Attestation** — cryptographically proving a claim, for example that a
+  heartbeat really came from the device's own hardware.
+- **Backfill** — copying older data from one store into another to fill missing
+  history.
+- **Branch protection** — rules that stop unprotected changes from landing on
+  the main branch.
+- **BRD / TRD** — the Business Requirements Document and Technical Requirements
+  Document for this release.
+- **Broker** — the middleman service devices check in with, fetch work from,
+  and report results to; enrollment is how a device first registers with it.
+- **Build** — the step that turns source files into what gets served; this
+  project needs almost none (pages are served as written).
+- **Catch-all route** — a fallback rule: any address not matched by a specific
+  rule is handled by the file of the same name.
+- **CI (continuous integration)** — the automated checks and builds GitHub runs
+  every time code changes.
+- **CLI** — command-line interface: running tools by typing commands instead of
+  clicking.
+- **CodeMirror / Vditor** — two open-source text-editor components the vendored
+  viewer code is built on.
+- **CODEOWNERS** — a repository file naming the reviewers who must approve
+  changes to specific paths.
+- **Cold storage** — archived files kept but unused; here, the `archive/`
+  folder.
+- **Collection / doc** — in Firestore, a collection is a folder-like group of
+  records, and a doc is one record in it.
+- **Commit** — a recorded snapshot of changes in Git history.
+- **Corpus** — a collected body of data samples; here, the exported data chunks
+  under `runs/`.
+- **Cron** — a scheduler that runs a task on a fixed timetable.
+- **Daemon** — a small program that runs continuously in the background on a
+  device or server.
+- **Dispatch-only** — a workflow that never runs on its own; a person must
+  trigger it.
+- **Droplet** — DigitalOcean's name for a rented Linux server.
+- **DynamoDB** — Amazon's key–value database, which stores records looked up by
+  ID.
+- **Emulator** — a local fake of a live service, used only in tests.
+- **Endpoint** — one specific address the app answers, for example
+  `/api/s24-public`.
+- **Env var (environment variable)** — a configuration value the running code
+  reads, set outside the code itself.
+- **ESM** — ES modules, the modern JavaScript module format used throughout
+  this repository.
+- **Fixture** — a sample file or value made for tests, never a real credential.
+- **Firestore** — Google's document database, used here for device state and
+  the command queue.
+- **Git / GitHub** — Git records the project's history; GitHub hosts the
+  repository online.
+- **Git bundle** — a single-file archive of an entire repository, used here for
+  backups.
+- **GitHub App** — a connector that lets GitHub and another service (here
+  Vercel) react to each other's events; it is what normally makes pushes deploy.
+- **GitHub workflow** — an automation script GitHub runs on events such as
+  pushes, schedules, or a manual trigger.
+- **GraphQL** — an alternative API query language; the GraphQL files here are
+  schema leftovers.
+- **Handler** — a function that answers one kind of request; the Backend
+  handlers are the pieces behind each `/api/...` address.
+- **Hash / fingerprint / SHA-256** — a fixed-length digital fingerprint of a
+  file or value; matching hashes prove two files are identical.
+- **Heartbeat** — the regular "I'm alive" message a device sends about itself.
+- **i18n** — internationalization: the translation files that let software
+  display many languages.
+- **Ingest** — receiving and storing incoming data.
+- **JSON** — a plain-text data format both people and programs can read; the
+  config and backup files here use it.
+- **Lint** — automated code-style checking.
+- **MCP (Model Context Protocol)** — a standard protocol that lets AI
+  assistants use external tools; this project has two MCP servers.
+- **Migration** — a recorded, repeatable change that updates a database's
+  structure.
+- **Neon** — the hosted Postgres service this project uses.
+- **nginx** — a web server that receives requests and forwards them to the
+  right service.
+- **Node** — the JavaScript runtime that executes this project's server code
+  (version 24 here).
+- **node_modules** — the folder of downloaded third-party libraries a
+  JavaScript project installs; regenerable, never hand-edited.
+- **Non-fast-forward protection** — blocks pushes that would rewrite or erase
+  existing commit history.
+- **P-256** — a standard cryptographic key format; the devices hold such keys
+  sealed in their hardware.
+- **p95** — the 95th-percentile response time: 95% of requests arrive faster
+  than this.
+- **Parity check** — comparing live production behavior with what the
+  repository expects.
+- **`.pyc`** — a compiled Python cache file; debris, regenerable.
+- **Playwright** — a tool that drives a real browser for end-to-end tests.
+- **Poll** — to check for new work on a schedule rather than being notified
+  instantly.
+- **Postgres** — the table-based relational database storing the analytics and
+  message history.
+- **Prisma** — a database toolkit; the "Prisma-demo" tables are its generated
+  demo shapes.
+- **React** — a framework for building user interfaces; the vendored viewer
+  code is written with it.
+- **Repository ruleset** — a GitHub-enforced rule applied to a branch (here:
+  no deletions, no history rewrites).
+- **RPO / RTO** — recovery point objective (the most data loss allowed) and
+  recovery time objective (the most downtime allowed); both 24 hours here.
+- **Route** — a rule mapping an address like `/s24` to the page or function
+  that answers it.
+- **Runtime** — the environment code runs in; also used for the long-running
+  program itself (the droplet's agent runtime).
+- **S24** — shorthand for the Samsung Galaxy S24 Ultra phone, one of the three
+  devices.
+- **Schema** — the definition of a database's tables and columns.
+- **SDK** — software development kit: a prebuilt library for talking to a
+  service.
+- **Self-hosted runner** — a machine we own and register with GitHub that
+  executes workflow steps, instead of GitHub's rented machines.
+- **Serverless API** — small functions that start on demand on the host's
+  servers (Vercel's here); no always-on machine for us to manage.
+- **Service account (SA)** — an identity issued for automated, non-human
+  access, for example to Google Cloud.
+- **Signature** — cryptographic proof that a message came from the claimed
+  sender and was not altered on the way.
+- **SQLite** — a small single-file database; the `data/*.db` files are local
+  only.
+- **Systemd** — the Linux service manager; its "units" are start-up
+  definitions.
+- **Telemetry** — the readings and status a device reports about itself.
+- **Tracker (tracker.py)** — the audit and status tool from the pinned pipeline
+  skill; it records task state from event files.
+- **Tracked / untracked** — tracked files are managed by Git and ship with the
+  repository; untracked files exist only on this machine.
+- **TypeScript** — JavaScript with added type checking; it must be compiled
+  before browsers can run it.
+- **Vanilla JS** — plain JavaScript with no frameworks or libraries.
+- **Vendored** — third-party code copied wholesale into the repository rather
+  than installed as a dependency.
+- **Vector store** — a database for AI-style similarity search over documents.
+- **Vercel** — the hosting service that serves the website and runs its API
+  functions.
+- **Vercel Blob** — Vercel's file storage for large items such as photos,
+  video, and voice notes.
+- **VPS** — virtual private server: a rented full Linux machine (the Jayti Hub
+  runs on one).
+- **Webview** — an HTML page shown inside another program; here, the VS Code
+  extension's document viewer.
+
+---
+
 ## Appendix: scan command summary (for reviewer replication)
+
+This appendix is intentionally technical so a reviewer can repeat the scans
+exactly; every term it uses is explained in the section 9 glossary.
 
 All scans run 2026-10-18 against `feat/jp-agent-droplet-runner` @ `2e04c369`.
 Tracked scan: `git grep -I -c -i -E -f <patterns>` with pathspec
