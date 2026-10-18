@@ -20,8 +20,11 @@ import { readFileSync } from 'node:fs';
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import { s24DeviceTools } from './s24-tools.mjs';
 
-const PORT = Number(process.env.JP_AGENT_PORT || 8790);
-const HOST = '127.0.0.1';
+const PORT = Number(process.env.JP_AGENT_PORT || process.env.PORT || 8790);
+// Default stays 127.0.0.1, the droplet posture: nginx on the box is the only
+// ingress. Render's proxy lives outside the container, so there the service
+// env sets JP_AGENT_HOST=0.0.0.0 and the platform supplies PORT.
+const HOST = process.env.JP_AGENT_HOST || '127.0.0.1';
 const TOKEN = process.env.JP_AGENT_TOKEN || '';
 const WORKSPACE = process.env.JP_AGENT_WORKSPACE || '/srv/workspace';
 // Sonnet 5 rather than Opus 5: $2/$10 per MTok against $5/$25, and it is the
