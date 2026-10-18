@@ -107,8 +107,11 @@ command cannot sweep them into the project history [facts §2; owner-confirmed (
 - The two tracked root skill-review copies (`SKILL (11).md`,
   `CICD_DevOps_Pipeline_Skill_v2.2_for_review (3).md`) are handled per the owner's
   Q-BRD-3 decision (delete, move to `archive/`, or keep).
-- The six stray workflow YAML files in `Server/` root are relocated to `.github/workflows/`
-  or removed, per the owner's scope decision [facts §1, §2].
+- The six stray workflow YAML files in `Server/` root stay where they are and are
+  documented as inert in R1 — GitHub only reads `.github/workflows/`, so relocating them
+  would activate six dormant workflows (deploy/publish and secret-verification among
+  them), a behavior change outside R1's stabilize-and-harden scope (D-16); relocation or
+  removal is deferred past R1 [facts §1, §2].
 
 **Source tags.** [facts §2] for the bloat inventory and ignore-rule gaps;
 [owner-confirmed (D-16)] for "bloated vendored trees" being in-scope debt.
