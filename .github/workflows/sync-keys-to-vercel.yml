@@ -47,10 +47,22 @@ jobs:
           # Every key the deployed code (Backend/, Integrations/) reads, except
           # database URLs (jpbir_live production DB is pinned outside CI to keep
           # the readable recovered chats intact).
+          # Every key the deployed code (Backend/, Integrations/) reads.
+          #
+          # JP_AWS_* / JP_WRITE_AWS_* are here because Backend/db-push.js reads
+          # them: the nightly DynamoDB -> Neon warehouse repair cannot start
+          # without the read pair, and it answered 503 "JP_AWS_* read credentials
+          # not configured" on 2026-10-14 with no light on any panel (the 2026-10-10
+          # environment re-provision carried the region and table name across but
+          # not the credentials). Add-only, so a dispatch creates exactly the ones
+          # missing from Production and nothing else. See
+          # project/reports/2026-10-15-live-data-diagnosis.md (P4, Q2, Q3).
           SYNC_KEYS: >-
             AGENT_API_KEY AGENT_API_URL ANTHROPIC_API_KEY BLOB_READ_WRITE_TOKEN
             CONNECT_CLIENT_ID CONNECT_CONNECTOR_UID CRON_SECRET
             DB_ADMIN_KEY FIREBASE_SERVICE_ACCOUNT_JSON FIRESTORE_DB
             GMAIL_APP_PASSWORD HEALTH_CHECK_KEY
+            JP_AWS_ACCESS_KEY_ID JP_AWS_SECRET_ACCESS_KEY
+            JP_WRITE_AWS_ACCESS_KEY_ID JP_WRITE_AWS_SECRET_ACCESS_KEY
             S24_SYNC_PUBLIC_KEYS STALE_ALERT_SECONDS STATS_KEY STATS_SITE
             VERCEL_ANALYTICS_PROJECT_ID VERCEL_API_TOKEN VERCEL_TEAM_ID WA_INGEST_KEY

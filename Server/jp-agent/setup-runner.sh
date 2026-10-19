@@ -22,7 +22,7 @@ rm -f actions-runner.tar.gz
 
 # Configure + install as service
 ./config.sh --url https://github.com/jaytipargal/jpbir --token "$TOKEN" \
-  --name jp-agent-droplet --labels jp-agent,droplet,deploy --unattended --replace
+  --name jp-agent-droplet --labels jp-agent,droplet,deploy,jp-agent-droplet --unattended --replace
 sudo ./svc.sh install
 sudo ./svc.sh start
 

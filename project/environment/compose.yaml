@@ -1,18 +1,39 @@
-# Environment manifest backing services (contract rule 3) - decision D-8.
-# The dev service builds from the pinned Dockerfile with the repository mounted;
-# postgres is pinned per D-8 (production uses Neon - dev uses this local instance).
+# jpbir project environment (contract rule 3; decision D-8).
+#
+# `project/environment/run` is the only entry point: it runs
+# `docker compose -f compose.yaml run --rm dev <command>`. The `dev` service is
+# built from ./Dockerfile with the repository mounted; `db` is the pinned
+# backing service the migrations and database tests need.
 services:
   dev:
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: ../..
+      dockerfile: project/environment/Dockerfile
+    image: jpbir-dev
     working_dir: /workspace
     volumes:
       - ../..:/workspace
-    command: ["sleep", "infinity"]
-  postgres:
-    image: postgres:16.4-bookworm
     environment:
-      POSTGRES_PASSWORD: dev-only-not-a-secret
-    ports:
-      - "127.0.0.1:15432:5432"
+      NODE_ENV: development
+      DATABASE_URL: postgres://jpbir:jpbir@db:5432/jpbir
+    depends_on:
+      db:
+        condition: service_healthy
+    init: true
+
+  db:
+    image: postgres:16.4-bookworm@sha256:e62fbf9d3e2b49816a32c400ed2dba83e3b361e6833e624024309c35d334b412
+    environment:
+      POSTGRES_USER: jpbir
+      POSTGRES_PASSWORD: jpbir
+      POSTGRES_DB: jpbir
+    volumes:
+      - jpbir-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U jpbir -d jpbir"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  jpbir-postgres:

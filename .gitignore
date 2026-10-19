@@ -75,6 +75,11 @@ _shared/.vercel/
 # Generated audit/inventory reports
 _shared/reports/
 
+# Local browser-profile extraction workspaces: these carry cookies and session
+# tokens. Two such SQLite databases reached this repository's history and are
+# still fetchable from it (project/reports/2026-10-17-history-secret-scan-and-licence-inventory.md).
+chrome_extraction/
+
 # Accidentally committed project metadata and configs
 _shared/frontend-assembly.patch
 _shared/reg.tmLanguage
