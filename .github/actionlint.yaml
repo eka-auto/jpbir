@@ -1,5 +1,5 @@
 # No self-hosted runners remain in this repository: the droplet runner was retired with the
-# move of jp-agent to Railway (project/reports/2026-10-19-retire-jp-agent-droplet.md). If a
+# move of jp-agent to Render (project/reports/2026-10-19-retire-jp-agent-droplet.md). If a
 # self-hosted `runs-on` is ever introduced again, list its labels back here, or actionlint
 # will report the label as unknown.
 
