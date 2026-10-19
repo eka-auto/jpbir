@@ -47,7 +47,6 @@ jobs:
           # Every key the deployed code (Backend/, Integrations/) reads, except
           # database URLs (jpbir_live production DB is pinned outside CI to keep
           # the readable recovered chats intact).
-          # Every key the deployed code (Backend/, Integrations/) reads.
           #
           # JP_AWS_* / JP_WRITE_AWS_* are here because Backend/db-push.js reads
           # them: the nightly DynamoDB -> Neon warehouse repair cannot start
