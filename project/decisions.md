@@ -42,61 +42,92 @@ Independent hosting and dashboard audit reconciled:
 - **Issue #140 Reconciled**: Reopened with the verified hosting ownership confirmed under `jayti2`.
 - **Remaining Open Items**: (1) Browser OAuth re-link of the Vercel GitHub App for `jaytipargal/jpbir` on branch `main` to restore push-to-deploy; (2) Populating missing environment secrets on `jayti2/jpbir`.
 
-### D-13: jp-agent moves off the DigitalOcean droplet to Railway (owner, 2026-10-18) — superseded by D-14
+### D-13: Unrecorded control change reverted (2026-10-18, HOD-role finding)
+Commit 286b1645 replaced the pinned skill (v2.2.0 -> a self-described "2.4.0" variant) and
+tracker.py (35-check canonical -> 67-check extended tool requiring a --verifier-state argument)
+without a decision record, review, or tracker upgrade - discovered during the 2026-10-18 resume
+(the extended tool rejected the canonical audit invocation; selftest counted 67 vs the 35/35
+recorded in D-7). Action: restored the canonical SKILL.md byte-for-byte from the owner's
+installed skill (SHA-256 D6791D5AEC3C3CCD7462BFDF04E949E8A52302627FFD755839A0BC92F2C24D1A) and
+re-extracted the canonical tracker.py from it per the skill's documented command. The 2.4.0
+variant remains preserved in git history at commit 286b1645 for owner review; adopting any
+extended variant must go through a reviewed upgrade (skill conformance), never a silent
+replacement. The platform pointer blocks were also non-conforming (custom variant text);
+normalized to the skill's exact block, with the local guidance kept outside the block.
+Labelling: performed by the resume agent playing the HOD role (no-CI fallback per D-3;
+single-identity mode per project/identities.json) using deterministic checks - this is
+self-review, not independent human approval.
 
-Owner direction: *"remove droplet, now it's Railway jayti > Services."* jp-agent now
-runs as the `jp-agent` Web Service (`srv-dbalg58m7kps739ap6gg`) in the `jayti` Railway
-workspace, beside a Key Value service `jayti` (`red-dba01dbncjis73asg3tg`).
+### D-14: Resume session 2026-10-18 - state repair
+- Durable project-state checkout recreated at C:\Users\abcom\jpbir-project-state (the previous
+  Temp worktree had been pruned; git worktree prune + fresh add at run tip 69ec45a7).
+- project/audit/run-hod-audit.cmd recreated (lost with the pruned Temp worktree and never
+  committed) using durable paths only; scheduled task re-verified live: LastTaskResult 0,
+  log at C:\Users\abcom\jpbir-project-state\hod-audit-last.log.
+- project/environment/ (Dockerfile, compose.yaml, run) recreated per D-8.
+- project/targets.json completed to the six targets of D-9 plus source: added vercel-jayti2,
+  firestore-eka-agent, neon-jaytibirthday-db, vercel-blob (the committed file held only
+  source and jp-agent-droplet).
+- project/PROFILE.md assembled from owner-confirmed decisions D-1, D-10, D-11 (+ D-2, D-4,
+  D-8, D-12).
+- Backup integrity re-verified: both SHA-256 hashes match D-2 exactly (bundle 8018DA68...,
+  untracked archive 124A6EE2...).
+- Canonical audit after repair: selftest 35/35 PASS, all audit checks PASS (tracker rules,
+  STOP, append-only events, events applied, HOD-event match, TRACKER.md current, CONTRACT,
+  pinned skill, pointers, targets).
 
-The droplet (`runner-jp-agent`, `runner.jaytipargal.tech`) is marked RETIRING in
-`project/targets.json` rather than deleted, because it is still the live runtime for
-Vercel's `/api/agent-run` and for `/mcp`. It is destroyed only after the cut-over in
-`project/reports/2026-10-19-retire-jp-agent-droplet.md` §6 passes.
+### D-15: Owner decisions on resume (2026-10-18)
+- **Branch protection**: the owner chose to keep the repository private and not upgrade a plan
+  ("keep it private and skip this step no issue"). Per contract rule 1 an owner's refusal parks
+  T-04 as Blocked - it is never Not required, because protected controls cannot be waived.
+  Compensating control found and ACTIVATED: GitHub repository ruleset 25339138
+  ("pipeline-protected-branch") enforces deletion + non-fast-forward protection on the default
+  branch - this works on the free plan. Remaining gap on the free plan: required reviews,
+  required status checks and CODEOWNERS enforcement; the Step 0 gate stays formally open on
+  T-04 until the owner upgrades to GitHub Pro/Team or makes the repository public. Downstream
+  work that does not depend on T-04 continues (Step 1).
+- **Off-machine backup (3-2-1)**: owner approved OneDrive. Both backup files copied to
+  C:\Users\abcom\OneDrive\cicd-backups\jpbir\ and hash-verified byte-identical
+  (bundle 8018DA68..., untracked archive 124A6EE2...). The off-machine copy obligation from
+  D-2 is satisfied via OneDrive sync.
+- **Vercel**: the owner will re-link the GitHub App and set the missing secrets on vercel.com
+  themselves (D-12 open item stays owner-owned; agents never receive the values).
+- Droplet-record confirmation and PROFILE confirmation were not given this session; they stay
+  listed as open items in the tracker decisions list.
 
-Removed from the repository now: `deploy-droplet.yml` (which never succeeded once),
-`setup-runner.sh`, the self-hosted label list in `.github/actionlint.yaml`, and the
-droplet wording in `ci-cd.yml` and `Server/jp-agent/package.json`. Kept as the rollback
-path until the droplet is destroyed: `deploy.sh`, `deploy-local.sh`, both systemd units,
-`nginx-jp-agent.conf`, `sync-auth-token.py`.
+### D-16: Release R1 scope direction (owner, 2026-10-18)
+The owner chose "stabilize and harden" for release R1: no new features. R1 delivers the
+inherited-debt fixes (bloated vendored trees, stale documentation, disconnected Vercel
+push-to-deploy, secret hygiene), wiring of the protections and controls this pipeline needs,
+and documentation - with production staying as it is. The formal scope freeze and BRD
+approval happen in Step 1 (T-06); this decision sets the direction. BRD/TRD drafting starts
+from this scope; remaining owner questions get batched there.
 
-Not covered by the move, and therefore open: workspace persistence (Railway's
-filesystem is ephemeral, and a surviving workspace is this service's whole purpose),
-`S24_SERVICE_ACCOUNT_KEY` being a file path rather than inline JSON, a home for
-`s24-mcp` (the droplet's second unit, `:8792`), and how `ANTHROPIC_AUTH_TOKEN` reaches
-the SDK without the droplet's `~/.claude/settings.json` step.
+### D-17: Render is the single deployment target for jp-agent (owner, 2026-10-19)
 
-This retirement also removes the repository's only self-hosted runner: with the hosted
-runners still billing-locked, CI is left with no runner at all.
+Owner direction: *"remove railway, droplet vultr from entire github repo globally and render
+is the final place for all now."*
 
-### D-14: Render is the single deployment target (owner, 2026-10-19)
-
-Owner direction: *"remove railway, droplet vultr from entire github repo globally and
-render is the final place for all now."*
-
-- `project/targets.json` now declares one production target, `jp-agent-render` (Render web
-  service `jp-agent`, workspace `jayti`). The DigitalOcean droplet and the Railway service
-  it briefly used are gone from the manifest. D-9 and D-13 are superseded on the target
-  question and left in place as the record of what was tried.
-- Deleted from the repository: `deploy.sh`, `deploy-local.sh`, `jp-agent.service`,
-  `s24-mcp.service`, `nginx-jp-agent.conf`, `sync-auth-token.py` and its test, and
-  `setup-runner.sh`. There is no deploy script, ssh path, systemd unit or nginx config for
-  jp-agent any more, and none should be added — a second deploy path is how the old host
-  drifted.
+- The jp-agent entry in `project/targets.json` is now `jp-agent-render`, a Render web service
+  in the `jayti` workspace. The DigitalOcean droplet and the Railway service that briefly
+  replaced it earlier the same day are both gone from the manifest; D-9's target list is
+  superseded on the jp-agent question. D-13 (HOD control-change finding) is untouched.
+- Deleted: `deploy.sh`, `deploy-local.sh`, `jp-agent.service`, `s24-mcp.service`,
+  `nginx-jp-agent.conf`, `sync-auth-token.py` and its test, and `setup-runner.sh`. There is
+  no deploy script, ssh path, systemd unit or nginx config for jp-agent any more, and none
+  should be added - a second deploy path is how the old host was allowed to drift.
 - `render.yaml` declares the service from the repository, so the deploy shape is reviewable
-  in a diff rather than clicked into a dashboard.
+  in a diff instead of clicked into a dashboard.
 - Tests that pinned the deleted deploy script were rewritten to guard what a git deploy must
   still get right (`s24-mcp-deploy.test.mjs`; one `deploy.sh` assertion removed from
   `s24-attestation.test.mjs`, whose neighbouring byte-identical-module assertion is
   unchanged).
+- The three workflow files could not be changed from this identity - GitHub refuses workflow
+  files from an App without the `workflows` permission - so they ship as
+  `project/reports/2026-10-19-retire-jp-agent-droplet.patch`.
 - Deliberately not touched, each for a stated reason: `Backend/eka_*.py` (verbatim drifted
   copies of `jayti/scripts`, which `CLAUDE.md` says to change in `jayti`),
   `_shared/docs/AGENT_DATABASE_ARCHITECTURE.md` (documents the Jayti Hub VPS, a different
   host this repo does not own), and the dated records under `project/reports/`. Editing any
   of them would falsify a record or re-introduce drift; ask and I will archive them out of
   the tree instead.
-
-### Open items for the owner (Awaiting approval)
-- Off-machine backup copy (3-2-1): upload the bundle to a second location.
-- GitHub Pro upgrade (or make repo public) to unblock T-04 branch protection.
-- Connect Vercel GitHub App for `jaytipargal/jpbir` in team `jayti2` settings to re-enable push-to-deploy.
-- Populate unset secrets on `jayti2/jpbir` (BLOB_READ_WRITE_TOKEN, S24_SYNC_PUBLIC_KEYS, WA_INGEST_KEY, etc.).

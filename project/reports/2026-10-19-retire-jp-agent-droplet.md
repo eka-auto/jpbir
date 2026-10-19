@@ -65,7 +65,7 @@ while the README says `.224` — resolve which is real before any firewall chang
 | Deleted `Server/jp-agent/setup-runner.sh` | Bootstrapped the droplet runner (labels `jp-agent,droplet,deploy,jp-agent-droplet`); nothing else used it |
 | `Server/jp-agent/package.json` — description no longer says "hosted on DigitalOcean" | It was false after the move |
 | `project/targets.json` — droplet marked `RETIRING`, `jp-agent-railway` added | One manifest for every place the project runs (contract rule 3); the Railway domain is not recorded because I have not verified it |
-| `project/decisions.md` — D-13 | Records the move and what it does not yet cover |
+| `project/decisions.md` — D-17 | Records the move and what it does not yet cover |
 
 Verified: `actionlint 1.7.12` with `shellcheck 0.11.0` → **0 errors in 8 workflows**
 (was 9). `npm test` and the jp-agent suites are unaffected — no runtime code is

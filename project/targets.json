@@ -11,6 +11,49 @@
       }
     },
     {
+      "name": "vercel-jayti2",
+      "environment": "production",
+      "provider": "vercel",
+      "account_id": "team_gcqCiU4UgkhcUJGRGLZYaQiW",
+      "resource_ids": {
+        "project": "jpbir",
+        "domains": "jaytipargal.tech, www.jaytipargal.tech, jpbir.vercel.app",
+        "production_deployment": "dpl_BzR5Z8UMxeBu2HDp4dDRpTG7JYpE"
+      },
+      "notes": "Live hosting verified 2026-10-12 (D-12): jaytipargal.tech served by project jpbir under team jayti2, deployment READY at commit f6e21fc."
+    },
+    {
+      "name": "firestore-eka-agent",
+      "environment": "production",
+      "provider": "google-firebase",
+      "account_id": "intrepid-stage-495117-q1",
+      "resource_ids": {
+        "database": "eka-agent",
+        "service_account_key_id_prefix": "95f094fa2830"
+      },
+      "notes": "Device telemetry and commandQueue documents (D-9)."
+    },
+    {
+      "name": "neon-jaytibirthday-db",
+      "environment": "production",
+      "provider": "neon",
+      "account_id": "fancy-cloud-99501540",
+      "resource_ids": {
+        "role": "neondb_owner"
+      },
+      "notes": "Postgres warehouse for analytics and telemetry (D-9). Project and branch IDs to be filled at the next owner-assisted verification."
+    },
+    {
+      "name": "vercel-blob",
+      "environment": "production",
+      "provider": "vercel-blob",
+      "account_id": "team_gcqCiU4UgkhcUJGRGLZYaQiW",
+      "resource_ids": {
+        "stores": "store_vxETiZ3lYBeN, store_y8X2dcvEtuqy"
+      },
+      "notes": "WhatsApp media bytes (D-9)."
+    },
+    {
       "name": "jp-agent-render",
       "environment": "production",
       "provider": "render",
@@ -19,7 +62,7 @@
         "service": "jp-agent",
         "service_type": "web service"
       },
-      "notes": "The jp-agent runtime behind jaytipargal.tech. Vercel reaches it through the JP_AGENT_URL environment variable (Backend/agent-run.js), so moving or renaming the service is an environment change, not a code change. Deployed from git; render.yaml declares the service shape. No deploy script, ssh, systemd unit or nginx config exists in this repository. To be filled in from the Render dashboard: the service's public hostname and the account id. The service must set JP_AGENT_HOST=0.0.0.0 and mount a disk for JP_AGENT_WORKSPACE."
+      "notes": "The jp-agent runtime behind jaytipargal.tech (owner direction 2026-10-19, D-14). Vercel reaches it through the JP_AGENT_URL environment variable (Backend/agent-run.js), so moving or renaming the service is an environment change, not a code change. Deployed from git; render.yaml declares the service shape. No deploy script, ssh, systemd unit or nginx config exists in this repository. To be filled in from the Render dashboard: the service's public hostname. The service must set JP_AGENT_HOST=0.0.0.0 and mount a disk for JP_AGENT_WORKSPACE."
     }
   ]
 }

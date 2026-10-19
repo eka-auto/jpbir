@@ -1,4 +1,4 @@
-# Render blueprint for the jp-agent runtime (project/decisions.md D-14).
+# Render blueprint for the jp-agent runtime (project/decisions.md D-17).
 #
 # Render is the only deployment target for jp-agent. This file is the reviewable
 # definition of the service; a dashboard click is not. It holds no secret values:
