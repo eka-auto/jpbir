@@ -59,3 +59,31 @@ pass) until CI can run them.
   permission, shipped as a patch (see the retirement report). Note the asymmetry this
   exposed: the Contents API permits workflow *deleting* but refuses *create or update* from
   an App without `workflows`.
+
+## Independent verification on a fork, with real GitHub runners (2026-10-19)
+
+Upstream checks stay locked, so the gates were proven on a fork that bills to a different
+account. Verified from here rather than taken from the hand-off:
+
+| Item | Result |
+|---|---|
+| `eka-auto/jpbir` main tree vs `jaytipargal/jpbir` main tree | **identical** — `6c271ab23e9c…` on both |
+| CI/CD Pipeline run `39184766541` | **success**, actor `eka-auto`, `workflow_dispatch` |
+| — Lint & Test / S24 3.12 / S24 3.14 / Validate workflow definitions / jp-agent | 35 s / 18 s / 17 s / 14 s / 10 s — all success |
+| Code Quality Checks run `39184768836` | **success** — Code Quality 14 s, Security Scan 16 s |
+
+First time these gates have executed on GitHub's runners for this tree, and they agree with
+the local reproduction above.
+
+### Two corrections this surfaced
+
+- **The token-sync step would have failed CI, not passed.** I measured `Ran 0 tests ... OK`
+  — on Python **3.11**. From 3.12 onward `unittest` exits **5** when no tests are found, and
+  the matrix runs 3.12/3.14, so the step would have failed the job. Removing it was
+  necessary, not tidiness. It is already gone on `main` (`f15a14f`).
+- **The fork's job still reads `jp-agent (droplet) tests`**, because `main` has the dead step
+  removed but not the rename. `2026-10-19-retire-jp-agent-droplet.patch` now carries exactly
+  that remaining delta.
+
+A PR from the fork to upstream would run `pull_request` checks in the upstream repo and hit
+the lock again: the fork runs are the proof, the upstream badge stays *pending payment*.

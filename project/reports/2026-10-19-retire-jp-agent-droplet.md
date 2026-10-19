@@ -80,11 +80,11 @@ API for a create or update. Two things still worked:
 - `actionlint.yaml` is not under `.github/workflows/`, so a normal API write landed it
   (`f73f899`).
 
-What remains is an **update** to `ci-cd.yml` (job name, rationale comment, and dropping the
-`Run token-sync tests` step whose subject was deleted). No path can do that without the
-`workflows` permission, so it ships alone as
-`project/reports/2026-10-19-retire-jp-agent-droplet.patch` — 1 file, 11 insertions,
-13 deletions, `git apply --check` clean against `main`.
+What remains is an **update** to `ci-cd.yml`: the job still reads `jp-agent (droplet) tests`
+and its rationale comment still says the droplet is deployed by hand with `deploy.sh`. The
+dead `Run token-sync tests` step has since been removed directly on `main` (`f15a14f`), so
+the patch now carries only the rename and the comment — 1 file, 11 insertions, 10
+deletions, `git apply --check` clean against `main@f15a14f`.
 
 ## 5. What I deliberately did not delete
 

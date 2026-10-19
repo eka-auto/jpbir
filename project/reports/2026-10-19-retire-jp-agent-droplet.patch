@@ -1,15 +1,15 @@
-From 66acfe66bf1e2441a62709a06e8f53a6644eccd3 Mon Sep 17 00:00:00 2001
+From 996f7256493aa270dcdcfe4dc96d2715d12932e6 Mon Sep 17 00:00:00 2001
 From: "cline-cloud[bot]" <cline-cloud[bot]@users.noreply.github.com>
-Date: Mon, 19 Oct 2026 00:25:54 +0000
-Subject: [PATCH] ci(render): name Render in the jp-agent job and drop its dead
- python step
+Date: Mon, 19 Oct 2026 01:21:14 +0000
+Subject: [PATCH] ci(render): rename the jp-agent job and retire its droplet
+ rationale
 
 ---
- .github/workflows/ci-cd.yml | 24 +++++++++++-------------
- 1 file changed, 11 insertions(+), 13 deletions(-)
+ .github/workflows/ci-cd.yml | 21 +++++++++++----------
+ 1 file changed, 11 insertions(+), 10 deletions(-)
 
 diff --git a/.github/workflows/ci-cd.yml b/.github/workflows/ci-cd.yml
-index 5fd33cc..c6f5cd2 100644
+index 940cdf0..39ffa7a 100644
 --- a/.github/workflows/ci-cd.yml
 +++ b/.github/workflows/ci-cd.yml
 @@ -87,18 +87,19 @@ jobs:
@@ -42,16 +42,6 @@ index 5fd33cc..c6f5cd2 100644
      runs-on: ubuntu-latest
      defaults:
        run:
-@@ -121,9 +122,6 @@ jobs:
-       - name: Run device-health tests
-         run: node --test "tests/*.test.mjs"
- 
--      - name: Run token-sync tests
--        run: python3 -m unittest discover -s tests -p 'test_*.py' -v
--
-       - name: Check the shipped module graph resolves
-         run: |
-           node --check server.mjs
 -- 
 2.39.5
 
