@@ -121,9 +121,9 @@ jobs:
       - name: Run device-health tests
         run: node --test "tests/*.test.mjs"
 
-      - name: Run token-sync tests
-        run: python3 -m unittest discover -s tests -p 'test_*.py' -v
-
+      # The token-sync tests were removed together with sync-auth-token.py in
+      # 2949662a. With no test_*.py left under Server/jp-agent/tests, unittest
+      # exits 5 ("NO TESTS RAN") and fails the job, so the step went with them.
       - name: Check the shipped module graph resolves
         run: |
           node --check server.mjs
