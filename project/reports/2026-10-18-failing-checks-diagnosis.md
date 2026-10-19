@@ -128,7 +128,7 @@ this sandbox's proxy). Both passed on the last green `main`.
    So it is handed over as a patch,
    `project/reports/2026-10-18-sync-keys-duplicate-comment.patch`, which
    `git apply --check --reverse` confirms matches the working tree. It lands
-   the moment any identity holding `workflows` commits it — see §8.3.
+   the moment any identity whose token carries the `workflows` **scope** commits it (scope, not a platform rule — `63174c33` applied this exact patch) — see §8.3.
 2. **The label mismatch in §3** — still open, and it is not a worker-agent
    action either way: re-register the droplet runner (owner, on the host), or
    point `runs-on` at the labels the runner actually has
