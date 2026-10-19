@@ -123,3 +123,32 @@ disappears entirely. Clearing the GitHub billing lock remains the only thing tha
 makes CI mean anything — the Railway move does not change that, and is not a
 substitute for it.
 
+
+## 8. Closed out (2026-10-19)
+
+The patch this report carried is **applied and gone**. It was applied as authored on
+`main` in `a67d6b05` — `ci-cd.yml` job name is `jp-agent tests`, the rationale comment now
+names the Render service, and `grep -c droplet .github/workflows/ci-cd.yml` is 0. The file
+`2026-10-19-retire-jp-agent-droplet.patch` is therefore deleted here: once applied it could
+only mislead the next reader into thinking a change was still pending (it no longer applied,
+so a second attempt would have failed anyway).
+
+Re-proved on real runners afterwards, on the fork whose tree is identical to upstream
+(`ee942f96…`): CI/CD Pipeline `39185314234` and Code Quality Checks `39185316653` both
+**success**, and the job now appears as `jp-agent tests` — the rename is confirmed in the run
+UI, not just in the file.
+
+### Still outstanding
+
+- **`2026-10-18-sync-keys-duplicate-comment.patch` remains unapplied.**
+  `.github/workflows/sync-keys-to-vercel.yml` still carries the duplicated
+  "Every key the deployed code … reads." comment at lines 47–50. It is an *update* to a
+  workflow file, which this identity cannot push and the API refuses (it permits deleting
+  workflow files, not creating or updating them), so it needs a `workflows`-permitted
+  identity — the same one-line hole as above.
+- **Branch protection is now possible.** D-6 recorded T-04 as blocked because the private
+  repo returned 403 "Upgrade to GitHub Pro or make the repository public". The repository is
+  now **public**, so that blocker is gone: the owner can enable required checks, reviews and
+  CODEOWNERS enforcement. It has to be done after, and separately from, clearing the billing
+  lock — required checks on a locked account would block every merge.
+- **Upstream check badges stay payment-locked.** The code is proven; the badges are not.
