@@ -119,3 +119,7 @@ _shared/package.json
 intrepid-stage-*.json
 *serviceAccountKey*.json
 *service_account*.json
+
+# Local sysroot used to run the browser suite on a machine without root
+# (see project/reports/2026-10-19-e2e-unblocked.md). Never committed.
+.chromium-deps/

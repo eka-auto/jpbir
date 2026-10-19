@@ -37,6 +37,39 @@ RUN apt-get update \
       zlib1g \
  && rm -rf /var/lib/apt/lists/*
 
+# Chromium's runtime, for the browser checks in `npm run test:browser`.
+#
+# Without these the suite cannot run at all, and it fails in a way that looks
+# like a product bug: with no X/ATK/GBM libraries the browser never launches, and
+# with no fonts every text node lays out at zero height, so Playwright reports
+# every heading as "hidden". Both were mistaken for frontend regressions before
+# this list existed. Equivalent to the system half of
+# `playwright install --with-deps`, kept here so a fresh manifest can run e2e.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+      fonts-liberation \
+      fonts-dejavu-core \
+      libasound2 \
+      libatk1.0-0 \
+      libatk-bridge2.0-0 \
+      libatspi2.0-0 \
+      libcairo2 \
+      libdbus-1-3 \
+      libdrm2 \
+      libgbm1 \
+      libglib2.0-0 \
+      libnspr4 \
+      libnss3 \
+      libpango-1.0-0 \
+      libx11-6 \
+      libxcomposite1 \
+      libxdamage1 \
+      libxext6 \
+      libxfixes3 \
+      libxkbcommon0 \
+      libxrandr2 \
+ && rm -rf /var/lib/apt/lists/*
+
 # Copy CPython 3.14.6 out of the official image: the interpreter, its shared
 # library and the standard library. `python3 --version` fails the build if the
 # interpreter cannot start, so a broken copy never ships as a green image.

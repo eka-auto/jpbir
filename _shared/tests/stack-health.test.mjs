@@ -202,7 +202,7 @@ t('a per-file probe result overrides the probe-wide one, in both directions', ()
 t('the pages the browser loads are attested by a request, not assumed', () => {
   // These nine were `static` — permanently grey — because a function cannot
   // stat the repo. It never needed to: whether a page reaches a browser is a
-  // question a fetch answers, so they are probed like the droplet is.
+  // question a fetch answers, so they are probed like the jp-agent is.
   const served = allFiles().filter((f) => f.probe === 'assets' && f.url);
   assert.ok(served.length >= 9, 'every dashboard page should be fetched, got ' + served.length);
   for (const f of served) {

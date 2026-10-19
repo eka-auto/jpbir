@@ -1,16 +1,16 @@
 // The single source of truth for S24 liveness attestation.
 //
 // This existed as two independent implementations — Backend/jp-devices.js for the
-// dashboard and Server/jp-agent/device-health.mjs for the droplet's device_ping and
-// list_devices — and they drifted twice in one day. First the droplet accepted only the
+// dashboard and Server/jp-agent/device-health.mjs for the jp-agent's device_ping and
+// list_devices — and they drifted twice in one day. First the jp-agent accepted only the
 // `s24-termux-` agentVersion prefix while the collector shipped to the phone writes
 // `s24-direct-cloud-<date>.<n>`, so authenticatedAgent could never pass. Then, after both
-// prefixes were accepted, the droplet was still missing `runtimeIsAndroid` entirely — the
+// prefixes were accepted, the jp-agent was still missing `runtimeIsAndroid` entirely — the
 // one field the collector derives from the platform it is actually executing on, and the
 // control that caught a real Windows bridge asserting heartbeatAuth='termux-phone',
 // sourceType='live_termux' and liveDeviceVerified=true about itself. Every other field in
 // the chain is writable by whatever process owns the document; a version prefix is one edit
-// from matching. The dashboard refused that bridge. The droplet reported it as both
+// from matching. The dashboard refused that bridge. The jp-agent reported it as both
 // device_online and heartbeat_authenticated, feeding a false "the phone is reachable" into
 // the model's reasoning.
 //
@@ -56,9 +56,9 @@ export function isS24AgentVersion(agentVersion) {
 }
 
 // Negative ages are rejected, not just nulls. A future-dated lastSeen is exactly what a
-// writer asserting its own freshness would produce, and the droplet's age() returns it as a
+// writer asserting its own freshness would produce, and the jp-agent's age() returns it as a
 // negative number. jp-devices.js maps future timestamps to null before calling in, so for
-// the dashboard this bound changes nothing; for the droplet it is the one that matters.
+// the dashboard this bound changes nothing; for the jp-agent it is the one that matters.
 const isFresh = (seconds) =>
   seconds !== null && seconds !== undefined && seconds >= 0 && seconds <= S24_ACK_MAX_AGE_SECONDS;
 
@@ -68,7 +68,7 @@ const isFresh = (seconds) =>
  * A fresh lastCommandAckAt alone proves nothing about execution: broker-command-complete
  * stamps it for rejected, failed and error results too, and a legacy writer can set it with
  * no queue entry behind it at all. The dashboard once reported a rejected leftover 'wakeup'
- * as commandExecutionRecentlyProven while the droplet, which checked the entry, said false.
+ * as commandExecutionRecentlyProven while the jp-agent, which checked the entry, said false.
  * Both now ask this one question.
  */
 export function s24CommandAckConsistent(doc) {

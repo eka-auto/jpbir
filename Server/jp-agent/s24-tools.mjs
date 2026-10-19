@@ -1,6 +1,6 @@
 // In-process MCP tools giving jp-agent the same Firestore device-registry
 // access as the tracked Python MCP server (Integrations/s24-connect-mcp/server.py).
-// Ported to Node rather than shelling out to Python: jp-agent's droplet only
+// Ported to Node rather than shelling out to Python: jp-agent's jp-agent only
 // ships Node, and createSdkMcpServer() runs tools in-process with no extra
 // transport or dependency beyond zod.
 //

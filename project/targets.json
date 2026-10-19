@@ -54,20 +54,15 @@
       "notes": "WhatsApp media bytes (D-9)."
     },
     {
-      "name": "jp-agent-droplet",
+      "name": "jp-agent-render",
       "environment": "production",
-      "provider": "digital-ocean",
-      "account_id": "intrepid-stage-495117-q1",
+      "provider": "render",
+      "account_id": "jayti",
       "resource_ids": {
-        "droplet": "runner-jp-agent",
-        "region": "blr1",
-        "size": "s-1vcpu-2gb",
-        "ip_address": "168.144.24.44",
-        "domain": "runner.jaytipargal.tech",
-        "ssh_user": "root",
-        "ssh_key_name": "jayat_laptop_key"
+        "service": "jp-agent",
+        "service_type": "web service"
       },
-      "notes": "Hosts jp-agent (port 8790) and s24-mcp (port 8792) as systemd services. Self-hosted GitHub Actions runner registered with labels: jp-agent,droplet,deploy. Account/region verified via DigitalOcean API by owner."
+      "notes": "The jp-agent runtime behind jaytipargal.tech (owner direction 2026-10-19, D-14). Vercel reaches it through the JP_AGENT_URL environment variable (Backend/agent-run.js), so moving or renaming the service is an environment change, not a code change. Deployed from git; render.yaml declares the service shape. No deploy script, ssh, systemd unit or nginx config exists in this repository. To be filled in from the Render dashboard: the service's public hostname. The service must set JP_AGENT_HOST=0.0.0.0 and mount a disk for JP_AGENT_WORKSPACE."
     }
   ]
 }

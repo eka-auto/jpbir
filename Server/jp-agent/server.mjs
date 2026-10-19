@@ -1,6 +1,6 @@
 // jp-agent — the terminal, moved behind jaytipargal.tech.
 //
-// Runs on a DigitalOcean droplet rather than Vercel because a Vercel function
+// Runs as a Render web service rather than a Vercel function, because a function
 // is short-lived with an ephemeral filesystem: no persistent workspace, no
 // long-running builds, no git checkout that survives between questions.
 //
@@ -21,7 +21,7 @@ import { query } from '@anthropic-ai/claude-agent-sdk';
 import { s24DeviceTools } from './s24-tools.mjs';
 
 const PORT = Number(process.env.JP_AGENT_PORT || process.env.PORT || 8790);
-// Default stays 127.0.0.1, the droplet posture: nginx on the box is the only
+// Default stays 127.0.0.1, the jp-agent posture: nginx on the box is the only
 // ingress. Render's proxy lives outside the container, so there the service
 // env sets JP_AGENT_HOST=0.0.0.0 and the platform supplies PORT.
 const HOST = process.env.JP_AGENT_HOST || '127.0.0.1';

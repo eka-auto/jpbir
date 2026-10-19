@@ -1,0 +1,122 @@
+From 4afdc7b4aa5fcde888cab9c5b6230129f8d50293 Mon Sep 17 00:00:00 2001
+From: "cline-cloud[bot]" <cline-cloud[bot]@users.noreply.github.com>
+Date: Mon, 19 Oct 2026 00:14:15 +0000
+Subject: [PATCH] ci(render): retire the self-hosted deploy path and name
+ Render everywhere
+
+Workflow-only change; see the follow-up commit for why it ships as a patch.
+---
+ .github/actionlint.yaml              | 10 +++---
+ .github/workflows/ci-cd.yml          | 21 +++++++------
+ .github/workflows/deploy-droplet.yml | 47 ----------------------------
+ 3 files changed, 15 insertions(+), 63 deletions(-)
+ delete mode 100644 .github/workflows/deploy-droplet.yml
+
+diff --git a/.github/actionlint.yaml b/.github/actionlint.yaml
+index d9bcb4e..567ad07 100644
+--- a/.github/actionlint.yaml
++++ b/.github/actionlint.yaml
+@@ -1,9 +1,7 @@
+-self-hosted-runner:
+-  labels:
+-    - jp-agent-droplet
+-    - jp-agent
+-    - droplet
+-    - deploy
++# No self-hosted runners remain in this repository: the droplet runner was retired with the
++# move of jp-agent to Railway (project/reports/2026-10-19-retire-jp-agent-droplet.md). If a
++# self-hosted `runs-on` is ever introduced again, list its labels back here, or actionlint
++# will report the label as unknown.
+ 
+ # Configuration variables in array of strings defined in your repository or
+ # organization. `null` means disabling configuration variables check.
+diff --git a/.github/workflows/ci-cd.yml b/.github/workflows/ci-cd.yml
+index 5fd33cc..98603a3 100644
+--- a/.github/workflows/ci-cd.yml
++++ b/.github/workflows/ci-cd.yml
+@@ -87,18 +87,19 @@ jobs:
+           docker run --rm -v "$PWD:/repo" --workdir /repo \
+             rhysd/actionlint:1.7.12 -color -verbose
+ 
+-  # Server/jp-agent is the droplet runtime and has its own package.json, so neither `npm ci`
+-  # nor `npm test` above ever touched it. Its tests existed and passed by hand, but nothing
+-  # ran them - so two fixes to device-health.mjs on 2026-09-19 (0637de9, 9040523) went in
+-  # with CI green that meant nothing for the droplet.
++  # Server/jp-agent is its own package.json, so neither `npm ci` nor `npm test` above ever
++  # touched it. Its tests existed and passed by hand, but nothing ran them - so two fixes to
++  # device-health.mjs on 2026-09-19 (0637de9, 9040523) went in with CI green that meant
++  # nothing for the runtime.
+   #
+-  # The droplet is deployed by hand (deploy.sh), and a mistake there cannot be rolled back
+-  # from here, so the last step checks the failure a refactor is most likely to cause: the
+-  # service dying at start with ERR_MODULE_NOT_FOUND. Importing s24-tools.mjs resolves
+-  # everything server.mjs imports (s24-tools -> device-health -> s24-attestation).
+-  # server.mjs itself calls listen() at import, so it only gets a syntax check.
++  # The runtime is the Render web service jp-agent (render.yaml, project/targets.json), which
++  # deploys from git and cannot be rolled back from here, so the last step checks the failure
++  # a refactor is most likely to cause: the service dying at start with ERR_MODULE_NOT_FOUND.
++  # Importing s24-tools.mjs resolves everything server.mjs imports (s24-tools ->
++  # device-health -> s24-attestation). server.mjs itself calls listen() at import, so it only
++  # gets a syntax check.
+   jp-agent:
+-    name: jp-agent (droplet) tests
++    name: jp-agent tests
+     runs-on: ubuntu-latest
+     defaults:
+       run:
+diff --git a/.github/workflows/deploy-droplet.yml b/.github/workflows/deploy-droplet.yml
+deleted file mode 100644
+index 7dba606..0000000
+--- a/.github/workflows/deploy-droplet.yml
++++ /dev/null
+@@ -1,47 +0,0 @@
+-name: Deploy to jp-agent Droplet
+-
+-on:
+-  push:
+-    branches: [main]
+-  workflow_dispatch:
+-
+-jobs:
+-  deploy:
+-    name: Deploy jp-agent to droplet
+-    runs-on: [self-hosted, jp-agent-droplet]
+-
+-    steps:
+-      - name: Checkout code
+-        uses: actions/checkout@v7
+-
+-      - name: Install Node.js
+-        uses: actions/setup-node@v7
+-        with:
+-          node-version: '24.x'
+-          cache: 'npm'
+-          cache-dependency-path: Server/jp-agent/package-lock.json
+-
+-      - name: Install Python (for sync-auth-token tests)
+-        uses: actions/setup-python@v5
+-        with:
+-          python-version: '3.14'
+-
+-      - name: Run jp-agent tests
+-        working-directory: Server/jp-agent
+-        run: |
+-          npm ci
+-          node --test "tests/*.test.mjs"
+-          python3 -m unittest discover -s tests -p 'test_*.py' -v
+-          node --check server.mjs
+-          node --input-type=module -e "await import('./s24-tools.mjs')"
+-
+-      - name: Deploy to droplet
+-        working-directory: Server/jp-agent
+-        env:
+-          S24_FIRESTORE_KEY: ${{ secrets.S24_FIRESTORE_KEY }}
+-          ANTHROPIC_AUTH_TOKEN: ${{ secrets.ANTHROPIC_AUTH_TOKEN }}
+-        run: |
+-          # This runs ON the droplet via the self-hosted runner.
+-          # deploy-local.sh handles file copying, npm ci, env creation,
+-          # service installation, and health checks — all without SSH.
+-          bash deploy-local.sh
+-- 
+2.39.5
+

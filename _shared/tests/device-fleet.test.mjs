@@ -8,11 +8,11 @@
 // (the Lenovo's video watcher writing under its hostname). Every reader counted what the
 // collection held: the health verdict, its runtime log line and the stale-alert
 // cron said five devices, the dashboard said four (it hid `g4g-laptop` only),
-// verify-db said five, and so did the droplet's list_devices.
+// verify-db said five, and so did the jp-agent's list_devices.
 //
 // Every one of those now goes through splitFleet(). This suite pins the fleet,
 // runs each reader over the production-shaped collection, and fails if the
-// droplet's copy of the list drifts from the broker's. The Backend handlers run
+// jp-agent's copy of the list drifts from the broker's. The Backend handlers run
 // for real against a generated service-account key and a stubbed fetch, so env
 // is set before any Backend module loads (_auth.js reads STATS_KEY at import).
 import assert from 'node:assert/strict';
@@ -39,7 +39,7 @@ process.env['FIREBASE_' + 'SERVICE_ACCOUNT_JSON'] = JSON.stringify({
 for (const k of ['GMAIL_APP_' + 'PASSWORD', 'DATABASE_URL', 'POSTGRES_URL', 'CRON_' + 'SECRET']) delete process.env[k];
 
 const { DEVICE_IDS, HARDWARE_RULES, splitFleet, verifyHardwareFingerprint } = await import('../../Backend/broker.js');
-const { FLEET_DEVICE_IDS, splitFleet: dropletSplitFleet } = await import('../../Server/jp-agent/device-health.mjs');
+const { FLEET_DEVICE_IDS, splitFleet: serviceSplitFleet } = await import('../../Server/jp-agent/device-health.mjs');
 const { deviceFreshness, snapshot, logVerdict } = await import('../../Backend/jp-stack.js');
 const { default: jpDevices } = await import('../../Backend/jp-devices.js');
 const { default: checkStale } = await import('../../Backend/check-stale.js');
@@ -97,11 +97,11 @@ await t('the fleet is exactly the three devices the broker will enrol', () => {
   }
 });
 
-await t('the droplet carries the same fleet and splits a collection the same way', () => {
+await t('the jp-agent carries the same fleet and splits a collection the same way', () => {
   assert.deepEqual([...FLEET_DEVICE_IDS], [...DEVICE_IDS], 'Server/jp-agent/device-health.mjs drifted from Backend/broker.js');
-  const cloud = splitFleet(PRODUCTION), droplet = dropletSplitFleet(PRODUCTION);
-  assert.deepEqual(droplet.fleet.map(idOf), cloud.fleet.map(idOf));
-  assert.deepEqual(droplet.other, cloud.other);
+  const cloud = splitFleet(PRODUCTION), service = serviceSplitFleet(PRODUCTION);
+  assert.deepEqual(service.fleet.map(idOf), cloud.fleet.map(idOf));
+  assert.deepEqual(service.other, cloud.other);
 });
 
 await t('the production collection is three devices and two documents that are not devices', () => {
@@ -167,8 +167,8 @@ await t('verify-db reports the fleet as the device count', async () => {
   assert.equal(r.devices_found, 3);
 });
 
-await t('both droplet list_devices tools count the fleet and name the rest', () => {
-  // Their Firestore client needs the droplet's key file, so the wiring is
+await t('both jp-agent list_devices tools count the fleet and name the rest', () => {
+  // Their Firestore client needs the jp-agent's key file, so the wiring is
   // pinned by source; the split itself is the function tested above.
   const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
   for (const file of ['Server/jp-agent/s24-tools.mjs', 'Server/jp-agent/s24-mcp-server.mjs']) {

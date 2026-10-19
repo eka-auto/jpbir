@@ -234,7 +234,7 @@ export function strictS24Liveness(fields, heartbeatAgeSeconds, ackAgeSeconds) {
 // — handleDevices below (keyed, full roster) and the unauthenticated projection
 // in ./s24-public.js — and two implementations of a liveness rule computing
 // differently is this repo's signature failure mode (see ./lib/s24-attestation.js:
-// the droplet and dashboard copies drifted twice in one day, and the second
+// the jp-agent and dashboard copies drifted twice in one day, and the second
 // drift let a Windows bridge claim to be the phone). Pure function: no I/O, no
 // module state; pass the decoded fields and a frozen `nowMs`. Note that key
 // order inside s24AttestationChecks is load-bearing (s24LivenessVerdict reports

@@ -21,7 +21,7 @@ import {
 } from './s24-attestation.js';
 
 /**
- * The fleet, for the droplet: a copy of DEVICE_IDS in Backend/broker.js, whose
+ * The fleet, for the jp-agent: a copy of DEVICE_IDS in Backend/broker.js, whose
  * HARDWARE_RULES make these three the only ids the broker will enrol or accept
  * a heartbeat from. list_devices counted every document in devices/ and said
  * five, because the collection also holds a test agent (`eka-cloud-sandbox`)

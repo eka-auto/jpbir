@@ -93,7 +93,7 @@ t('legacy direct-cloud evidence remains a strict ACK-gated fallback', () => {
 });
 
 t('a legacy doc with a fresh ACK timestamp but no completed queue entry behind it is offline', () => {
-  // The droplet briefly accepted exactly this after dropping its ack-triple check: a bare
+  // The jp-agent briefly accepted exactly this after dropping its ack-triple check: a bare
   // lastCommandAckAt is one field write away for any writer.
   const orphan = { ...valid, connectionMethod: 'termux-direct-cloud', lastCommandAckId: 'gone', commandQueue: {} };
   delete orphan.enrollment;
@@ -105,7 +105,7 @@ t('a legacy doc with a fresh ACK timestamp but no completed queue entry behind i
 t('a rejected command is acknowledged, not executed, so it proves nothing about execution', () => {
   // broker-command-complete stamps lastCommandAckAt for rejected results too; the phone
   // rejecting a leftover 'wakeup' once read as commandExecutionRecentlyProven=true here
-  // while the droplet said false.
+  // while the jp-agent said false.
   const rejected = {
     ...valid,
     lastCommandAckStatus: 'rejected',

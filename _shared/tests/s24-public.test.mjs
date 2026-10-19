@@ -274,7 +274,7 @@ t('a 301-second-old command ack is a diagnostic and does not negate a fresh sign
 
 t('a bridge process asserting the STRING "true" for runtimeIsAndroid is still not the phone: ===true is the only Android evidence', () => {
   // The 2026-09 Windows bridge incident, re-run through the PUBLIC projection:
-  // the droplet copy that compared loosely reported the bridge as device_online
+  // the jp-agent copy that compared loosely reported the bridge as device_online
   // while the dashboard said dead. Two implementations of one liveness rule,
   // opposite answers — the open page must inherit the gated one's verdict.
   expectDead({ runtimeIsAndroid: 'true' }, 'androidRuntime');

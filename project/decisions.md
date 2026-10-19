@@ -42,13 +42,6 @@ Independent hosting and dashboard audit reconciled:
 - **Issue #140 Reconciled**: Reopened with the verified hosting ownership confirmed under `jayti2`.
 - **Remaining Open Items**: (1) Browser OAuth re-link of the Vercel GitHub App for `jaytipargal/jpbir` on branch `main` to restore push-to-deploy; (2) Populating missing environment secrets on `jayti2/jpbir`.
 
-### Open items for the owner (Awaiting approval)
-- Off-machine backup copy (3-2-1): upload the bundle to a second location.
-- jp-agent-droplet account/region verification.
-- GitHub Pro upgrade (or make repo public) to unblock T-04 branch protection.
-- Connect Vercel GitHub App for `jaytipargal/jpbir` in team `jayti2` settings to re-enable push-to-deploy.
-- Populate unset secrets on `jayti2/jpbir` (BLOB_READ_WRITE_TOKEN, S24_SYNC_PUBLIC_KEYS, WA_INGEST_KEY, etc.).
-
 ### D-13: Unrecorded control change reverted (2026-10-18, HOD-role finding)
 Commit 286b1645 replaced the pinned skill (v2.2.0 -> a self-described "2.4.0" variant) and
 tracker.py (35-check canonical -> 67-check extended tool requiring a --verifier-state argument)
@@ -109,3 +102,32 @@ push-to-deploy, secret hygiene), wiring of the protections and controls this pip
 and documentation - with production staying as it is. The formal scope freeze and BRD
 approval happen in Step 1 (T-06); this decision sets the direction. BRD/TRD drafting starts
 from this scope; remaining owner questions get batched there.
+
+### D-17: Render is the single deployment target for jp-agent (owner, 2026-10-19)
+
+Owner direction: *"remove railway, droplet vultr from entire github repo globally and render
+is the final place for all now."*
+
+- The jp-agent entry in `project/targets.json` is now `jp-agent-render`, a Render web service
+  in the `jayti` workspace. The DigitalOcean droplet and the Railway service that briefly
+  replaced it earlier the same day are both gone from the manifest; D-9's target list is
+  superseded on the jp-agent question. D-13 (HOD control-change finding) is untouched.
+- Deleted: `deploy.sh`, `deploy-local.sh`, `jp-agent.service`, `s24-mcp.service`,
+  `nginx-jp-agent.conf`, `sync-auth-token.py` and its test, and `setup-runner.sh`. There is
+  no deploy script, ssh path, systemd unit or nginx config for jp-agent any more, and none
+  should be added - a second deploy path is how the old host was allowed to drift.
+- `render.yaml` declares the service from the repository, so the deploy shape is reviewable
+  in a diff instead of clicked into a dashboard.
+- Tests that pinned the deleted deploy script were rewritten to guard what a git deploy must
+  still get right (`s24-mcp-deploy.test.mjs`; one `deploy.sh` assertion removed from
+  `s24-attestation.test.mjs`, whose neighbouring byte-identical-module assertion is
+  unchanged).
+- The three workflow files could not be changed from this identity - GitHub refuses workflow
+  files from an App without the `workflows` permission - so they ship as
+  `project/reports/2026-10-19-retire-jp-agent-droplet.patch`.
+- Deliberately not touched, each for a stated reason: `Backend/eka_*.py` (verbatim drifted
+  copies of `jayti/scripts`, which `CLAUDE.md` says to change in `jayti`),
+  `_shared/docs/AGENT_DATABASE_ARCHITECTURE.md` (documents the Jayti Hub VPS, a different
+  host this repo does not own), and the dated records under `project/reports/`. Editing any
+  of them would falsify a record or re-introduce drift; ask and I will archive them out of
+  the tree instead.
