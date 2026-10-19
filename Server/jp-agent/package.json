@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Agent runtime behind jaytipargal.tech, hosted on DigitalOcean",
+  "description": "Agent runtime behind jaytipargal.tech, hosted on Railway",
   "scripts": {
     "start": "node server.mjs"
   },

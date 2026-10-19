@@ -42,6 +42,32 @@ Independent hosting and dashboard audit reconciled:
 - **Issue #140 Reconciled**: Reopened with the verified hosting ownership confirmed under `jayti2`.
 - **Remaining Open Items**: (1) Browser OAuth re-link of the Vercel GitHub App for `jaytipargal/jpbir` on branch `main` to restore push-to-deploy; (2) Populating missing environment secrets on `jayti2/jpbir`.
 
+### D-13: jp-agent moves from the DigitalOcean droplet to Railway (owner, 2026-10-18)
+
+Owner direction: *"remove droplet, now it's Railway jayti > Services."* jp-agent now
+runs as the `jp-agent` Web Service (`srv-dbalg58m7kps739ap6gg`) in the `jayti` Railway
+workspace, beside a Key Value service `jayti` (`red-dba01dbncjis73asg3tg`).
+
+The droplet (`runner-jp-agent`, `runner.jaytipargal.tech`) is marked RETIRING in
+`project/targets.json` rather than deleted, because it is still the live runtime for
+Vercel's `/api/agent-run` and for `/mcp`. It is destroyed only after the cut-over in
+`project/reports/2026-10-19-retire-jp-agent-droplet.md` §6 passes.
+
+Removed from the repository now: `deploy-droplet.yml` (which never succeeded once),
+`setup-runner.sh`, the self-hosted label list in `.github/actionlint.yaml`, and the
+droplet wording in `ci-cd.yml` and `Server/jp-agent/package.json`. Kept as the rollback
+path until the droplet is destroyed: `deploy.sh`, `deploy-local.sh`, both systemd units,
+`nginx-jp-agent.conf`, `sync-auth-token.py`.
+
+Not covered by the move, and therefore open: workspace persistence (Railway's
+filesystem is ephemeral, and a surviving workspace is this service's whole purpose),
+`S24_SERVICE_ACCOUNT_KEY` being a file path rather than inline JSON, a home for
+`s24-mcp` (the droplet's second unit, `:8792`), and how `ANTHROPIC_AUTH_TOKEN` reaches
+the SDK without the droplet's `~/.claude/settings.json` step.
+
+This retirement also removes the repository's only self-hosted runner: with the hosted
+runners still billing-locked, CI is left with no runner at all.
+
 ### Open items for the owner (Awaiting approval)
 - Off-machine backup copy (3-2-1): upload the bundle to a second location.
 - jp-agent-droplet account/region verification.
