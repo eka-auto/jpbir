@@ -79,15 +79,17 @@ matters more than the model choice for short questions.
 ## The second process: s24-mcp
 
 `s24-mcp-server.mjs` is the network-transport twin of the in-process tools in
-`s24-tools.mjs`. It was a second systemd unit on the old host; on Render it needs
-its own web service (or to be folded in-process) before the `/mcp` endpoint is
-reachable again. Until then the in-process tools in `s24-tools.mjs` are the only
-path, and `s24-mcp-deploy.test.mjs` guards the module contract.
+`s24-tools.mjs`. The deployed service answers `"mcp":"in-process"` on `/health`,
+which means no `JP_AGENT_MCP_CONFIG` is set and the tools are served in-process
+from `s24-tools.mjs` — the standalone server is not running and its `/mcp` route
+is not exposed. Giving it a Render web service of its own is the only way to
+bring that route back; `s24-mcp-deploy.test.mjs` guards the module contract either
+way.
 
 ## Verification
 
 ```bash
-curl -s https://<service-host>/health            # {"ok":true,...}
+curl -s https://runner.jaytipargal.tech/health   # {"ok":true,"service":"jp-agent",...}
 curl -s -o /dev/null -w '%{http_code}\n' https://<service-host>/sessions   # 401 without a bearer token
 ```
 

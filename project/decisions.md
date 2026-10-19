@@ -131,3 +131,11 @@ is the final place for all now."*
   host this repo does not own), and the dated records under `project/reports/`. Editing any
   of them would falsify a record or re-introduce drift; ask and I will archive them out of
   the tree instead.
+- **Verified live 2026-10-19** (probed from an agent shell, evidence in
+  `project/reports/2026-10-19-render-live-verification.md`): `runner.jaytipargal.tech` and
+  `jp-agent.onrender.com` resolve to `gcp-us-west1-1.origin.onrender.com` via Cloudflare;
+  `GET /health` returns `200 {"ok":true,"service":"jp-agent","mcp":"in-process"}`, which is
+  byte-for-byte the shape `server.mjs` emits, so the live service runs this code;
+  `/sessions` answers 401 unauthenticated; TLS CN=`runner.jaytipargal.tech`, valid to
+  2027-01-17. The workspace disk and the `S24_SERVICE_ACCOUNT_KEY` path are **not** proven by
+  any of this and still need one real agent turn and one `s24-*` tool call.
