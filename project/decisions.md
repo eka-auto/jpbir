@@ -48,3 +48,64 @@ Independent hosting and dashboard audit reconciled:
 - GitHub Pro upgrade (or make repo public) to unblock T-04 branch protection.
 - Connect Vercel GitHub App for `jaytipargal/jpbir` in team `jayti2` settings to re-enable push-to-deploy.
 - Populate unset secrets on `jayti2/jpbir` (BLOB_READ_WRITE_TOKEN, S24_SYNC_PUBLIC_KEYS, WA_INGEST_KEY, etc.).
+
+### D-13: Unrecorded control change reverted (2026-10-18, HOD-role finding)
+Commit 286b1645 replaced the pinned skill (v2.2.0 -> a self-described "2.4.0" variant) and
+tracker.py (35-check canonical -> 67-check extended tool requiring a --verifier-state argument)
+without a decision record, review, or tracker upgrade - discovered during the 2026-10-18 resume
+(the extended tool rejected the canonical audit invocation; selftest counted 67 vs the 35/35
+recorded in D-7). Action: restored the canonical SKILL.md byte-for-byte from the owner's
+installed skill (SHA-256 D6791D5AEC3C3CCD7462BFDF04E949E8A52302627FFD755839A0BC92F2C24D1A) and
+re-extracted the canonical tracker.py from it per the skill's documented command. The 2.4.0
+variant remains preserved in git history at commit 286b1645 for owner review; adopting any
+extended variant must go through a reviewed upgrade (skill conformance), never a silent
+replacement. The platform pointer blocks were also non-conforming (custom variant text);
+normalized to the skill's exact block, with the local guidance kept outside the block.
+Labelling: performed by the resume agent playing the HOD role (no-CI fallback per D-3;
+single-identity mode per project/identities.json) using deterministic checks - this is
+self-review, not independent human approval.
+
+### D-14: Resume session 2026-10-18 - state repair
+- Durable project-state checkout recreated at C:\Users\abcom\jpbir-project-state (the previous
+  Temp worktree had been pruned; git worktree prune + fresh add at run tip 69ec45a7).
+- project/audit/run-hod-audit.cmd recreated (lost with the pruned Temp worktree and never
+  committed) using durable paths only; scheduled task re-verified live: LastTaskResult 0,
+  log at C:\Users\abcom\jpbir-project-state\hod-audit-last.log.
+- project/environment/ (Dockerfile, compose.yaml, run) recreated per D-8.
+- project/targets.json completed to the six targets of D-9 plus source: added vercel-jayti2,
+  firestore-eka-agent, neon-jaytibirthday-db, vercel-blob (the committed file held only
+  source and jp-agent-droplet).
+- project/PROFILE.md assembled from owner-confirmed decisions D-1, D-10, D-11 (+ D-2, D-4,
+  D-8, D-12).
+- Backup integrity re-verified: both SHA-256 hashes match D-2 exactly (bundle 8018DA68...,
+  untracked archive 124A6EE2...).
+- Canonical audit after repair: selftest 35/35 PASS, all audit checks PASS (tracker rules,
+  STOP, append-only events, events applied, HOD-event match, TRACKER.md current, CONTRACT,
+  pinned skill, pointers, targets).
+
+### D-15: Owner decisions on resume (2026-10-18)
+- **Branch protection**: the owner chose to keep the repository private and not upgrade a plan
+  ("keep it private and skip this step no issue"). Per contract rule 1 an owner's refusal parks
+  T-04 as Blocked - it is never Not required, because protected controls cannot be waived.
+  Compensating control found and ACTIVATED: GitHub repository ruleset 25339138
+  ("pipeline-protected-branch") enforces deletion + non-fast-forward protection on the default
+  branch - this works on the free plan. Remaining gap on the free plan: required reviews,
+  required status checks and CODEOWNERS enforcement; the Step 0 gate stays formally open on
+  T-04 until the owner upgrades to GitHub Pro/Team or makes the repository public. Downstream
+  work that does not depend on T-04 continues (Step 1).
+- **Off-machine backup (3-2-1)**: owner approved OneDrive. Both backup files copied to
+  C:\Users\abcom\OneDrive\cicd-backups\jpbir\ and hash-verified byte-identical
+  (bundle 8018DA68..., untracked archive 124A6EE2...). The off-machine copy obligation from
+  D-2 is satisfied via OneDrive sync.
+- **Vercel**: the owner will re-link the GitHub App and set the missing secrets on vercel.com
+  themselves (D-12 open item stays owner-owned; agents never receive the values).
+- Droplet-record confirmation and PROFILE confirmation were not given this session; they stay
+  listed as open items in the tracker decisions list.
+
+### D-16: Release R1 scope direction (owner, 2026-10-18)
+The owner chose "stabilize and harden" for release R1: no new features. R1 delivers the
+inherited-debt fixes (bloated vendored trees, stale documentation, disconnected Vercel
+push-to-deploy, secret hygiene), wiring of the protections and controls this pipeline needs,
+and documentation - with production staying as it is. The formal scope freeze and BRD
+approval happen in Step 1 (T-06); this decision sets the direction. BRD/TRD drafting starts
+from this scope; remaining owner questions get batched there.
