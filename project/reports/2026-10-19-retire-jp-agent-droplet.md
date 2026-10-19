@@ -80,7 +80,9 @@ API for a create or update. Two things still worked:
 - `actionlint.yaml` is not under `.github/workflows/`, so a normal API write landed it
   (`f73f899`).
 
-What remains is an **update** to `ci-cd.yml`: the job still reads `jp-agent (droplet) tests`
+**Correction, proved after this was written:** those refusals were **token scope**, not a platform rule. `git push` and the Contents API both reject workflow-file writes from an identity whose token lacks the `workflows` scope — which is all this App ever was. An identity that has the scope pushes them normally: `a67d6b05` (this file) and `63174c33` (the sync-keys comment) were both plain workflow updates. Do not hand over a patch for this reason alone.
+
+What remained at the time was an **update** to `ci-cd.yml`: the job still reads `jp-agent (droplet) tests`
 and its rationale comment still says the droplet is deployed by hand with `deploy.sh`. The
 dead `Run token-sync tests` step has since been removed directly on `main` (`f15a14f`), so
 the patch now carries only the rename and the comment — 1 file, 11 insertions, 10
@@ -140,12 +142,9 @@ UI, not just in the file.
 
 ### Still outstanding
 
-- **`2026-10-18-sync-keys-duplicate-comment.patch` remains unapplied.**
-  `.github/workflows/sync-keys-to-vercel.yml` still carries the duplicated
-  "Every key the deployed code … reads." comment at lines 47–50. It is an *update* to a
-  workflow file, which this identity cannot push and the API refuses (it permits deleting
-  workflow files, not creating or updating them), so it needs a `workflows`-permitted
-  identity — the same one-line hole as above.
+- **`2026-10-18-sync-keys-duplicate-comment.patch`: applied as `63174c33`, patch deleted.**
+  It removed the stale duplicate at line 50; `grep -c "Every key the deployed code"` in
+  `sync-keys-to-vercel.yml` is now 1.
 - **Branch protection is now possible.** D-6 recorded T-04 as blocked because the private
   repo returned 403 "Upgrade to GitHub Pro or make the repository public". The repository is
   now **public**, so that blocker is gone: the owner can enable required checks, reviews and

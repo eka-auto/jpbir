@@ -56,9 +56,10 @@ pass) until CI can run them.
   is also why a "Deploy to jp-agent Droplet" check kept appearing on unrelated commits.
 - The four self-hosted labels removed from `.github/actionlint.yaml` (`f73f899`).
 - `ci-cd.yml` job rename + dead-step removal: **still blocked** on the `workflows`
-  permission, shipped as a patch (see the retirement report). Note the asymmetry this
-  exposed: the Contents API permits workflow *deleting* but refuses *create or update* from
-  an App without `workflows`.
+  permission, shipped as a patch (see the retirement report). Note the asymmetry this exposed — **and its real cause**: the Contents API permits
+  workflow *deleting* but refuses *create or update* from an App whose token lacks the
+  `workflows` **scope**. It is a token-scope boundary, not a platform rule: an identity
+  holding that scope pushed workflow edits to this repo twice (`a67d6b05`, `63174c33`).
 
 ## Independent verification on a fork, with real GitHub runners (2026-10-19)
 
