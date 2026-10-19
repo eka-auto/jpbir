@@ -20,7 +20,6 @@ const {
   VERCEL_PROJECT_ID,
   DRY_RUN,
   SYNC_KEYS = '',
-  SECRETS_JSON = '{}',
   STATIC_ENV_FILES = '{}',
 } = process.env;
 
@@ -42,7 +41,19 @@ async function vercel(path, init = {}) {
 }
 
 const keys = new Set(SYNC_KEYS.split(/\s+/).filter(Boolean));
-const secrets = JSON.parse(SECRETS_JSON);
+// Values arrive as individual SYNC_SECRET_<NAME> env vars, one explicit
+// GitHub-secret reference each; never the whole secret store at once.
+const SECRET_NAMES = [
+  'AGENT_API_KEY', 'AGENT_API_URL', 'ANTHROPIC_API_KEY', 'BLOB_READ_WRITE_TOKEN',
+  'CONNECT_CLIENT_ID', 'CONNECT_CONNECTOR_UID', 'CRON_SECRET', 'DB_ADMIN_KEY',
+  'FIREBASE_SERVICE_ACCOUNT_JSON', 'FIRESTORE_DB', 'GMAIL_APP_PASSWORD',
+  'HEALTH_CHECK_KEY', 'JP_AWS_ACCESS_KEY_ID', 'JP_AWS_SECRET_ACCESS_KEY',
+  'JP_WRITE_AWS_ACCESS_KEY_ID', 'JP_WRITE_AWS_SECRET_ACCESS_KEY',
+  'S24_SYNC_PUBLIC_KEYS', 'S24_SYNC_PRIVATE_KEY_PEM', 'STALE_ALERT_SECONDS',
+  'STATS_KEY', 'STATS_SITE', 'VERCEL_ANALYTICS_PROJECT_ID', 'VERCEL_API_TOKEN',
+  'VERCEL_TEAM_ID', 'WA_INGEST_KEY',
+];
+const secrets = Object.fromEntries(SECRET_NAMES.map(n => [n, process.env[`SYNC_SECRET_${n}`] ?? '']));
 const staticFiles = JSON.parse(STATIC_ENV_FILES);
 const staticValues = new Map();
 for (const [key, file] of Object.entries(staticFiles)) {
