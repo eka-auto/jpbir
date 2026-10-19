@@ -11,33 +11,15 @@
       }
     },
     {
-      "name": "jp-agent-droplet",
+      "name": "jp-agent-render",
       "environment": "production",
-      "provider": "digital-ocean",
-      "account_id": "intrepid-stage-495117-q1",
-      "resource_ids": {
-        "droplet": "runner-jp-agent",
-        "region": "blr1",
-        "size": "s-1vcpu-2gb",
-        "ip_address": "168.144.24.44",
-        "domain": "runner.jaytipargal.tech",
-        "ssh_user": "root",
-        "ssh_key_name": "jayat_laptop_key"
-      },
-      "notes": "RETIRING (owner, 2026-10-18): jp-agent moves to the Railway service jp-agent-railway. Until the cut-over is verified and the droplet destroyed, this is still the live runtime behind Vercel and the /mcp endpoint. Hosts jp-agent (port 8790) and s24-mcp (port 8792) as systemd services, plus the repo's only self-hosted GitHub Actions runner (labels jp-agent,droplet,deploy). The IP recorded here (.44) disagrees with Server/jp-agent/README.md (.224) — resolve before any firewall or allowlist change."
-    },
-    {
-      "name": "jp-agent-railway",
-      "environment": "production",
-      "provider": "railway",
+      "provider": "render",
       "account_id": "jayti",
       "resource_ids": {
-        "workspace": "jayti",
         "service": "jp-agent",
-        "service_id": "srv-dbalg58m7kps739ap6gg",
         "service_type": "web service"
       },
-      "notes": "Successor to jp-agent-droplet (owner, 2026-10-18). The jayti workspace also holds a Key Value service, jayti (red-dba01dbncjis73asg3tg). Not yet verified serving traffic, and its public domain is not recorded yet: add the domain here once verified, then repoint Vercel JP_AGENT_URL (scope jayti, project jayti-dashboard). No Railway service exists for the droplet's second process, s24-mcp (:8792). See project/reports/2026-10-19-retire-jp-agent-droplet.md."
+      "notes": "The jp-agent runtime behind jaytipargal.tech. Vercel reaches it through the JP_AGENT_URL environment variable (Backend/agent-run.js), so moving or renaming the service is an environment change, not a code change. Deployed from git; render.yaml declares the service shape. No deploy script, ssh, systemd unit or nginx config exists in this repository. To be filled in from the Render dashboard: the service's public hostname and the account id. The service must set JP_AGENT_HOST=0.0.0.0 and mount a disk for JP_AGENT_WORKSPACE."
     }
   ]
 }

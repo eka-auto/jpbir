@@ -39,11 +39,11 @@ export const HARDWARE_RULES = {
  * watcher on that laptop, which mapped its hostname to the wrong id and wrote
  * only lastVideoEventAck* there (fixed on the laptop 2026-09-23; the doc stays
  * until deleted). Every reader counted whatever the collection held, so the
- * health verdict, the stale-alert emails and the droplet's list_devices spoke
+ * health verdict, the stale-alert emails and the jp-agent's list_devices spoke
  * of five devices, and the dashboard of four (it hid only `g4g-laptop`).
  * Every device count now goes through splitFleet(), so all of them agree with
  * the broker. Server/jp-agent/device-health.mjs carries a copy for the
- * droplet, which cannot import this file; _shared/tests/device-fleet.test.mjs
+ * jp-agent, which cannot import this file; _shared/tests/device-fleet.test.mjs
  * fails if the two disagree.
  */
 export const DEVICE_IDS = Object.freeze(Object.keys(HARDWARE_RULES));

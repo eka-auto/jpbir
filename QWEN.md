@@ -31,7 +31,7 @@ rationale is in [`INTEGRATION.md`](./INTEGRATION.md).
 | Frontend | `Frontend/` | Static dashboard pages, styles, components | 1976 |
 | Backend | `Backend/` | Vercel serverless functions — the API | 172 |
 | Database | `Database/` | Schemas, migrations, Firestore/vector tooling | 26 |
-| Server | `Server/` | `jp-agent` droplet runtime, deploy scripts, nginx/systemd | 63 |
+| Server | `Server/` | `jp-agent` jp-agent runtime, deploy scripts, nginx/systemd | 63 |
 | Integrations | `Integrations/` | Shared store clients (`postgres.js`, `wa-store.js`, `s24-store.js`) | 9 |
 | _shared | `_shared/` | Project-wide config, docs, and **all tests** | 93 |
 | Devices | `Devices/` | Self-contained per-device installer bundles | 71 |
@@ -239,7 +239,7 @@ CI workflows in `.github/workflows/`: `ci-cd.yml` (lint + test),
 
 - [`README.md`](./README.md) — human-facing overview (slightly stale on `npm test`)
 - [`INTEGRATION.md`](./INTEGRATION.md) — the restructure, file by file
-- [`Server/jp-agent/README.md`](./Server/jp-agent/README.md) — droplet runtime, deploy, secrets
+- [`Server/jp-agent/README.md`](./Server/jp-agent/README.md) — jp-agent runtime, deploy, secrets
 - [`Devices/S24/DAEMON_ARCHITECTURE.md`](./Devices/S24/DAEMON_ARCHITECTURE.md) — the phone daemon
 - `_shared/docs/` — setup guides (`GITHUB_ACTIONS_SETUP.md`, `ADD_FIREBASE_SECRET_TO_GITHUB.md`, …)
 

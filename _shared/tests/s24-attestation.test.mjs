@@ -1,9 +1,9 @@
 // Guards the extracted S24 attestation module.
 //
-// The dashboard and the droplet each had their own copy of this policy and they drifted
-// twice in one day. First the droplet accepted only the `s24-termux-` agentVersion prefix
+// The dashboard and the jp-agent service each had their own copy of this policy and they drifted
+// twice in one day. First the jp-agent service accepted only the `s24-termux-` agentVersion prefix
 // while the collector shipped to the phone writes `s24-direct-cloud-<date>.<n>`, so
-// authenticatedAgent could never pass. Then, after both prefixes were accepted, the droplet
+// authenticatedAgent could never pass. Then, after both prefixes were accepted, the jp-agent service
 // was still missing `runtimeIsAndroid` — the one field an off-device process cannot honestly
 // produce, and the control that caught a real Windows bridge asserting
 // heartbeatAuth='termux-phone', sourceType='live_termux' and liveDeviceVerified=true about
@@ -24,9 +24,9 @@ const read = (p) => readFileSync(join(ROOT, p), 'utf8');
 const sha256 = (p) => createHash('sha256').update(readFileSync(join(ROOT, p))).digest('hex');
 
 const CANONICAL = 'Backend/lib/s24-attestation.js';
-const DROPLET_COPY = 'Server/jp-agent/s24-attestation.js';
+const SERVICE_COPY = 'Server/jp-agent/s24-attestation.js';
 const DASHBOARD = 'Backend/jp-devices.js';
-const DROPLET = 'Server/jp-agent/device-health.mjs';
+const SERVICE = 'Server/jp-agent/device-health.mjs';
 
 const {
   S24_AGENT_VERSION_PREFIXES,
@@ -49,7 +49,7 @@ function t(name, fn) {
 // Every caller reads the evidence top-level, where the broker heartbeat writes it; the
 // nested samsungS24DirectSync copy is legacy and deliberately ignored.
 //
-// One timestamp, not one Date.now() per field: the droplet requires
+// One timestamp, not one Date.now() per field: the jp-agent service requires
 // commandQueue[lastCommandAckId].completedAt === lastCommandAckAt as exact strings, so two
 // separate calls that straddle a millisecond tick make a genuine phone fail at random.
 const fresh = 30;
@@ -86,19 +86,11 @@ const phoneDoc = () => ({ ...bridgeDoc(), runtimeIsAndroid: true });
 
 // ------------------------------------------------------- the copy cannot drift --
 
-t('the droplet copy is byte-identical to the canonical module', () => {
-  // deploy.sh ships files flat into /opt/jp-agent, and .vercelignore excludes Server/, so
-  // neither caller can import the other's path. The copy is unavoidable; making it
-  // machine-checked is not.
-  assert.equal(sha256(DROPLET_COPY), sha256(CANONICAL),
-    `${DROPLET_COPY} has drifted from ${CANONICAL} - edit the Backend/lib original and re-copy`);
-});
-
-t('deploy.sh actually ships the module to the droplet', () => {
-  const sh = read('Server/jp-agent/deploy.sh');
-  assert.match(sh, /s24-attestation\.js/,
-    'deploy.sh does not scp s24-attestation.js, so the droplet would fail with ERR_MODULE_NOT_FOUND');
-  assert.match(sh, /device-health\.mjs/, 'deploy.sh stopped shipping device-health.mjs');
+t('the jp-agent service copy is byte-identical to the canonical module', () => {
+  // .vercelignore excludes Server/, so neither caller can import the other's path.
+  // The copy is unavoidable; making it machine-checked is not.
+  assert.equal(sha256(SERVICE_COPY), sha256(CANONICAL),
+    `${SERVICE_COPY} has drifted from ${CANONICAL} - edit the Backend/lib original and re-copy`);
 });
 
 // ------------------------------------------- neither caller may keep a local copy --
@@ -113,7 +105,7 @@ t('neither caller re-declares the attestation policy locally', () => {
     /'s24-termux-'\s*,\s*'s24-direct-cloud-'/,
     /=\s*'runtimeIsAndroid'/,
   ];
-  for (const file of [DASHBOARD, DROPLET]) {
+  for (const file of [DASHBOARD, SERVICE]) {
     const src = read(file);
     assert.match(src, /s24-attestation\.js/, `${file} does not import the shared module`);
     for (const re of banned) {
@@ -136,7 +128,7 @@ t('both callers accept a genuinely attested phone', () => {
   const doc = phoneDoc();
   assert.equal(strictS24Liveness(doc, fresh, fresh).live, true, 'dashboard rejected a real phone');
   const h = deviceHealth('samsung-s24-ultra', doc);
-  assert.equal(h.device_online, true, 'droplet rejected a real phone');
+  assert.equal(h.device_online, true, 'jp-agent service rejected a real phone');
   assert.equal(h.heartbeat_authenticated, true);
 });
 
@@ -148,7 +140,7 @@ t('both callers reject an off-device bridge that fakes everything else', () => {
   assert.equal(dash.reason, 'androidRuntime is missing or stale');
 
   const h = deviceHealth('samsung-s24-ultra', doc);
-  assert.equal(h.device_online, false, 'droplet accepted a bridge the dashboard refused');
+  assert.equal(h.device_online, false, 'jp-agent service accepted a bridge the dashboard refused');
   assert.equal(h.heartbeat_authenticated, false);
   // The stored flag is still surfaced honestly so a caller can see the disagreement.
   assert.equal(h.stored_online, true);
@@ -219,7 +211,7 @@ t('both callers refuse a legacy doc whose fresh ACK no completed queue entry bac
   const doc = { ...phoneDoc(), connectionMethod: 'termux-direct-cloud', lastCommandAckId: 'gone', commandQueue: {} };
   delete doc.enrollment;
   assert.equal(strictS24Liveness(doc, fresh, fresh).live, false, 'dashboard accepted an orphan ACK');
-  assert.equal(deviceHealth('samsung-s24-ultra', doc).device_online, false, 'droplet accepted an orphan ACK');
+  assert.equal(deviceHealth('samsung-s24-ultra', doc).device_online, false, 'jp-agent service accepted an orphan ACK');
 });
 
 t('both callers agree a rejected command proves nothing about execution', () => {
@@ -236,7 +228,7 @@ t('the Python mirrors reach the same verdict as this module on every evidence sh
   // Integrations/s24-connect-mcp/server.py and Devices/S24/pull_direct_cloud.py once
   // rejected connectionMethod='signed-broker-v2' outright, read evidence from a nested map
   // the broker never writes, and (the puller) demanded sourceType 'live_termux' while the
-  // broker writes 'live_daemon'. A healthy phone read live on the dashboard and droplet and
+  // broker writes 'live_daemon'. A healthy phone read live on the dashboard and jp-agent service and
   // offline/unattested in both. So they are executed here, not pattern-matched.
   const ago = (seconds) => new Date(Date.now() - seconds * 1000).toISOString();
   const legacy = (overrides = {}) => {

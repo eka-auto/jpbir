@@ -1,33 +1,45 @@
-From 9a5bb7f1ca1ab28acf391698d7f723d8ea79f865 Mon Sep 17 00:00:00 2001
+From 6c2061016881f8b367ad72e7599c850b30d91fd5 Mon Sep 17 00:00:00 2001
 From: "cline-cloud[bot]" <cline-cloud[bot]@users.noreply.github.com>
-Date: Mon, 19 Oct 2026 00:05:57 +0000
-Subject: [PATCH] ci(droplet): retire the droplet deploy path and its runner
+Date: Mon, 19 Oct 2026 00:13:28 +0000
+Subject: [PATCH] ci(render): retire the self-hosted deploy path and name
+ Render everywhere
 
-The jp-agent runtime moved to the Railway service jp-agent (owner direction,
-2026-10-18; project/decisions.md D-13), so nothing should deploy to the
-DigitalOcean droplet again.
+jp-agent deploys from git to Render (project/decisions.md D-14), so nothing
+should deploy to a droplet again.
 
 * deploy-droplet.yml is deleted. It targeted runs-on [self-hosted,
-  jp-agent-droplet], a label the droplet runner never carried, so no run of it
-  has ever succeeded -- every one queued until it was cancelled. Removing it
-  loses nothing that ever worked.
+  jp-agent-droplet], a label the runner never carried, so no run of it ever
+  succeeded -- every one queued until it was cancelled. Nothing that worked is
+  lost with it.
 * ci-cd.yml keeps its jp-agent job (it runs on ubuntu-latest); only the name and
-  the rationale comment referenced the droplet.
-* actionlint.yaml drops the four self-hosted labels: with no self-hosted
-  runs-on left that list is dead config, and the note says how to restore it.
+  the rationale comment referenced the droplet, and they now name Render and
+  render.yaml.
+* actionlint.yaml drops the four self-hosted labels: no self-hosted runs-on is
+  left, so the list is dead config, and the note says how to restore it.
 
-Destroying the droplet removes the repository's only self-hosted runner; the
-hosted runners are still billing-locked, so CI is left with no runner until that
-is cleared.
-
-This identity has no `workflows` permission, so the change ships as
-project/reports/2026-10-19-retire-jp-agent-droplet.patch.
+This identity has no `workflows` permission (GitHub rejects the push with
+"refusing to allow a GitHub App to create or update workflow"), so the change
+ships as project/reports/2026-10-19-retire-jp-agent-droplet.patch.
 ---
- .github/actionlint.yaml              | 10 +++---
- .github/workflows/ci-cd.yml          | 21 +++++++------
- .github/workflows/deploy-droplet.yml | 47 ----------------------------
- 3 files changed, 15 insertions(+), 63 deletions(-)
+ .github/actionlint.yaml                       |  10 +-
+ .github/workflows/ci-cd.yml                   |  21 +-
+ .github/workflows/deploy-droplet.yml          |  47 -----
+ Server/jp-agent/deploy-local.sh               | 172 ---------------
+ Server/jp-agent/deploy.sh                     | 199 ------------------
+ Server/jp-agent/jp-agent.service              |  43 ----
+ Server/jp-agent/nginx-jp-agent.conf           |  55 -----
+ Server/jp-agent/s24-mcp.service               |  35 ---
+ Server/jp-agent/sync-auth-token.py            |  61 ------
+ Server/jp-agent/tests/test_sync_auth_token.py |  23 --
+ 10 files changed, 15 insertions(+), 651 deletions(-)
  delete mode 100644 .github/workflows/deploy-droplet.yml
+ delete mode 100755 Server/jp-agent/deploy-local.sh
+ delete mode 100644 Server/jp-agent/deploy.sh
+ delete mode 100644 Server/jp-agent/jp-agent.service
+ delete mode 100644 Server/jp-agent/nginx-jp-agent.conf
+ delete mode 100644 Server/jp-agent/s24-mcp.service
+ delete mode 100644 Server/jp-agent/sync-auth-token.py
+ delete mode 100644 Server/jp-agent/tests/test_sync_auth_token.py
 
 diff --git a/.github/actionlint.yaml b/.github/actionlint.yaml
 index d9bcb4e..567ad07 100644
@@ -48,7 +60,7 @@ index d9bcb4e..567ad07 100644
  # Configuration variables in array of strings defined in your repository or
  # organization. `null` means disabling configuration variables check.
 diff --git a/.github/workflows/ci-cd.yml b/.github/workflows/ci-cd.yml
-index 5fd33cc..8239767 100644
+index 5fd33cc..98603a3 100644
 --- a/.github/workflows/ci-cd.yml
 +++ b/.github/workflows/ci-cd.yml
 @@ -87,18 +87,19 @@ jobs:
@@ -69,12 +81,12 @@ index 5fd33cc..8239767 100644
 -  # service dying at start with ERR_MODULE_NOT_FOUND. Importing s24-tools.mjs resolves
 -  # everything server.mjs imports (s24-tools -> device-health -> s24-attestation).
 -  # server.mjs itself calls listen() at import, so it only gets a syntax check.
-+  # The runtime is now the Railway service jp-agent (project/targets.json). It deploys from
-+  # its own dashboard and cannot be rolled back from here, so the last step checks the
-+  # failure a refactor is most likely to cause: the service dying at start with
-+  # ERR_MODULE_NOT_FOUND. Importing s24-tools.mjs resolves everything server.mjs imports
-+  # (s24-tools -> device-health -> s24-attestation). server.mjs itself calls listen() at
-+  # import, so it only gets a syntax check.
++  # The runtime is the Render web service jp-agent (render.yaml, project/targets.json), which
++  # deploys from git and cannot be rolled back from here, so the last step checks the failure
++  # a refactor is most likely to cause: the service dying at start with ERR_MODULE_NOT_FOUND.
++  # Importing s24-tools.mjs resolves everything server.mjs imports (s24-tools ->
++  # device-health -> s24-attestation). server.mjs itself calls listen() at import, so it only
++  # gets a syntax check.
    jp-agent:
 -    name: jp-agent (droplet) tests
 +    name: jp-agent tests
@@ -134,6 +146,636 @@ index 7dba606..0000000
 -          # deploy-local.sh handles file copying, npm ci, env creation,
 -          # service installation, and health checks — all without SSH.
 -          bash deploy-local.sh
+diff --git a/Server/jp-agent/deploy-local.sh b/Server/jp-agent/deploy-local.sh
+deleted file mode 100755
+index c55bc7e..0000000
+--- a/Server/jp-agent/deploy-local.sh
++++ /dev/null
+@@ -1,172 +0,0 @@
+-#!/usr/bin/env bash
+-# Local deploy — runs ON the droplet via the self-hosted GitHub Actions runner.
+-#
+-# This is the local equivalent of deploy.sh's remote block. It assumes the
+-# repository is already checked out in the runner's workspace, so no scp/ssh
+-# is needed. Run from Server/jp-agent/ on the droplet:
+-#
+-#   cd "$GITHUB_WORKSPACE/Server/jp-agent" && bash deploy-local.sh
+-#
+-# The workflow (.github/workflows/deploy-droplet.yml) calls this after checkout.
+-set -euo pipefail
+-
+-# The GitHub Actions runner runs as a non-root user by default. We need root
+-# for systemctl, nginx, and chown. Re-exec if not root.
+-if [ "$(id -u)" -ne 0 ]; then
+-  echo "==> Re-running as root via sudo"
+-  exec sudo "$0" "$@"
+-fi
+-
+-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+-
+-echo "==> Installing jp-agent and s24-mcp to local filesystem"
+-
+-# Create the service directories with correct ownership.
+-install -d -o jpagent -g jpagent /opt/jp-agent /opt/s24-mcp /srv/workspace
+-mkdir -p /srv/workspace
+-chown jpagent:jpagent /srv/workspace
+-
+-# Copy files. The repo is checked out at $SCRIPT_DIR (which is the jp-agent dir).
+-cp "$SCRIPT_DIR/server.mjs" "$SCRIPT_DIR/s24-tools.mjs" \
+-   "$SCRIPT_DIR/device-health.mjs" "$SCRIPT_DIR/s24-attestation.js" \
+-   "$SCRIPT_DIR/sync-auth-token.py" \
+-   "$SCRIPT_DIR/package.json" "$SCRIPT_DIR/package-lock.json" \
+-   /opt/jp-agent/
+-
+-cp "$SCRIPT_DIR/s24-mcp-server.mjs" "$SCRIPT_DIR/device-health.mjs" \
+-   "$SCRIPT_DIR/s24-attestation.js" \
+-   /opt/s24-mcp/
+-
+-cp "$SCRIPT_DIR/jp-agent.service" /etc/systemd/system/jp-agent.service
+-cp "$SCRIPT_DIR/s24-mcp.service" /etc/systemd/system/s24-mcp.service
+-cp "$SCRIPT_DIR/nginx-jp-agent.conf" /etc/nginx/sites-available/jp-agent.new
+-
+-# The recursive chown below reaches everything under /opt/jp-agent, including
+-# root-only artifacts (reconcile-* dirs, *.bak-* snapshots). Hand those back.
+-ROOT_ONLY="$(mktemp)"
+-trap 'rm -f "$ROOT_ONLY"' EXIT
+-find /opt/jp-agent -mindepth 1 -user root -print0 > "$ROOT_ONLY"
+-
+-chown -R jpagent:jpagent /opt/jp-agent
+-
+-echo "==> Installing dependencies"
+-cd /opt/jp-agent
+-sudo -u jpagent npm ci --omit=dev --no-audit --no-fund --silent
+-# The privileged stdin receiver must not be writable by the agent service.
+-chown root:root /opt/jp-agent /opt/jp-agent/sync-auth-token.py
+-chmod 755 /opt/jp-agent
+-chmod 644 /opt/jp-agent/sync-auth-token.py
+-
+-if [ -s "$ROOT_ONLY" ]; then
+-  echo "==> Restoring root ownership on pre-existing root-only paths"
+-  xargs -0 -r -a "$ROOT_ONLY" chown root:root --
+-fi
+-
+-# Create or update the env file. Unlike deploy.sh, this runs on the droplet
+-# itself, so we can read existing secrets from the environment or prompt.
+-if [ ! -f /etc/jp-agent.env ]; then
+-  echo "==> Creating /etc/jp-agent.env"
+-  TOKEN="$(openssl rand -hex 32)"
+-  MCP_TOKEN="$(openssl rand -hex 32)"
+-
+-  # Use GitHub Actions secrets if available (preferred), otherwise generate.
+-  if [ -n "${ANTHROPIC_AUTH_TOKEN:-}" ]; then
+-    ANTHROPIC_TOKEN="${ANTHROPIC_AUTH_TOKEN}"
+-  else
+-    ANTHROPIC_TOKEN=""
+-  fi
+-
+-  cat > /etc/jp-agent.env <<ENV
+-# Filled by GitHub Actions deploy workflow.
+-ANTHROPIC_AUTH_TOKEN=$ANTHROPIC_TOKEN
+-JP_AGENT_TOKEN=$TOKEN
+-S24_MCP_TOKEN=$MCP_TOKEN
+-JP_AGENT_WORKSPACE=/srv/workspace
+-JP_AGENT_PORT=8790
+-S24_SERVICE_ACCOUNT_KEY=/etc/jp-agent-firestore-key.json
+-S24_PROJECT_ID=intrepid-stage-495117-q1
+-S24_FIRESTORE_DB=eka-agent
+-ENV
+-  chmod 600 /etc/jp-agent.env
+-  echo "    generated JP_AGENT_TOKEN (grep JP_AGENT_TOKEN /etc/jp-agent.env)"
+-  echo "    generated S24_MCP_TOKEN (grep S24_MCP_TOKEN /etc/jp-agent.env)"
+-else
+-  echo "==> /etc/jp-agent.env already present, left untouched"
+-  grep -q "^S24_SERVICE_ACCOUNT_KEY=" /etc/jp-agent.env || cat >> /etc/jp-agent.env <<ENV
+-S24_SERVICE_ACCOUNT_KEY=/etc/jp-agent-firestore-key.json
+-S24_PROJECT_ID=intrepid-stage-495117-q1
+-S24_FIRESTORE_DB=eka-agent
+-ENV
+-  if ! grep -q "^S24_MCP_TOKEN=" /etc/jp-agent.env; then
+-    echo "==> Generating S24_MCP_TOKEN"
+-    printf 'S24_MCP_TOKEN=%s\n' "$(openssl rand -hex 32)" >> /etc/jp-agent.env
+-    chmod 600 /etc/jp-agent.env
+-  fi
+-fi
+-
+-# Read the S24_MCP_TOKEN from the env file (handles both fresh and upgrade paths).
+-S24_MCP_TOKEN="$(grep '^S24_MCP_TOKEN=' /etc/jp-agent.env | cut -d= -f2-)"
+-
+-# Copy the MCP config that points jp-agent at the standalone s24-mcp server.
+-# This file is created by the deploy workflow. It configures the MCP server
+-# URL and the bearer token (interpolated from the environment).
+-cat > /etc/jp-agent-mcp.json <<MCP
+-{
+-  "servers": [
+-    {
+-      "name": "s24-connect",
+-      "type": "http",
+-      "url": "http://127.0.0.1:8792/mcp",
+-      "headers": {
+-        "Authorization": "Bearer ${S24_MCP_TOKEN}"
+-      }
+-    }
+-  ]
+-}
+-MCP
+-chmod 600 /etc/jp-agent-mcp.json
+-chown jpagent:jpagent /etc/jp-agent-mcp.json
+-
+-# Handle the Firestore service account key if not present.
+-if [ ! -f /etc/jp-agent-firestore-key.json ]; then
+-  if [ -n "${S24_FIRESTORE_KEY:-}" ]; then
+-    echo "$S24_FIRESTORE_KEY" > /etc/jp-agent-firestore-key.json
+-    chown jpagent:jpagent /etc/jp-agent-firestore-key.json
+-    chmod 600 /etc/jp-agent-firestore-key.json
+-    echo "    provisioned Firestore service account key from secret"
+-  else
+-    echo "==> /etc/jp-agent-firestore-key.json is missing — s24-connect tools will fail"
+-    echo "    Set the S24_FIRESTORE_KEY secret in the repository, then re-deploy"
+-  fi
+-fi
+-
+-# Seed the s24-mcp package.json and install its dependencies.
+-if [ ! -f /opt/s24-mcp/package.json ]; then
+-  echo "==> Seeding /opt/s24-mcp/package.json"
+-  cp /opt/jp-agent/package.json /opt/jp-agent/package-lock.json /opt/s24-mcp/
+-fi
+-echo "==> Installing s24-mcp dependencies"
+-cd /opt/s24-mcp
+-sudo -u jpagent npm ci --omit=dev --no-audit --no-fund --silent
+-
+-# Reload systemd and restart both services.
+-systemctl daemon-reload
+-systemctl enable jp-agent >/dev/null
+-systemctl restart jp-agent
+-sleep 2
+-systemctl is-active jp-agent && echo "==> jp-agent active" || { echo "ERROR: jp-agent is not active"; exit 1; }
+-
+-systemctl enable s24-mcp >/dev/null
+-systemctl restart s24-mcp
+-sleep 2
+-if systemctl is-active --quiet s24-mcp; then
+-  echo "==> s24-mcp active"
+-  code="$(curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:8792/mcp)"
+-  echo "    unauthenticated POST /mcp -> $code (401 expected)"
+-else
+-  echo "==> WARNING: s24-mcp is not active"
+-  journalctl -u s24-mcp -n 40 --no-pager
+-  exit 1
+-fi
+-
+-echo "==> Local deploy complete"
+diff --git a/Server/jp-agent/deploy.sh b/Server/jp-agent/deploy.sh
+deleted file mode 100644
+index ec8fcb5..0000000
+--- a/Server/jp-agent/deploy.sh
++++ /dev/null
+@@ -1,199 +0,0 @@
+-#!/usr/bin/env bash
+-# Provision or update jp-agent on the droplet. Idempotent — safe to re-run.
+-#
+-#   ./deploy.sh <droplet-ip> [ssh-key-path]
+-#
+-# Secrets are NOT handled here. /etc/jp-agent.env is created empty-but-valid on
+-# first run and the two values are filled in on the box, so no key ever passes
+-# through a repo, a shell history, or an agent transcript:
+-#
+-#   ANTHROPIC_AUTH_TOKEN   your current Anthropic OAuth token
+-#   JP_AGENT_TOKEN      generated on the droplet by this script if absent
+-#
+-# The s24-connect MCP tools (s24-tools.mjs) need a Firestore-capable service
+-# account key. Same rule as above — never in the repo or an agent transcript.
+-# Provision it once, by hand, before or after the first deploy:
+-#
+-#   scp -i <ssh-key-path> <path-to-key.json> root@<ip>:/etc/jp-agent-firestore-key.json
+-#   ssh -i <ssh-key-path> root@<ip> \
+-#     'chown jpagent:jpagent /etc/jp-agent-firestore-key.json && chmod 600 /etc/jp-agent-firestore-key.json'
+-#
+-# This script wires the non-secret S24_* env vars (project, database, and the
+-# key's path — not its contents) into /etc/jp-agent.env; without the key file
+-# in place, jp-agent still starts, but every s24-connect tool call fails.
+-set -euo pipefail
+-
+-IP="${1:?usage: deploy.sh <droplet-ip> [ssh-key-path]}"
+-KEY="${2:-$HOME/.ssh/jayat_laptop_key}"
+-SSH=(ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -i "$KEY" "root@$IP")
+-
+-echo "==> shipping service files"
+-"${SSH[@]}" "install -d -o jpagent -g jpagent /opt/jp-agent /opt/s24-mcp"
+-scp -o BatchMode=yes -o StrictHostKeyChecking=accept-new -i "$KEY" \
+-  "$(dirname "$0")/server.mjs" "$(dirname "$0")/s24-tools.mjs" \
+-  "$(dirname "$0")/device-health.mjs" "$(dirname "$0")/s24-attestation.js" \
+-  "$(dirname "$0")/sync-auth-token.py" \
+-  "$(dirname "$0")/package.json" "$(dirname "$0")/package-lock.json" \
+-  "root@$IP:/opt/jp-agent/"
+-# s24-mcp is a separate process with its own systemd unit, so it gets its own
+-# directory. s24-mcp-server.mjs imports ./device-health.mjs relatively, and
+-# device-health.mjs in turn imports ./s24-attestation.js — so the whole
+-# transitive closure has to land in one directory or node fails at startup with
+-# ERR_MODULE_NOT_FOUND. These are the same files shipped to /opt/jp-agent above;
+-# s24-attestation.test.mjs asserts the repo-side copies are byte-identical, so
+-# the two droplet copies cannot drift either.
+-scp -o BatchMode=yes -o StrictHostKeyChecking=accept-new -i "$KEY" \
+-  "$(dirname "$0")/s24-mcp-server.mjs" "$(dirname "$0")/device-health.mjs" \
+-  "$(dirname "$0")/s24-attestation.js" \
+-  "root@$IP:/opt/s24-mcp/"
+-scp -o BatchMode=yes -o StrictHostKeyChecking=accept-new -i "$KEY" \
+-  "$(dirname "$0")/jp-agent.service" "root@$IP:/etc/systemd/system/jp-agent.service"
+-# The unit's ExecStart must name s24-mcp-server.mjs. It used to say server.mjs,
+-# which does not exist in /opt/s24-mcp, so systemctl start would have failed with
+-# "file not found" even once the file was shipped. s24-mcp.service and the file
+-# shipped above are kept in step here.
+-scp -o BatchMode=yes -o StrictHostKeyChecking=accept-new -i "$KEY" \
+-  "$(dirname "$0")/s24-mcp.service" "root@$IP:/etc/systemd/system/s24-mcp.service"
+-scp -o BatchMode=yes -o StrictHostKeyChecking=accept-new -i "$KEY" \
+-  "$(dirname "$0")/nginx-jp-agent.conf" "root@$IP:/etc/nginx/sites-available/jp-agent.new"
+-
+-"${SSH[@]}" 'bash -s' <<'REMOTE'
+-set -euo pipefail
+-
+-# The recursive chown below reaches everything under /opt/jp-agent, including
+-# root-only artifacts that are not part of the runtime — the reconcile-* quarantine
+-# dirs and the timestamped *.bak-* snapshots. Handing those to the service user
+-# widens what a compromised agent can read, so snapshot them and restore after.
+-ROOT_ONLY="$(mktemp)"
+-trap 'rm -f "$ROOT_ONLY"' EXIT
+-find /opt/jp-agent -mindepth 1 -user root -print0 > "$ROOT_ONLY"
+-
+-chown -R jpagent:jpagent /opt/jp-agent
+-
+-echo "==> installing dependencies"
+-cd /opt/jp-agent
+-# `npm ci`, not `npm install`: the droplet installs exactly the versions in the
+-# committed package-lock.json. `npm install` re-resolves the `^` ranges in
+-# package.json on every deploy, so the box could run a claude-agent-sdk release
+-# nobody tested. `npm ci` also fails loudly if the lockfile and package.json
+-# disagree, instead of quietly rewriting the lockfile on the server.
+-sudo -u jpagent npm ci --omit=dev --no-audit --no-fund --silent
+-# The privileged stdin receiver must not be writable by the agent service.
+-chown root:root /opt/jp-agent /opt/jp-agent/sync-auth-token.py
+-chmod 755 /opt/jp-agent
+-chmod 644 /opt/jp-agent/sync-auth-token.py
+-
+-if [ -s "$ROOT_ONLY" ]; then
+-  echo "==> restoring root ownership on pre-existing root-only paths"
+-  xargs -0 -r -a "$ROOT_ONLY" chown root:root --
+-fi
+-
+-# Create the env file on first run only, so re-deploying never clobbers a key
+-# that is already in place.
+-if [ ! -f /etc/jp-agent.env ]; then
+-  echo "==> creating /etc/jp-agent.env"
+-  TOKEN="$(openssl rand -hex 32)"
+-  # A second, independent token for the standalone s24-mcp HTTP server. Generated
+-  # separately from JP_AGENT_TOKEN on purpose: the browser-facing dashboard key and
+-  # the MCP loopback key have different blast radii, so one leaking should not
+-  # authenticate the other. Read it with: grep S24_MCP_TOKEN /etc/jp-agent.env
+-  MCP_TOKEN="$(openssl rand -hex 32)"
+-  cat > /etc/jp-agent.env <<ENV
+-# Fill ANTHROPIC_AUTH_TOKEN securely, then: systemctl restart jp-agent s24-mcp
+-ANTHROPIC_AUTH_TOKEN=
+-JP_AGENT_TOKEN=$TOKEN
+-S24_MCP_TOKEN=$MCP_TOKEN
+-JP_AGENT_WORKSPACE=/srv/workspace
+-JP_AGENT_PORT=8790
+-S24_SERVICE_ACCOUNT_KEY=/etc/jp-agent-firestore-key.json
+-S24_PROJECT_ID=intrepid-stage-495117-q1
+-S24_FIRESTORE_DB=eka-agent
+-ENV
+-  chmod 600 /etc/jp-agent.env
+-  echo "    generated JP_AGENT_TOKEN (read it with: grep JP_AGENT_TOKEN /etc/jp-agent.env)"
+-  echo "    generated S24_MCP_TOKEN (read it with: grep S24_MCP_TOKEN /etc/jp-agent.env)"
+-else
+-  echo "==> /etc/jp-agent.env already present, left untouched"
+-  # Upgrade path for a box deployed before the s24-connect tools existed: add
+-  # the (non-secret) S24_* vars if missing, without touching anything else.
+-  grep -q "^S24_SERVICE_ACCOUNT_KEY=" /etc/jp-agent.env || cat >> /etc/jp-agent.env <<ENV
+-S24_SERVICE_ACCOUNT_KEY=/etc/jp-agent-firestore-key.json
+-S24_PROJECT_ID=intrepid-stage-495117-q1
+-S24_FIRESTORE_DB=eka-agent
+-ENV
+-  # Same for a box deployed before the standalone s24-mcp unit existed. Without
+-  # this the unit exits 1 on startup (it refuses to serve unauthenticated), and
+-  # the failure looks like a missing file rather than a missing token.
+-  if ! grep -q "^S24_MCP_TOKEN=" /etc/jp-agent.env; then
+-    echo "==> generating S24_MCP_TOKEN (s24-mcp refuses to start without it)"
+-    # Append before chmod'ing again so the file is never briefly world-readable.
+-    printf 'S24_MCP_TOKEN=%s\n' "$(openssl rand -hex 32)" >> /etc/jp-agent.env
+-    chmod 600 /etc/jp-agent.env
+-    echo "    read it with: grep S24_MCP_TOKEN /etc/jp-agent.env"
+-  fi
+-fi
+-
+-if [ ! -f /etc/jp-agent-firestore-key.json ]; then
+-  echo "==> /etc/jp-agent-firestore-key.json is missing — s24-connect tool calls will fail until it's provisioned"
+-  echo "    scp the Firestore service-account key there, then:"
+-  echo "    chown jpagent:jpagent /etc/jp-agent-firestore-key.json && chmod 600 /etc/jp-agent-firestore-key.json"
+-fi
+-
+-# Same rule as the env file above: never clobber what the box has customised.
+-# Once certbot has run it rewrites this vhost in place — moves :80 to a redirect
+-# block and adds the :443 listener plus cert paths. Overwriting it would silently
+-# drop TLS, and JP_AGENT_URL is https://, so the dashboard terminal would break.
+-if [ -f /etc/nginx/sites-available/jp-agent ] &&
+-   grep -q "managed by Certbot" /etc/nginx/sites-available/jp-agent; then
+-  echo "==> nginx vhost is certbot-managed, left untouched"
+-  echo "    shipped copy parked at /etc/nginx/sites-available/jp-agent.new"
+-  echo "    to adopt it: install it, then re-run certbot --nginx -d runner.jaytipargal.tech"
+-else
+-  mv /etc/nginx/sites-available/jp-agent.new /etc/nginx/sites-available/jp-agent
+-fi
+-
+-ln -sf /etc/nginx/sites-available/jp-agent /etc/nginx/sites-enabled/jp-agent
+-rm -f /etc/nginx/sites-enabled/default
+-nginx -t
+-systemctl reload nginx
+-
+-# s24-mcp needs its own node_modules: it is a separate process in a separate
+-# directory, and it imports @modelcontextprotocol/sdk, which jp-agent itself
+-# does not use. Ship the same package.json/package-lock.json so `npm ci` pins
+-# identical versions rather than re-resolving the ^ ranges on the box.
+-if [ ! -f /opt/s24-mcp/package.json ]; then
+-  echo "==> seeding /opt/s24-mcp/package.json"
+-  cp /opt/jp-agent/package.json /opt/jp-agent/package-lock.json /opt/s24-mcp/
+-fi
+-echo "==> installing s24-mcp dependencies"
+-cd /opt/s24-mcp
+-sudo -u jpagent npm ci --omit=dev --no-audit --no-fund --silent
+-
+-systemctl daemon-reload
+-systemctl enable jp-agent >/dev/null
+-systemctl restart jp-agent
+-sleep 2
+-systemctl is-active jp-agent && echo "==> jp-agent active"
+-curl -sf http://127.0.0.1:8790/health && echo
+-
+-systemctl enable s24-mcp >/dev/null
+-systemctl restart s24-mcp
+-sleep 2
+-if systemctl is-active --quiet s24-mcp; then
+-  echo "==> s24-mcp active"
+-  # 401 without a bearer token is the healthy answer: it proves the listener is
+-  # up and refusing anonymous callers. A connection error or 404 would not.
+-  code="$(curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:8792/mcp)"
+-  echo "    unauthenticated POST /mcp -> $code (401 expected)"
+-  if [ "$code" != "401" ]; then
+-    echo "    WARNING: expected 401 from /mcp without a token; got $code"
+-    echo "    check: journalctl -u s24-mcp -n 40 --no-pager"
+-  fi
+-else
+-  echo "==> WARNING: s24-mcp is not active"
+-  echo "    check: journalctl -u s24-mcp -n 40 --no-pager"
+-  echo "    a missing S24_MCP_TOKEN in /etc/jp-agent.env is the usual cause"
+-fi
+-REMOTE
+-
+-echo "==> done"
+diff --git a/Server/jp-agent/jp-agent.service b/Server/jp-agent/jp-agent.service
+deleted file mode 100644
+index 7e5829f..0000000
+--- a/Server/jp-agent/jp-agent.service
++++ /dev/null
+@@ -1,43 +0,0 @@
+-[Unit]
+-Description=jp-agent — jaytipargal.tech agent runtime
+-After=network-online.target
+-Wants=network-online.target
+-
+-[Service]
+-Type=simple
+-User=jpagent
+-Group=jpagent
+-WorkingDirectory=/opt/jp-agent
+-# Secrets live here, root-owned and 0600, never in this unit file and never
+-# in the repo. Provisioned once by deploy.sh.
+-EnvironmentFile=/etc/jp-agent.env
+-# Cloud CLI credentials (DigitalOcean, GitHub, Vultr), owned by jpagent, 0600.
+-# Optional (-) so the service still starts on a box that has none. The CLIs
+-# themselves live in ~/bin, which a non-login service shell would not have on
+-# PATH — without this the agent's tools report "command not found".
+-EnvironmentFile=-/home/jpagent/.config/jp-cloud/credentials.env
+-Environment=PATH=/home/jpagent/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+-ExecStart=/usr/bin/node /opt/jp-agent/server.mjs
+-Restart=always
+-RestartSec=3
+-
+-# The agent runs arbitrary commands on purpose, so confine what that can reach.
+-# The workspace and its own home stay writable; the rest of the filesystem does
+-# not. ProtectSystem=strict makes / read-only apart from the ReadWritePaths.
+-NoNewPrivileges=true
+-PrivateTmp=true
+-ProtectSystem=strict
+-ProtectHome=read-only
+-ReadWritePaths=/srv/workspace /home/jpagent
+-ProtectKernelTunables=true
+-ProtectKernelModules=true
+-ProtectControlGroups=true
+-RestrictSUIDSGID=true
+-LockPersonality=true
+-
+-StandardOutput=journal
+-StandardError=journal
+-SyslogIdentifier=jp-agent
+-
+-[Install]
+-WantedBy=multi-user.target
+diff --git a/Server/jp-agent/nginx-jp-agent.conf b/Server/jp-agent/nginx-jp-agent.conf
+deleted file mode 100644
+index c21174a..0000000
+--- a/Server/jp-agent/nginx-jp-agent.conf
++++ /dev/null
+@@ -1,55 +0,0 @@
+-# Sole ingress to jp-agent. The Node service binds 127.0.0.1 only, so this is
+-# the one path in — which is what makes the bearer check unbypassable.
+-#
+-# TLS is added afterwards by certbot (see README). Until then this serves plain
+-# HTTP, which is acceptable ONLY because the caller is Vercel over the public
+-# internet with a bearer token; run certbot before treating it as production.
+-#
+-# STATUS: certbot HAS been run on the droplet (2026-09-12, cert for
+-# runner.jaytipargal.tech valid to 2026-12-11), so the LIVE vhost no longer
+-# matches this file — certbot moved :80 to a redirect-or-404 block and added the
+-# :443 listener. This file is the pre-TLS template only. deploy.sh detects the
+-# certbot markers and will not overwrite the live copy.
+-
+-upstream jp_agent {
+-    server 127.0.0.1:8790;
+-    keepalive 8;
+-}
+-
+-server {
+-    listen 80;
+-    listen [::]:80;
+-    server_name runner.jaytipargal.tech;
+-
+-    # The agent is not a browser app. No CORS headers on purpose: the only
+-    # legitimate caller is the Vercel function, server-to-server. A browser
+-    # that finds this endpoint should get nowhere even holding the token.
+-    add_header X-Content-Type-Options nosniff always;
+-    add_header X-Frame-Options DENY always;
+-
+-    client_max_body_size 8m;
+-
+-    location /health {
+-        proxy_pass http://jp_agent;
+-        access_log off;
+-    }
+-
+-    location / {
+-        proxy_pass http://jp_agent;
+-        proxy_http_version 1.1;
+-        proxy_set_header Host $host;
+-        proxy_set_header X-Real-IP $remote_addr;
+-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+-        proxy_set_header Connection "";
+-
+-        # Server-Sent Events: buffering here would hold the whole response
+-        # until completion and defeat the point of streaming progress.
+-        proxy_buffering off;
+-        proxy_cache off;
+-
+-        # An agent task can legitimately run for minutes (installs, builds,
+-        # test suites). Default 60s timeouts would sever those mid-run.
+-        proxy_read_timeout 900s;
+-        proxy_send_timeout 900s;
+-    }
+-}
+diff --git a/Server/jp-agent/s24-mcp.service b/Server/jp-agent/s24-mcp.service
+deleted file mode 100644
+index b46bc49..0000000
+--- a/Server/jp-agent/s24-mcp.service
++++ /dev/null
+@@ -1,35 +0,0 @@
+-[Unit]
+-Description=s24-mcp — streamable-HTTP MCP server for the Firestore device registry
+-After=network-online.target
+-Wants=network-online.target
+-
+-[Service]
+-Type=simple
+-User=jpagent
+-Group=jpagent
+-WorkingDirectory=/opt/s24-mcp
+-# S24_MCP_TOKEN and the Firestore/service settings live here, root-owned 0600,
+-# shared with jp-agent so both sides of the loopback call use one token.
+-EnvironmentFile=/etc/jp-agent.env
+-# ExecStart must name s24-mcp-server.mjs, the actual filename in /opt/s24-mcp.
+-# It previously said server.mjs, which never existed there.
+-ExecStart=/usr/bin/node /opt/s24-mcp/s24-mcp-server.mjs
+-Restart=always
+-RestartSec=3
+-
+-NoNewPrivileges=true
+-PrivateTmp=true
+-ProtectSystem=strict
+-ProtectHome=read-only
+-# Same confinement as jp-agent.service. /opt/s24-mcp holds this unit's code and
+-# must stay writable for redeploys; nothing else on the filesystem does.
+-ReadWritePaths=/opt/s24-mcp
+-RestrictSUIDSGID=true
+-LockPersonality=true
+-
+-StandardOutput=journal
+-StandardError=journal
+-SyslogIdentifier=s24-mcp
+-
+-[Install]
+-WantedBy=multi-user.target
+diff --git a/Server/jp-agent/sync-auth-token.py b/Server/jp-agent/sync-auth-token.py
+deleted file mode 100644
+index a20cf17..0000000
+--- a/Server/jp-agent/sync-auth-token.py
++++ /dev/null
+@@ -1,61 +0,0 @@
+-#!/usr/bin/env python3
+-"""Root-only stdin receiver; never log credentials or accept them in argv."""
+-import os
+-import re
+-import subprocess
+-import sys
+-import tempfile
+-from pathlib import Path
+-
+-
+-def replace_token(content, token):
+-    if not re.fullmatch(r'sk-ant-[A-Za-z0-9_-]+', token):
+-        raise ValueError('Invalid token format')
+-    lines = [line for line in content.splitlines()
+-             if not line.startswith(('ANTHROPIC_API_KEY=', 'ANTHROPIC_AUTH_TOKEN='))]
+-    return '\n'.join(lines + ['ANTHROPIC_AUTH_TOKEN=' + token]) + '\n'
+-
+-
+-def main():
+-    path = Path('/etc/jp-agent.env')
+-    if os.geteuid() != 0 or not path.is_file():
+-        raise RuntimeError('Existing root-managed agent configuration required')
+-    token = sys.stdin.read(16385).strip()
+-    if len(token) > 16384:
+-        raise ValueError('Input too large')
+-    original = path.read_text()
+-    updated = replace_token(original, token)
+-    if updated != original:
+-        fd, temporary = tempfile.mkstemp(prefix='.jp-agent-env-', dir=path.parent)
+-        try:
+-            with os.fdopen(fd, 'w') as stream:
+-                stream.write(updated)
+-                stream.flush()
+-                os.fsync(stream.fileno())
+-            os.chmod(temporary, 0o600)
+-            os.replace(temporary, path)
+-        finally:
+-            if os.path.exists(temporary):
+-                os.unlink(temporary)
+-        # Restart every unit that reads ANTHROPIC_AUTH_TOKEN from this file.
+-        # jp-agent is mandatory and checked: without its restart the new token
+-        # never takes effect. s24-mcp shares the same env file and would
+-        # otherwise keep authenticating with the rotated-away credential — but
+-        # its unit only exists on a box that a deploy.sh which installs it has
+-        # already touched, so a not-yet-redeployed box must still be able to
+-        # rotate its token. Hence the tolerant second restart.
+-        subprocess.run(['systemctl', 'restart', 'jp-agent'], check=True, capture_output=True)
+-        mcp = subprocess.run(['systemctl', 'restart', 's24-mcp'], capture_output=True)
+-        if mcp.returncode != 0:
+-            print('note: s24-mcp was not restarted (unit absent or failed); '
+-                  'run ./deploy.sh to install it', file=sys.stderr)
+-    subprocess.run(['systemctl', 'is-active', '--quiet', 'jp-agent'], check=True, capture_output=True)
+-    print('Cloud token synchronized; service active')
+-
+-
+-if __name__ == '__main__':
+-    try:
+-        main()
+-    except Exception:
+-        print('Cloud token synchronization failed; inspect configuration without printing secrets', file=sys.stderr)
+-        sys.exit(1)
+diff --git a/Server/jp-agent/tests/test_sync_auth_token.py b/Server/jp-agent/tests/test_sync_auth_token.py
+deleted file mode 100644
+index 5adc36a..0000000
+--- a/Server/jp-agent/tests/test_sync_auth_token.py
++++ /dev/null
+@@ -1,23 +0,0 @@
+-import importlib.util
+-from pathlib import Path
+-import unittest
+-
+-spec = importlib.util.spec_from_file_location('sync_auth', Path(__file__).parents[1] / 'sync-auth-token.py')
+-module = importlib.util.module_from_spec(spec)
+-spec.loader.exec_module(module)
+-
+-
+-class TokenSyncTests(unittest.TestCase):
+-    def test_replaces_old_credentials_preserving_other_settings(self):
+-        value = module.replace_token('JP_AGENT_TOKEN=keep\nANTHROPIC_API_KEY=old\nANTHROPIC_AUTH_TOKEN=stale\n', 'sk-ant-test')
+-        self.assertEqual(value, 'JP_AGENT_TOKEN=keep\nANTHROPIC_AUTH_TOKEN=sk-ant-test\n')
+-        self.assertEqual(module.replace_token(value, 'sk-ant-test'), value)
+-
+-    def test_rejects_environment_injection(self):
+-        for value in ['', 'sk-ant-test\nOTHER=value', 'sk-ant-test\rOTHER=value', 'bad']:
+-            with self.assertRaises(ValueError):
+-                module.replace_token('', value)
+-
+-
+-if __name__ == '__main__':
+-    unittest.main()
 -- 
 2.39.5
 

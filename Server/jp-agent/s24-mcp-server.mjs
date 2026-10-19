@@ -1,5 +1,5 @@
 // s24-mcp — standalone streamable-HTTP MCP server exposing the S24 device
-// registry tools on the droplet.
+// registry tools on the jp-agent.
 //
 // This is the network-transport twin of s24-tools.mjs (the in-process MCP
 // server jp-agent loads via createSdkMcpServer). Both wrap the SAME tool
@@ -18,11 +18,11 @@
 // pattern as jp-agent. Binds 127.0.0.1 only; nginx terminates TLS.
 //
 // The device-health import below is RELATIVE, not absolute. It used to be
-// '/opt/jp-agent/device-health.mjs', which pinned this module to one droplet
+// '/opt/jp-agent/device-health.mjs', which pinned this module to one jp-agent
 // directory and meant no test could ever import it: every suite had to
 // regex-read the source instead of executing it, which is exactly how the
 // missing-dependency and never-deployed bugs in this file went unnoticed.
-// Relative resolves both on the droplet (deploy.sh lands both files flat in
+// Relative resolves both on the jp-agent (deploy.sh lands both files flat in
 // /opt/jp-agent) and in the test suite from this directory.
 
 import { createServer } from 'node:http';

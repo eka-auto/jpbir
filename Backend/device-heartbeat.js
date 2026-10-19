@@ -40,7 +40,7 @@ export const TELEMETRY_WHITELIST = [
   'network',
 ];
 
-// The fields jp-devices and the droplet read as evidence that the S24 itself is running.
+// The fields jp-devices and the jp-agent read as evidence that the S24 itself is running.
 // Any enrolled broker device can send telemetry, and canonicalDeviceId is what makes
 // isS24Document() treat a doc as the phone, so a laptop agent or an off-device bridge with
 // its own key could once mark its own doc as the S24 and assert every one of these about

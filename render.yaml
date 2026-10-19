@@ -1,0 +1,42 @@
+# Render blueprint for the jp-agent runtime (project/decisions.md D-14).
+#
+# Render is the only deployment target for jp-agent. This file is the reviewable
+# definition of the service; a dashboard click is not. It holds no secret values:
+# every variable marked `sync: false` is prompted for by Render and stored there,
+# never here.
+#
+# Not yet verified against the live service: plan, region and disk size are
+# conservative defaults, not values read back from the dashboard.
+services:
+  - type: web
+    name: jp-agent
+    runtime: node
+    plan: starter
+    rootDir: Server/jp-agent
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /health
+    # server.mjs binds 127.0.0.1 unless this is set, and Render's proxy sits
+    # outside the container, so without it the service accepts no connections.
+    envVars:
+      - key: JP_AGENT_HOST
+        value: 0.0.0.0
+      - key: JP_AGENT_TOKEN
+        sync: false
+      - key: ANTHROPIC_AUTH_TOKEN
+        sync: false
+      # A PATH, not JSON: s24-tools.mjs readFileSync()s it.
+      - key: S24_SERVICE_ACCOUNT_KEY
+        sync: false
+      - key: S24_PROJECT_ID
+        value: intrepid-stage-495117-q1
+      - key: S24_FIRESTORE_DB
+        value: eka-agent
+      - key: S24_MCP_TOKEN
+        sync: false
+    # The agent's workspace must outlive a deploy; Render's container filesystem
+    # does not. Keep JP_AGENT_WORKSPACE inside this mount.
+    disk:
+      name: workspace
+      mountPath: /srv/workspace
+      sizeGB: 1

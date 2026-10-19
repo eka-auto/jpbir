@@ -238,7 +238,7 @@ async function probeBlob() {
  * the repo. That is true, and it was answering the wrong question. Nobody cares
  * whether those bytes sit on a disk; they care whether the page loads. That is
  * a request, and a request is exactly what this function can make — the same
- * class of evidence as `probeAgent`, which believes the droplet only when nginx
+ * class of evidence as `probeAgent`, which believes the jp-agent only when nginx
  * answers it.
  *
  * So each file carries the URL the edge serves it at and the probe HEADs it:

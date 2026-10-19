@@ -89,7 +89,7 @@ rationale is in [`INTEGRATION.md`](./INTEGRATION.md).
 | Frontend | `Frontend/` | Static dashboard pages, styles, components | 1976 |
 | Backend | `Backend/` | Vercel serverless functions — the API | 172 |
 | Database | `Database/` | Schemas, migrations, Firestore/vector tooling | 26 |
-| Server | `Server/` | `jp-agent` droplet runtime, deploy scripts, nginx/systemd | 63 |
+| Server | `Server/` | `jp-agent` Render runtime, tests, `render.yaml` | 63 |
 | Integrations | `Integrations/` | Shared store clients (`postgres.js`, `wa-store.js`, `s24-store.js`) | 9 |
 | _shared | `_shared/` | Project-wide config, docs, and **all tests** | 93 |
 | Devices | `Devices/` | Self-contained per-device installer bundles | 71 |
@@ -218,7 +218,7 @@ instead of `g4g-lenovo-laptop`; fixed on the laptop 2026-09-23), and until
 alerts said five devices, the dashboard four. Every device count now goes
 through `splitFleet()`: the health verdict, `check-stale`, the
 `/api/jp-devices` roster (which names the rest in `other_documents`),
-`verify-db`, and the droplet's `list_devices` (via its copy in
+`verify-db`, and the service's `list_devices` (via its copy in
 `Server/jp-agent/device-health.mjs`). `_shared/tests/device-fleet.test.mjs`
 pins all of it. Never count the collection.
 
@@ -288,8 +288,8 @@ record is in Vercel's zone, but the host is the Jayti Hub VPS, built from
 `jaytipargal/jayti` (a public repo). nginx there sends `/` to the Hub (:8443),
 `/retrieve/` to device-key retrieval (:8444), and `/retrieval/` and `/agent/`
 to the EKA RAG stack (:8100, :8000) behind one shared `X-API-Key`. On
-2026-09-24 it answered as `nginx/1.28.3` and the `jp-agent` droplet at
-`runner.jaytipargal.tech` as `nginx/1.24.0`: two hosts.
+2026-09-24 it answered as `nginx/1.28.3`, while the jp-agent host of the day
+answered `nginx/1.24.0`: two hosts, and only one of them was this repo's.
 
 This repo depends on it in one place: `/api/jp-live-agent`
 (`Backend/jp-live-agent.js`) proxies to its `/agent/` (`AGENT_API_URL`) with
@@ -435,13 +435,13 @@ CI workflows in `.github/workflows/`: `ci-cd.yml` (lint + test),
 
   Only the S24's own enrolled key may write the S24 evidence fields
   (`S24_ONLY_TELEMETRY` in `Backend/device-heartbeat.js`). The dashboard, the
-  droplet and both Python mirrors take the policy from that module, and
+  Render service and both Python mirrors take the policy from that module, and
   `_shared/tests/s24-attestation.test.mjs` runs them against each other. New
   device-status logic must fail closed the same way.
 - **Secrets never enter the repo, the deploy script, or an agent transcript.**
-  On the droplet, `ANTHROPIC_AUTH_TOKEN` is piped over **stdin**
-  (`printf '%s' "$TOKEN" | python3 /opt/jp-agent/sync-auth-token.py`), never
-  passed as an argument, so it never lands in shell history. When Claude audits
+  On Render, `ANTHROPIC_AUTH_TOKEN` is a service environment variable
+  set through the dashboard, never a command-line argument and never a file in
+  the repository, so it never lands in shell history or a commit. When Claude audits
   env vars or credentials, it masks every value to the last 4 characters — and
   note that in this Vercel team some secrets are embedded in env var *names*, so
   names need masking too.
@@ -483,7 +483,7 @@ CI workflows in `.github/workflows/`: `ci-cd.yml` (lint + test),
 - [`QWEN.md`](./QWEN.md) — Qwen's parallel context file (kept as Qwen wrote it)
 - [`README.md`](./README.md) — human-facing overview (slightly stale on `npm test`)
 - [`INTEGRATION.md`](./INTEGRATION.md) — the restructure, file by file
-- [`Server/jp-agent/README.md`](./Server/jp-agent/README.md) — droplet runtime, deploy, secrets
+- [`Server/jp-agent/README.md`](./Server/jp-agent/README.md) — Render runtime, environment, verification
 - [`Devices/S24/DAEMON_ARCHITECTURE.md`](./Devices/S24/DAEMON_ARCHITECTURE.md) — the phone daemon
 - `_shared/docs/` — setup guides (`GITHUB_ACTIONS_SETUP.md`, `ADD_FIREBASE_SECRET_TO_GITHUB.md`, …)
 

@@ -169,7 +169,7 @@ _HTTP_TIMEOUT = 20
 # runs _s24_liveness_evidence() against the JS module on the same documents and fails on
 # any disagreement: this copy once rejected every signed-broker-v2 heartbeat and read its
 # evidence from a nested map the broker never writes, so device_ping called a healthy
-# phone offline while the dashboard and droplet called it live.
+# phone offline while the dashboard and jp-agent called it live.
 S24_HEARTBEAT_FRESHNESS_SECONDS = 300
 S24_PHONE_AGENT_PREFIXES = ("s24-termux-", "s24-direct-cloud-")
 S24_LEGACY_CONNECTION_METHODS = frozenset({"termux-direct-cloud", "direct-daemon"})
@@ -468,7 +468,7 @@ def _s24_liveness_evidence(doc: dict[str, Any], age: int | None = None) -> str |
 
 
 def _s24_phone_heartbeat_is_fresh(doc: dict[str, Any], age: int | None = None) -> bool:
-    """Accept S24 online only from attested evidence, plus the stored flag the droplet also requires."""
+    """Accept S24 online only from attested evidence, plus the stored flag the jp-agent also requires."""
     return doc.get("online") is True and _s24_liveness_evidence(doc, age) is not None
 
 

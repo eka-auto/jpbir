@@ -42,7 +42,7 @@ Independent hosting and dashboard audit reconciled:
 - **Issue #140 Reconciled**: Reopened with the verified hosting ownership confirmed under `jayti2`.
 - **Remaining Open Items**: (1) Browser OAuth re-link of the Vercel GitHub App for `jaytipargal/jpbir` on branch `main` to restore push-to-deploy; (2) Populating missing environment secrets on `jayti2/jpbir`.
 
-### D-13: jp-agent moves from the DigitalOcean droplet to Railway (owner, 2026-10-18)
+### D-13: jp-agent moves off the DigitalOcean droplet to Railway (owner, 2026-10-18) — superseded by D-14
 
 Owner direction: *"remove droplet, now it's Railway jayti > Services."* jp-agent now
 runs as the `jp-agent` Web Service (`srv-dbalg58m7kps739ap6gg`) in the `jayti` Railway
@@ -68,9 +68,35 @@ the SDK without the droplet's `~/.claude/settings.json` step.
 This retirement also removes the repository's only self-hosted runner: with the hosted
 runners still billing-locked, CI is left with no runner at all.
 
+### D-14: Render is the single deployment target (owner, 2026-10-19)
+
+Owner direction: *"remove railway, droplet vultr from entire github repo globally and
+render is the final place for all now."*
+
+- `project/targets.json` now declares one production target, `jp-agent-render` (Render web
+  service `jp-agent`, workspace `jayti`). The DigitalOcean droplet and the Railway service
+  it briefly used are gone from the manifest. D-9 and D-13 are superseded on the target
+  question and left in place as the record of what was tried.
+- Deleted from the repository: `deploy.sh`, `deploy-local.sh`, `jp-agent.service`,
+  `s24-mcp.service`, `nginx-jp-agent.conf`, `sync-auth-token.py` and its test, and
+  `setup-runner.sh`. There is no deploy script, ssh path, systemd unit or nginx config for
+  jp-agent any more, and none should be added — a second deploy path is how the old host
+  drifted.
+- `render.yaml` declares the service from the repository, so the deploy shape is reviewable
+  in a diff rather than clicked into a dashboard.
+- Tests that pinned the deleted deploy script were rewritten to guard what a git deploy must
+  still get right (`s24-mcp-deploy.test.mjs`; one `deploy.sh` assertion removed from
+  `s24-attestation.test.mjs`, whose neighbouring byte-identical-module assertion is
+  unchanged).
+- Deliberately not touched, each for a stated reason: `Backend/eka_*.py` (verbatim drifted
+  copies of `jayti/scripts`, which `CLAUDE.md` says to change in `jayti`),
+  `_shared/docs/AGENT_DATABASE_ARCHITECTURE.md` (documents the Jayti Hub VPS, a different
+  host this repo does not own), and the dated records under `project/reports/`. Editing any
+  of them would falsify a record or re-introduce drift; ask and I will archive them out of
+  the tree instead.
+
 ### Open items for the owner (Awaiting approval)
 - Off-machine backup copy (3-2-1): upload the bundle to a second location.
-- jp-agent-droplet account/region verification.
 - GitHub Pro upgrade (or make repo public) to unblock T-04 branch protection.
 - Connect Vercel GitHub App for `jaytipargal/jpbir` in team `jayti2` settings to re-enable push-to-deploy.
 - Populate unset secrets on `jayti2/jpbir` (BLOB_READ_WRITE_TOKEN, S24_SYNC_PUBLIC_KEYS, WA_INGEST_KEY, etc.).

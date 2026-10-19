@@ -4,12 +4,12 @@ The terminal, moved behind `jaytipargal.tech`. Answers questions and *does the
 work* — shell, file edits, git, deploys — from the dashboard instead of a local
 shell.
 
-## Why a droplet and not Vercel
+## Why a long-lived service and not a Vercel function
 
 A Vercel function is short-lived with an ephemeral filesystem. An agent needs a
 workspace that survives between questions, and tasks that can run for minutes
 (installs, builds, test suites). Those are opposite requirements, so the runtime
-lives on DigitalOcean and Vercel only proxies to it.
+lives on Render and Vercel only proxies to it.
 
 ## Shape
 
@@ -17,192 +17,80 @@ lives on DigitalOcean and Vercel only proxies to it.
 browser  ──dashboard key──▶  jaytipargal.tech /api/agent-run   (Vercel)
                                      │ Bearer JP_AGENT_TOKEN
                                      ▼
-                              nginx :80  (sole ingress)
+                              Render web service  jp-agent
                                      ▼
-                       jp-agent :8790  bound to 127.0.0.1
-                          user jpagent · cwd /srv/workspace
+                       jp-agent :$PORT  bound to 0.0.0.0
 ```
 
-The browser never holds the droplet token. Two separate credentials, so
+The browser never holds the service token. Two separate credentials, so
 compromising the dashboard key does not hand over the agent.
 
 | | |
 |---|---|
-| Droplet | `jp-agent`, blr1, s-1vcpu-2gb |
-| Services | `/opt/jp-agent` (unit `jp-agent`, :8790) and `/opt/s24-mcp` (unit `s24-mcp`, :8792) |
-| Workspace | `/srv/workspace` |
-| Secrets | `/etc/jp-agent.env`, root-owned `0600` |
+| Host | Render web service `jp-agent`, workspace `jayti` (`project/targets.json`) |
+| Listener | `JP_AGENT_HOST=0.0.0.0`, `PORT` supplied by Render |
+| Workspace | `JP_AGENT_WORKSPACE`, on a mounted Render disk — **not** the container filesystem |
+| Secrets | Render environment variables; never in this repo or a transcript |
+
+`server.mjs` defaults to `127.0.0.1`, which is unreachable from outside the
+container: a Render service that does not set `JP_AGENT_HOST=0.0.0.0` accepts no
+connections at all.
 
 ## Deploying
 
-```bash
-./deploy.sh <droplet-ip> [ssh-key-path]
-```
+Render deploys from git. There is no deploy script, no ssh, no systemd unit and
+no nginx config in this repository, and none should be added: a second deploy
+path is how the old host drifted in the first place.
 
-Idempotent. Ships `server.mjs`, `s24-tools.mjs`, `device-health.mjs`,
-`sync-auth-token.py`, both unit files and the nginx config, installs
-dependencies, and restarts. It creates `/etc/jp-agent.env` on first run only, so
-re-running never clobbers a key already in place.
+`render.yaml` at the repository root declares the service (root directory, start
+command, health check, and which variables must be set). See `project/reports/2026-10-19-retire-jp-agent-droplet.md`
+for the cut-over checklist that preceded it.
 
-Two units come out of one deploy, because the MCP server is a separate process:
+## Environment
 
-| Unit | Dir | Port | Role |
-|---|---|---|---|
-| `jp-agent` | `/opt/jp-agent` | 8790 | Agent runtime behind the dashboard |
-| `s24-mcp` | `/opt/s24-mcp` | 8792 | Standalone streamable-HTTP MCP server for the device registry |
+Required on the service:
 
-`s24-mcp-server.mjs` imports `./device-health.mjs` relatively, and
-`device-health.mjs` imports `./s24-attestation.js`, so the whole closure —
-`device-health.mjs` and `s24-attestation.js` — is shipped into **both**
-directories. `s24-attestation.test.mjs` asserts the repo-side copies are
-byte-identical, so the droplet copies cannot drift either, and
-`s24-mcp-deploy.test.mjs` walks the import graph to prove the closure ships.
-Both bind `127.0.0.1`; nginx is the only ingress.
+| Var | Notes |
+|---|---|
+| `JP_AGENT_TOKEN` | Bearer token Vercel presents. `Backend/agent-run.js` requires it. |
+| `ANTHROPIC_AUTH_TOKEN` | Read by the Claude Agent SDK from the environment. |
+| `S24_SERVICE_ACCOUNT_KEY` | **A path**, not JSON (`s24-tools.mjs`). Point it at the key file written at boot. |
+| `S24_PROJECT_ID` / `S24_FIRESTORE_DB` | Firestore target for the s24 tools. |
+| `S24_MCP_TOKEN` | Bearer for the standalone MCP server; it refuses to start without one. |
+| `JP_AGENT_HOST` | `0.0.0.0`. See above. |
 
-## The three secrets
-
-Deliberately not in this repo, not in the deploy script, and not passed through
-any agent transcript.
-
-**On the droplet** — `ANTHROPIC_AUTH_TOKEN` is generated blank and must be filled
-without leaving the value in shell history (pipe it over stdin, never as an
-argument):
-
-```bash
-ssh root@<ip>
-printf '%s' "$TOKEN" | python3 /opt/jp-agent/sync-auth-token.py
-```
-
-**On Vercel** — the droplet generates `JP_AGENT_TOKEN` itself. Read it on the
-box and set the pair against the project that serves the domain, which is
-`jayti-dashboard`, not `jpbir_restructured`:
-
-```bash
-ssh root@<ip> 'grep JP_AGENT_TOKEN /etc/jp-agent.env'
-
-vercel env add JP_AGENT_TOKEN production --scope jayti --project jayti-dashboard
-vercel env add JP_AGENT_URL   production --scope jayti --project jayti-dashboard   # https://runner.jaytipargal.tech
-```
-
-## Model and limits
-
-Optional vars in `/etc/jp-agent.env`; change and `systemctl restart jp-agent`.
-No redeploy — `server.mjs` reads them at startup.
+Optional, read at startup — change and restart the service, no redeploy:
 
 | Var | Default | Notes |
 |---|---|---|
 | `JP_AGENT_MODEL` | `claude-sonnet-5` | Agentic-coding tier at $2/$10 per MTok. Opus 5 is $5/$25 for the same job here. |
 | `JP_AGENT_MAX_TURNS` | `150` | Agent-loop cap. |
-| `JP_AGENT_PORT` | `8790` | Bound to `127.0.0.1`. |
-| `JP_AGENT_WORKSPACE` | `/srv/workspace` | Must stay inside the unit's `ReadWritePaths`. |
+| `JP_AGENT_WORKSPACE` | `/srv/workspace` | Must be inside the mounted disk, or the workspace dies on the next deploy. |
 
 The turn cap is not what limits a dashboard question — `Backend/agent-run.js`
 aborts the proxy at 780s (against an 800s `maxDuration`), so wall-clock binds
-first. Raise `maxTurns` for long runs driven from the droplet itself; for the
-dashboard, the 780s abort is the number to change.
-
-## Cloud CLIs
-
-The agent can drive DigitalOcean, GitHub and Vultr. All of it lives in the
-`jpagent` home, because the unit's `ProtectSystem=strict` makes everything else
-read-only:
-
-| | |
-|---|---|
-| Binaries | `~/bin/gh`, `~/bin/doctl`, `~/bin/vultr-cli` (official linux releases, no root) |
-| Credentials | `~/.config/jp-cloud/credentials.env`, `0600`: `DIGITALOCEAN_ACCESS_TOKEN`, `GH_TOKEN`, `VULTR_API_KEY` |
-| CLI config | `~/.config/doctl/config.yaml`, gh auth + `gh auth setup-git`, `~/.vultr-cli.yaml` (`0600`) |
-
-The unit loads that credentials file as an optional `EnvironmentFile` and puts
-`/home/jpagent/bin` first on `PATH`, so tools the agent runs find the CLIs
-without sourcing a shell profile — a service shell is non-login and
-non-interactive, and Ubuntu's `.bashrc` returns before any appended line runs.
-
-Credential scope:
-
-- **DigitalOcean / GitHub** — the operator's own tokens. Neither CLI can mint a
-  new token, so a compromise of this droplet means rotating both everywhere.
-- **Vultr** — a dedicated sub-user `jp-agent` limited to `subscriptions`,
-  `subscriptions_view`, `provisioning`, `dns`, `firewall` (no billing, no user
-  management). Vultr keeps a **per-user** API IP allowlist; this user's allows
-  only the droplet (`168.144.24.224/32`). Manage it with
-  `/v2/users/{id}/ip-whitelist`.
-
-Tokens are delivered out of band, never through a prompt, so they don't land in
-an agent transcript. Rotating one: replace the line in `credentials.env`, re-run
-`doctl auth init` / `gh auth login --with-token` / rewrite `~/.vultr-cli.yaml`,
-then `systemctl restart jp-agent` so the unit reloads the environment.
+first.
 
 Cost per turn is dominated by the SDK's system prompt and 18 tool definitions,
 so a short answer is not cheap: a one-word reply on a cold session bills ~$0.08,
 while the same reply on a warm cached session bills ~$0.006. Reusing a session
 matters more than the model choice for short questions.
 
-## TLS — done
+## The second process: s24-mcp
 
-Served over HTTPS at **https://runner.jaytipargal.tech**, Let's Encrypt, with
-`certbot.timer` active for renewal. Plain HTTP 301-redirects to it, so the
-bearer token is never in cleartext on the wire.
+`s24-mcp-server.mjs` is the network-transport twin of the in-process tools in
+`s24-tools.mjs`. It was a second systemd unit on the old host; on Render it needs
+its own web service (or to be folded in-process) before the `/mcp` endpoint is
+reachable again. Until then the in-process tools in `s24-tools.mjs` are the only
+path, and `s24-mcp-deploy.test.mjs` guards the module contract.
 
-`runner.` and not `agent.`: `agent.jaytipargal.tech` is already taken by the
-Jayti Hub VPS (`jaytipargal/jayti`), which serves the Hub, device-key retrieval,
-and the EKA agent that `/api/jp-live-agent` calls. Its DNS record is in Vercel's
-zone for `jaytipargal.tech`, but it is not a Vercel project: it answers from
-nginx on that VPS (checked 2026-09-24: `nginx/1.28.3`, while this droplet
-answers `nginx/1.24.0`). Taking the name would have broken the Hub and
-`/api/jp-live-agent`. See "`agent.jaytipargal.tech` is the Jayti Hub" in the
-root CLAUDE.md.
-
-The 301 only applies when the Host header matches. Certbot's `:80` block is
-`server_name runner.jaytipargal.tech`, and it is now the *only* port-80 server,
-so it is also the default — **any HTTP request with a different Host gets a bare
-404**, including `curl http://<droplet-ip>/health`. That 404 is nginx working as
-configured, not the service being down. Health-check the real name over HTTPS:
+## Verification
 
 ```bash
-curl -s https://runner.jaytipargal.tech/health          # 200 {"ok":true,...}
-curl -s -o /dev/null -w '%{http_code}\n' http://<ip>/health   # 404 — expected
+curl -s https://<service-host>/health            # {"ok":true,...}
+curl -s -o /dev/null -w '%{http_code}\n' https://<service-host>/sessions   # 401 without a bearer token
 ```
 
-Nothing reaches the agent without the bearer token either, so `401 unauthorized`
-from `/ask` is also healthy. `missing key` is never from here — that string is
-the dashboard's own `STATS_KEY` gate in `Backend/_auth.js`.
-
-jaytipargal.tech runs on Vercel nameservers, so the A record is managed with
-`vercel dns`, not doctl:
-
-```bash
-vercel dns add jaytipargal.tech runner A <droplet-ip> --scope jayti
-```
-
-Note the zone has a wildcard `* ALIAS` pointing at Vercel — an explicit record
-for a name overrides it, which is what makes this work.
-
-## Security notes
-
-The agent executes arbitrary commands by design, so the confinement matters:
-
-- binds `127.0.0.1`; nginx is the only way in
-- bearer token compared with `timingSafeEqual` over SHA-256 digests, so neither
-  the value nor its length leaks through timing
-- runs as unprivileged `jpagent`, never root
-- systemd `ProtectSystem=strict` — only `/srv/workspace` and `/home/jpagent`
-  are writable
-- `cwd` is pinned to the workspace and cannot be set per-request
-- tool-use events stream the tool *name* and a 200-char argument preview only;
-  full arguments can carry file contents and reach a browser
-
-Refuses to start if `JP_AGENT_TOKEN` is unset, rather than serving open.
-
-## Checks
-
-```bash
-curl -s https://runner.jaytipargal.tech/health     # 200
-curl -s -o /dev/null -w '%{http_code}'      https://runner.jaytipargal.tech/sessions      # 401 without a bearer token
-ssh root@<ip> 'systemctl status jp-agent --no-pager; journalctl -u jp-agent -n 40 --no-pager'
-```
-
-Verified: HTTPS 200, unauthenticated `/sessions` 401, HTTP 301 to HTTPS,
-service running as `jpagent`, `ProtectSystem=strict` with only
-`/srv/workspace` and `/home/jpagent` writable, `NoNewPrivileges=yes`, ufw
-limited to 22/80/443, and `unattended-upgrades` active for security patches.
+A `200` on `/health` proves the process is up; it does not prove the workspace
+persists or that the s24 tools can read their key file. Check those with one real
+agent turn and one `s24-*` tool call.
