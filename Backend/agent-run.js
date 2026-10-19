@@ -1,9 +1,9 @@
-// Server-side proxy from jaytipargal.tech to the jp-agent droplet.
+// Server-side proxy from jaytipargal.tech to the jp-agent jp-agent.
 //
-// This exists so the droplet's bearer token stays out of the browser. The page
+// This exists so the jp-agent's bearer token stays out of the browser. The page
 // authenticates to Vercel with the dashboard key; Vercel authenticates to the
-// droplet with JP_AGENT_TOKEN. A visitor never sees the second credential, and
-// the droplet only ever trusts a caller holding it.
+// jp-agent with JP_AGENT_TOKEN. A visitor never sees the second credential, and
+// the jp-agent only ever trusts a caller holding it.
 //
 // The agent can run shell commands, so this is the most sensitive route on the
 // dashboard. It is gated by the same STATS_KEY check as the visitor dossier and

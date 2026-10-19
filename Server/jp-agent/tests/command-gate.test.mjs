@@ -1,4 +1,4 @@
-// Droplet-side contract for the 2026-09-20 command gate — shipped flat by
+// Service-side contract for the 2026-09-20 command gate — shipped flat by
 // deploy.sh alongside device-health.mjs, and run by the CI job that only ever
 // executes Server/jp-agent/tests, so the gate the operator's tools lean on
 // cannot silently regress even when the full _shared suite is skipped.

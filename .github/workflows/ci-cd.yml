@@ -5,6 +5,7 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 jobs:
   lint-and-test:
@@ -87,18 +88,19 @@ jobs:
           docker run --rm -v "$PWD:/repo" --workdir /repo \
             rhysd/actionlint:1.7.12 -color -verbose
 
-  # Server/jp-agent is the droplet runtime and has its own package.json, so neither `npm ci`
-  # nor `npm test` above ever touched it. Its tests existed and passed by hand, but nothing
-  # ran them - so two fixes to device-health.mjs on 2026-09-19 (0637de9, 9040523) went in
-  # with CI green that meant nothing for the droplet.
+  # Server/jp-agent is its own package.json, so neither `npm ci` nor `npm test` above ever
+  # touched it. Its tests existed and passed by hand, but nothing ran them - so two fixes to
+  # device-health.mjs on 2026-09-19 (0637de9, 9040523) went in with CI green that meant
+  # nothing for the runtime.
   #
-  # The droplet is deployed by hand (deploy.sh), and a mistake there cannot be rolled back
-  # from here, so the last step checks the failure a refactor is most likely to cause: the
-  # service dying at start with ERR_MODULE_NOT_FOUND. Importing s24-tools.mjs resolves
-  # everything server.mjs imports (s24-tools -> device-health -> s24-attestation).
-  # server.mjs itself calls listen() at import, so it only gets a syntax check.
+  # The runtime is the Render web service jp-agent (render.yaml, project/targets.json), which
+  # deploys from git and cannot be rolled back from here, so the last step checks the failure
+  # a refactor is most likely to cause: the service dying at start with ERR_MODULE_NOT_FOUND.
+  # Importing s24-tools.mjs resolves everything server.mjs imports (s24-tools ->
+  # device-health -> s24-attestation). server.mjs itself calls listen() at import, so it only
+  # gets a syntax check.
   jp-agent:
-    name: jp-agent (droplet) tests
+    name: jp-agent tests
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -121,9 +123,9 @@ jobs:
       - name: Run device-health tests
         run: node --test "tests/*.test.mjs"
 
-      - name: Run token-sync tests
-        run: python3 -m unittest discover -s tests -p 'test_*.py' -v
-
+      # The token-sync tests were removed together with sync-auth-token.py in
+      # 2949662a. With no test_*.py left under Server/jp-agent/tests, unittest
+      # exits 5 ("NO TESTS RAN") and fails the job, so the step went with them.
       - name: Check the shipped module graph resolves
         run: |
           node --check server.mjs

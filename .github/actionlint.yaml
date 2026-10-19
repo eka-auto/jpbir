@@ -1,9 +1,7 @@
-self-hosted-runner:
-  labels:
-    - jp-agent-droplet
-    - jp-agent
-    - droplet
-    - deploy
+# No self-hosted runners remain in this repository: the droplet runner was retired with the
+# move of jp-agent to Render (project/reports/2026-10-19-retire-jp-agent-droplet.md). If a
+# self-hosted `runs-on` is ever introduced again, list its labels back here, or actionlint
+# will report the label as unknown.
 
 # Configuration variables in array of strings defined in your repository or
 # organization. `null` means disabling configuration variables check.

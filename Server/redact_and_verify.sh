@@ -42,7 +42,7 @@ echo "Train on: $OUT"
 echo
 echo "REDACTION IS NOT ROTATION. Every key found is still in its source file,"
 echo "and these are probably in git history too:"
-echo "  C:/jp-final/docs/RAILWAY_ENV_VARS.md          private key block"
+echo "  C:/jp-final/docs/RENDER_ENV_VARS.md          private key block"
 echo "  C:/jp-final/frontend/.env.local               google api key"
 echo "  C:/jp-final/cloudbuild.yaml                   google api key"
 echo "  C:/jp-final/fix_runner.ps1                    google api key"
