@@ -89,7 +89,7 @@
         tab: 'readable',      // readable | all | meta
         selected: null,
         loaded: false,
-        msg: { chatId: null, q: '', before: null, shown: 0, total: 0, loading: false, reqId: 0, batch: [] },
+        msg: { chatId: null, q: '', before: null, shown: 0, total: 0, loading: false, reqId: 0, batch: [], error: '' },
         media: { byMsg: {}, byTime: {}, total: 0 }
       };
     }
@@ -421,6 +421,14 @@
     var prevTop = body.scrollTop;
     var prevHeight = body.scrollHeight;
     var batch = s.msg.batch || [];
+    /* A load that failed is not an empty chat. Saying "no message rows
+       stored" would tell the owner their history is gone when the truth is
+       that the request did not come back. */
+    if (s.msg.error) {
+      host.innerHTML = '<div class="state err" style="padding:28px 16px">'
+        + '\u{1F534} ' + esc(s.msg.error) + '</div>';
+      return;
+    }
     if (!batch.length) {
       host.innerHTML = '<div class="state" style="padding:28px 16px">'
         + (s.msg.loading ? 'Loading\u2026'
@@ -554,7 +562,7 @@
     if (append && (s.msg.loading || !s.msg.before || s.msg.chatId !== chatId)) return;
     if (!append) {
       s.msg.chatId = chatId; s.msg.q = ''; s.msg.before = null;
-      s.msg.shown = 0; s.msg.total = 0; s.msg.batch = [];
+      s.msg.shown = 0; s.msg.total = 0; s.msg.batch = []; s.msg.error = '';
       /* A newly opened chat starts in the mode that shows its content:
          readable text if it has any, every row if it does not. An explicit
          mode (the switch) overrides that. */
@@ -588,7 +596,13 @@
         s.msg.loading = false;
         if (res.status === 401) { clearKey(); askGate('Invalid key.'); return; }
         var j = res.body || {};
-        if (!j.ok) { s.msg.batch = []; renderMessages(s); setStatus(s, 'message load failed'); return; }
+        if (!j.ok) {
+          s.msg.batch = [];
+          s.msg.error = 'Could not load messages: ' + (j.error || 'the request failed');
+          renderMessages(s);
+          setStatus(s, 'message load failed');
+          return;
+        }
         var batch = j.messages || [];
         s.msg.shown += batch.length;
         s.msg.total = j.total_count == null ? s.msg.shown : (j.total_count | 0);
@@ -623,6 +637,7 @@
         if (s.msg.reqId !== token) return;
         s.msg.loading = false;
         s.msg.batch = [];
+        s.msg.error = 'Could not load messages: ' + (e && e.message ? e.message : 'the request failed');
         renderMessages(s);
         console.error('[' + src + '] message load failed', e);
       });

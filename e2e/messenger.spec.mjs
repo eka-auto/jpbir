@@ -287,6 +287,24 @@ test('a message with a file shows a preview, not a bare link', async ({ page }) 
   expect(blob).not.toContain('store.vercel-blob.com');
 });
 
+test('a failed thread load says so, rather than claiming the chat is empty', async ({ page }) => {
+  await messengerApi(page);
+  // Playwright runs the most recently registered route first, so this takes
+  // precedence over the catch-all in messengerApi.
+  await page.route('**/api/jp-wa-messages*', route => route.fulfill({
+    status: 500, json: { ok: false, error: 'the store is unreachable' },
+  }));
+  await page.goto('/');
+  await page.locator('button[data-page="whatsapp"]').click();
+  await page.locator('#waChatList .mess-chat', { hasText: 'Maa' }).click();
+
+  const body = page.locator('#waBody');
+  await expect(body).toContainText('Could not load messages');
+  await expect(body).toContainText('the store is unreachable');
+  // The owner must not be told their history is gone.
+  await expect(body).not.toContainText('No message rows stored for this chat.');
+});
+
 test('Telegram panel opens empty and says no data was captured', async ({ page }) => {
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
