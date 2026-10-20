@@ -258,6 +258,35 @@ test('a chat with only one kind of row offers no switch', async ({ page }) => {
   await expect(page.locator('#waMode')).toBeHidden();
 });
 
+test('a message with a file shows a preview, not a bare link', async ({ page }) => {
+  await messengerApi(page);
+  // Playwright runs the most recently registered route first, so this takes
+  // precedence over the catch-all in messengerApi.
+  await page.route('**/api/jp-wa-attachments*', route => route.fulfill({
+    json: {
+      ok: true, total: 1, next_before: null,
+      attachments: [{
+        att_id: 'h_readable_2:abc:def', chat_id: 'h_readable_2', msg_id: null,
+        kind: 'image', mime: 'image/jpeg', file_name: 'photo.jpg',
+        size_bytes: 2048, width: 800, height: 600,
+        sent_at: '2026-10-19T09:00:00.000Z',
+        blob_url: 'https://store.vercel-blob.com/private/secret.jpg',
+        media_token: 'tok-123',
+      }],
+    },
+  }));
+  await page.goto('/');
+  await page.locator('button[data-page="whatsapp"]').click();
+  await page.locator('#waChatList .mess-chat', { hasText: 'Maa' }).click();
+
+  const preview = page.locator('#waBody .mess-media');
+  await expect(preview).toHaveCount(1);
+  // The bytes are reached through the tokenised proxy, never the blob URL.
+  await expect(preview).toHaveAttribute('src', '/api/wa-media?att_id=h_readable_2%3Aabc%3Adef&token=tok-123');
+  const blob = await page.locator('#waBody').innerHTML();
+  expect(blob).not.toContain('store.vercel-blob.com');
+});
+
 test('Telegram panel opens empty and says no data was captured', async ({ page }) => {
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));

@@ -89,7 +89,8 @@
         tab: 'readable',      // readable | all | meta
         selected: null,
         loaded: false,
-        msg: { chatId: null, q: '', before: null, shown: 0, total: 0, loading: false, reqId: 0 }
+        msg: { chatId: null, q: '', before: null, shown: 0, total: 0, loading: false, reqId: 0, batch: [] },
+        media: { byMsg: {}, byTime: {}, total: 0 }
       };
     }
     return ST[src];
@@ -263,7 +264,94 @@
       + '</div>';
   }
 
-  /* ---------- message rendering ---------- */
+  /* ---------- media previews ----------
+     A message can carry a file: an image, a video, a voice note. The bytes
+     live in Vercel Blob and are reached through /api/wa-media with a
+     per-attachment token, so the bubble can show the picture without
+     exposing the blob URL. Attachments are fetched per chat and indexed by
+     msg_id, because that is how wa_attachments links back to a message. */
+  function mediaSrc(att) {
+    if (!att || !att.att_id || !att.media_token) return '';
+    return '/api/wa-media?att_id=' + encodeURIComponent(att.att_id)
+      + '&token=' + encodeURIComponent(att.media_token);
+  }
+
+  function mediaBlock(s, m) {
+    var index = s.media.byMsg || {};
+    var atts = index[m.msg_id] || [];
+    if (!atts.length && m.sent_at) {
+      /* The timestamp is the link that holds for the stored rows, whose
+         msg_id is NULL. Both sides are ISO strings, but they are formatted
+         independently, so they are compared as instants rather than as
+         text: "09:00:00Z" and "09:00:00.000Z" are the same moment. */
+      var want = Date.parse(m.sent_at);
+      if (!Number.isNaN(want)) {
+        atts = (s.media.byTime || {})[want] || [];
+      }
+    }
+    if (!atts.length) return '';
+    /* The same attachment can be indexed under both keys, so it is only
+       drawn once. */
+    var seen = {};
+    return atts.filter(function (att) {
+      if (!att || !att.att_id || seen[att.att_id]) return false;
+      seen[att.att_id] = true;
+      return true;
+    }).map(function (att) {
+      var src = mediaSrc(att);
+      if (!src) return '';
+      if (att.kind === 'image' || att.kind === 'sticker') {
+        return '<img class="mess-media" src="' + esc(src) + '" alt="'
+          + esc(att.file_name || 'image') + '" loading="lazy">';
+      }
+      if (att.kind === 'video') {
+        return '<video class="mess-media" src="' + esc(src) + '" controls preload="metadata"></video>';
+      }
+      if (att.kind === 'audio' || att.kind === 'ptt') {
+        return '<audio class="mess-media-audio" src="' + esc(src) + '" controls preload="metadata"></audio>';
+      }
+      return '<a class="mess-media-file" href="' + esc(src) + '" target="_blank" rel="noopener">'
+        + '\u{1F4CE} ' + esc(att.file_name || att.kind) + '</a>';
+    }).join('');
+  }
+
+  /* Attachments for the open chat, indexed for lookup by a message.
+     wa_attachments.msg_id is NULL for every stored attachment, so the
+     timestamp is the link that actually holds: an attachment and the
+     message that carried it share a chat and a sent_at. Both keys are
+     indexed, so a row that does carry msg_id is matched exactly. */
+  function loadMedia(s, chatId) {
+    if (!chatId) return;
+    fetch('/api/jp-wa-attachments?chat_id=' + encodeURIComponent(chatId) + '&limit=200', {
+      cache: 'no-store', headers: { 'x-stats-key': key() },
+    })
+      .then(function (r) { return r.json().then(function (b) { return { status: r.status, body: b }; }); })
+      .then(function (res) {
+        if (res.status === 401) { askGate('Invalid key.'); return; }
+        var j = res.body || {};
+        if (!j.ok || !Array.isArray(j.attachments)) return;
+        var byMsg = {};
+        var byTime = {};
+        var push = function (map, key, att) {
+          if (!key) return;
+          (map[key] = map[key] || []).push(att);
+        };
+        j.attachments.forEach(function (a) {
+          if (!a) return;
+          push(byMsg, a.msg_id, a);
+          if (a.sent_at) {
+            var t = Date.parse(a.sent_at);
+            if (!Number.isNaN(t)) push(byTime, t, a);
+          }
+        });
+        s.media.byMsg = byMsg;
+        s.media.byTime = byTime;
+        s.media.total = j.total || j.attachments.length;
+        renderMessages(s);
+      })
+      .catch(function () { /* a missing preview must not break the thread */ });
+  }
+
   /* A chat with 104 readable messages and 19,733 locked rows must not open
      on 200 locked bubbles with the text buried underneath. The thread
      therefore has two modes:
@@ -305,15 +393,20 @@
       + (mine && readable ? ' <span class="mess-tick">\u2713\u2713</span>' : '')
       + '</div>';
     if (!readable) {
+      /* A locked row can still carry a file: a voice note's text is not
+         recoverable, but the recording is. The preview belongs in both
+         branches, or a chat with media would show nothing at all. */
       return '<div class="mess-row ' + (mine ? 'out' : 'in') + '">'
         + '<div class="mess-bubble locked">'
         + '<div class="mess-sender" style="color:var(--wa-text-2)">' + esc(label) + '</div>'
+        + mediaBlock(s, m)
         + '<div style="font-size:12px">\u{1F512} Encrypted \u2014 ' + esc(m.kind || 'message') + ' stored, body not decryptable</div>'
         + meta + '</div></div>';
     }
     return '<div class="mess-row ' + (mine ? 'out' : 'in') + '">'
       + '<div class="mess-bubble">'
       + (mine ? '' : '<div class="mess-sender">' + esc(label) + '</div>')
+      + mediaBlock(s, m)
       + esc(body)
       + meta
       + '</div></div>';
@@ -466,6 +559,10 @@
          readable text if it has any, every row if it does not. An explicit
          mode (the switch) overrides that. */
       s.msg.mode = mode || threadMode(s);
+      /* The previous chat's previews must not linger on the new one. */
+      s.media.byMsg = {};
+      s.media.byTime = {};
+      s.media.total = 0;
     }
     var token = ++s.msg.reqId;
     s.msg.loading = true;
@@ -500,6 +597,9 @@
            message stays at the bottom where a chat client puts it. */
         s.msg.batch = sortThread(append ? batch.concat(s.msg.batch || []) : batch);
         renderMessages(s, append);
+        /* The previews arrive separately, so they are fetched once the
+           thread is on screen. */
+        if (!append) loadMedia(s, chatId);
         renderNotes(s);
         var more = $(src + 'More');
         if (more) {
