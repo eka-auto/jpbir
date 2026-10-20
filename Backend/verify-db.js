@@ -45,6 +45,10 @@ export const REQUIRED_TABLES = [
   's24_files', 's24_ingest_seen', 's24_locations', 's24_queue_items', 's24_records', 's24_sms',
   's24_sync_datasets', 's24_sync_runs',
   'wa_attachments', 'wa_chats', 'wa_messages', 'wa_sync_runs',
+  // The Telegram panel reads tg_* the same way the WhatsApp panel reads wa_*.
+  // These tables exist but hold no rows until a capture lands, so they are
+  // required (the route is deployed) without implying there is data.
+  'tg_chats', 'tg_messages', 'tg_sync_runs',
 ];
 
 /**
