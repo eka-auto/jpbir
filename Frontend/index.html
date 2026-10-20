@@ -6,6 +6,9 @@
 <meta name="robots" content="noindex, nofollow">
 <meta name="theme-color" content="#0E0A08">
 <title>Analytics · jaytipargal.tech</title>
+<!-- Messenger client styles: WhatsApp + Telegram share one component. -->
+<link rel="stylesheet" href="/wa-ui.css">
+
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..900;1,9..144,300..700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -38,7 +41,7 @@
        until the sticky bar was 95px tall on a phone and up to 148px on a tablet
        (with "(cached) · … · PARTIAL"), deep enough to cover whatever
        scrollIntoView() puts at the top of the viewport (the WhatsApp chat
-       detail heading, see #waDetail), and on a phone it pushed the page out to
+       detail heading, see the messenger panel), and on a phone it pushed the page out to
        712px on every section. Now only the label gives up width, with an
        ellipsis; when even that is not enough, the bar scrolls sideways instead
        of the page, as .sidebar does on a phone. */
@@ -344,33 +347,6 @@
         .payload-tree-value > .payload-tree { padding-left: 7px; }
     }
 
-    /* ===== WHATSAPP MESSAGE LEDGER =====
-       The thin amber spine keeps long histories scannable without pretending
-       this operational dashboard is the WhatsApp client. Real imported text
-       stays visually solid; recovery-only metadata is deliberately quieter. */
-    .wa-message-list { margin-top: 12px; max-height: 520px; overflow-y: auto; display: flex;
-        flex-direction: column; gap: 7px; padding: 2px 4px 2px 13px; border-left: 2px solid rgba(200,122,30,.2); }
-    .wa-message-shell { display: flex; }
-    .wa-message-shell.outgoing { justify-content: flex-end; }
-    .wa-message-shell.incoming { justify-content: flex-start; }
-    .wa-message { width: fit-content; max-width: min(82%, 760px); padding: 9px 12px 8px; border-radius: 12px;
-        background: #FFFDF9; border: 1px solid var(--border); box-shadow: 0 4px 14px -10px rgba(34,26,21,.7); }
-    .wa-message-shell.outgoing .wa-message { background: #FFF1D9; border-color: rgba(200,122,30,.32); border-bottom-right-radius: 4px; }
-    .wa-message-shell.incoming .wa-message { border-bottom-left-radius: 4px; }
-    .wa-message.is-readable { border-left: 3px solid var(--amber); }
-    .wa-message.is-metadata { border-style: dashed; box-shadow: none; opacity: .72; }
-    .wa-message-meta { margin-bottom: 4px; color: var(--ink-muted); font-size: 10.5px; }
-    .wa-message-meta strong { color: var(--ink); font-weight: 650; }
-    .wa-message-body { color: var(--ink); font-size: 13px; line-height: 1.48; white-space: pre-wrap; overflow-wrap: anywhere; }
-    .wa-message-status { margin: 0 0 12px; padding: 12px 14px; border: 1px solid rgba(200,122,30,.3);
-        border-radius: 10px; background: rgba(240,185,104,.1); line-height: 1.55; }
-    .wa-message-actions { display: flex; justify-content: center; margin-top: 12px; }
-    .wa-message-actions button { min-width: 150px; }
-    @media (max-width: 560px) {
-        .wa-message { max-width: 94%; }
-        .wa-message-list { padding-left: 9px; }
-    }
-
     /* ===== STATES ===== */
     .state { text-align: center; padding: 40px 20px; color: var(--ink-muted); font-size: 13px; }
     .state.err { color: var(--bad); }
@@ -488,6 +464,7 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
             <button class="nav-item" data-page="email"><span class="ico">✉</span> Email opens</button>
             <button class="nav-item" data-page="device"><span class="ico">📋</span> Device Dashboard</button>
             <button class="nav-item" data-page="whatsapp"><span class="ico">💬</span> WhatsApp</button>
+            <button class="nav-item" data-page="telegram"><span class="ico">✈</span> Telegram</button>
             <div class="section-label">Operate</div>
             <button class="nav-item" data-page="agent"><span class="ico">🤖</span> Ask agent</button>
             <a class="nav-item" href="/agent"><span class="ico">✦</span> Jayti Agent</a>
@@ -753,19 +730,65 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
             </section>
 
             <section class="page" id="page-whatsapp">
-                <div class="panel">
-                    <div class="panel-head"><div><h2>WhatsApp archive</h2><div class="hint" id="waHint">Live data from Neon. Readable text is shown before recovery metadata.</div></div><button id="waRefreshBtn" class="btn">Refresh</button></div>
-                    <div id="waTotals" class="kv-grid"></div>
+                <div class="panel" style="margin-bottom:14px">
+                    <div class="panel-head">
+                        <div><h2>WhatsApp</h2><div class="hint">Live from Neon. Chats with readable text first; metadata-only chats are listed separately and never shown as if their bodies were readable.</div></div>
+                        <div style="display:flex;gap:8px;align-items:center"><span class="hint" id="waStatus"></span><button id="waRefresh" class="btn" type="button">Refresh</button></div>
+                    </div>
+                    <div id="waSplit" class="mess-split"></div>
+                    <div id="waTotals" class="kv-grid" style="margin-top:12px"></div>
                 </div>
-                <div class="panel">
-                    <div class="panel-head"><div><h2>Chats</h2><div class="hint" id="waChatsHint">Select a chat to open its live message history.</div></div><input id="waFilter" type="search" placeholder="Filter chats…" style="padding:8px 12px;border:1px solid var(--border);border-radius:9px;background:var(--panel2);color:var(--ink);font-family:var(--sans);font-size:12.5px;outline:none;width:220px"></div>
-                    <div id="waChatsWrap" class="capped" tabindex="0" role="region" aria-label="WhatsApp chats"><div id="waChatsEmpty" class="hint">Loading…</div><table id="waChatsTable" style="display:none;width:100%;border-collapse:collapse;font-size:13px"><thead><tr><th>Name</th><th>Kind</th><th style="text-align:right">Messages</th><th style="text-align:right">Readable</th><th style="text-align:right">Media</th><th>Last</th></tr></thead><tbody id="waChatsBody"></tbody></table></div>
+                <div class="mess">
+                    <div class="mess-side">
+                        <div class="mess-side-head">
+                            <div class="mess-side-title"><span>Chats</span><span class="mess-chat-time" id="waChatCount"></span></div>
+                            <input id="waSearch" class="mess-search" type="search" placeholder="Search name or chat id&hellip;" aria-label="Search WhatsApp chats">
+                            <div id="waTabs" class="mess-tabs"></div>
+                        </div>
+                        <div id="waChatList" class="mess-list" role="listbox" aria-label="WhatsApp chats"></div>
+                    </div>
+                    <div class="mess-thread">
+                        <div id="waThread" class="mess-thread-head"></div>
+                        <div id="waBody" class="mess-body" aria-live="polite"></div>
+                        <div class="mess-foot">
+                            <span class="hint" id="waMsgHint">Select a chat to read its messages.</span>
+                            <button id="waMode" type="button" style="display:none" aria-pressed="false">Show all rows</button>
+                            <button id="waMore" type="button" style="display:none">Load older messages</button>
+                        </div>
+                    </div>
                 </div>
-                <div class="panel" id="waDetail" style="margin-top:14px;display:none;scroll-margin-top:70px">
-                    <div class="panel-head"><div><h2 id="waDetailName">Chat</h2><div class="hint" id="waDetailHint"></div></div><button id="waDetailClose" type="button">Close</button></div>
-                    <div id="waDetailKpis" class="kv-grid" style="margin-top:12px"></div>
-                    <div class="panel" style="margin-top:14px"><div class="panel-head"><div><h2>Messages</h2><div class="hint" id="waMsgHint">Loading real message data…</div></div><input id="waMsgSearch" type="search" placeholder="Search body…" style="padding:6px 10px;border:1px solid var(--border);border-radius:9px;background:var(--panel2);color:var(--ink);font-family:var(--sans);font-size:12px;outline:none;width:180px"></div><div id="waMsgList" class="wa-message-list" aria-live="polite"></div><div id="waMsgEmpty" class="hint" style="margin-top:10px;display:none"></div><div class="wa-message-actions"><button id="waMsgMore" type="button" style="display:none">Load older messages</button></div></div>
+                <div id="waNotes"></div>
+            </section>
+
+            <section class="page" id="page-telegram">
+                <div class="panel" style="margin-bottom:14px">
+                    <div class="panel-head">
+                        <div><h2>Telegram</h2><div class="hint">Same client as WhatsApp, pointed at <code>tg_*</code> tables. No Telegram data has been captured yet, so this panel stays empty rather than showing a plausible-looking zero.</div></div>
+                        <div style="display:flex;gap:8px;align-items:center"><span class="hint" id="tgStatus"></span><button id="tgRefresh" class="btn" type="button">Refresh</button></div>
+                    </div>
+                    <div id="tgSplit" class="mess-split"></div>
+                    <div id="tgTotals" class="kv-grid" style="margin-top:12px"></div>
                 </div>
+                <div class="mess">
+                    <div class="mess-side">
+                        <div class="mess-side-head">
+                            <div class="mess-side-title"><span>Chats</span><span class="mess-chat-time" id="tgChatCount"></span></div>
+                            <input id="tgSearch" class="mess-search" type="search" placeholder="Search name or chat id&hellip;" aria-label="Search Telegram chats">
+                            <div id="tgTabs" class="mess-tabs"></div>
+                        </div>
+                        <div id="tgChatList" class="mess-list" role="listbox" aria-label="Telegram chats"></div>
+                    </div>
+                    <div class="mess-thread">
+                        <div id="tgThread" class="mess-thread-head"></div>
+                        <div id="tgBody" class="mess-body" aria-live="polite"></div>
+                        <div class="mess-foot">
+                            <span class="hint" id="tgMsgHint">Select a chat to read its messages.</span>
+                            <button id="tgMode" type="button" style="display:none" aria-pressed="false">Show all rows</button>
+                            <button id="tgMore" type="button" style="display:none">Load older messages</button>
+                        </div>
+                    </div>
+                </div>
+                <div id="tgNotes"></div>
             </section>
 
             <section class="page" id="page-agent">
@@ -794,6 +817,9 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
         <div class="state"><div class="spinner"></div>Loading visitor…</div>
     </div>
 </div>
+
+<!-- Messenger client: one component, both messengers. -->
+<script src="/mess-ui.js"></script>
 
 <script>
 (function () {
@@ -1111,13 +1137,18 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
     // or, for a chat exported without one, "h_" + 20 hex digits (chatIdFor in
     // Integrations/wa-store.js). The card footer printed chat_id.slice(-14),
     // which is a hash fragment, not a chat. The name lives in the WhatsApp
-    // inventory (WA_STATE.chats, from /api/jp-whatsapp); until that has loaded
-    // the card says nothing about the chat rather than print an id. The index
-    // is rebuilt only when loadWhatsApp() swaps in a new chats array.
+    // inventory (WA_STATE.chats, mirrored from the messenger module's chat
+    // list, from /api/jp-whatsapp); until that has loaded the card says
+    // nothing about the chat rather than print an id. The index is rebuilt
+    // only when a new chats array is swapped in.
+    /* The messenger module owns the chat list. WA_STATE mirrors it so the
+       media drawer can name an attachment's chat without reaching into
+       the module. The bridge below keeps the two in step. */
+    var WA_STATE = { chats: [], filter: '' };
     var _waNameIndex = null, _waNameIndexSrc = null, _waNamesAsked = false;
     function waChatName(chatId) {
         if (chatId === null || chatId === undefined || chatId === '') return '';
-        var list = typeof WA_STATE !== 'undefined' && WA_STATE ? WA_STATE.chats : null;
+        var list = WA_STATE ? WA_STATE.chats : null;
         if (!list || !list.length) return '';
         if (_waNameIndexSrc !== list) {
             _waNameIndex = Object.create(null);
@@ -1235,9 +1266,13 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
             // otherwise loads only when that page is opened. Ask for it once:
             // this panel re-renders every 10 s, so the names appear on the next
             // pass. Once only, so a failing inventory never rides every poll.
-            if ((j.attachments || []).length && !waLoaded && !_waNamesAsked) {
-                _waNamesAsked = true;
-                loadWhatsApp();
+            if ((j.attachments || []).length && !_waNamesAsked) {
+                var _waLoaded = false;
+                try { _waLoaded = !!(window.MessUI && window.MessUI.state('wa').loaded); } catch (e) {}
+                if (!_waLoaded) {
+                    _waNamesAsked = true;
+                    loadMessenger('wa');
+                }
             }
             if (!(j.attachments || []).length) {
                 grid.innerHTML = '<div class="hint">' + emptyLine('media', j.window_days || 7, j.newest_attachment_at) + '</div>';
@@ -2856,7 +2891,8 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
         var page = active && active.getAttribute('data-page');
         if (page === 'device') { loadDeviceHistory(); loadLiveDevices(); }
         if (page === 'vercel') { loadVercel(); }
-        if (page === 'whatsapp') { waLoaded = false; loadWhatsApp(true); }
+        if (page === 'whatsapp') { loadMessenger('wa', true); }
+        if (page === 'telegram') { loadMessenger('tg', true); }
         if (page === 'stack') { loadStack(); }
     }
 
@@ -2864,449 +2900,54 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
         btn.addEventListener('click', loadActiveView);
     });
 
-    /* ===== WHATSAPP =====
-       One fetch of the entire inventory, then rendered client-side. The chat
-       count is 862 today and cases like "sort by messages" or "filter by
-       name" are instant on that size — no per-view round trip. */
-    var WA_STATE = { chats: [], filter: '' };
-    var waLoaded = false;
-    function fmt(n) { return (n || 0).toLocaleString('en-IN'); }
-    function timeAgo(iso) {
-        if (!iso) return '—';
-        var d = new Date(iso); if (Number.isNaN(d.getTime())) return '—';
-        var s = Math.max(0, (Date.now() - d.getTime()) / 1000);
-        if (s < 90) return Math.round(s) + 's ago';
-        if (s < 5400) return Math.round(s / 60) + 'm ago';
-        if (s < 86400 * 1.5) return Math.round(s / 3600) + 'h ago';
-        return Math.round(s / 86400) + 'd ago';
-    }
-    function renderWaTotals(t) {
-        var host = $('waTotals'); if (!host) return;
-        var kv = function (k, v) { return '<div class="kv-item"><div class="k">' + k + '</div><div class="v">' + v + '</div></div>'; };
-        host.innerHTML = kv('Chats', fmt(t.chats)) + kv('Groups', fmt(t.groups)) + kv('Direct', fmt(t.direct))
-            + kv('Inventory messages', fmt(t.msgs)) + kv('Stored rows', fmt(t.stored || 0)) + kv('Inventory gap', fmt(t.missing || 0))
-            + kv('Media', fmt(t.media)) + kv('Audio', fmt(t.audio))
-            + kv('Calls', fmt(t.calls)) + kv('Readable text', fmt(t.readable || 0)) + kv('Metadata only', fmt(t.enc)) + kv('Undated', fmt(t.undated));
-    }
-    function renderWaByKind(chats) {
-        var host = $('waByKind'); if (!host) return;
-        var by = { group: 0, direct: 0 };
-        var msgs = { group: 0, direct: 0 };
-        chats.forEach(function (c) { by[c.kind] = (by[c.kind] || 0) + 1; msgs[c.kind] = (msgs[c.kind] || 0) + (c.msg_count || 0); });
-        var totalMsgs = Math.max(1, msgs.group + msgs.direct);
-        function row(label, count, m) {
-            var pct = (m / totalMsgs) * 100;
-            return '<div style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:4px"><span>' + label + ' (' + fmt(count) + ')</span><span>' + fmt(m) + ' msgs</span></div>'
-                + '<div style="height:8px;background:rgba(200,122,30,.14);border-radius:4px;overflow:hidden"><div style="width:' + pct.toFixed(1) + '%;height:100%;background:linear-gradient(90deg,var(--amber-glow),var(--amber))"></div></div></div>';
+    /* ===== MESSENGER (WhatsApp + Telegram) =====
+       The chat UI itself lives in Frontend/mess-ui.js so the same client can serve
+       both messengers. This block only routes navigation and owns the gate
+       handshake, which is scoped inside the dashboard IIFE and cannot be reached
+       from the module. */
+    function loadMessenger(src, force) {
+        /* Opening a messenger without a key is the most likely way to land
+           here, and "nothing happened" reads as a broken page. Say what is
+           actually missing instead. */
+        if (!KEY) {
+            var gm0 = $('gateMsg');
+            if (gm0) gm0.textContent = 'Dashboard key required — enter it to load WhatsApp.';
+            showGate();
+            try { $('keyInput').focus(); } catch (e) {}
+            return;
         }
-        host.innerHTML = row('Direct chats', by.direct, msgs.direct) + row('Group chats', by.group, msgs.group);
-    }
-    function renderWaRuns(runs) {
-        var host = $('waRuns'); if (!host) return;
-        if (!runs || !runs.length) { host.innerHTML = '<div class="hint">No sync runs recorded yet.</div>'; return; }
-        var rows = runs.map(function (r) {
-            /* The run note carries the ingest's silent-drop signal (e.g. an S24
-               chat-export whose chat_id matched no ingested chat). Surface it,
-               warn-coloured when it reports a drop, so a broken export mapping
-               stops hiding behind a lower msgs count. */
-            var note = r.note ? '<div style="margin-top:4px;font-size:11px;color:' + (/dropped/.test(r.note) ? 'var(--warn)' : 'var(--ink-muted)') + '">' + esc(r.note) + '</div>' : '';
-            return '<div style="padding:8px 0;border-bottom:1px solid var(--border-light);font-size:12.5px">'
-                + '<div style="display:flex;justify-content:space-between;gap:10px">'
-                + '<div><div style="font-weight:600">' + esc(r.device_id || '—') + '</div>'
-                + '<div style="color:var(--ink-muted);font-size:11px">' + esc(r.run_id || '') + '</div></div>'
-                + '<div style="text-align:right">'
-                + '<div>' + fmt(r.chats_seen) + ' chats · ' + fmt(r.messages_seen) + ' msgs</div>'
-                + '<div style="color:var(--ink-muted);font-size:11px">' + esc(r.status || '—') + ' · ' + timeAgo(r.finished_at || r.started_at) + '</div>'
-                + '</div></div>' + note + '</div>';
-        }).join('');
-        host.innerHTML = rows;
-    }
-    function renderWaChats() {
-        var body = $('waChatsBody'); if (!body) return;
-        var q = (WA_STATE.filter || '').toLowerCase().trim();
-        var rows = WA_STATE.chats.filter(function (c) { return !q || (c.name || '').toLowerCase().indexOf(q) !== -1; });
-        var empty = $('waChatsEmpty'); var table = $('waChatsTable');
-        if (!rows.length) { table.style.display = 'none'; empty.textContent = q ? 'No chats match "' + q + '".' : 'No chats ingested yet.'; empty.style.display = 'block'; return; }
-        empty.style.display = 'none'; table.style.display = 'table';
-        body.innerHTML = rows.map(function (c) {
-            return '<tr class="wa-chat-row" data-chat-id="' + esc(c.chat_id) + '" style="cursor:pointer">'
-                + '<td style="padding:8px 10px;border-bottom:1px solid var(--border-light)">' + esc(c.name) + (c.unresolved ? ' <span style="color:var(--warn);font-size:10px">·unresolved</span>' : '') + '</td>'
-                + '<td style="padding:8px 10px;border-bottom:1px solid var(--border-light);text-transform:capitalize">' + esc(c.kind) + '</td>'
-                + '<td style="padding:8px 10px;border-bottom:1px solid var(--border-light);text-align:right;font-variant-numeric:tabular-nums">' + fmt(c.msg_count) + '</td>'
-                + '<td style="padding:8px 10px;border-bottom:1px solid var(--border-light);text-align:right;font-variant-numeric:tabular-nums;color:' + ((c.readable_count || 0) ? 'var(--good)' : 'var(--ink-muted)') + '">' + fmt(c.readable_count || 0) + '</td>'
-                + '<td style="padding:8px 10px;border-bottom:1px solid var(--border-light);text-align:right;font-variant-numeric:tabular-nums">' + fmt(c.media_count) + '</td>'
-                + '<td style="padding:8px 10px;border-bottom:1px solid var(--border-light);text-align:right;font-variant-numeric:tabular-nums">' + fmt(c.audio_count) + '</td>'
-                + '<td style="padding:8px 10px;border-bottom:1px solid var(--border-light);text-align:right;font-variant-numeric:tabular-nums">' + fmt(c.call_count) + '</td>'
-                + '<td style="padding:8px 10px;border-bottom:1px solid var(--border-light);text-align:right;font-variant-numeric:tabular-nums">' + (c.member_count == null ? '—' : fmt(c.member_count)) + '</td>'
-                + '<td style="padding:8px 10px;border-bottom:1px solid var(--border-light)">' + esc(c.first_at || '—') + '</td>'
-                + '<td style="padding:8px 10px;border-bottom:1px solid var(--border-light)">' + esc(c.last_at || '—') + '</td>'
-                + '</tr>';
-        }).join('');
-        var hint = $('waChatsHint'); if (hint) hint.textContent = fmt(rows.length) + ' of ' + fmt(WA_STATE.chats.length) + ' chats — click any row for detail.';
-    }
-
-    /* Per-chat drill-down. Latest request wins so a slow answer never
-       lands after the user clicked a second row. */
-    var waDetailReq = 0;
-    function waKvi(k, v) { return '<div class="kv-item"><div class="k">' + esc(k) + '</div><div class="v">' + v + '</div></div>'; }
-    function waBar(label, n, max) {
-        var pct = max ? Math.round((n / max) * 100) : 0;
-        return '<div style="display:flex;align-items:center;gap:10px;margin:6px 0;font-size:12.5px">'
-            + '<div style="width:110px;color:var(--ink-muted)">' + esc(label) + '</div>'
-            + '<div style="flex:1;background:rgba(200,122,30,.14);border-radius:6px;overflow:hidden;height:10px">'
-            + '<div style="width:' + pct + '%;height:100%;background:linear-gradient(90deg,var(--amber-glow),var(--amber))"></div></div>'
-            + '<div style="width:64px;text-align:right;font-variant-numeric:tabular-nums">' + fmt(n) + '</div></div>';
-    }
-    var waAttState = { chatId: null, kind: '', before: null, shown: 0, total: 0, loading: false };
-    (function wireAttMore() {
-        var more = $('waAttMore');
-        if (!more) return;
-        more.addEventListener('click', function () {
-            if (waAttState.loading || !waAttState.before || !waAttState.chatId) return;
-            loadAttachments(waAttState.chatId, waAttState.kind, true);
-        });
-    })();
-    function waAttTile(a) {
-        var url = waMediaSrc(a);
-        // fmtBytes, not size / 1024: that read a 300-byte sticker as "0 KB" and
-        // a 15 MB video as "14650 KB", and left "name · " when there was no size.
-        var meta = esc([a.file_name, fmtBytes(a.size_bytes)].filter(Boolean).join(' · '));
-        var when = a.sent_at ? new Date(a.sent_at).toISOString().slice(0, 10) : '';
-        if (a.kind === 'image' || a.kind === 'sticker') {
-            return '<a href="' + esc(url) + '" target="_blank" rel="noopener" style="display:block;text-decoration:none;color:inherit">'
-                + '<img src="' + esc(url) + '" loading="lazy" style="width:100%;height:120px;object-fit:cover;border-radius:8px;background:rgba(200,122,30,.08)">'
-                + '<div style="font-size:11px;color:var(--ink-muted);margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + meta + '</div>'
-                + '<div style="font-size:10px;color:var(--ink-muted)">' + when + '</div></a>';
-        }
-        if (a.kind === 'video') {
-            return '<div><video src="' + esc(url) + '" controls preload="metadata" style="width:100%;height:120px;border-radius:8px;background:#000"></video>'
-                + '<div style="font-size:11px;color:var(--ink-muted);margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + meta + '</div>'
-                + '<div style="font-size:10px;color:var(--ink-muted)">' + when + '</div></div>';
-        }
-        if (a.kind === 'audio' || a.kind === 'ptt') {
-            return '<div style="padding:10px;border-radius:8px;background:rgba(200,122,30,.08)">'
-                + '<div style="font-size:12px;margin-bottom:6px">' + esc(a.kind === 'ptt' ? 'Voice note' : 'Audio') + '</div>'
-                + '<audio src="' + esc(url) + '" controls preload="none" style="width:100%"></audio>'
-                + '<div style="font-size:11px;color:var(--ink-muted);margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + meta + '</div>'
-                + '<div style="font-size:10px;color:var(--ink-muted)">' + when + '</div></div>';
-        }
-        return '<a href="' + esc(url) + '" target="_blank" rel="noopener" style="display:block;padding:10px;border-radius:8px;background:rgba(200,122,30,.08);text-decoration:none;color:inherit">'
-            + '<div style="font-size:12px;font-weight:600">' + esc(a.file_name || a.kind) + '</div>'
-            + '<div style="font-size:11px;color:var(--ink-muted);margin-top:4px">' + esc([a.mime || a.kind, fmtBytes(a.size_bytes)].filter(Boolean).join(' · ')) + '</div>'
-            + '<div style="font-size:10px;color:var(--ink-muted)">' + when + '</div></a>';
-    }
-    function renderAttKinds(byKind, current) {
-        var host = $('waAttKinds'); if (!host) return;
-        var kinds = Object.keys(byKind || {}).sort();
-        // k === '' is the unfiltered pill; it printed a bare count with no label.
-        var pill = function (k, n, on) {
-            return '<button type="button" class="wa-att-kind" data-kind="' + esc(k) + '" aria-pressed="' + (on ? 'true' : 'false') + '">'
-                + esc(k || 'all') + ' ' + fmt(n) + '</button>';
-        };
-        var total = Object.values(byKind).reduce(function (a, b) { return a + (b | 0); }, 0);
-        host.innerHTML = pill('', total, !current) + kinds.map(function (k) { return pill(k, byKind[k], current === k); }).join('');
-    }
-    function loadAttachments(chatId, kind, append) {
-        kind = kind || '';
-        if (!append) {
-            waAttState.chatId = chatId; waAttState.kind = kind;
-            waAttState.before = null; waAttState.shown = 0; waAttState.total = 0;
-        }
-        var grid = $('waAttGrid'); var empty = $('waAttEmpty'); var more = $('waAttMore');
-        if (!append) { grid.innerHTML = ''; empty.style.display = 'none'; }
-        if (more) more.style.display = 'none';
-        waAttState.loading = true;
-        var params = { chat_id: chatId, limit: 60 };
-        if (kind) params.kind = kind;
-        if (append && waAttState.before) params.before = waAttState.before;
-        /* Blob URLs for private media: key in the header, never the query. */
-        fetch('/api/jp-wa-attachments?' + new URLSearchParams(params).toString(),
-            { cache: 'no-store', headers: { 'x-stats-key': KEY } })
-            .then(function (r) { return r.json().then(function (b) { return { status: r.status, body: b }; }); })
-            .then(function (res) {
-                waAttState.loading = false;
-                /* Chat AND kind must both still be selected: checking the chat
-                   alone let a slower answer repaint under the wrong pill. */
-                if (waAttState.chatId !== chatId || waAttState.kind !== kind) return;
-                if (res.status === 401) {
-                    clearDashboardKey(); KEY = '';
-                    $('waAttHint').textContent = '';
-                    $('gateMsg').textContent = 'Invalid key.';
-                    showGate();
-                    return;
-                }
-                var j = res.body;
-                if (!j.ok) { $('waAttHint').textContent = 'Load failed: ' + (j.error || 'unknown'); return; }
-                if (j.migrated === false) { $('waAttHint').textContent = j.note || 'attachments table not migrated'; empty.textContent = 'Run npm run db:migrate on Neon.'; empty.style.display = 'block'; return; }
-                var batch = j.attachments || [];
-                renderAttKinds(j.by_kind || {}, kind);
-                waAttState.shown += batch.length;
-                waAttState.total = j.total | 0;
-                waAttState.before = j.next_before || null;
-                if (!waAttState.shown) {
-                    $('waAttHint').textContent = 'No attachments' + (kind ? ' · ' + kind : '') + '.';
-                    empty.textContent = kind ? 'No ' + kind + ' attachments uploaded for this chat.' : 'No attachments uploaded for this chat yet. Run wa_media_push.py on the S24.';
-                    empty.style.display = 'block';
-                    return;
-                }
-                grid.insertAdjacentHTML('beforeend', batch.map(waAttTile).join(''));
-                $('waAttHint').textContent = 'Showing ' + fmt(waAttState.shown) + ' of ' + fmt(waAttState.total) + ' attachments' + (kind ? ' · ' + kind : '') + '. Files stored in Vercel Blob.';
-                /* Older attachments were unreachable: the cursor came back on
-                   every full page and nothing ever consumed it. */
-                if (more) more.style.display = waAttState.before ? '' : 'none';
-            })
-            .catch(function (e) {
-                waAttState.loading = false;
-                if (waAttState.chatId !== chatId || waAttState.kind !== kind) return;
-                $('waAttHint').textContent = 'Load failed: ' + e.message;
+        if (!window.MessUI) return;
+        var pending = window.MessUI.load(src, force);
+        /* The media drawer names an attachment's chat from the WhatsApp
+           inventory, and it lives outside the module. Mirror the module's
+           chat list into WA_STATE so both read one list. The module swaps
+           in a new array on every load, so the reference check in
+           waChatName rebuilds the name index rather than serving a stale
+           one. */
+        if (src === 'wa' && pending && pending.then) {
+            pending.then(function () {
+                try {
+                    var list = window.MessUI.state('wa').chats;
+                    if (list) WA_STATE.chats = list;
+                } catch (e) { /* the module is not ready yet */ }
             });
-    }
-    var waMsgState = { chatId: null, q: '', before: null, shown: 0, total: 0, loading: false, reqId: 0 };
-    function waMsgRow(m) {
-        var when = m.sent_at ? new Date(m.sent_at).toISOString().replace('T', ' ').slice(0, 16) + ' UTC' : 'undated';
-        var mine = m.from_me === true;
-        var readable = m.readable === true;
-        var head = '<strong>' + esc(m.sender_label || m.sender || 'Unknown sender') + '</strong> · '
-            + '<span>' + esc(when) + '</span>'
-            + (m.kind && m.kind !== 'text' ? ' · <span style="color:var(--warn)">' + esc(m.kind) + '</span>' : '');
-        var body = esc(m.display_body || m.body || '(message content unavailable)').replace(/\n/g, '<br>');
-        return '<div class="wa-message-shell ' + (mine ? 'outgoing' : 'incoming') + '">'
-            + '<div class="wa-message ' + (readable ? 'is-readable' : 'is-metadata') + '">'
-            + '<div class="wa-message-meta">' + head + '</div>'
-            + '<div class="wa-message-body">' + body + '</div>'
-            + '</div></div>';
-    }
-    function loadMessages(chatId, q, append) {
-        q = q || '';
-        if (append && (waMsgState.loading || !waMsgState.before || waMsgState.chatId !== chatId || waMsgState.q !== q)) return;
-        if (!append) {
-            waMsgState.chatId = chatId; waMsgState.q = q; waMsgState.before = null;
-            waMsgState.shown = 0; waMsgState.total = 0;
         }
-        var token = ++waMsgState.reqId;
-        var list = $('waMsgList'); var empty = $('waMsgEmpty'); var more = $('waMsgMore');
-        waMsgState.loading = true;
-        if (!append) { list.innerHTML = '<div class="hint">Loading…</div>'; empty.style.display = 'none'; }
-        if (more) {
-            more.disabled = true;
-            more.textContent = append ? 'Loading older…' : 'Load older messages';
-            if (!append) more.style.display = 'none';
+    }
+    window.addEventListener('mess:unauthorized', function (e) {
+        /* The module does not clear the key itself: the dashboard owns it,
+           and the message has to distinguish "never had one" from "the one
+           you had was wrong". */
+        var hadKey = !!KEY;
+        clearDashboardKey();
+        KEY = '';
+        var gm = $('gateMsg');
+        if (gm) {
+            gm.textContent = (e.detail && e.detail.message)
+                || (hadKey ? 'Invalid key.' : 'Dashboard key required — enter it to load WhatsApp.');
         }
-                var params = { chat_id: chatId, limit: 200, readable_first: 1 };
-                if (q) params.q = q;
-        if (append && waMsgState.before) params.before = waMsgState.before;
-        /* Message bodies are the most sensitive thing on this page: key in the
-           header, never the query string. */
-        fetch('/api/jp-wa-messages?' + new URLSearchParams(params).toString(),
-            { cache: 'no-store', headers: { 'x-stats-key': KEY } })
-            .then(function (r) { return r.json().then(function (b) { return { status: r.status, body: b }; }); })
-            .then(function (res) {
-                if (waMsgState.reqId !== token || waMsgState.chatId !== chatId) return;
-                waMsgState.loading = false;
-                if (res.status === 401) {
-                    clearDashboardKey(); KEY = '';
-                    list.innerHTML = ''; $('waMsgHint').textContent = '';
-                    if (more) more.style.display = 'none';
-                    $('gateMsg').textContent = 'Invalid key.';
-                    showGate();
-                    return;
-                }
-                var j = res.body;
-                if (!append) list.innerHTML = '';
-                if (!j.ok) {
-                    if (more) { more.disabled = false; more.style.display = waMsgState.before ? '' : 'none'; }
-                    $('waMsgHint').textContent = 'Load failed: ' + (j.error || 'unknown'); return;
-                }
-                if (j.migrated === false) {
-                    if (more) more.style.display = 'none';
-                    $('waMsgHint').textContent = 'wa_messages table not migrated yet.'; empty.textContent = 'Run npm run db:migrate.'; empty.style.display = 'block'; return;
-                }
-                var batch = (j.messages || []).slice().sort(function (a, b) {
-                    return (b.readable === true) - (a.readable === true) || String(b.sent_at || '').localeCompare(String(a.sent_at || ''));
-                });
-                if (!batch.length) {
-                    if (more) more.style.display = 'none';
-                    if (append) { waMsgState.before = null; return; }
-                    $('waMsgHint').textContent = q ? 'No messages match "' + q + '".' : 'No message records stored for this chat.';
-                    empty.textContent = q ? '' : 'Drop a WhatsApp Chat Export into ~/wa-exports/ on the phone and run wa_export_import.py.';
-                    empty.style.display = empty.textContent ? 'block' : 'none';
-                    return;
-                }
-                waMsgState.shown += batch.length;
-                waMsgState.total = j.total_count == null ? waMsgState.shown : (j.total_count | 0);
-                waMsgState.before = j.next_before || null;
-                $('waMsgHint').textContent = 'Showing ' + fmt(waMsgState.shown) + ' of ' + fmt(waMsgState.total) + ' records · '
-                    + fmt(j.total_readable_count || 0) + ' readable text · '
-                    + fmt(j.total_metadata_count || 0) + ' metadata only' + (q ? ' matching "' + q + '"' : '') + ' · readable text first.';
-                /* A chat with no readable bodies needs one precise explanation,
-                   not hundreds of identical placeholder bubbles. Use the full
-                   query total from the API, not just the first page. */
-                var stubBanner = '';
-                if (!append && !q && !(j.total_readable_count > 0)) {
-                    stubBanner = '<div class="wa-message-status">'
-                        + '<div style="font-weight:600;margin-bottom:5px">Metadata only — no message text is stored for this chat</div>'
-                        + '<div style="color:var(--ink-muted);font-size:12.5px">These rows were recovered from a sealed dump. WhatsApp bodies are end-to-end encrypted, so the text was never present here and cannot be reconstructed cloud-side. To import the real text, on the S24: WhatsApp &rarr; open this chat &rarr; &#8942; &rarr; More &rarr; <b>Export chat &rarr; Without Media</b>, drop the .txt into <code>~/wa-exports/</code>, then run <code>wa_export_import.py</code> (the every-30-min cron picks it up).</div>'
-                        + '<div style="color:var(--ink-muted);font-size:12.5px;margin-top:7px">Map the file to this chat\'s exact id, or every line is dropped on ingest:</div>'
-                        + '<div style="margin-top:4px"><code style="user-select:all;background:rgba(255,248,238,.08);padding:3px 7px;border-radius:5px;font-size:12px">' + esc(waMsgState.chatId || chatId) + '</code></div>'
-                        + '</div>';
-                }
-                list.insertAdjacentHTML('beforeend', stubBanner + batch.map(waMsgRow).join(''));
-                if (more) {
-                    more.disabled = false;
-                    more.textContent = 'Load older messages';
-                    more.style.display = waMsgState.before ? '' : 'none';
-                }
-            })
-            .catch(function (e) {
-                if (waMsgState.reqId !== token) return;
-                waMsgState.loading = false;
-                if (!append) list.innerHTML = '';
-                if (more) { more.disabled = false; more.textContent = 'Load older messages'; }
-                $('waMsgHint').textContent = 'Load failed: ' + e.message;
-            });
-    }
-    function loadWaChat(chatId) {
-        var token = ++waDetailReq;
-        var d = $('waDetail'); d.style.display = '';
-        $('waDetailName').textContent = 'Loading…';
-        $('waDetailHint').textContent = '';
-        $('waDetailKpis').innerHTML = '';
-        var msgSearch = $('waMsgSearch'); if (msgSearch) msgSearch.value = '';
-        try { d.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (e) { /* no-op */ }
-        loadMessages(chatId, '');
-        /* Key in the header, never the query string. */
-        fetch('/api/jp-wa-chat?' + new URLSearchParams({ chat_id: chatId }).toString(),
-            { cache: 'no-store', headers: { 'x-stats-key': KEY } })
-            .then(function (r) { return r.json().then(function (b) { return { status: r.status, body: b }; }); })
-            .then(function (res) {
-                if (token !== waDetailReq) return;
-                if (res.status === 401) {
-                    clearDashboardKey(); KEY = '';
-                    $('waDetailName').textContent = 'Chat';
-                    $('waDetailHint').textContent = '';
-                    $('gateMsg').textContent = 'Invalid key.';
-                    showGate();
-                    return;
-                }
-                var j = res.body;
-                if (!j.ok) { $('waDetailName').textContent = 'Chat'; $('waDetailHint').textContent = j.error || 'Could not load that chat.'; return; }
-                if (j.empty) { $('waDetailName').textContent = 'Chat'; $('waDetailHint').textContent = j.reason || 'Nothing stored yet.'; return; }
-                var c = j.chat, x = j.detail, b = j.bodies || {};
-                $('waDetailName').textContent = c.name;
-                $('waDetailHint').textContent = c.kind + (c.kind === 'group' && c.member_count ? ' · ' + fmt(c.member_count) + ' members' : '')
-                    + ' · ' + esc(c.first_at || '?') + ' → ' + esc(c.last_at || '?')
-                    + ' · ' + (b.available ? fmt(b.with_body) + ' bodies imported' : 'metadata only');
-                $('waDetailKpis').innerHTML =
-                    waKvi('Messages held', fmt(x.rows_held))
-                    + waKvi('Sent', fmt(x.sent))
-                    + waKvi('Received', fmt(x.received))
-                    + waKvi('Undated', fmt(x.undated))
-                    + (c.kind === 'group' ? waKvi('Senders', fmt(x.distinct_senders)) : '')
-                    + waKvi('Media', fmt(c.media_count))
-                    + waKvi('Audio', fmt(c.audio_count))
-                    + waKvi('Calls', fmt(c.call_count));
-
-            })
-            .catch(function (e) {
-                if (token !== waDetailReq) return;
-                $('waDetailName').textContent = 'Chat';
-                $('waDetailHint').textContent = 'Failed to load: ' + e.message;
-            });
-    }
-    (function () {
-        var body = $('waChatsBody');
-        if (body) body.addEventListener('click', function (ev) {
-            var t = ev.target;
-            while (t && t !== body) {
-                if (t.tagName === 'TR' && t.getAttribute && t.getAttribute('data-chat-id')) {
-                    loadWaChat(t.getAttribute('data-chat-id')); return;
-                }
-                t = t.parentNode;
-            }
-        });
-        var close = $('waDetailClose');
-        if (close) close.addEventListener('click', function () { $('waDetail').style.display = 'none'; });
-        var kinds = $('waAttKinds');
-        if (kinds) kinds.addEventListener('click', function (ev) {
-            var t = ev.target;
-            while (t && t !== kinds) {
-                if (t.classList && t.classList.contains('wa-att-kind') && waAttState.chatId) {
-                    loadAttachments(waAttState.chatId, t.getAttribute('data-kind') || '');
-                    return;
-                }
-                t = t.parentNode;
-            }
-        });
-        var msgSearch = $('waMsgSearch');
-        var msgDebounce = null;
-        if (msgSearch) msgSearch.addEventListener('input', function () {
-            if (!waMsgState.chatId) return;
-            if (msgDebounce) clearTimeout(msgDebounce);
-            var val = msgSearch.value;
-            /* Capture the chat at schedule time. Reading waMsgState.chatId when
-               the timer fires applied the previous chat's query to whichever
-               chat was selected 220ms later. */
-            var forChat = waMsgState.chatId;
-            msgDebounce = setTimeout(function () { loadMessages(forChat, val); }, 220);
-        });
-        var msgMore = $('waMsgMore');
-        if (msgMore) msgMore.addEventListener('click', function () {
-            if (!waMsgState.chatId) return;
-            loadMessages(waMsgState.chatId, waMsgState.q, true);
-        });
-    })();
-    function loadWhatsApp(force) {
-        if (waLoaded && !force) return;
-        var runTag = $('waRunTag'); if (runTag) runTag.textContent = 'loading…';
-        /* Key in the header, not the query string: a URL carrying the
-           credential ends up in access logs and monitoring traces. */
-        return fetch('/api/jp-whatsapp', { cache: 'no-cache', headers: { 'x-stats-key': KEY } })
-            .then(function (r) { return r.json().then(function (b) { return { status: r.status, body: b }; }); })
-            .then(function (res) {
-                /* The inventory is real contact names, so the route is gated
-                   like every other analytics endpoint — reopen the gate rather
-                   than reporting a generic failure. */
-                if (res.status === 401) {
-                    var hadKey = !!KEY;
-                    clearDashboardKey();
-                    KEY = '';
-                    if (runTag) runTag.textContent = '';
-                    $('gateMsg').textContent = hadKey ? 'Invalid key.' : 'Dashboard key required — enter it to load WhatsApp.';
-                    showGate();
-                    try { $('keyInput').focus(); } catch (e) {}
-                    return;
-                }
-                var j = res.body;
-                if (runTag) runTag.textContent = '';
-                /* Only a real answer counts as loaded. Marking it loaded on a
-                   503 meant the panel never retried once the server was fixed,
-                   short of a page reload. */
-                if (!j.ok) { $('waHint').textContent = 'Error: ' + (j.error || 'unknown'); return; }
-                waLoaded = true;
-                if (j.migrated === false) {
-                    $('waHint').textContent = j.note || 'wa_chats table not yet migrated.';
-                    renderWaTotals({ chats: 0, groups: 0, direct: 0, msgs: 0, media: 0, audio: 0, calls: 0, enc: 0, undated: 0 });
-                    return;
-                }
-                WA_STATE.chats = j.chats || [];
-                renderWaTotals(j.totals || {});
-                renderWaByKind(WA_STATE.chats);
-                renderWaRuns(j.runs || []);
-                renderWaChats();
-                var last = (j.runs || [])[0];
-                if (last && runTag) runTag.textContent = 'last sync ' + timeAgo(last.finished_at || last.started_at);
-            })
-            .catch(function (err) { if (runTag) runTag.textContent = 'load failed'; console.error('[wa] load failed', err); });
-    }
-    (function () {
-        var refresh = $('waRefreshBtn'); if (refresh) refresh.addEventListener('click', function () { loadWhatsApp(true); });
-        var filter = $('waFilter'); if (filter) filter.addEventListener('input', function () {
-            WA_STATE.filter = filter.value; renderWaChats();
-            /* The list scrolls inside its own box now, so a new filter would
-               otherwise open wherever the box was left, not at the first match. */
-            var wrap = $('waChatsWrap'); if (wrap) wrap.scrollTop = 0;
-        });
-    })();
+        showGate();
+        try { $('keyInput').focus(); } catch (e) {}
+    });
 
     window.addEventListener('popstate', function () {
         var pageName = new URLSearchParams(location.search).get('view') || 'overview';

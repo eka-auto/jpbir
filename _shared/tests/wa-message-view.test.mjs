@@ -56,13 +56,19 @@ const system = presentMessageRow({
 assert.equal(system.sender_label, 'System');
 assert.match(system.display_body, /^System event/);
 
+// The WhatsApp message view moved out of index.html into the shared
+// messenger module (Frontend/mess-ui.js), so the presentation contract is
+// checked against that file. index.html is still read: it owns the panel
+// markup the module fills in.
 const frontend = await readFile(new URL('../../Frontend/index.html', import.meta.url), 'utf8');
-assert.match(frontend, /m\.sender_label \|\| m\.sender \|\| 'Unknown sender'/);
-assert.match(frontend, /m\.display_body \|\| m\.body/);
-assert.match(frontend, /Load older messages/);
-assert.match(frontend, /total_readable_count/);
-assert.match(frontend, /m\.readable === true/);
-assert.match(frontend, /Inventory gap/);
+const messenger = await readFile(new URL('../../Frontend/mess-ui.js', import.meta.url), 'utf8');
+const view = frontend + '\n' + messenger;
+assert.match(view, /m\.sender_label \|\| m\.sender \|\| 'Unknown sender'/);
+assert.match(view, /m\.display_body \|\| m\.body/);
+assert.match(view, /Load older messages/);
+assert.match(view, /total_readable_count/);
+assert.match(view, /m\.readable === true/);
+assert.match(view, /Inventory gap/);
 
 const dbFrontend = await readFile(new URL('../../Frontend/db.html', import.meta.url), 'utf8');
 const messageEndpoint = await readFile(new URL('../../Backend/jp-wa-messages.js', import.meta.url), 'utf8');

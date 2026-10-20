@@ -1,0 +1,288 @@
+/* ============================================================================
+   MESSENGER UI (WhatsApp + Telegram)
+   ----------------------------------------------------------------------------
+   A real messenger client surface: chat list on the left, conversation on the
+   right, WhatsApp's own bubble geometry and palette.
+
+   The numbers on this page are the whole point, so they are split honestly:
+   "24 chats with readable text" is the headline; the 839 metadata-only chats
+   are a separate, labelled bucket. A bare "863 chats" was the thing that
+   made the old panel unreadable, so nothing here reports a raw row count
+   without saying what it is.
+
+   Reusable for any messenger: every id is data-attribute driven, and the
+   source ("wa" / "tg") is a single variable, so the Telegram panel is the
+   same code against tg_* tables.
+   ========================================================================= */
+
+:root {
+  --wa-green: #00A884;
+  --wa-green-dark: #008069;
+  --wa-bubble-in: #FFFFFF;
+  --wa-bubble-out: #DCF8C6;
+  --wa-bg: #0B141A;
+  --wa-panel: #111B21;
+  --wa-panel-2: #202C33;
+  --wa-head: #202C33;
+  --wa-line: #2A3942;
+  --wa-text: #E9EDEF;
+  --wa-text-2: #8696A0;
+  --wa-tick: #53BDEB;
+  --wa-wall: #0B141A;
+}
+
+.mess {
+  display: grid;
+  grid-template-columns: minmax(280px, 34%) 1fr;
+  gap: 0;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  overflow: hidden;
+  background: var(--wa-panel);
+  min-height: 560px;
+}
+
+/* ---------- left: chat list ---------- */
+.mess-side {
+  border-right: 1px solid var(--wa-line);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--wa-panel);
+}
+.mess-side-head {
+  padding: 11px 13px;
+  background: var(--wa-head);
+  border-bottom: 1px solid var(--wa-line);
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+.mess-side-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--wa-text);
+  font-size: 14.5px;
+  font-weight: 700;
+}
+.mess-search {
+  width: 100%;
+  padding: 7px 11px;
+  border-radius: 8px;
+  border: none;
+  outline: none;
+  background: var(--wa-panel-2);
+  color: var(--wa-text);
+  font-family: var(--sans);
+  font-size: 13px;
+}
+
+/* The split headline: readable vs metadata-only, stated before any list.
+   These sit in the dashboard's light panel, above the dark chat client, so
+   they use the dashboard's ink colours. The dark palette is for the chat
+   surface only -- light text on the cream panel is invisible. */
+.mess-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px;
+}
+.mess-split-cell {
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 7px 9px;
+  background: rgba(62, 142, 78, .09);
+}
+.mess-split-cell.meta { background: rgba(108, 95, 83, .08); }
+.mess-split-cell .n {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--ink);
+  line-height: 1.2;
+}
+.mess-split-cell .l {
+  font-size: 10.5px;
+  color: var(--ink-muted);
+  margin-top: 2px;
+  line-height: 1.35;
+}
+.mess-split-cell.readable .n { color: var(--good); }
+
+.mess-tabs {
+  display: flex;
+  gap: 5px;
+  padding: 0 13px 9px;
+  flex-wrap: wrap;
+}
+.mess-tab {
+  border: 1px solid var(--wa-line);
+  background: transparent;
+  color: var(--wa-text-2);
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 11.5px;
+  font-family: var(--sans);
+  cursor: pointer;
+}
+.mess-tab[aria-pressed="true"] {
+  background: var(--wa-green);
+  border-color: var(--wa-green);
+  color: #06231B;
+  font-weight: 700;
+}
+
+.mess-list {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+}
+.mess-chat {
+  display: grid;
+  grid-template-columns: 40px 1fr auto;
+  gap: 10px;
+  align-items: center;
+  padding: 9px 13px;
+  border-bottom: 1px solid rgba(42, 57, 66, .55);
+  cursor: pointer;
+  width: 100%;
+  border-left: none; border-right: none; border-top: none;
+  background: transparent;
+  text-align: left;
+  font-family: var(--sans);
+  color: var(--wa-text);
+}
+.mess-chat:hover { background: var(--wa-panel-2); }
+.mess-chat[aria-selected="true"] { background: var(--wa-panel-2); }
+.mess-av {
+  width: 40px; height: 40px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px; font-weight: 700; color: #06231B;
+  background: linear-gradient(140deg, var(--wa-green), #6FCF97);
+}
+.mess-av.group { background: linear-gradient(140deg, #7C8CF8, #A78BFA); }
+.mess-chat-main { min-width: 0; }
+.mess-chat-top {
+  display: flex; justify-content: space-between; gap: 8px; align-items: baseline;
+}
+.mess-chat-name {
+  font-size: 13.5px; font-weight: 650; color: var(--wa-text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.mess-chat-time { font-size: 10.5px; color: var(--wa-text-2); flex: none; }
+.mess-chat-sub {
+  font-size: 12px; color: var(--wa-text-2); margin-top: 2px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.mess-badges { display: flex; gap: 5px; margin-top: 4px; flex-wrap: wrap; }
+.mess-badge {
+  font-size: 9.5px; letter-spacing: .2px; border-radius: 5px; padding: 1px 5px;
+  border: 1px solid var(--wa-line); color: var(--wa-text-2); background: rgba(255,255,255,.03);
+}
+.mess-badge.r { color: var(--wa-green); border-color: rgba(0,168,132,.45); }
+.mess-badge.e { color: #F0B968; border-color: rgba(240,185,104,.4); }
+.mess-badge.m { color: #7FB3FF; border-color: rgba(127,179,255,.35); }
+
+/* ---------- right: conversation ---------- */
+.mess-thread {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--wa-wall);
+  background-image: radial-gradient(rgba(255,255,255,.022) 1px, transparent 1px);
+  background-size: 22px 22px;
+}
+.mess-thread-head {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 14px; background: var(--wa-head);
+  border-bottom: 1px solid var(--wa-line);
+  color: var(--wa-text);
+}
+.mess-thread-title { font-size: 14px; font-weight: 650; }
+.mess-thread-sub { font-size: 11px; color: var(--wa-text-2); margin-top: 1px; }
+.mess-body {
+  flex: 1; overflow-y: auto; padding: 14px 16px;
+  display: flex; flex-direction: column; gap: 3px; min-height: 0;
+}
+.mess-day {
+  align-self: center; margin: 12px 0 8px;
+  font-size: 10.5px; color: var(--wa-text-2);
+  background: var(--wa-panel-2); border-radius: 8px; padding: 3px 10px;
+}
+.mess-row { display: flex; }
+.mess-row.out { justify-content: flex-end; }
+.mess-bubble {
+  max-width: min(74%, 560px);
+  padding: 6px 9px 7px;
+  border-radius: 9px;
+  background: var(--wa-bubble-in);
+  color: #111B21;
+  font-size: 13.2px;
+  line-height: 1.44;
+  box-shadow: 0 1px .5px rgba(11,20,26,.13);
+  position: relative;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.mess-row.out .mess-bubble { background: var(--wa-bubble-out); }
+.mess-row.out .mess-bubble::after {
+  content: ''; position: absolute; right: -7px; bottom: 0;
+  border: 7px solid transparent; border-bottom-color: var(--wa-bubble-out);
+  border-right: 0; border-bottom: 0;
+}
+.mess-row.in .mess-bubble::after {
+  content: ''; position: absolute; left: -7px; bottom: 0;
+  border: 7px solid transparent; border-bottom-color: var(--wa-bubble-in);
+  border-left: 0; border-bottom: 0;
+}
+.mess-bubble.locked {
+  background: rgba(32,44,51,.72);
+  color: var(--wa-text-2);
+  border: 1px dashed var(--wa-line);
+  box-shadow: none;
+}
+.mess-bubble.locked::after { display: none; }
+.mess-bubble-meta {
+  font-size: 10px; color: #667781; margin-top: 3px;
+  display: flex; justify-content: flex-end; gap: 4px; align-items: center;
+}
+.mess-tick { color: var(--wa-tick); font-size: 10px; }
+.mess-sender {
+  font-size: 11.5px; font-weight: 700; margin-bottom: 2px; color: #0B6E57;
+}
+
+.mess-foot {
+  padding: 9px 13px; background: var(--wa-head);
+  border-top: 1px solid var(--wa-line);
+  display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+}
+.mess-foot .hint { flex: 1; min-width: 140px; }
+
+.mess-empty {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 10px; height: 100%; color: var(--wa-text-2); text-align: center; padding: 30px;
+}
+.mess-empty .big { font-size: 44px; opacity: .5; }
+
+/* The notes sit below the chat client, on the dashboard's light panel, so
+   they use the dashboard's ink colours rather than the chat palette. */
+.mess-note {
+  margin: 10px 0 0; padding: 10px 12px;
+  border: 1px solid rgba(185, 119, 14, .32);
+  background: rgba(240, 185, 104, .12);
+  border-radius: 10px; color: var(--ink-muted); font-size: 12px; line-height: 1.55;
+}
+.mess-note b { color: var(--ink); }
+.mess-note code {
+  user-select: all; background: rgba(34, 26, 21, .06);
+  padding: 2px 6px; border-radius: 5px; font-size: 11.5px; color: var(--ink);
+}
+
+@media (max-width: 860px) {
+  .mess { grid-template-columns: 1fr; }
+  .mess-side { border-right: none; border-bottom: 1px solid var(--wa-line); max-height: 320px; }
+}
+@media (max-width: 560px) {
+  .mess-bubble { max-width: 86%; }
+  .mess-split { grid-template-columns: 1fr; }
+}
