@@ -30,6 +30,28 @@ export function enforceVerifyFull(connectionString) {
   return connectionString.replace(WEAKER_SSLMODE, '$1verify-full');
 }
 
+/**
+ * Whether the connection string asks for TLS to be switched off.
+ *
+ * An EXPLICIT `sslmode=disable` is a deliberate choice against a database that
+ * does not speak TLS — the isolated Postgres in project/environment is one, and
+ * the migration proof has to run the real migration runner against it. It is
+ * honoured.
+ *
+ * Nothing else is. A URL with no sslmode, or one that says prefer, require or
+ * verify-ca, still gets verify-full TLS with the certificate's hostname
+ * checked: the absence of the parameter must never mean an unencrypted
+ * connection to production.
+ *
+ * The distinction matters because node-postgres ignores the connection
+ * string's sslmode entirely once an `ssl` option is passed to the Pool — so
+ * without this rule an explicit opt-out was overridden, and `npm run
+ * db:migrate` could not be pointed at a local database at all.
+ */
+export function sslDisabledBy(connectionString) {
+  return /[?&]sslmode=disable(?:&|$)/.test(connectionString || '');
+}
+
 function makePool(connectionString) {
   if (!connectionString) {
     throw new Error('No Postgres connection string set (DATABASE_URL / POSTGRES_URL)');
@@ -40,7 +62,7 @@ function makePool(connectionString) {
     idleTimeoutMillis: 10_000,
     connectionTimeoutMillis: 10_000,
     // Neon serves a publicly trusted certificate; verify it.
-    ssl: { rejectUnauthorized: true },
+    ssl: sslDisabledBy(connectionString) ? false : { rejectUnauthorized: true },
   });
 }
 

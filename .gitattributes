@@ -1,8 +1,5 @@
-# Installers hash these bytes and the tests match on LF. A Windows checkout
-# that rewrites them to CRLF fails the pin and makes the installer abort.
-*.py text eol=lf
-*.ps1 text eol=lf
-*.sh text eol=lf
-*.mjs text eol=lf
-*.js text eol=lf
-*.json text eol=lf
+# The generated subject manifest is compared byte-for-byte by
+# scripts/stack-subjects.mjs --check, and its digests bind a CI evidence
+# receipt to the exact bytes of the subject files. Keeping its line endings
+# fixed makes the comparison the same on every platform.
+Backend/lib/stack-subjects.js text eol=lf

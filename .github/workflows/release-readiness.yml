@@ -1,0 +1,102 @@
+name: Release Readiness
+
+# The STRICT gate. The pull-request pipeline validates that a change did not
+# break the cloud; this job asks the harder question — can this candidate be
+# released, and can that be PROVED?
+#
+# The distinction matters because the two answer different questions:
+#
+#   - ci-cd.yml gates on cloud_fail. A stopped device daemon cannot be fixed
+#     by a merge, so it must not turn every pull request red.
+#   - This job requires readiness.ready. Every required row — including the
+#     device rows, the contract row and the migration-tooling row — must be
+#     proven, with an evidence timestamp, before a release is called ready.
+#
+# It runs against the deployed production, because the panel the owner looks
+# at is the deployed one, and a proof about a build that is not running
+# proves nothing about the product.
+#
+# It also checks the schedule. A product that is healthy but whose unattended
+# checker has stopped is not being monitored, and saying "ready" there would
+# be the same false all-clear the whole change exists to remove.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    - cron: '41 5 * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-readiness
+  cancel-in-progress: false
+
+jobs:
+  readiness:
+    name: Strict production readiness
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Read the strict readiness verdict
+        env:
+          HEALTH_CHECK_KEY: ${{ secrets.HEALTH_CHECK_KEY }}
+          STACK_URL: https://jaytipargal.tech/api/jp-stack
+        run: |
+          if [ -z "$HEALTH_CHECK_KEY" ]; then
+            echo "❌ The HEALTH_CHECK_KEY secret is not set"
+            exit 1
+          fi
+          BODY=$(curl -sS -H "x-health-key: $HEALTH_CHECK_KEY" -w '\n%{http_code}' "$STACK_URL")
+          CODE=$(echo "$BODY" | tail -n 1)
+          JSON=$(echo "$BODY" | sed '$d')
+          if { [ "$CODE" != "200" ] && [ "$CODE" != "503" ]; }; then
+            echo "❌ The stack endpoint answered HTTP $CODE — no verdict could be read"
+            echo "$JSON"
+            exit 1
+          fi
+          READY=$(echo "$JSON" | jq -r '.readiness.ready // false')
+          VERDICT=$(echo "$JSON" | jq -r '.readiness.verdict // "absent"')
+          REASON=$(echo "$JSON" | jq -r '.readiness.reason // "no reason given"')
+          ROWS=$(echo "$JSON" | jq -r '.readiness.scope.rows_total // 0')
+          OK=$(echo "$JSON" | jq -r '.summary.ok // 0')
+          WARN=$(echo "$JSON" | jq -r '.summary.warn // 0')
+          FAIL=$(echo "$JSON" | jq -r '.summary.fail // 0')
+          UNPROVEN=$(echo "$JSON" | jq -r '.summary.unknown // 0')
+          SCHEDULE=$(echo "$JSON" | jq -r '.schedule.stale // true')
+          SCHEDULE_AGE=$(echo "$JSON" | jq -r '.schedule.age_minutes // "never"')
+
+          echo "rows=$ROWS ok=$OK warn=$WARN fail=$FAIL unproven=$UNPROVEN verdict=$VERDICT"
+          echo "reason: $REASON"
+
+          {
+            echo "## Release readiness"
+            echo ""
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Rows | $ROWS |"
+            echo "| Proven green | $OK |"
+            echo "| Warnings | $WARN |"
+            echo "| Failing | $FAIL |"
+            echo "| Unproven | $UNPROVEN |"
+            echo "| Verdict | $VERDICT |"
+            echo "| Unattended check | ${SCHEDULE_AGE} min ago (stale: $SCHEDULE) |"
+            echo ""
+            echo "$REASON"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$READY" != "true" ]; then
+            echo ""
+            echo "❌ NOT release-ready: $REASON"
+            exit 1
+          fi
+          if [ "$SCHEDULE" = "true" ]; then
+            echo ""
+            echo "❌ The unattended check is stale (last run ${SCHEDULE_AGE} min ago) — the product is not being monitored"
+            exit 1
+          fi
+          echo ""
+          echo "✅ Release-ready: every required row is proven green and the unattended check is current"

@@ -32,10 +32,20 @@ const call = async (headers, query = {}) => {
 let r = await call({ 'x-health-key': 'h-test' });
 check('the health key reaches the Postgres check', r.statusCode === 503 && r.payload?.postgres?.ok === false,
   `got ${r.statusCode} ${JSON.stringify(r.payload)}`);
-check('and is shown only the Postgres summary',
-  JSON.stringify(Object.keys(r.payload || {}).sort()) === '["postgres","success"]'
-    && JSON.stringify(Object.keys(r.payload.postgres).sort()) === '["birthday_active_now","newest_event_at","ok","tables_expected","tables_present"]',
-  JSON.stringify(r.payload));
+  check('and is shown only the Postgres summary and the migration ledger',
+    JSON.stringify(Object.keys(r.payload || {}).sort()) === '["ledger","postgres","success"]'
+      && JSON.stringify(Object.keys(r.payload.postgres).sort()) ===
+'["birthday_active_now","newest_event_at","ok","tables_expected","tables_present"]',
+    JSON.stringify(r.payload));
+  // The ledger joins the health projection because the CI evidence job has to
+  // reconcile the shared migration ledger against the repository's own file
+  // list, and it may not ask for the dashboard key to do it. Filenames only —
+  // never business rows, never SQL — and they are already public in the
+  // repository.
+  check('the ledger projection carries filenames and nothing else',
+    JSON.stringify(Object.keys(r.payload.ledger).sort()) === '["applied","error","ok"]'
+      && Array.isArray(r.payload.ledger.applied),
+    JSON.stringify(r.payload.ledger));
 check('health-key payload keeps freshness fields typed and non-sensitive',
   (r.payload.postgres.newest_event_at === null || typeof r.payload.postgres.newest_event_at === 'string')
     && (r.payload.postgres.birthday_active_now === null || Number.isInteger(r.payload.postgres.birthday_active_now)),

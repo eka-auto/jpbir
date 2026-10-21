@@ -166,6 +166,31 @@ export async function verifyFirestore() {
   }
 }
 
+/**
+ * The shared migration ledger, as filenames only.
+ *
+ * `schema_migrations` is one table shared with the sibling jaytibirthday-site
+ * repository, and its numbering invariant has already been broken three times
+ * over — the alias map in Database/schema/migration-aliases.json exists
+ * because a file was renamed while the ledger kept the old name. A migration
+ * runner that meets a ledger row it cannot explain is exactly the failure
+ * this whole production-readiness work is about, so the ledger has to be
+ * readable from outside: the CI evidence job reconciles it against the
+ * repository's own file list and refuses to publish a proof if a row in
+ * production names a migration this repository no longer has.
+ *
+ * Filenames only — never the SQL, never a row count of business data, never a
+ * timestamp. The repository is public, so these names are not a disclosure.
+ */
+export async function verifyLedger(q = query) {
+  try {
+    const res = await q('SELECT filename FROM schema_migrations ORDER BY filename');
+    return { ok: true, applied: res.rows.map((r) => r.filename).filter(Boolean) };
+  } catch (error) {
+    return { ok: false, applied: [], error: String(error.message || error).slice(0, 200) };
+  }
+}
+
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
   res.setHeader('Content-Type', 'application/json');
@@ -182,8 +207,14 @@ export default async function handler(req, res) {
   // CI's health probe gets a third, narrower key: HEALTH_CHECK_KEY can only ask
   // whether Neon answers with the full schema. No table names, row counts or
   // other store detail, so the dashboard key never has to live in CI.
+  //
+  // The ledger filenames join that projection because the CI evidence job has
+  // to reconcile the shared migration ledger against the repository's own file
+  // list, and it may not ask for the dashboard key to do it. Filenames only —
+  // they are already public in the repository — and no business rows, no SQL
+  // and no timings travel with them.
   if (secretEquals(req.headers['x-health-key'], _env['HEALTH_' + 'CHECK_KEY'])) {
-    const pg = await verifyPostgres();
+    const [pg, ledger] = await Promise.all([verifyPostgres(), verifyLedger()]);
     return res.status(pg.ok ? 200 : 503).json({
       success: pg.ok,
       postgres: {
@@ -192,6 +223,11 @@ export default async function handler(req, res) {
         tables_expected: pg.tables_expected ?? null,
         newest_event_at: pg.newest_event_at ?? null,
         birthday_active_now: pg.birthday_active_now ?? null,
+      },
+      ledger: {
+        ok: ledger.ok,
+        applied: ledger.applied,
+        ...(ledger.error ? { error: ledger.error } : {}),
       },
     });
   }

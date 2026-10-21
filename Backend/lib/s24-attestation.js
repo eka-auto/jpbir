@@ -59,8 +59,17 @@ export function isS24AgentVersion(agentVersion) {
 // writer asserting its own freshness would produce, and the jp-agent's age() returns it as a
 // negative number. jp-devices.js maps future timestamps to null before calling in, so for
 // the dashboard this bound changes nothing; for the jp-agent it is the one that matters.
-const isFresh = (seconds) =>
-  seconds !== null && seconds !== undefined && seconds >= 0 && seconds <= S24_ACK_MAX_AGE_SECONDS;
+//
+// `maxAgeSeconds` is an explicit input rather than a hidden constant. The default is
+// S24_ACK_MAX_AGE_SECONDS, which is what the dashboard and the jp-agent have always used, so
+// their behaviour is unchanged. The Product engineering panel passes the S24's own declared
+// reporting period instead: the device's runtime contract schedules the broker daemon
+// through Termux JobScheduler every 15 minutes, so between two job launches the phone is
+// silent for up to a full period and a five-minute bound would call a device that is
+// exactly following its contract offline for two thirds of every cycle. The freshness BOUND
+// is a fact about the device's schedule; which CHECKS are required is policy and stays here.
+const isFresh = (seconds, maxAgeSeconds) =>
+  seconds !== null && seconds !== undefined && seconds >= 0 && seconds <= maxAgeSeconds;
 
 /**
  * True only for a *completed* acknowledgement whose queue entry agrees with it.
@@ -107,10 +116,14 @@ export function s24AttestationChecks({
   signedHeartbeatProtocol,
   activeKeyId,
   keyType,
+  heartbeatMaxAgeSeconds,
 }) {
+  const heartbeatMaxAge = Number.isFinite(heartbeatMaxAgeSeconds) && heartbeatMaxAgeSeconds > 0
+    ? heartbeatMaxAgeSeconds
+    : S24_ACK_MAX_AGE_SECONDS;
   return {
-    heartbeatFresh: isFresh(heartbeatAgeSeconds),
-    signedBrokerHeartbeat: isFresh(heartbeatAgeSeconds) &&
+    heartbeatFresh: isFresh(heartbeatAgeSeconds, heartbeatMaxAge),
+    signedBrokerHeartbeat: isFresh(heartbeatAgeSeconds, heartbeatMaxAge) &&
       typeof signedHeartbeatAt === 'string' && signedHeartbeatAt === lastSeen &&
       typeof activeKeyId === 'string' && activeKeyId.length > 0 &&
       signedHeartbeatKeyId === activeKeyId && signedHeartbeatProtocol === '2',
@@ -122,7 +135,7 @@ export function s24AttestationChecks({
     liveDeviceVerified: liveDeviceVerified === true,
     liveSource: S24_SOURCE_TYPES.has(sourceType),
     androidRuntime: runtimeIsAndroid === true,
-    commandAckFresh: isFresh(ackAgeSeconds) && ackConsistent === true,
+    commandAckFresh: isFresh(ackAgeSeconds, S24_ACK_MAX_AGE_SECONDS) && ackConsistent === true,
   };
 }
 

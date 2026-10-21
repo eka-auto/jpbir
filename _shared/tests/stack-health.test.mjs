@@ -37,18 +37,21 @@ t('a layer is only as green as its weakest file', () => {
   assert.equal(worst([]), 'ok', 'an empty layer has nothing to be unhealthy about');
 });
 
-t('a subsystem with no live signal never renders green', () => {
-  // The `static` probe is the one that cannot be attested from a function.
-  // If it ever returns ok, every hand-written config file in the panel would
-  // claim health nobody verified — the exact failure strictS24Liveness exists
-  // to prevent.
+t('a row with no verifiable evidence never renders green', () => {
+  // The two evidence-backed rows (the S24 runtime contract and the migration
+  // tooling) are proved by a SIGNED CI receipt, not by a hand-written
+  // constant. Until such a receipt exists, verifies, and is bound to this
+  // revision, the row must stay grey. A probe that answered 'ok' because the
+  // file happens to exist would be the exact lie rule 1 forbids.
   const probes = allOk();
-  probes.static = { status: 'unknown', detail: 'no live signal' };
+  probes['runtime-contract'] = { status: 'unknown', problem: 'no CI evidence has been published for runtime-contract' };
+  probes['migration-tooling'] = { status: 'unknown', problem: 'the evidence signature does not verify' };
   const layers = buildLayers(probes);
-  const staticFiles = layers.flatMap((l) => l.files).filter((f) => f.probe === 'static');
-  assert.ok(staticFiles.length > 0, 'expected at least one static-probed file');
-  for (const f of staticFiles) {
-    assert.notEqual(f.status, 'ok', f.path + ' claimed green from an unprobed subsystem');
+  const unproven = layers.flatMap((l) => l.files).filter((f) => f.probe === 'runtime-contract' || f.probe === 'migration-tooling');
+  assert.ok(unproven.length >= 2, 'expected the two evidence-backed rows');
+  for (const f of unproven) {
+    assert.notEqual(f.status, 'ok', f.path + ' claimed green without usable evidence');
+    assert.ok(f.problem && f.problem.length > 0, f.path + ' is not green but gives the operator no reason');
   }
 });
 
@@ -110,17 +113,44 @@ t('every file in the map names a probe that the handler can resolve', () => {
 t('the cron alerts on a state change, never once per tick', () => {
   // At a 5-minute cadence, alerting every tick is 288 mails a day for one
   // broken thing, and the ninth identical mail is where a human stops reading.
-  assert.deepEqual(evaluateStack('fail', 'healthy'), { action: 'down', newState: 'alerted', changed: true });
+  const down = evaluateStack('fail', 'healthy');
+  assert.equal(down.action, 'down');
+  assert.equal(down.newState, 'alerted');
+  assert.equal(down.changed, true);
   assert.equal(evaluateStack('fail', 'alerted').changed, false, 'still failing must stay silent');
-  assert.deepEqual(evaluateStack('ok', 'alerted'), { action: 'recovered', newState: 'healthy', changed: true });
-  assert.equal(evaluateStack('ok', 'healthy').changed, false, 'still healthy must stay silent');
+  const recovered = evaluateStack('pass', 'alerted');
+  assert.equal(recovered.action, 'recovered');
+  assert.equal(recovered.newState, 'healthy');
+  assert.equal(recovered.changed, true);
+  assert.equal(evaluateStack('pass', 'healthy').changed, false, 'still healthy must stay silent');
+});
+
+t('a failure that becomes unproven never produces a recovery message', () => {
+  // The sharp end. "Every check is passing again" is a claim about evidence.
+  // A dependency whose evidence went missing has NOT been shown to pass, so
+  // the panel must not say it has — and the operator must not be told the
+  // outage is over when it may still be running.
+  const transition = evaluateStack('unproven', 'alerted');
+  assert.notEqual(transition.action, 'recovered', 'a missing proof is not a recovery');
+  assert.equal(transition.changed, false, 'the alert state must stay as it was');
+  assert.equal(transition.newState, 'alerted');
+});
+
+t('missing evidence alerts, because silence is the failure mode', () => {
+  // Unproven is not "probably fine". It is "we cannot show that it is fine",
+  // and a responder needs to know that at 03:00 exactly as much as for a
+  // failure.
+  const transition = evaluateStack('unproven', 'healthy');
+  assert.equal(transition.action, 'down');
+  assert.equal(transition.newState, 'alerted');
+  assert.equal(transition.changed, true);
 });
 
 t('a first-ever run with no stored state is treated as healthy, not as a recovery', () => {
   // Otherwise the very first cron tick on a fresh deployment emails RECOVERED
   // for an outage that never happened.
-  assert.equal(evaluateStack('ok', null).changed, false);
-  assert.equal(evaluateStack('ok', undefined).changed, false);
+  assert.equal(evaluateStack('pass', null).changed, false);
+  assert.equal(evaluateStack('pass', undefined).changed, false);
   // ...but a first run that is genuinely failing must still alert.
   assert.equal(evaluateStack('fail', null).action, 'down');
 });
@@ -137,6 +167,7 @@ t('the alert email names every failing probe and its reason', () => {
   const snap = {
     fetched_at: '2026-09-20T03:00:00.000Z',
     overall: 'fail',
+    readiness: { verdict: 'fail', reason: '2 required row(s) failed', scope: { rows_unproven: 0 } },
     summary: { ok: 40, warn: 0, fail: 2, unknown: 6, total: 48 },
     probes: {
       agent: { status: 'fail', problem: 'agent /health returned HTTP 502' },
@@ -152,6 +183,27 @@ t('the alert email names every failing probe and its reason', () => {
   assert.doesNotMatch(body, /dns/, 'a healthy probe must not appear in a failure mail');
   assert.match(alertBody('down', snap).subject, /DOWN/);
   assert.match(alertBody('recovered', snap).subject, /RECOVERED/);
+});
+
+t('an unproven verdict produces its own message, not a failure message', () => {
+  // The two are different incidents. "Something failed" and "we cannot show
+  // that anything passed" call for different readings and different fixes,
+  // and an operator who is told "DOWN" when the real problem is missing
+  // evidence will go looking in the wrong place.
+  const snap = {
+    fetched_at: '2026-09-20T03:00:00.000Z',
+    overall: 'unknown',
+    readiness: { verdict: 'unproven', reason: '2 required row(s) have no usable evidence', scope: { rows_unproven: 2 } },
+    summary: { ok: 36, warn: 0, fail: 0, unknown: 2, total: 38 },
+    probes: {
+      'runtime-contract': { status: 'unknown', problem: 'no CI evidence has been published for runtime-contract' },
+      postgres: { status: 'ok', problem: '' },
+    },
+  };
+  const body = alertBody('down', snap);
+  assert.match(body.subject, /UNPROVEN/);
+  assert.match(body.text, /no CI evidence has been published/);
+  assert.doesNotMatch(body.text, /postgres/, 'a healthy probe must not appear in the mail');
 });
 
 t('a stopped device daemon reddens the panel but never the cloud verdict', () => {
@@ -216,15 +268,26 @@ t('the pages the browser loads are attested by a request, not assumed', () => {
   assert.ok(served.some((f) => f.rewrite), 'no rewritten path is marked, so vercel.json has nothing to stand on');
 });
 
-t('a subsystem with genuinely no signal is still left grey', () => {
-  // The point of the assets probe was to stop overusing `static`, not to
-  // abolish it. A device runtime contract has no cloud-side signal, and
-  // inventing one would be the exact lie rule 1 forbids.
-  const stillStatic = allFiles().filter((f) => f.probe === 'static').map((f) => f.path);
-  assert.ok(stillStatic.length > 0, 'static must survive for what truly cannot be probed');
-  for (const p of ['Devices/S24/runtime_contract.json']) {
-    assert.ok(stillStatic.includes(p), p + ' has no live signal and must not have been made green');
-  }
+t('the two rows that had no live signal are now bound to verified CI evidence', () => {
+  // These used to sit on the `static` probe, permanently grey, because a
+  // serverless function cannot stat the repository. They are now proved from
+  // outside: a protected CI job runs the checks and publishes a signed
+  // receipt, and the panel verifies it before the row may go green. The rows
+  // themselves must still exist, and must still be governed by a probe that
+  // runs — a proof that is not wired to a row proves nothing.
+  const contract = allFiles().find((f) => f.path === 'Devices/S24/runtime_contract.json');
+  const migration = allFiles().find((f) => f.path === 'Database/scripts/migrate.mjs');
+  assert.ok(contract, 'the S24 runtime contract is no longer in the stack map');
+  assert.ok(migration, 'the migration runner is no longer in the stack map');
+  assert.equal(contract.probe, 'runtime-contract');
+  assert.equal(migration.probe, 'migration-tooling');
+  const probes = allOk();
+  assert.ok(probes['runtime-contract'], 'the runtime-contract probe is not registered');
+  assert.ok(probes['migration-tooling'], 'the migration-tooling probe is not registered');
+  // The static probe is gone for good: a row that can never be proven is not a
+  // row, it is a decoration.
+  assert.equal(allFiles().filter((f) => f.probe === 'static').length, 0,
+    'the static probe still governs a row');
 });
 
 // One async case: probeAssets is driven against a stubbed edge rather than the
@@ -254,13 +317,49 @@ await ta('a 200 that declares no content-length is served, not empty', async () 
 // live device painted the tier green while three were dead for days. These pin
 // that a fresh device can never hide a stale one again.
 function fsDocs(entries) {
-  // entries: [id, minutesAgo|null]. Shapes the Firestore REST doc deviceFreshness reads.
+  // entries: [id, minutesAgo|null] or [id, minutesAgo|null, extraFields].
+  // Shapes the Firestore REST doc deviceFreshness reads.
   const now = Date.now();
-  const _docs = entries.map(([id, minAgo]) => ({
+  const _docs = entries.map(([id, minAgo, extra]) => ({
     name: 'projects/x/databases/eka-agent/documents/devices/' + id,
-    fields: minAgo == null ? {} : { lastSeen: { timestampValue: new Date(now - minAgo * 60000).toISOString() } },
+    fields: {
+      ...(minAgo == null ? {} : { lastSeen: { timestampValue: new Date(now - minAgo * 60000).toISOString() } }),
+      ...(extra || {}),
+    },
   }));
   return { status: 'ok', _docs };
+}
+
+/**
+ * The S24 as the broker stamps it after accepting a signed heartbeat.
+ *
+ * The S24 is the one device whose liveness is ATTESTED rather than assumed:
+ * the panel judges it with the shared policy in Backend/lib/s24-attestation.js,
+ * so a fixture that carries only a timestamp is not a phone — it is a document
+ * that claims to be one, and it must not be green.
+ */
+function attestedS24(minAgo, overrides = {}) {
+  const lastSeen = new Date(Date.now() - minAgo * 60000).toISOString();
+  return {
+    agentVersion: { stringValue: 's24-termux-broker-2026-09-21.2' },
+    connectionMethod: { stringValue: 'signed-broker-v2' },
+    heartbeatAuth: { stringValue: 'termux-phone' },
+    liveDeviceVerified: { booleanValue: true },
+    sourceType: { stringValue: 'live_termux' },
+    runtimeIsAndroid: { booleanValue: true },
+    enrollment: {
+      mapValue: {
+        fields: {
+          lastSignedHeartbeatAt: { stringValue: lastSeen },
+          lastSignedHeartbeatKeyId: { stringValue: 'key-1' },
+          lastSignedHeartbeatProtocol: { stringValue: '2' },
+          activeKeyId: { stringValue: 'key-1' },
+          keyType: { stringValue: 'android-keystore-p256' },
+        },
+      },
+    },
+    ...overrides,
+  };
 }
 
 // Fixtures use the fleet's own ids: deviceFreshness judges only the three
@@ -280,13 +379,21 @@ t('one fresh device does not mask two dead ones', () => {
 });
 
 t('an all-fresh fleet is green and reports the newest heartbeat', () => {
-  const r = deviceFreshness(fsDocs([['g4g-lenovo-laptop', 2], ['jayti-asus-vivobook', 5], ['samsung-s24-ultra', 9]]));
+  const r = deviceFreshness(fsDocs([
+    ['g4g-lenovo-laptop', 2],
+    ['jayti-asus-vivobook', 5],
+    ['samsung-s24-ultra', 9, attestedS24(9)],
+  ]));
   assert.equal(r.status, 'ok');
   assert.match(r.detail, /^all 3 device\(s\) fresh; newest heartbeat 2 min/);
 });
 
 t('a device seen 20 min ago warns but does not fail', () => {
-  const r = deviceFreshness(fsDocs([['g4g-lenovo-laptop', 2], ['jayti-asus-vivobook', 20], ['samsung-s24-ultra', 3]]));
+  const r = deviceFreshness(fsDocs([
+    ['g4g-lenovo-laptop', 2],
+    ['jayti-asus-vivobook', 20],
+    ['samsung-s24-ultra', 3, attestedS24(3)],
+  ]));
   assert.equal(r.status, 'warn', '15<age<=60 min is a warn, not a hard fail');
   assert.equal(r.byDevice['jayti-asus-vivobook'].status, 'warn', 'and the warn is the 20-minute device');
 });
@@ -294,6 +401,66 @@ t('a device seen 20 min ago warns but does not fail', () => {
 t('an unreadable Firestore probe leaves devices unknown, never green', () => {
   const r = deviceFreshness({ status: 'fail' });
   assert.equal(r.status, 'unknown');
+});
+
+t('the S24 is green only when the broker has attested it', () => {
+  // A document that merely carries a fresh timestamp is not a phone. The
+  // panel uses the shared attestation policy, so a laptop writer, a legacy
+  // collector or a hand-edited document cannot make the S24 look alive.
+  const unauthenticated = deviceFreshness(fsDocs([
+    ['g4g-lenovo-laptop', 2],
+    ['jayti-asus-vivobook', 2],
+    ['samsung-s24-ultra', 2],
+  ]));
+  assert.equal(unauthenticated.byDevice['samsung-s24-ultra'].status, 'fail',
+    'a timestamp alone must not make the S24 green');
+  assert.equal(unauthenticated.status, 'fail');
+
+  const attested = deviceFreshness(fsDocs([
+    ['g4g-lenovo-laptop', 2],
+    ['jayti-asus-vivobook', 2],
+    ['samsung-s24-ultra', 2, attestedS24(2)],
+  ]));
+  assert.equal(attested.byDevice['samsung-s24-ultra'].status, 'ok');
+  assert.equal(attested.status, 'ok');
+});
+
+t('the S24 running the legacy collector is not the attested device', () => {
+  // This is the live state of the fleet: on 2026-10-21 the S24 reported
+  // agentVersion "s24-termux-https-worker-2026-07-27.1" over
+  // connectionMethod "termux-direct-cloud" — the old collector, not the
+  // signed broker daemon the runtime contract requires. It must be red, and
+  // the reason must name what it is actually running.
+  const legacy = deviceFreshness(fsDocs([
+    ['g4g-lenovo-laptop', 2],
+    ['jayti-asus-vivobook', 2],
+    ['samsung-s24-ultra', 2, {
+      agentVersion: { stringValue: 's24-termux-https-worker-2026-07-27.1' },
+      connectionMethod: { stringValue: 'termux-direct-cloud' },
+      heartbeatAuth: { stringValue: 'termux-phone' },
+      liveDeviceVerified: { booleanValue: true },
+      sourceType: { stringValue: 'live_termux' },
+      runtimeIsAndroid: { booleanValue: true },
+    }],
+  ]));
+  const s24 = legacy.byDevice['samsung-s24-ultra'];
+  assert.equal(s24.status, 'fail');
+  assert.match(legacy.problem, /s24-termux-https-worker-2026-07-27\.1/,
+    'the reason must name what the device is actually running');
+});
+
+t('a heartbeat dated in the future is a failure, not a fresh reading', () => {
+  // The old arithmetic produced a negative age and every threshold below it
+  // was "not exceeded", so a writer that set its own timestamp to tomorrow
+  // read as perfectly alive.
+  const future = new Date(Date.now() + 3600000).toISOString();
+  const r = deviceFreshness(fsDocs([
+    ['g4g-lenovo-laptop', 2],
+    ['jayti-asus-vivobook', 2],
+    ['samsung-s24-ultra', 2, { lastSeen: { timestampValue: future } }],
+  ]));
+  assert.equal(r.byDevice['samsung-s24-ultra'].status, 'fail');
+  assert.match(r.problem, /future/);
 });
 
 // ── the nightly DynamoDB -> Neon repair is watched ──────────────────────
@@ -372,7 +539,7 @@ t('a stopped daemon logs one warning naming the probe and each stale device, nev
   assert.equal(log.lines.length, 1, 'one line per verdict');
   const [level, line] = log.lines[0];
   assert.equal(level, 'warn', 'a device CI does not gate on must not log at error level');
-  assert.match(line, /^\[jp-stack\] health verdict fail cloud_fail=0 /);
+  assert.match(line, /^\[jp-stack\] health verdict fail verdict=fail cloud_fail=0 /);
   assert.match(line, / failing=devices /, 'the failing probe is named');
   assert.match(line, /samsung-s24-ultra:1500m/, 'each stale device is named with its heartbeat age');
   assert.match(line, /jayti-asus-vivobook:never/, 'a device that never reported says so');

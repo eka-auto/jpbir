@@ -3033,23 +3033,46 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
            claimed. This browser polling proves nothing about the hours the tab
            was closed; the last unattended run does. If that run is stale, the
            scheduler is the thing that is broken, and saying so beats a panel
-           that looks healthy because nobody has asked it lately. */
+           that looks healthy because nobody has asked it lately.
+
+           The age comes from the server's own `schedule` block, which reads
+           the NATIVE receipt — the one only the scheduler writes. A manual
+           "check now" must never make a dead schedule look alive. */
         var cronLine = '';
-        if (d.last_cron_run && d.last_cron_run.checked_at) {
-            var ageMin = Math.floor((Date.now() - new Date(d.last_cron_run.checked_at).getTime()) / 60000);
-            var stale = ageMin > 20; // cron is every 5 min; 4 missed ticks is a real gap
-            cronLine = '<br><span style="color:' + (stale ? 'var(--bad)' : 'var(--ink-muted)') + '">'
-                + (stale ? '⚠ unattended check last ran ' + ageMin + ' min ago — the 5-min cron looks stopped'
-                         : '24×7 cron ran ' + esc(fmtAgo(d.last_cron_run.checked_at)) + ' (' + esc(d.last_cron_run.overall) + ')')
+        var sched = d.schedule;
+        if (sched && sched.present && !sched.stale) {
+            cronLine = '<br><span style="color:var(--ink-muted)">'
+                + '24×7 cron ran ' + esc(fmtAgo(sched.checked_at)) + ' (' + esc(sched.age_minutes) + ' min ago)'
+                + '</span>';
+        } else if (sched && sched.present) {
+            cronLine = '<br><span style="color:var(--bad)">'
+                + '⚠ unattended check last ran ' + esc(sched.age_minutes) + ' min ago — the 5-min cron looks stopped'
                 + '</span>';
         } else {
             cronLine = '<br><span style="color:var(--warn)">No unattended run recorded yet — this panel is live only while open</span>';
         }
+
+        /* The readiness line is the strict answer, and it is deliberately not
+           the same as the colour counts. Thirty green rows with eight
+           unproven ones is not "healthy": it is thirty proofs and eight
+           gaps. The nav dot below used to read `s.ok ? 'ok'` and painted
+           green over exactly that. */
+        var ready = d.readiness || {};
+        var readyLine = '<br><span style="color:' + (ready.ready ? 'var(--ink-muted)' : 'var(--bad)') + '">'
+            + (ready.ready
+                ? 'Release readiness: proven — ' + esc(ready.scope && ready.scope.rows_total) + '/' + esc(ready.scope && ready.scope.rows_total) + ' rows proven'
+                : 'Release readiness: NOT proven — ' + esc(ready.verdict) + ' — ' + esc(ready.reason))
+            + '</span>';
+
         $('stackHint').innerHTML = s.ok + ' ok · ' + s.fail + ' failing · ' + s.warn + ' warning · '
-            + s.unknown + ' unproven — fetched ' + esc(fmtAgo(d.fetched_at)) + cronLine;
+            + s.unknown + ' unproven — fetched ' + esc(fmtAgo(d.fetched_at)) + cronLine + readyLine;
 
         var dot = $('stackNavDot');
-        if (dot) dot.className = 'lamp lamp-' + (s.fail ? 'fail' : s.warn ? 'warn' : s.ok ? 'ok' : 'unknown');
+        if (dot) {
+            // Unproven outranks green: a lamp that says "ok" while rows have no
+            // evidence is the false-green this panel exists to avoid.
+            dot.className = 'lamp lamp-' + (s.fail ? 'fail' : s.warn ? 'warn' : s.unknown ? 'unknown' : 'ok');
+        }
 
         var note = $('stackDevicesNote');
         if (note && d.devices_note) { note.style.display = ''; note.textContent = d.devices_note; }

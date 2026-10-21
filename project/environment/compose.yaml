@@ -16,6 +16,16 @@ services:
     environment:
       NODE_ENV: development
       DATABASE_URL: postgres://jpbir:jpbir@db:5432/jpbir
+      # Git inside the container reads the bind mount. On a Linux runner that
+      # mount is owned by the runner's uid while the container runs as root,
+      # and git refuses the combination as "dubious ownership" and exits 1 —
+      # which broke the two suites that read the tracked file list
+      # (dependency-hygiene, deploy-manifest). Declaring the directory safe
+      # is git's own documented way of saying "this mount is expected"; it
+      # grants nothing beyond reading the repository that is already mounted.
+      GIT_CONFIG_COUNT: "1"
+      GIT_CONFIG_KEY_0: safe.directory
+      GIT_CONFIG_VALUE_0: /workspace
     depends_on:
       db:
         condition: service_healthy
