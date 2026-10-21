@@ -147,15 +147,29 @@ which is outside this work order and would collide with their work.
 
 ### Where the product stands now
 
-Read from the deployed production at 2026-10-21T21:10Z:
+Read from the deployed production at 2026-10-22T05:10Z:
 
 | | |
 | --- | --- |
 | rows | 38 — 30 green, 6 failing, 2 unproven |
 | verdict | `fail`, reason: "6 required row(s) failed" — the six device rows |
 | schedule | alive; the native receipt is minutes old, `schedule.stale` is `false` |
-| the two evidence-backed rows | unproven until the CI evidence job publishes a receipt; the shared-ledger reconciliation was the blocker and is now fixed (D-25) |
+| the outside monitor | green on every scheduled run since PR #193 fixed the schedule verdict |
+| the two evidence-backed rows | unproven until the CI evidence job publishes a receipt. The ledger reconciliation was the blocker and is fixed (D-25); the report-shape mismatch behind it is fixed in PR #196 (D-28) |
 | the six device rows | red until the S24 runs the attested broker daemon (gate A) |
+
+### The publication failed on a shape mismatch, not on a failed proof
+
+Worth recording, because it is the second time this plan's own machinery was the thing that
+broke. The evidence job failed on every run with *"the check report has no entry for
+runtime-contract"* while all seven proofs were green: the merge step wrote a subject's checks
+under `checks` and the publisher looked for them at the top level of the report. Two
+definitions of one shape, in a workflow snippet and in a script, neither covered by a test.
+
+The shape now lives in one script, the publisher reads it through one function, and a test
+runs the merge and feeds the result to the publisher. The lesson for the rest of the pipeline:
+a shape agreed between two files is not an agreement until something reads both.
+
 
 ---
 

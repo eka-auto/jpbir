@@ -384,3 +384,40 @@ can perform the recovery, so the remote path was tried rather than assumed to be
   `s24-termux-broker-2026-09-21.2` over `signed-broker-v2` instead of the legacy collector.
 - Nothing else in the product is needed for it. When the device reports, the six device rows
   and the runtime-contract row go green on their own.
+### D-28: The report's shape was defined in two places that had never met (devops, 2026-10-22)
+
+Receipt publication failed on every run since PR #192 merged, with "the check report has no
+entry for runtime-contract", while every proof on the page was green.
+
+- The workflow's merge step wrote a subject's checks under `checks`; the publisher looked for
+  them at the **top level** of the report. Two definitions of one shape, in a workflow snippet
+  and in a script, neither covered by a test — which is how they survived a review and a merge.
+  The ledger reconciliation was the only thing standing in front of it, and once that passed
+  (PR #194) the mismatch surfaced.
+- The shape now lives in `scripts/stack-merge-checks.mjs`, and the publisher reads it through
+  `subjectChecksFrom`. The workflow calls the script instead of embedding a `node -e` snippet.
+- The publisher computes each subject's result from **that subject's** checks rather than
+  taking the report's overall result, and refuses to publish a subject whose checks did not
+  pass — failing closed before anything is written, instead of writing a receipt that says
+  "fail".
+- The publisher no longer publishes when it is imported: the suite imports it to read the
+  shape, and a module that published on import failed that suite with "FIREBASE_SERVICE_ACCOUNT_JSON
+  is not configured".
+- `_shared/tests/evidence-publish.test.mjs` runs the merge script and feeds its output to the
+  publisher's reader, so the two halves are pinned against each other. A change of shape now
+  breaks a test instead of a publication.
+- The four proof reports are git-ignored: they are evidence for one CI run, bound to that
+  run's revision, and a stale receipt in the tree would look like a proof.
+
+### D-29: A CDN edge broke the browser download, and a network fault is not a defect (devops, 2026-10-22)
+
+The `Lint & Test` job failed on PR #196 with `ERR_TLS_CERT_ALTNAME_INVALID`:
+`cdn.playwright.dev` was served an `*.azureedge.net` certificate, so the Chromium download
+failed and with it the job. Nothing in this repository caused it.
+
+- The download is a network fetch, so it is now retried with a bounded backoff: three
+  attempts, twenty seconds apart, and the job still fails if the browser cannot be fetched.
+  Operating contract rule 6 draws the line exactly here — a transient fault is retried, a
+  code or configuration defect gets a repair attempt, and only the second counts against the
+  attempt budget.
+- The job passed on the next run with the retry in place.
