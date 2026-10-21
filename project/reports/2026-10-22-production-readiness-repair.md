@@ -79,8 +79,32 @@ All of it inside `project/environment/run` (contract rule 3).
 | `npm run test:browser` | **27/27 pass** |
 | Runtime-contract proof | `contract-bundle-digest` pass, `contract-schema-valid` pass, `device-bundle-syntax` pass |
 | Migration proof | `fresh-apply` pass, `second-run-noop` pass, `ledger-match` pass — against a **fresh** database created inside the isolated environment |
+| Restore drill | `pg_dump` → restore into a second fresh database → 19 tables and 13 ledger rows identical |
 | Pinned subjects | `stack-subjects.js` matches the tree |
-| Provider | repository id `1350770272` → `eka-auto/jpbir`; ruleset `25339138` active; `main` deletable and force-pushable only through that ruleset; CI green on `main` pushes and pull requests |
+| Provider | repository id `1350770272` → `eka-auto/jpbir`; ruleset `25339138` active; CI green on `main` pushes and pull requests |
+| Pull request #192 | `Lint & Test`, `Code Quality`, `Security Scan`, `Validate workflow definitions`, `jp-agent tests`, `S24 MCP compatibility` (3.12 and 3.14), `Vercel Agent Review` — all pass |
+
+### Three defects the CI run on the branch itself exposed
+
+Moving the checks into the environment was what found them; they were invisible while the
+checks ran on the runner.
+
+1. **Git could not read the bind mount.** The container runs as root while a Linux runner's
+   checkout belongs to the runner's uid, and git refuses that as "dubious ownership" and
+   exits 1. Two suites that read the tracked file list — `dependency-hygiene` and
+   `deploy-manifest` — failed in CI and nowhere else. The environment now declares
+   `/workspace` safe, which is git's own documented way of saying that mount is expected.
+2. **The pinned subject digests described one platform's checkout.** They were computed over
+   the raw bytes of the file, and git checks the same file out with CRLF on Windows and LF on
+   Linux. The CI producer on Linux would have computed a different digest from the pinned one,
+   and **every receipt it published would have been refused** as "the checked subject has
+   changed" — the whole evidence mechanism would have been dead on arrival. The digests are
+   now taken over the file's text with line endings normalised, so they describe the file
+   rather than a checkout. The two pinned values changed with this.
+3. **The browser checks ran in a container that had no browser.** Playwright downloads
+   Chromium into the container's own cache, and `docker compose run --rm` throws the
+   container away, so installing in one step and testing in the next tested nothing. Both now
+   happen in the same container.
 
 ### The one failing suite — not ours, and not touched
 
@@ -157,12 +181,16 @@ Changed: `Backend/jp-stack.js`, `Backend/stack-cron.js`, `Backend/jp-devices.js`
 (and its byte-identical `Server/jp-agent/` copy), `Backend/lib/stack-readiness.js`,
 `Backend/lib/stack-evidence.js`, `Backend/lib/stack-digest.js`,
 `Backend/lib/stack-subjects.js` (generated), `Frontend/index.html`,
-`Integrations/postgres.js`, `.github/workflows/ci-cd.yml`,
-`.github/workflows/health-check.yml`, `.github/workflows/evidence-publish.yml` (new),
+`Integrations/postgres.js`, `project/environment/compose.yaml`, `.gitattributes`,
+`.github/workflows/ci-cd.yml`, `.github/workflows/health-check.yml`,
+`.github/workflows/evidence-publish.yml` (new),
 `.github/workflows/release-readiness.yml` (new), `scripts/stack-subjects.mjs`,
 `scripts/stack-evidence-publish.mjs`, `scripts/stack-migration-proof.mjs`,
 `scripts/stack-ledger-reconcile.mjs`, `scripts/stack-runtime-contract-proof.mjs`,
-`_shared/tests/stack-health.test.mjs`, `_shared/tests/stack-readiness.test.mjs` (new),
-`_shared/tests/stack-evidence.test.mjs` (new), `_shared/tests/device-fleet.test.mjs`,
-`_shared/tests/verify-db-health-key.test.mjs`, `project/decisions.md`,
-`project/ACCESS.md`, `project/targets.json`.
+`scripts/stack-restore-drill.mjs`, `_shared/tests/stack-health.test.mjs`,
+`_shared/tests/stack-readiness.test.mjs` (new), `_shared/tests/stack-evidence.test.mjs`
+(new), `_shared/tests/device-fleet.test.mjs`, `_shared/tests/verify-db-health-key.test.mjs`,
+`project/decisions.md`, `project/ACCESS.md`, `project/targets.json`,
+`docs/plans/2026-10-22-0002-fix-production-readiness-plan.md`.
+
+Pull request: https://github.com/eka-auto/jpbir/pull/192
