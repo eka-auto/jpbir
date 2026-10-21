@@ -16,7 +16,7 @@ the difference is named in the notes and the extra privilege is not used.
 
 ## Bounded owner-approved release administration (2026-10-22)
 
-The owner approved the concrete release plan in the Codex session: "YES — approve bounded release access (Recommended)". The durable approval is `project/approvals/2026-10-22-bounded-release-admin.md` on `project-state`.
+The owner approved the concrete release plan in the Codex session: "YES — approve bounded release access (Recommended)". The durable approval is `project/approvals/2026-10-22-bounded-release-admin.md`.
 
 For this task only, the older restrictions above are superseded as follows:
 
