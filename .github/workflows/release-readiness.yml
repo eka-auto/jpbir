@@ -66,7 +66,7 @@ jobs:
           WARN=$(echo "$JSON" | jq -r '.summary.warn // 0')
           FAIL=$(echo "$JSON" | jq -r '.summary.fail // 0')
           UNPROVEN=$(echo "$JSON" | jq -r '.summary.unknown // 0')
-          SCHEDULE=$(echo "$JSON" | jq -r '.schedule.stale // true')
+          SCHEDULE=$(echo "$JSON" | jq -r '.schedule.stale != false')
           SCHEDULE_AGE=$(echo "$JSON" | jq -r '.schedule.age_minutes // "never"')
 
           echo "rows=$ROWS ok=$OK warn=$WARN fail=$FAIL unproven=$UNPROVEN verdict=$VERDICT"

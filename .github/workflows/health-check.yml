@@ -228,7 +228,7 @@ jobs:
             exit 1
           fi
           PRESENT=$(echo "$JSON" | jq -r '.schedule.present // false')
-          STALE=$(echo "$JSON" | jq -r '.schedule.stale // true')
+          STALE=$(echo "$JSON" | jq -r '.schedule.stale != false')
           AGE=$(echo "$JSON" | jq -r '.schedule.age_minutes // "unknown"')
           MAXAGE=$(echo "$JSON" | jq -r '.schedule.max_age_minutes // 20')
           if [ "$PRESENT" != "true" ]; then
