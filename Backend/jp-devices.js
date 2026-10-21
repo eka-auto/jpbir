@@ -124,6 +124,27 @@ function dec(v) {
   return null;
 }
 
+/**
+ * The Firestore REST value decoder, exported.
+ *
+ * It was private to this file, which left the Product engineering panel
+ * needing its own decoder to read the same device documents — and a second
+ * decoder is a second liveness rule. This repo has already shipped two
+ * implementations of the S24 liveness policy that disagreed (see
+ * ./lib/s24-attestation.js), so the decoder travels with the module it
+ * belongs to instead of being copied into a second file.
+ */
+export function decodeFirestoreValue(v) {
+  return dec(v);
+}
+
+/** Decode every field of a Firestore REST document into plain values. */
+export function decodeFirestoreDocument(doc) {
+  const out = {};
+  for (const [k, v] of Object.entries((doc && doc.fields) || {})) out[k] = dec(v);
+  return out;
+}
+
 export function normalizeCommandQueue(queue) {
   if (!queue || typeof queue !== 'object' || Array.isArray(queue)) return [];
   return Object.entries(queue)
@@ -194,7 +215,7 @@ const LIVE_REASONS = {
   'legacy-strict': 'legacy heartbeat and completed command acknowledgement are authenticated and fresh',
 };
 
-export function strictS24Liveness(fields, heartbeatAgeSeconds, ackAgeSeconds) {
+export function strictS24Liveness(fields, heartbeatAgeSeconds, ackAgeSeconds, options = {}) {
   const enrollment = fields.enrollment || {};
   const checks = s24AttestationChecks({
     agentVersion: fields.agentVersion,
@@ -212,6 +233,10 @@ export function strictS24Liveness(fields, heartbeatAgeSeconds, ackAgeSeconds) {
     signedHeartbeatProtocol: enrollment.lastSignedHeartbeatProtocol,
     activeKeyId: enrollment.activeKeyId,
     keyType: enrollment.keyType,
+    // Optional and defaulted: the dashboard and the public projection keep the
+    // module's own bound, and the Product engineering panel passes the S24's
+    // declared reporting period. See ./lib/s24-attestation.js.
+    heartbeatMaxAgeSeconds: options.heartbeatMaxAgeSeconds,
   });
   // Which checks a mode requires is the shared module's decision, not this file's: a local
   // copy of those lists is how `live` and `reason` could come to disagree.
@@ -240,7 +265,7 @@ export function strictS24Liveness(fields, heartbeatAgeSeconds, ackAgeSeconds) {
 // order inside s24AttestationChecks is load-bearing (s24LivenessVerdict reports
 // the first false required key as the reason) — reordering it here or there is a
 // contract change, not a tidy-up.
-export function computeS24Liveness(fields, nowMs) {
+export function computeS24Liveness(fields, nowMs, options = {}) {
   const DEFAULT_INTERVAL_SECONDS = { 'android-phone': 900 };
   const heartbeatIntervalSeconds = typeof fields.heartbeatIntervalSeconds === 'number'
     ? fields.heartbeatIntervalSeconds
@@ -248,7 +273,7 @@ export function computeS24Liveness(fields, nowMs) {
   const heartbeatAgeSeconds = nonFutureAgeSeconds(fields.lastSeen, nowMs);
   const lastCommandAckAt = commandAckTimestamp(fields);
   const lastCommandAckAgeSeconds = nonFutureAgeSeconds(lastCommandAckAt, nowMs);
-  const liveness = strictS24Liveness(fields, heartbeatAgeSeconds, lastCommandAckAgeSeconds);
+  const liveness = strictS24Liveness(fields, heartbeatAgeSeconds, lastCommandAckAgeSeconds, options);
   return {
     heartbeatAgeSeconds,
     lastCommandAckAt,

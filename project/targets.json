@@ -4,11 +4,12 @@
       "name": "source",
       "environment": "source",
       "provider": "github",
-      "account_id": "jaytipargal",
+      "account_id": "eka-auto",
       "resource_ids": {
-        "repository": "jaytipargal/jpbir",
+        "repository": "eka-auto/jpbir",
         "repository_id": "1350770272"
-      }
+      },
+      "notes": "The repository was transferred from jaytipargal/jpbir to eka-auto/jpbir (D-18, verified 2026-10-22). The immutable repository id 1350770272 is unchanged and `repos/1350770272` still resolves to this repository, so the id still binds the target and the old name only redirects. It is a transfer, not a fork: isFork is false and parent is null. Visibility is now public, which differs from D-15's recorded private choice. Active protection is ruleset 25339138 (deletion and non-fast-forward on the default branch only, bypass: never); no required checks, reviews or CODEOWNERS (D-24)."
     },
     {
       "name": "vercel-jayti2",
@@ -18,9 +19,9 @@
       "resource_ids": {
         "project": "jpbir",
         "domains": "jaytipargal.tech, www.jaytipargal.tech, jpbir.vercel.app",
-        "production_deployment": "dpl_BzR5Z8UMxeBu2HDp4dDRpTG7JYpE"
+        "production_deployment": "dpl_H1hzbgVy2Q4fhxT5zZ8NeZHR521E"
       },
-      "notes": "Live hosting verified 2026-10-12 (D-12): jaytipargal.tech served by project jpbir under team jayti2, deployment READY at commit f6e21fc."
+      "notes": "Live hosting verified 2026-10-12 (D-12): jaytipargal.tech served by project jpbir under team jayti2, deployment READY at commit f6e21fc. The deployment id was re-verified against the provider on 2026-10-22 (D-18): the live production deployment is dpl_H1hzbgVy2Q4fhxT5zZ8NeZHR521E (jpbir-g5xlzoeut-jayti2, Ready, created 2026-10-21), and it carries the aliases jaytipargal.tech, www.jaytipargal.tech and jpbir.vercel.app. Six production deployments are retained and Ready, so a rollback target exists; the previous id in this manifest no longer identified the live deployment and was replaced rather than left to rot."
     },
     {
       "name": "firestore-eka-agent",

@@ -23,9 +23,13 @@
 import { requireKey } from './_auth.js';
 import { cronAuthorized, secretEquals } from './lib/cron-auth.js';
 import { verifyPostgres } from './verify-db.js';
-import { getFirestoreToken } from './jp-devices.js';
+import { getFirestoreToken, decodeFirestoreDocument, computeS24Liveness } from './jp-devices.js';
 import { DEVICE_IDS, splitFleet } from './broker.js';
 import { LAYERS, REQUIRED_ENV, HOSTS, TLS_WARN_DAYS, PROBE_TIMEOUT_MS, DEVICES_NOTE, allFiles } from './lib/stack-map.js';
+import { readinessOf, overallFor, scheduleState, VERDICT_PASS, VERDICT_UNPROVEN } from './lib/stack-readiness.js';
+import { verifyReceipt, EVIDENCE_DOC, SUBJECTS } from './lib/stack-evidence.js';
+import { S24_DEVICE_ID } from './lib/s24-attestation.js';
+import { S24_CONTRACT } from './lib/stack-subjects.js';
 import { promises as dnsp } from 'node:dns';
 import tls from 'node:tls';
 
@@ -37,6 +41,28 @@ const OK = 'ok';
 const FAIL = 'fail';
 const WARN = 'warn';
 const UNKNOWN = 'unknown';
+
+/**
+ * How stale the S24's heartbeat may be before it stops counting as fresh.
+ *
+ * Two periods of the device's own JobScheduler schedule. The runtime contract
+ * launches the broker daemon every jobSchedulerPeriodMs (15 minutes) and the
+ * daemon heartbeats every 45 s while it runs, so the phone is silent for up
+ * to a full period between two launches. The shared attestation module's own
+ * five-minute bound (S24_ACK_MAX_AGE_SECONDS) was written for a continuously
+ * reporting device and would call a phone that is exactly following its
+ * contract offline for two thirds of every cycle.
+ *
+ * The value comes from the pinned contract facts in `stack-subjects.js`, which
+ * the generator lifts out of Devices/S24/runtime_contract.json — so the panel's
+ * expectation of the device cannot drift from the contract the device runs.
+ */
+const S24_FRESHNESS_BOUND_SECONDS = Math.ceil((S24_CONTRACT.job_scheduler_period_ms / 1000) * 2);
+
+/** The unattended schedule, as declared in vercel.json. */
+export const CRON_CADENCE_MINUTES = 5;
+/** A native receipt older than this means the scheduler stopped. */
+export const CRON_MAX_AGE_MINUTES = 20;
 
 /**
  * One ceiling for every probe. `Promise.race` rather than AbortSignal because
@@ -158,34 +184,102 @@ async function probeFirestore() {
  * earns its own light and the tier takes the worst (`worst()` below), so a dead
  * daemon can never hide behind a live one. `byDevice` carries the per-device
  * breakdown for the panel; the top-line `problem` names the ones that are down.
+ *
+ * Three rules make a light earnable:
+ *
+ *   1. A heartbeat dated in the FUTURE is a failure, not a fresh reading. The
+ *      old arithmetic produced a negative age, and every threshold below it
+ *      was "not exceeded", so a writer that set its own timestamp to tomorrow
+ *      read as perfectly alive.
+ *   2. The S24 is judged by the shared attestation policy in
+ *      `lib/s24-attestation.js`, not by this file's own idea of liveness. The
+ *      panel, the dashboard and the jp-agent must never disagree about
+ *      whether the phone is alive.
+ *   3. Every fleet device is judged even when it has no document at all, so a
+ *      device that never enrolled cannot drop out of the denominator.
  */
-export function deviceFreshness(firestoreResult) {
+export function deviceFreshness(firestoreResult, options = {}) {
   if (firestoreResult.status !== OK) {
     return { status: UNKNOWN, problem: 'cannot read device docs — Firestore probe did not succeed' };
   }
   // The fleet, not the collection. The collection also holds a test agent and
   // a stray watcher doc (DEVICE_IDS in broker.js says why neither is a
   // device), and judging every document made this verdict speak of five
-  // devices when there are three. Each fleet device is judged even with no
-  // document at all, so an enrolment that never happened reads as never
-  // reported instead of dropping out of the count.
+  // devices when there are three.
   const docById = new Map(splitFleet(firestoreResult._docs).fleet.map((d) => [d.name.split('/').pop(), d]));
 
-  const now = Date.now();
+  const now = Number(options.nowMs) || Date.now();
+
   const per = DEVICE_IDS.map((id) => {
     const d = docById.get(id);
     if (!d) return { id, status: WARN, mins: null, reason: id + ' has no device document (never enrolled)' };
-    const raw = d.fields?.lastSeen?.timestampValue || d.fields?.lastSeen?.stringValue;
-    const t = raw ? new Date(raw).getTime() : 0;
-    if (!t) return { id, status: WARN, mins: null, reason: id + ' has no readable lastSeen (never reported)' };
+    const fields = decodeFirestoreDocument(d);
+    const raw = fields.lastSeen;
+    const t = raw ? Date.parse(raw) : NaN;
+    if (!Number.isFinite(t)) {
+      return { id, status: WARN, mins: null, reason: id + ' has no readable lastSeen (never reported)' };
+    }
+    if (t > now) {
+      return {
+        id, status: FAIL, mins: null, future: true,
+        reason: id + ' reports a heartbeat in the future (' + raw + ') — a clock that runs ahead is not evidence of life',
+      };
+    }
     const mins = Math.floor((now - t) / 60000);
+
+    // The S24 is the one device whose liveness is attested rather than
+    // assumed. Everything else in the fleet writes its own document and the
+    // broker accepts it only after verifying the device's signature against
+    // the enrolled hardware, so freshness plus the document's identity is the
+    // whole of its evidence.
+    if (id === S24_DEVICE_ID) {
+      const live = computeS24Liveness(fields, now, { heartbeatMaxAgeSeconds: S24_FRESHNESS_BOUND_SECONDS });
+      const liveness = live.liveness;
+      const base = {
+        id,
+        mins,
+        agentVersion: fields.agentVersion || null,
+        evidence: liveness.evidenceMode,
+        failedCheck: liveness.failedCheck,
+      };
+      if (liveness.live) {
+        return { ...base, status: OK, reason: null };
+      }
+      // The heartbeat is authentic but older than the attestation's own
+      // five-minute bound. That is a staleness question, not an identity
+      // question, so it is banded like any other stale device rather than
+      // called a broken one.
+      const identityOnly = liveness.failedCheck === 'heartbeatFresh';
+      if (identityOnly && mins <= 60) {
+        return {
+          ...base,
+          status: mins > 15 ? WARN : OK,
+          reason: id + ' heartbeat ' + mins + ' min old — attested, but outside the reporting window',
+        };
+      }
+      return {
+        ...base,
+        status: FAIL,
+        reason: id + ' is not proven live — ' + (liveness.reason || 'attestation failed') +
+          ' (reported as "' + (fields.agentVersion || 'unknown') + '" over ' + (fields.connectionMethod || 'an unknown channel') + ')',
+      };
+    }
+
     if (mins > 60) return { id, status: FAIL, mins, reason: id + ' heartbeat ' + mins + ' min old' };
     if (mins > 15) return { id, status: WARN, mins, reason: id + ' heartbeat ' + mins + ' min old' };
-    return { id, status: OK, mins };
+    return { id, status: OK, mins, agentVersion: fields.agentVersion || null, evidence: 'broker-signed', failedCheck: null };
   });
 
   const byDevice = {};
-  for (const p of per) byDevice[p.id] = { status: p.status, mins: p.mins };
+  for (const p of per) {
+    byDevice[p.id] = {
+      status: p.status,
+      mins: p.mins,
+      agentVersion: p.agentVersion || null,
+      evidence: p.evidence || null,
+      failedCheck: p.failedCheck || null,
+    };
+  }
   const status = worst(per.map((p) => p.status));
   const down = per.filter((p) => p.status !== OK);
 
@@ -420,6 +514,145 @@ export function probeRepair() {
 
 // ---------------------------------------------------------------- assembly
 
+/**
+ * The CI evidence store.
+ *
+ * `Devices/S24/runtime_contract.json` and `Database/scripts/migrate.mjs` used
+ * to sit on a probe that returned `unknown` forever, with the reason "no live
+ * signal reachable from a serverless function". The proof for those two rows
+ * does not have to come from a request handler: a protected CI job runs the
+ * checks that can be run outside one and publishes a signed receipt. This
+ * reads those receipts; `lib/stack-evidence.js` decides whether they are
+ * trustworthy.
+ */
+async function readEvidenceBundle() {
+  const base = firestoreBase();
+  if (!base) {
+    return { available: false, reason: 'FIREBASE_SERVICE_ACCOUNT_JSON is not set on this deployment', receipts: {} };
+  }
+  try {
+    const token = await getFirestoreToken();
+    const res = await fetch(base + '/' + EVIDENCE_DOC, {
+      headers: { Authorization: 'Bearer ' + token },
+      signal: AbortSignal.timeout(PROBE_TIMEOUT_MS - 200),
+    });
+    if (!res.ok) return { available: false, reason: 'the CI evidence store answered HTTP ' + res.status, receipts: {} };
+    const doc = await res.json().catch(() => ({}));
+    return { available: true, reason: null, receipts: decodeFirestoreDocument(doc) };
+  } catch (e) {
+    return {
+      available: false,
+      reason: 'the CI evidence store could not be read: ' + String((e && e.message) || e).slice(0, 120),
+      receipts: {},
+    };
+  }
+}
+
+/** The revision this deployment is running, when the platform tells us. */
+function runningRevision() {
+  return _env['VERCEL_' + 'GIT_COMMIT_SHA'] || _env['STACK_' + 'SOURCE_REVISION'] || null;
+}
+
+/**
+ * The CI receipt for this subject AND this source revision.
+ *
+ * Receipts are kept per revision rather than as one current document, because
+ * a receipt for revision Y says nothing about revision X. A single slot would
+ * mean that publishing evidence for a new commit silently invalidated the
+ * evidence of the commit still running in production — and the production
+ * row would go unproven for a reason that has nothing to do with the
+ * product.
+ */
+function receiptFor(evidence, subjectKey, revision) {
+  const bundle = (evidence.receipts || {})[subjectKey];
+  if (!bundle || !bundle.revisions) return null;
+  if (!revision) return null;
+  return bundle.revisions[revision] || null;
+}
+
+/**
+ * The S24 runtime contract: the contract in this repository, AND the device
+ * actually running it.
+ *
+ * A contract file in a repo proves that a file exists. It does not prove the
+ * phone runs it — and on 2026-10-21 the live S24 reported
+ * `s24-termux-https-worker-2026-07-27.1` over `termux-direct-cloud`, which is
+ * the legacy collector, not the signed broker daemon the contract requires.
+ * So this probe needs both halves: CI evidence that the contract and its
+ * bundle are what this build ships, and a live attested device reporting the
+ * contracted release.
+ */
+export function probeRuntimeContract(input = {}) {
+  const evidence = input.evidence || {};
+  if (!evidence.available) {
+    return { status: UNKNOWN, problem: 'the CI evidence store is unreachable: ' + (evidence.reason || 'unknown') };
+  }
+  if (!input.revision) {
+    return { status: UNKNOWN, problem: 'the running source revision is unknown, so no CI evidence can be bound to it' };
+  }
+  const receipt = receiptFor(evidence, 'runtimeContract', input.revision);
+  const verdict = verifyReceipt(receipt, 'runtime-contract', {
+    nowMs: input.nowMs,
+    key: _env['STACK_EVIDENCE_' + 'KEY'],
+    expectedRevision: input.revision,
+  });
+  if (!verdict.valid) {
+    return { status: UNKNOWN, problem: verdict.reason };
+  }
+
+  const device = (input.devices && input.devices.byDevice) || {};
+  const s24 = device[S24_DEVICE_ID];
+  if (!s24 || s24.status !== OK) {
+    return {
+      status: UNKNOWN,
+      problem: 'the device has not attested the runtime contract (the S24 is ' + (s24 ? s24.status : 'absent') + ')',
+    };
+  }
+  const reported = s24.agentVersion || '';
+  if (reported !== S24_CONTRACT.release) {
+    return {
+      status: UNKNOWN,
+      problem: 'the device reports "' + reported + '", not the contracted release "' + S24_CONTRACT.release + '"',
+    };
+  }
+  return {
+    status: OK,
+    detail: 'CI evidence verified and the device reports the contracted release ' + S24_CONTRACT.release,
+  };
+}
+
+/**
+ * The migration tooling: the runner, its plan library and the schema it
+ * applies, proven by a CI run against an isolated database.
+ *
+ * A receipt alone is not enough, and neither is a green schema: the proof is
+ * a fresh apply followed by a second run that changes nothing, plus the
+ * ledger reconciliation for the target. All three are named checks in the
+ * receipt, so a receipt missing one of them leaves the row unproven.
+ */
+export function probeMigrationTooling(input = {}) {
+  const evidence = input.evidence || {};
+  if (!evidence.available) {
+    return { status: UNKNOWN, problem: 'the CI evidence store is unreachable: ' + (evidence.reason || 'unknown') };
+  }
+  if (!input.revision) {
+    return { status: UNKNOWN, problem: 'the running source revision is unknown, so no CI evidence can be bound to it' };
+  }
+  const receipt = receiptFor(evidence, 'migrationTooling', input.revision);
+  const verdict = verifyReceipt(receipt, 'migration-tooling', {
+    nowMs: input.nowMs,
+    key: _env['STACK_EVIDENCE_' + 'KEY'],
+    expectedRevision: input.revision,
+  });
+  if (!verdict.valid) {
+    return { status: UNKNOWN, problem: verdict.reason };
+  }
+  return {
+    status: OK,
+    detail: 'CI evidence verified: fresh apply, second-run no-op and ledger reconciliation passed',
+  };
+}
+
 /** Worst-of, so a layer is only as green as its weakest file. */
 const RANK = { [FAIL]: 3, [WARN]: 2, [UNKNOWN]: 1, [OK]: 0 };
 export function worst(statuses) {
@@ -475,6 +708,17 @@ export async function runProbes() {
     withTimeout('assets', probeAssets()),
   ]);
 
+  const now = Date.now();
+  const devices = deviceFreshness(firestore, { nowMs: now });
+  const evidenceRaw = await withTimeout('evidence', readEvidenceBundle());
+  // withTimeout answers with a probe-shaped object when it gives up; the
+  // evidence readers below expect their own shape, so normalise it here
+  // rather than letting a timeout look like an empty receipt store.
+  const evidence = evidenceRaw && evidenceRaw.available !== undefined
+    ? evidenceRaw
+    : { available: false, reason: (evidenceRaw && evidenceRaw.problem) || 'the CI evidence store did not answer', receipts: {} };
+  const revision = runningRevision();
+
   const probes = {
     dns,
     tls: tlsR,
@@ -484,8 +728,9 @@ export async function runProbes() {
     assets,
     env: probeEnv(),
     repair: probeRepair(),
-    devices: deviceFreshness(firestore),
-    static: { status: UNKNOWN, detail: 'no live signal reachable from a serverless function' },
+    devices,
+    'runtime-contract': probeRuntimeContract({ evidence, devices, revision, nowMs: now }),
+    'migration-tooling': probeMigrationTooling({ evidence, revision, nowMs: now }),
   };
 
   // `_docs` carried the Firestore payload from one probe to the next; it must
@@ -511,13 +756,25 @@ export function snapshot(probes) {
   // on what a merge could actually have broken, while the panel and the alert
   // cron keep painting the stopped daemon red, loudly.
   const cloud_fail = flat.filter((f) => f.status === FAIL && f.probe !== 'devices').length;
+  const fetched_at = new Date().toISOString();
+
+  // The strict verdict, and the headline that no longer hides it.
+  //
+  // `overall` used to be `fail ? fail : warn ? warn : ok`, so a snapshot with
+  // unproven rows and no failures read as "ok" — the panel painted itself
+  // green over eight rows it could not prove. It is now the worst status any
+  // row carries, unknown included, and `readiness` carries the release-facing
+  // answer with the rows that are holding it up.
+  const readiness = readinessOf(flat, { asOf: fetched_at });
+
   return {
     // Not "synced": this is when the server answered THIS poll.
-    fetched_at: new Date().toISOString(),
+    fetched_at,
     devices_note: DEVICES_NOTE,
-    overall: summary.fail ? FAIL : summary.warn ? WARN : OK,
+    overall: readiness.overall,
     cloud_fail,
     summary,
+    readiness,
     probes: Object.fromEntries(
       // byDevice, when a probe reports per device (deviceFreshness does), rides
       // along so the panel can show which daemon is down, not just that one is.
@@ -567,6 +824,7 @@ export function logVerdict(snap, log = console) {
   const devices = notOk
     .map((id) => id.replace(/[^\w.-]/g, '?') + ':' + (byDevice[id].mins == null ? 'never' : byDevice[id].mins + 'm'));
   log[snap.cloud_fail ? 'error' : 'warn']('[jp-stack] health verdict ' + snap.overall
+    + ' verdict=' + ((snap.readiness && snap.readiness.verdict) || 'unproven')
     + ' cloud_fail=' + snap.cloud_fail
     + ' files_fail=' + snap.summary.fail + ' files_warn=' + snap.summary.warn + ' files_unknown=' + snap.summary.unknown
     + ' failing=' + ids(FAIL) + ' warning=' + ids(WARN)
@@ -589,62 +847,128 @@ export function logVerdict(snap, log = console) {
  */
 export const CRON_DOC = 'system/stackHealth';
 
+/**
+ * The receipt only the SCHEDULER writes.
+ *
+ * `system/stackHealth` holds the last run of any kind, and the dashboard's
+ * manual "check now" button writes to it too. That was how a browser could
+ * refresh the proof that something runs unattended: the panel showed "24x7
+ * cron ran 2 minutes ago" after a human had pressed the button, and the
+ * outside monitor read the same field. A manual run cannot prove a schedule,
+ * so the scheduler writes its own document and the manual run does not.
+ */
+export const CRON_NATIVE_DOC = 'system/stackHealthNative';
+
 function firestoreBase() {
   if (!FIREBASE_SA_JSON) return null;
   const projectId = JSON.parse(FIREBASE_SA_JSON).project_id;
   return 'https://firestore.googleapis.com/v1/projects/' + projectId + '/databases/' + FIRESTORE_DB + '/documents';
 }
 
+async function readReceipt(docName) {
+  const base = firestoreBase();
+  if (!base) return null;
+  const token = await getFirestoreToken();
+  const res = await fetch(base + '/' + docName, {
+    headers: { Authorization: 'Bearer ' + token },
+    signal: AbortSignal.timeout(PROBE_TIMEOUT_MS - 200),
+  });
+  if (!res.ok) return null;
+  const fields = (await res.json()).fields || {};
+  return {
+    checked_at: fields.checkedAt?.timestampValue || fields.checkedAt?.stringValue || null,
+    completed_at: fields.completedAt?.timestampValue || fields.completedAt?.stringValue || null,
+    overall: fields.overall?.stringValue || null,
+    verdict: fields.verdict?.stringValue || null,
+    ready: fields.ready?.booleanValue === true,
+    fail_count: Number(fields.failCount?.integerValue ?? 0),
+    warn_count: Number(fields.warnCount?.integerValue ?? 0),
+    unknown_count: Number(fields.unknownCount?.integerValue ?? 0),
+    source: fields.source?.stringValue || 'cron',
+    notification: fields.notification?.stringValue || null,
+    executor: fields.executor?.stringValue || null,
+  };
+}
+
 /**
- * Last run the cron recorded, so the panel shows round-the-clock state and not
- * merely what this one browser has watched since it opened. Never throws: a
- * deployment with no Firestore still gets a live panel, it just cannot prove
- * the unattended loop is running — which the UI then says, rather than implying
- * coverage it does not have.
+ * Last run the SCHEDULER recorded, so the panel shows round-the-clock state
+ * and not merely what this one browser has watched since it opened. Never
+ * throws: a deployment with no Firestore still gets a live panel, it just
+ * cannot prove the unattended loop is running — which the UI then says, rather
+ * than implying coverage it does not have.
  */
 export async function lastCronRun() {
   try {
-    const base = firestoreBase();
-    if (!base) return null;
-    const token = await getFirestoreToken();
-    const res = await fetch(base + '/' + CRON_DOC, {
-      headers: { Authorization: 'Bearer ' + token },
-      signal: AbortSignal.timeout(PROBE_TIMEOUT_MS - 200),
-    });
-    if (!res.ok) return null;
-    const f = (await res.json()).fields || {};
-    return {
-      checked_at: f.checkedAt?.timestampValue || f.checkedAt?.stringValue || null,
-      overall: f.overall?.stringValue || null,
-      fail_count: Number(f.failCount?.integerValue ?? 0),
-      warn_count: Number(f.warnCount?.integerValue ?? 0),
-      source: f.source?.stringValue || 'cron',
-    };
+    return await readReceipt(CRON_NATIVE_DOC);
   } catch {
     return null;
   }
 }
 
-/** Writes one unattended run. Called only by stack-cron.js. */
-export async function recordCronRun(snap, source) {
+/** Last run of any kind, including one a person started by hand. */
+export async function lastRun() {
+  try {
+    return await readReceipt(CRON_DOC);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The state of the unattended schedule.
+ *
+ * Judged from the NATIVE receipt only, so a manual run cannot make a dead
+ * scheduler look alive.
+ */
+export async function scheduleSnapshot(nowMs = Date.now()) {
+  const native = await lastCronRun();
+  return scheduleState(native, nowMs, {
+    cadenceMinutes: CRON_CADENCE_MINUTES,
+    maxAgeMinutes: CRON_MAX_AGE_MINUTES,
+  });
+}
+
+/**
+ * Writes one run.
+ *
+ * Called only by stack-cron.js. `source` decides where it lands: 'cron' means
+ * the platform scheduler drove this, anything else was started by a person.
+ * Only the scheduler's run updates the native receipt, and only that receipt
+ * is proof that the schedule is alive.
+ *
+ * The notification outcome is written WITH the run, not before it: a receipt
+ * that says "the run happened" while the alert it triggered was never
+ * delivered is exactly the half-truth this whole change exists to remove.
+ */
+export async function recordCronRun(snap, source, extra = {}) {
   const base = firestoreBase();
   if (!base) throw new Error('FIREBASE_SERVICE_ACCOUNT_JSON not configured — cannot record the run');
   const token = await getFirestoreToken();
   const fields = {
     checkedAt: { timestampValue: snap.fetched_at },
+    completedAt: { timestampValue: extra.completed_at || new Date().toISOString() },
     overall: { stringValue: snap.overall },
+    verdict: { stringValue: (snap.readiness && snap.readiness.verdict) || 'unproven' },
+    ready: { booleanValue: Boolean(snap.readiness && snap.readiness.ready) },
     failCount: { integerValue: String(snap.summary.fail) },
     warnCount: { integerValue: String(snap.summary.warn) },
+    unknownCount: { integerValue: String(snap.summary.unknown) },
     okCount: { integerValue: String(snap.summary.ok) },
     source: { stringValue: source || 'cron' },
+    notification: { stringValue: extra.notification || 'none' },
+    executor: { stringValue: extra.executor || source || 'cron' },
   };
   const mask = Object.keys(fields).map((k) => 'updateMask.fieldPaths=' + encodeURIComponent(k)).join('&');
-  const res = await fetch(base + '/' + CRON_DOC + '?' + mask, {
-    method: 'PATCH',
-    headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ fields }),
-  });
-  if (!res.ok) throw new Error('failed to record run: HTTP ' + res.status);
+  const write = async (docName) => {
+    const res = await fetch(base + '/' + docName + '?' + mask, {
+      method: 'PATCH',
+      headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fields }),
+    });
+    if (!res.ok) throw new Error('failed to record run: HTTP ' + res.status);
+  };
+  await write(CRON_DOC);
+  if ((source || 'cron') === 'cron') await write(CRON_NATIVE_DOC);
 }
 
 export default async function handler(req, res) {
@@ -660,6 +984,7 @@ export default async function handler(req, res) {
     // while the panel is open and would bury the line; the health check runs on
     // a schedule, so one line per run is the useful rate.
     logVerdict(snap);
+    const schedule = await scheduleSnapshot();
     return res.status(snap.overall === FAIL ? 503 : 200).json({
       success: snap.overall !== FAIL,
       overall: snap.overall,
@@ -668,11 +993,27 @@ export default async function handler(req, res) {
       // without this response ever describing which device or why.
       cloud_fail: snap.cloud_fail,
       summary: snap.summary,
+      // The strict verdict, and the schedule's own age. Both are non-sensitive
+      // (counts, verdict names and timestamps) and both are what an outside
+      // monitor needs to tell "the product is broken" from "the scheduler
+      // stopped" — two different incidents with two different responders.
+      readiness: {
+        ready: snap.readiness.ready,
+        verdict: snap.readiness.verdict,
+        reason: snap.readiness.reason,
+        scope: snap.readiness.scope,
+      },
+      schedule,
     });
   }
 
   if (!cronAuthorized(req) && !requireKey(req, res)) return;
 
-  const [snap, cron] = await Promise.all([runProbes().then(snapshot), lastCronRun()]);
-  res.status(200).json({ success: true, ...snap, last_cron_run: cron });
+  const [snap, cron, schedule, anyRun] = await Promise.all([
+    runProbes().then(snapshot),
+    lastCronRun(),
+    scheduleSnapshot(),
+    lastRun(),
+  ]);
+  res.status(200).json({ success: true, ...snap, last_cron_run: cron, last_run: anyRun, schedule });
 }

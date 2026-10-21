@@ -119,6 +119,11 @@ jobs:
       # runs on GitHub's infrastructure, so it survives that failure
       # independently — the whole point of two schedules in two places.
       #
+      # It READS the native receipt the scheduler writes. It never calls
+      # /api/stack-cron: invoking the route here would update the receipt and
+      # the monitor would then be proving its own liveness instead of the
+      # scheduler's.
+      #
       # Uses the same narrow HEALTH_CHECK_KEY projection as verify-db above:
       # a verdict and counts, never file paths or problem strings, because those
       # name internal hosts and env vars. 503 means something is genuinely
@@ -139,32 +144,103 @@ jobs:
           OVERALL=$(echo "$JSON" | jq -r '.overall // "unreadable"')
           CLOUDFAIL=$(echo "$JSON" | jq -r '.cloud_fail // "unreadable"')
           ALLFAIL=$(echo "$JSON" | jq -r '.summary.fail // 0')
+          VERDICT=$(echo "$JSON" | jq -r '.readiness.verdict // "absent"')
+          READY=$(echo "$JSON" | jq -r '.readiness.ready // false')
           if { [ "$CODE" = "200" ] || [ "$CODE" = "503" ]; } \
-             && echo "$JSON" | jq -e '(.overall == "ok" or .overall == "warn" or .overall == "fail") and (.cloud_fail | type == "number") and (.summary.ok | type == "number") and (.summary.fail | type == "number")' >/dev/null; then
-            if [ "$CODE" = "200" ] && [ "$OVERALL" != "fail" ]; then
-              echo "✅ Stack endpoint OK (overall=$OVERALL, $(echo "$JSON" | jq -r '.summary.ok') checks ok)"
+             && echo "$JSON" | jq -e '(.overall == "ok" or .overall == "warn" or .overall == "fail" or .overall == "unknown") and (.cloud_fail | type == "number") and (.summary.ok | type == "number") and (.summary.fail | type == "number")' >/dev/null; then
+            if [ "$VERDICT" = "absent" ]; then
+              # The deployed /api/jp-stack predates the strict readiness
+              # contract, so this monitor cannot tell a proven pass from a
+              # hopeful one. Saying "unknown" is the honest answer; exiting 0
+              # would be the green light the whole change exists to remove.
+              echo "❌ The stack endpoint exposes no strict readiness verdict — the health contract is out of date"
+              echo "   $JSON"
+              echo "status=unverifiable" >> "$GITHUB_OUTPUT"
+              exit 1
+            fi
+            if [ "$CODE" = "200" ] && [ "$OVERALL" = "ok" ] && [ "$READY" = "true" ]; then
+              echo "✅ Stack endpoint OK (overall=$OVERALL, verdict=$VERDICT, $(echo "$JSON" | jq -r '.summary.ok') checks ok)"
               echo "status=ok" >> "$GITHUB_OUTPUT"
-            elif [ "$CLOUDFAIL" = "0" ]; then
+            elif [ "$CLOUDFAIL" = "0" ] && [ "$CODE" = "200" ]; then
               echo "⚠️ Cloud probes all green; $((ALLFAIL)) red file(s) are device freshness only"
               echo "   $JSON"
               echo "status=device_freshness" >> "$GITHUB_OUTPUT"
               echo "device_freshness_red=$ALLFAIL" >> "$GITHUB_OUTPUT"
+            elif [ "$CLOUDFAIL" = "0" ]; then
+              # Red, but every red file belongs to the device probe: a stopped
+              # daemon that no deploy can fix. It stays visible and blocks the
+              # strict release gate, without turning every pull request red.
+              echo "⚠️ Cloud probes all green; $((ALLFAIL)) red file(s) are device freshness only"
+              echo "   $JSON"
+              echo "status=device_freshness" >> "$GITHUB_OUTPUT"
+              echo "device_freshness_red=$ALLFAIL" >> "$GITHUB_OUTPUT"
+            elif [ "$VERDICT" = "unproven" ]; then
+              echo "❌ Required evidence is missing: $((ALLFAIL)) failing and the rest cannot be proven"
+              echo "   $JSON"
+              echo "status=unproven" >> "$GITHUB_OUTPUT"
+              exit 1
             else
-              echo "⚠️ Stack endpoint reachable; downstream probe failures reported (HTTP $CODE, cloud_fail=$CLOUDFAIL)"
+              echo "❌ Downstream probe failures reported (HTTP $CODE, cloud_fail=$CLOUDFAIL, verdict=$VERDICT)"
               echo "   $JSON"
               echo "status=stack_degraded" >> "$GITHUB_OUTPUT"
               echo "stack_cloud_fail=$CLOUDFAIL" >> "$GITHUB_OUTPUT"
+              exit 1
             fi
           else
             echo "❌ Stack endpoint failed or returned an invalid health payload (HTTP $CODE): $JSON"
             exit 1
           fi
 
+      # The missed-run detector.
+      #
+      # The panel's own "unattended check last ran N min ago" line is drawn in
+      # a browser, and a browser is exactly what is not there at 03:00. This
+      # step reads the same native receipt from outside, and fails when the
+      # scheduler has stopped — the one failure the Vercel cron cannot report
+      # about itself.
+      #
+      # The age comes from the server, which judges the NATIVE receipt only. A
+      # manual run cannot refresh it, so pressing "check now" in the dashboard
+      # cannot hide a dead schedule.
+      - name: Detect a missed scheduled run
+        id: schedule
+        env:
+          HEALTH_CHECK_KEY: ${{ secrets.HEALTH_CHECK_KEY }}
+        run: |
+          if [ -z "$HEALTH_CHECK_KEY" ]; then
+            echo "❌ The HEALTH_CHECK_KEY secret is not set"
+            exit 1
+          fi
+          BODY=$(curl -sS -H "x-health-key: $HEALTH_CHECK_KEY" -w '\n%{http_code}' https://jaytipargal.tech/api/jp-stack)
+          CODE=$(echo "$BODY" | tail -n 1)
+          JSON=$(echo "$BODY" | sed '$d')
+          if [ "$CODE" != "200" ] && [ "$CODE" != "503" ]; then
+            echo "❌ Could not read the schedule (HTTP $CODE)"
+            exit 1
+          fi
+          PRESENT=$(echo "$JSON" | jq -r '.schedule.present // false')
+          STALE=$(echo "$JSON" | jq -r '.schedule.stale // true')
+          AGE=$(echo "$JSON" | jq -r '.schedule.age_minutes // "unknown"')
+          MAXAGE=$(echo "$JSON" | jq -r '.schedule.max_age_minutes // 20')
+          if [ "$PRESENT" != "true" ]; then
+            echo "❌ No unattended run has ever been recorded — the 5-minute scheduler has never run"
+            echo "status=missing" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+          if [ "$STALE" = "true" ]; then
+            echo "❌ The unattended scheduler has not run for $AGE min (max $MAXAGE min) — the schedule is stopped"
+            echo "status=stale" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+          echo "✅ Unattended scheduler ran $AGE min ago (max $MAXAGE min)"
+          echo "status=ok" >> "$GITHUB_OUTPUT"
+
       - name: Report Status
         env:
           STACK_STATUS: ${{ steps.stack.outputs.status }}
           STACK_REDS: ${{ steps.stack.outputs.device_freshness_red }}
           STACK_CLOUD_FAIL: ${{ steps.stack.outputs.stack_cloud_fail }}
+          SCHEDULE_STATUS: ${{ steps.schedule.outputs.status }}
         run: |
           # Only the stack probe can succeed with a caveat, so it is the only row
           # that is not a hardcoded OK: every earlier step exits 1 on failure and
@@ -182,15 +258,33 @@ jobs:
               # STACK_REDS counts stack-map FILES bound to the devices probe (six
               # of them), not devices; there are three devices. "6
               # device-freshness red(s)" was read as six stale devices once.
-              stack_row="⚠️ ${STACK_REDS:-?} red file(s) on the device-freshness probe (files, not devices); cloud probes green, CI does not gate on it"
+              stack_row="⚠️ ${STACK_REDS:-?} red file(s) on the device-freshness probe (files, not devices); cloud probes green, the strict release gate does not pass"
               ;;
             stack_degraded)
               heading="## ⚠️ Stack Endpoint Reachable — Downstream Probes Degraded"
               stack_row="⚠️ ${STACK_CLOUD_FAIL:-?} cloud probe failure(s); endpoint responded with a valid health payload"
               ;;
+            unproven)
+              heading="## ⚠️ Stack Endpoint Reachable — Required Evidence Missing"
+              stack_row="⚠️ required rows have no usable evidence; the release gate stays closed"
+              ;;
             *)
               heading="## ❓ Stack Probe Recorded No Status"
               stack_row="❓ no status recorded — treat as unknown, not healthy"
+              ;;
+          esac
+          case "$SCHEDULE_STATUS" in
+            ok)
+              schedule_row="✅ OK (ran recently)"
+              ;;
+            stale)
+              schedule_row="❌ the 5-minute scheduler looks stopped"
+              ;;
+            missing)
+              schedule_row="❌ no unattended run has ever been recorded"
+              ;;
+            *)
+              schedule_row="❓ unknown"
               ;;
           esac
           {
@@ -203,4 +297,5 @@ jobs:
             echo "| Stats API | ✅ OK |"
             echo "| Database (Neon query) | ✅ OK |"
             echo "| Stack health | $stack_row |"
+            echo "| Unattended schedule | $schedule_row |"
           } >> "$GITHUB_STEP_SUMMARY"

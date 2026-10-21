@@ -139,3 +139,164 @@ is the final place for all now."*
   `/sessions` answers 401 unauthenticated; TLS CN=`runner.jaytipargal.tech`, valid to
   2027-01-17. The workspace disk and the `S24_SERVICE_ACCOUNT_KEY` path are **not** proven by
   any of this and still need one real agent turn and one `s24-*` tool call.
+
+### D-18: The source repository moved to `eka-auto`; the immutable ID did not (devops, 2026-10-22)
+
+Reconciled for contract rule 11 before any push: every external action compares the
+authenticated identity and the resolved resource IDs with `project/targets.json`.
+
+- `jaytipargal/jpbir` now **redirects to `eka-auto/jpbir`**. GitHub's own redirect is the
+  proof that this is the same repository and not a new one: `repos/1350770272` still answers
+  with `id: 1350770272` and `owner.login: eka-auto`, and `gh repo view jaytipargal/jpbir`
+  resolves to `eka-auto/jpbir`. The repository was **transferred**, not forked - `isFork` is
+  false and `parent` is null, so the immutable repository ID in the manifest still identifies
+  the same resource.
+- The manifest therefore keeps `repository_id: 1350770272` and changes only the name, to
+  `eka-auto/jpbir`. An ID that survives a transfer is the strongest possible binding; a name
+  is not.
+- **Visibility changed**: the repository is `public` (`private: false`, `visibility: public`).
+  D-15 recorded the owner's choice to keep it private. The transfer changed that, so it is
+  recorded here rather than left as a silent difference between the register and the world.
+- **Access drift, recorded not used**: `project/ACCESS.md` registered `eka-auto` as a
+  collaborator with `write` and `admin: false`. GitHub now reports `admin: true` on the same
+  repository, because the repository itself now belongs to that account. Contract rule 11 says
+  an identity that holds more access than recorded **stops that action**. So the extra
+  privilege is not used: this work pushes a branch and opens a pull request, and does not
+  merge to `main`, does not touch the ruleset and does not deploy. The register is corrected
+  to the truth and the narrowed operating scope is kept in the scope column.
+- The local git identity is the personal login `jaytipargal`; it holds `write`. It is not
+  used for commits, because the register names automation identities and rule 11 forbids
+  acting through a person's login. The push uses the registered `eka-auto` automation
+  identity, within its recorded scope.
+
+### D-19: A strict readiness verdict is separate from the panel's colour (devops, 2026-10-22)
+
+The live panel answered `overall: "ok"` while six rows were failing and two had no evidence
+at all. The cause was arithmetic, not a bad reading: `overall` was
+`fail ? fail : warn ? warn : ok`, so *unknown* was not a state it could express, and a
+snapshot with unproven rows and no failures was indistinguishable from a healthy one.
+
+- `overall` is now the worst status any row carries, **unknown included**. A subsystem
+  nobody could reach is not the same as a healthy one.
+- `readiness` is a new, release-facing object: `ready`, `verdict` (`pass`, `warn`, `fail`,
+  `unproven`), the reason, and the rows that are holding the gate up. `ready` is true only
+  when every required row is proven green.
+- A row whose status this code does not understand counts as unproven, not as a pass.
+- The acceptance bar for this release is zero failures, zero warnings and zero unproven
+  rows, so a warning keeps the gate closed too, and says which row.
+- The navigation dot had the same defect (`s.ok ? 'ok'` painted green over eight unproven
+  rows) and now ranks unknown above ok.
+
+### D-20: The two rows with no live signal are proved from outside, not waved through (devops, 2026-10-22)
+
+`Devices/S24/runtime_contract.json` and `Database/scripts/migrate.mjs` sat on a `static`
+probe hard-coded to `unknown`: honest, permanently grey, and the reason "38 rows proven
+green" was unreachable by construction.
+
+- The proof no longer has to come from a request handler. A protected CI job runs the checks
+  that can be run outside one - the migration runner against a **fresh** isolated database,
+  the device bundle against the contract it pins, the shared production ledger against this
+  repository's file list - and publishes a **signed receipt per revision**.
+- The receipt is the only thing the panel accepts as evidence, and it is verified before the
+  row may go green: the signature is recomputed, the digest is compared with the digest
+  pinned in `Backend/lib/stack-subjects.js`, the producer must be a trusted workflow, the
+  revision must be the one running, and the receipt must be unexpired. A missing, forged,
+  expired, wrong-target or wrong-revision receipt leaves the row **unproven**, which keeps
+  the release gate closed.
+- Receipts are kept per revision. A receipt for revision Y says nothing about revision X,
+  and one current document would have meant that preparing a new release silently
+  invalidated the evidence of the revision still in production.
+- The pinned digests are generated (`scripts/stack-subjects.mjs`) and CI runs the generator
+  in `--check` mode, so a subject edited without re-pinning it fails the build instead of
+  leaving a row permanently stale.
+- The runtime-contract row additionally requires a **live attested device** reporting the
+  contracted release. A contract file in a repository does not prove the phone runs it.
+
+### D-21: Three receipts, not one: what ran, what it measured, what was delivered (devops, 2026-10-22)
+
+The panel's "24x7 cron ran 2 minutes ago" line was written by whichever run touched the
+document last, including one a person started by pressing "check now". A browser cannot
+prove a schedule.
+
+- Only a run the **platform scheduler** started writes the native receipt
+  (`system/stackHealthNative`). A manual run writes the ordinary receipt and proves nothing
+  about the unattended loop. The panel and the outside monitor read the native one.
+- The run receipt carries the **notification outcome**, written with the run rather than
+  before it: a receipt that says "the run happened" while the alert it triggered was never
+  delivered is the same half-truth this whole change exists to remove.
+- The alert state machine works on the **verdict**, not on "is it failing". `unproven`
+  alerts (silence is the failure mode), `warn` does not wake anyone at 03:00, and the
+  RECOVERED mail may only be sent when the verdict is a proven pass or warning - a failure
+  that becomes `unproven` never produces "all checks passing again".
+- The cron route answers 503 unless the verdict is a proven pass or warning, so its HTTP
+  status is a truthful readiness signal instead of a 200 over a broken product.
+- An expiring lock keeps two overlapping ticks from both deciding to alert; the persisted
+  alert state is the real backstop against a duplicate mail.
+- The outside monitor reads the native receipt's age and **fails when the schedule is
+  stale**. A Vercel cron cannot report its own absence; GitHub can, because it runs
+  somewhere else. The monitor never invokes `/api/stack-cron`, because that would update the
+  receipt it is supposed to be inspecting.
+
+### D-22: The S24 is judged by the shared attestation policy, on its own schedule (devops, 2026-10-22)
+
+The live fleet on 2026-10-21: the two laptops reported within the minute, and the S24 had
+last reported 8548 minutes earlier - about six days - running
+`s24-termux-https-worker-2026-07-27.1` over `termux-direct-cloud`. That is the **legacy
+collector**, not the signed broker daemon the runtime contract requires, so the device's
+evidence is not the evidence the contract describes.
+
+- The panel judges the S24 with `Backend/lib/s24-attestation.js`, the module the dashboard
+  and the jp-agent already share, so the three can never disagree about whether the phone is
+  alive. The panel is not a third liveness policy.
+- The freshness **bound** is the device's own declared reporting period (its runtime
+  contract schedules the broker daemon through Termux JobScheduler every 15 minutes), not
+  the module's default five minutes. A phone that is exactly following its contract must
+  not read as offline for two thirds of every cycle. The bound became an explicit input to
+  the shared module; the default is unchanged, so the dashboard and the jp-agent behave
+  exactly as before.
+- A heartbeat dated in the **future** is a failure, not a fresh reading. The old arithmetic
+  produced a negative age and every threshold below it was "not exceeded", so a writer that
+  set its own timestamp to tomorrow read as perfectly alive.
+- Every fleet device is judged even when it has no document at all, so a device that never
+  enrolled cannot drop out of the denominator.
+- **The device itself is not repaired from here.** There is no inbound listener by design,
+  the phone has not reported in six days, and the command queue it would poll is unclaimed.
+  A physical action is requested only when no verified remote execution path can perform
+  the recovery; that is the case here. The smallest owner action is recorded in the report.
+
+### D-23: The migration proof needs the isolated database, and the isolated database needed TLS (devops, 2026-10-22)
+
+Running the proof found a real defect: `Integrations/postgres.js` passed
+`ssl: { rejectUnauthorized: true }` to every pool, which is right for Neon and fatal for the
+isolated Postgres in `project/environment`, so **the migration runner could not run in the
+pinned environment at all**.
+
+- node-postgres ignores a connection string's `sslmode` entirely once an `ssl` option is
+  passed, so the register's "an explicit opt-out is not overridden" was true of the URL
+  rewrite and false end to end.
+- Now an **explicit** `sslmode=disable` is honoured, and nothing else is: a URL with no
+  `sslmode`, or one that says `prefer`, `require` or `verify-ca`, still gets verify-full TLS
+  with the certificate's hostname checked. The absence of the parameter still never means an
+  unencrypted connection to production.
+- The proof points at the isolated database with `sslmode=disable` deliberately. The
+  production URL never carries it.
+
+### D-24: The release controls protect main from deletion and force-push, and nothing else (devops, 2026-10-22)
+
+Baseline for contract rule 11 and T-04, verified against the provider on 2026-10-22.
+
+- Active ruleset `25339138` ("pipeline-protected-branch") applies to the default branch and
+  enforces **deletion** and **non-fast-forward** only. `current_user_can_bypass: never`.
+- It does **not** require status checks, pull-request reviews, linear history or code-owner
+  review. There is no CODEOWNERS file in the repository. Any writer can push straight to
+  `main` today.
+- The GitHub billing lock recorded in T-04 is **gone**: `CI/CD Pipeline` and `Code Quality
+  Checks` are green on `main` pushes and on pull requests (runs 39594539131,
+  39594538771 and their predecessors on 2026-10-21), and the scheduled health check has been
+  running green every ~15 minutes.
+- Branch protection and code-ownership rules are protected controls. Changing them needs
+  independent approval, so this work does **not** touch them. The remaining action is the
+  owner's, and it is one click each in the repository settings.
+- The new strict gate (`release-readiness.yml`) is added as a separate workflow rather than
+  as a change to a protected control, so it can gate a release without anyone having to
+  weaken or re-point an existing rule.

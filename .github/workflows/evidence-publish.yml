@@ -1,0 +1,133 @@
+name: Publish Stack Evidence
+
+# The producer behind the Product engineering panel's two evidence-backed rows.
+#
+# `Devices/S24/runtime_contract.json` and `Database/scripts/migrate.mjs` used
+# to sit on a probe that answered "unknown" forever, with the reason "no live
+# signal reachable from a serverless function". That was honest and
+# permanently grey: those two rows could never be anything else, so "38 rows
+# proven green" was unreachable by construction.
+#
+# The proof does not have to come from a request handler. This job runs the
+# checks that CAN be run outside one — the migration runner against a fresh
+# isolated database, the device bundle against the contract it pins, the
+# shared production ledger against this repository's file list — and publishes
+# a SIGNED receipt per revision.
+#
+# The receipt is the only thing the panel will accept as evidence, and it
+# checks it against the pinned subject digest, the trusted producer list, the
+# running revision and an expiry window. A missing, forged, expired,
+# wrong-target or wrong-revision receipt leaves the row unproven, which keeps
+# the strict release gate closed.
+#
+# The daily schedule is not a backup for the push trigger: receipts expire,
+# and a repository that has not changed in a month still needs fresh proof.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    - cron: '23 4 * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: stack-evidence
+  cancel-in-progress: false
+
+jobs:
+  proof:
+    name: Prove the contract and the migration tooling
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24.x'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Contract rule 3: the build, the tests and the lint run inside the
+      # project environment and nowhere else. The proofs run there too, because
+      # a migration proof that ran on the host's Postgres would be a proof
+      # about the runner, not about this repository's migration runner.
+      - name: Build the project environment
+        run: docker compose -f project/environment/compose.yaml build dev
+
+      - name: Prove the S24 runtime contract in the project environment
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DATABASE: jpbir
+        run: |
+          # compose reads this file for the service environment. It has to
+          # exist or the service refuses to start; the real values come from
+          # the service's own `environment:` block, not from here.
+          printf 'POSTGRES_USER=postgres\nPOSTGRES_PASSWORD=postgres\nPOSTGRES_DATABASE=jpbir\n' > .env.local
+          sh project/environment/run node scripts/stack-runtime-contract-proof.mjs /workspace/runtime-contract.json
+
+      - name: Prove the migration tooling in the project environment
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DATABASE: jpbir
+        run: |
+          printf 'POSTGRES_USER=postgres\nPOSTGRES_PASSWORD=postgres\nPOSTGRES_DATABASE=jpbir\n' > .env.local
+          sh project/environment/run node scripts/stack-migration-proof.mjs /workspace/migration-tooling.json
+
+      # A backup that has never been restored is a hypothesis. The drill
+      # migrates a fresh database, dumps it with pg_dump, restores the dump
+      # into a second fresh database and compares the two. It runs against the
+      # isolated Postgres and never against production.
+      - name: Drill the backup and restore path
+        run: node scripts/stack-restore-drill.mjs
+
+      # The target's ledger, reconciled against this repository's own file
+      # list. This asks the narrow health credential, not the dashboard key,
+      # and it is deliberately independent of whether production has caught up
+      # with this revision: production having applied FEWER migrations is a
+      # pending deploy, production having applied one this repository cannot
+      # explain is a divergence.
+      - name: Reconcile the production migration ledger
+        env:
+          HEALTH_CHECK_KEY: ${{ secrets.HEALTH_CHECK_KEY }}
+        run: node scripts/stack-ledger-reconcile.mjs /workspace/ledger.json
+
+      - name: Merge the check reports
+        run: |
+          node --input-type=module -e "
+            import { readFileSync, writeFileSync } from 'node:fs';
+            const read = (p) => JSON.parse(readFileSync(p, 'utf8'));
+            const runtime = read('runtime-contract.json');
+            const migration = read('migration-tooling.json');
+            const ledger = read('ledger.json');
+            const checks = {
+              'runtime-contract': runtime.checks,
+              'migration-tooling': { ...migration.checks, ...ledger.checks },
+            };
+            const notes = [...(runtime.notes || []), ...(migration.notes || []), ...(ledger.notes || [])];
+            const failed = Object.values(checks).some((c) => Object.values(c).some((v) => v !== 'pass'));
+            writeFileSync('checks.json', JSON.stringify({ result: failed ? 'fail' : 'pass', checks, notes }, null, 2));
+            console.log(JSON.stringify({ checks, notes }, null, 2));
+            if (failed) { console.error('at least one proof did not pass'); process.exit(1); }
+          "
+
+      # The receipts are signed with a key the runtime also holds, so a receipt
+      # cannot be forged by anything that merely has write access to the
+      # evidence document — and an unsigned or altered receipt is refused by
+      # the panel, which leaves the row unproven rather than green.
+      - name: Publish the signed receipts
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+          STACK_EVIDENCE_KEY: ${{ secrets.STACK_EVIDENCE_KEY }}
+          STACK_EVIDENCE_WORKFLOW: evidence-publish
+        run: node scripts/stack-evidence-publish.mjs checks.json

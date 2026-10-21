@@ -3,13 +3,16 @@
 export const DEVICES_NOTE =
   'Device-initiated only: nothing here can pull from a phone. A stale light means the daemon stopped, and no cloud-side change fixes it.';
 
-export const PROBES = ['dns', 'tls', 'postgres', 'firestore', 'blob', 'env', 'devices', 'assets', 'repair', 'static'];
+export const PROBES = [
+  'dns', 'tls', 'postgres', 'firestore', 'blob', 'env', 'devices', 'assets', 'repair',
+  'runtime-contract', 'migration-tooling',
+];
 
 export const LAYERS = [
   {
     id: 'devices', title: 'Devices', subtitle: 'Daemons push out', kind: 'flow', note: DEVICES_NOTE,
     files: [
-      { path: 'Devices/S24/runtime_contract.json', probe: 'static', why: 'Bans inbound listeners; hash-pinned bundle' },
+      { path: 'Devices/S24/runtime_contract.json', probe: 'runtime-contract', why: 'Bans inbound listeners; hash-pinned bundle' },
       { path: 'Backend/device-heartbeat.js', probe: 'devices', why: 'Receives the daemon heartbeat' },
       { path: 'Backend/device-enroll.js', probe: 'devices', why: 'Enrols a device and its Keystore key' },
       { path: 'Backend/device-commands-poll.js', probe: 'devices', why: 'Daemon reads its command queue here' },
@@ -64,7 +67,7 @@ export const LAYERS = [
       { path: 'Backend/db-push.js', probe: 'repair', why: 'Nightly DynamoDB -> Neon warehouse repair (cron 18:30 UTC)' },
       { path: 'Backend/wa-blob-upload.js', probe: 'blob', why: 'Media bytes to Vercel Blob' },
       { path: 'Backend/wa-media.js', probe: 'blob', why: 'Serves media from Blob' },
-      { path: 'Database/scripts/migrate.mjs', probe: 'static', why: 'Migration runner' },
+      { path: 'Database/scripts/migrate.mjs', probe: 'migration-tooling', why: 'Migration runner' },
     ],
   },
   {

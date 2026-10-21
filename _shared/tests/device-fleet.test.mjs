@@ -111,15 +111,21 @@ await t('the production collection is three devices and two documents that are n
   assert.deepEqual(splitFleet(undefined), { fleet: [], other: [] }, 'an empty listing has no "documents" key at all');
 });
 
-await t('the health verdict judges the three devices and never the test agent or the artifact', () => {
-  const r = deviceFreshness({ status: 'ok', _docs: PRODUCTION });
-  assert.deepEqual(Object.keys(r.byDevice).sort(), FLEET);
-  assert.equal(r.status, 'fail');
-  assert.match(r.problem, /^3 of 3 device\(s\) not reporting/, 'the count is of devices, and there are three');
-  assert.doesNotMatch(r.problem, /eka-cloud-sandbox|g4g-laptop/);
-  assert.deepEqual(r.byDevice['samsung-s24-ultra'], { status: 'fail', mins: 13054 });
-  assert.deepEqual(r.byDevice['jayti-asus-vivobook'], { status: 'warn', mins: null }, 'no lastSeen reads as never reported');
-});
+  await t('the health verdict judges the three devices and never the test agent or the artifact', () => {
+    const r = deviceFreshness({ status: 'ok', _docs: PRODUCTION });
+    assert.deepEqual(Object.keys(r.byDevice).sort(), FLEET);
+    assert.equal(r.status, 'fail');
+    assert.match(r.problem, /^3 of 3 device\(s\) not reporting/, 'the count is of devices, and there are three');
+    assert.doesNotMatch(r.problem, /eka-cloud-sandbox|g4g-laptop/);
+    // Each device carries its own verdict, its age, and the evidence that
+    // produced it — the S24's entry names the attestation that failed, so an
+    // operator can tell "the phone is old" from "the phone is not running the
+    // attested daemon" without opening another screen.
+    assert.equal(r.byDevice['samsung-s24-ultra'].status, 'fail');
+    assert.equal(r.byDevice['samsung-s24-ultra'].mins, 13054);
+    assert.equal(r.byDevice['jayti-asus-vivobook'].status, 'warn');
+    assert.equal(r.byDevice['jayti-asus-vivobook'].mins, null, 'no lastSeen reads as never reported');
+  });
 
 await t('the health log line counts devices against the fleet of three', () => {
   const lines = [];
@@ -131,12 +137,13 @@ await t('the health log line counts devices against the fleet of three', () => {
     'at 06:15 UTC on 2026-09-23 this line listed five, the test agent and the artifact among them');
 });
 
-await t('a fleet device with no document is judged as never enrolled, not dropped from the count', () => {
-  const r = deviceFreshness({ status: 'ok', _docs: PRODUCTION.filter((d) => idOf(d) !== 'g4g-lenovo-laptop') });
-  assert.equal(Object.keys(r.byDevice).length, 3);
-  assert.deepEqual(r.byDevice['g4g-lenovo-laptop'], { status: 'warn', mins: null });
-  assert.match(r.problem, /g4g-lenovo-laptop has no device document \(never enrolled\)/);
-});
+  await t('a fleet device with no document is judged as never enrolled, not dropped from the count', () => {
+    const r = deviceFreshness({ status: 'ok', _docs: PRODUCTION.filter((d) => idOf(d) !== 'g4g-lenovo-laptop') });
+    assert.equal(Object.keys(r.byDevice).length, 3);
+    assert.equal(r.byDevice['g4g-lenovo-laptop'].status, 'warn');
+    assert.equal(r.byDevice['g4g-lenovo-laptop'].mins, null);
+    assert.match(r.problem, /g4g-lenovo-laptop has no device document \(never enrolled\)/);
+  });
 
 await t('/api/jp-devices lists the three devices and names the two documents it left out', async () => {
   stubFirestore(PRODUCTION);
