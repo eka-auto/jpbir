@@ -10,7 +10,16 @@ jobs:
   health-check:
     name: Check Endpoint Health
     runs-on: ubuntu-latest
-    if: github.event.deployment_status.state == 'success' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    # Only a PRODUCTION deployment, the schedule, or a manual run. The probes
+    # below read jaytipargal.tech, which is production — so a preview
+    # deployment triggering this job was a category error: it checked the live
+    # product while a branch was being reviewed, and its verdict had nothing
+    # to say about the branch. It also made every pull request red whenever
+    # production was behind the branch.
+    #
+    # The schedule covers production continuously whatever else happens, so
+    # nothing is lost by dropping the preview trigger.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event.deployment_status.state == 'success' && startsWith(github.event.deployment.environment, 'Production'))
     
     steps:
       - name: Checkout code
