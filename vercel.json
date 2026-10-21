@@ -148,10 +148,6 @@
       "use": "@vercel/node"
     },
     {
-      "src": "Backend/jp-telegram.js",
-      "use": "@vercel/node"
-    },
-    {
       "src": "Backend/jp-wa-chat.js",
       "use": "@vercel/node"
     },

@@ -52,14 +52,6 @@ async function messengerApi(page, overrides = {}) {
         },
       });
     }
-    if (path === '/api/jp-telegram') {
-      return route.fulfill({
-        json: {
-          ok: true, migrated: true, generated_at: '2026-10-20T12:00:00Z',
-          chats: [], totals: {}, runs: [],
-        },
-      });
-    }
     if (path === '/api/jp-wa-messages') {
       const chatId = new URL(request.url()).searchParams.get('chat_id');
       if (chatId === 'h_locked_1') {
@@ -305,7 +297,7 @@ test('a failed thread load says so, rather than claiming the chat is empty', asy
   await expect(body).not.toContainText('No message rows stored for this chat.');
 });
 
-test('Telegram panel opens empty and says no data was captured', async ({ page }) => {
+test('Telegram panel is a second slot for the same client and the same data', async ({ page }) => {
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
   const seen = await messengerApi(page);
@@ -314,10 +306,14 @@ test('Telegram panel opens empty and says no data was captured', async ({ page }
 
   const panel = page.locator('#page-telegram');
   await expect(panel).toBeVisible();
-  await expect(panel.locator('#tgChatList')).toContainText('No Telegram data captured yet');
-  // The prompt must not present a zero as if it were a measurement.
-  await expect(panel.locator('#tgSplit .mess-split-cell.readable .n')).toHaveText('0');
-  expect(seen.has('/api/jp-telegram')).toBe(true);
+  // It is a copy of the WhatsApp client, so it lists the same chats.
+  await expect(panel.locator('#tgChatList .mess-chat')).toHaveCount(2);
+  // The headline is the readable count, not a bare row count.
+  await expect(panel.locator('#tgSplit .mess-split-cell.readable .n')).toHaveText('2');
+  // It reads the same endpoints as WhatsApp. There is no second backend and
+  // no separate Telegram source: the slot is the client, not a new dataset.
+  expect(seen.has('/api/jp-whatsapp')).toBe(true);
+  expect(seen.has('/api/jp-telegram')).toBe(false);
   expect(errors).toEqual([]);
 });
 
