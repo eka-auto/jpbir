@@ -139,13 +139,71 @@ which is outside this work order and would collide with their work.
 | # | Gate | Owner action |
 | --- | --- | --- |
 | A | The S24 runs the legacy collector, so the six device rows and the runtime-contract row cannot go green | On the phone: power it on, open Termux, and run the broker installer (`Devices/S24/install_s24.sh`), which registers the Termux boot package and the JobScheduler job so the daemon reports as `s24-termux-broker-2026-09-21.2` over `signed-broker-v2`. Nothing else in the product is needed for it. |
-| B | `STACK_EVIDENCE_KEY` does not exist, so no receipt can be signed or verified | Create one secret in the GitHub repository and set the same value as a Vercel production environment variable. The panel refuses to trust an unsigned receipt, so the two rows stay unproven until it exists. |
-| C | The strict gate needs the new `/api/jp-stack` and `/api/verify-db` responses, which need a production deploy | Deploy the branch after review. `release-readiness.yml` reads the deployed response, not the branch. |
-| D | The ledger reconciliation reads the shared migration ledger through `/api/verify-db`'s health projection, which only exists after C | Automatic once C is deployed; the daily evidence run publishes the receipt for the deployed revision. |
-| E | The ruleset requires no checks, reviews or CODEOWNERS, so any writer can push to `main` | In repository settings: require status checks on `main`, require one approving review, and add a CODEOWNERS file for `project/`, `.github/` and `Backend/`. Protected controls are not changed by this work. |
-| F | The 24-hour observation window has not run | Start it once A–C are closed. The window is defined in section 6. |
+| B | `STACK_EVIDENCE_KEY` | **Closed 2026-10-22.** The owner configured the same generated value as a GitHub repository secret and as a Vercel production secret, without disclosure. The value is not recorded anywhere in this repository and must never be. |
+| C | The strict gate needs the new `/api/jp-stack` and `/api/verify-db` responses, which need a production deploy | **Closed 2026-10-22.** PR #192 merged and deployed at `ea706b12`; the live `/api/jp-stack` now answers with the strict readiness verdict, the schedule block and the native cron receipt. |
+| D | The ledger reconciliation could not explain eleven names in the shared ledger | **Closed 2026-10-22** by D-25: ten belong to the sibling repository `jaytipargal/jaytibirthday-site` and one is this repository's retired `010_telegram.sql`. `Database/schema/shared-ledger.json` records both, separately from the alias map so the runner's behaviour is untouched. |
+| E | The ruleset requires no checks, reviews or CODEOWNERS, so any writer can push to `main` | **Closed 2026-10-22.** Ruleset `25339138` now requires eight status checks, one approving review, a code-owner review, a last-push approval, resolved review threads and no bypass; direct update to `main` was rejected and verified. CODEOWNERS is proposed through PR #193. |
+| F | The 24-hour observation window has not run | Start it once the S24 is recovered. The window is defined in section 6. |
+
+### Where the product stands now
+
+Read from the deployed production at 2026-10-21T21:10Z:
+
+| | |
+| --- | --- |
+| rows | 38 — 30 green, 6 failing, 2 unproven |
+| verdict | `fail`, reason: "6 required row(s) failed" — the six device rows |
+| schedule | alive; the native receipt is minutes old, `schedule.stale` is `false` |
+| the two evidence-backed rows | unproven until the CI evidence job publishes a receipt; the shared-ledger reconciliation was the blocker and is now fixed (D-25) |
+| the six device rows | red until the S24 runs the attested broker daemon (gate A) |
 
 ---
+
+### The control change, reviewed
+
+PR #193 (`chore/release-controls-192`) carries the owner's control change: CODEOWNERS, the
+ruleset hardening already applied, and repairs to two workflows and one test. It was reviewed
+independently before it merges, as contract rule 12 requires for a control change.
+
+Findings:
+
+- **The schedule verdict was wrong, and it was raising a false alarm.** `jq -r '.schedule.stale
+  // true'` treats `false` as absent in jq, so a healthy schedule evaluated to `true` and the
+  monitor announced a stopped scheduler every fifteen minutes for one that had run two
+  minutes earlier. The reading is now `.schedule.stale != false` — `false` stays `false`, and
+  a missing field still fails closed.
+- **The ledger report path pointed at a container-only path**, so the reconciliation died
+  with `ENOENT` before it could run.
+- **The attested-S24 fixture had a millisecond race**: the attestation compares two strings
+  for equality and the fixture built them from two separate clock reads.
+- **The access register cited an approval record that did not exist.** `project/approvals/
+  2026-10-22-bounded-release-admin.md` was on neither `main` nor `project-state`. A control
+  record pointed at nothing. The record was added during the review — the owner's approval as
+  given, each operation with its provider-verified evidence, and the limits that stay in
+  force — and the citation corrected to where approvals are actually kept.
+
+Review submitted as an approving review; the record is in `project/approvals/
+2026-10-22-bounded-release-admin.md`.
+
+### The device recovery was attempted, not assumed
+
+The plan asks for a physical action only when no verified remote execution path can perform
+the recovery, so the remote path was exercised first.
+
+The phone's collector holds a persistent outbound listener on an ntfy.sh topic and wakes on a
+push; the topic is derived deterministically from the project id and the device id (the
+phone's own source documents that the topic is not a secret, and that a wake event only
+triggers a heartbeat, never a command). A wake event was published to
+`eka-s24-26a3af13e6164634f00b` at 2026-10-21T21:36:56Z and confirmed present on the topic
+(`id: wF1CwQww6E1u`).
+
+The device did not answer: at 21:42:25Z and again at 21:44:38Z the live projection still
+reported `lastSeenCoarse: ">1d"`, `live: false`, `commandQueueDepth: 5` — the same stored
+snapshot as before, with the five queued commands still unclaimed.
+
+So either the phone's Termux process and its listener are not running, or it listens on an
+overridden secret topic. Either way there is no verified remote path left, and the device has
+to be recovered by hand. That is the whole of gate A.
 
 ## 6. The 24-hour observation
 
@@ -189,8 +247,10 @@ Changed: `Backend/jp-stack.js`, `Backend/stack-cron.js`, `Backend/jp-devices.js`
 `scripts/stack-ledger-reconcile.mjs`, `scripts/stack-runtime-contract-proof.mjs`,
 `scripts/stack-restore-drill.mjs`, `_shared/tests/stack-health.test.mjs`,
 `_shared/tests/stack-readiness.test.mjs` (new), `_shared/tests/stack-evidence.test.mjs`
-(new), `_shared/tests/device-fleet.test.mjs`, `_shared/tests/verify-db-health-key.test.mjs`,
-`project/decisions.md`, `project/ACCESS.md`, `project/targets.json`,
+(new), `_shared/tests/shared-ledger.test.mjs` (new), `_shared/tests/device-fleet.test.mjs`,
+`_shared/tests/verify-db-health-key.test.mjs`, `Database/schema/shared-ledger.json` (new),
+`Database/scripts/lib/migration-plan.mjs`, `project/decisions.md`, `project/ACCESS.md`,
+`project/targets.json`, `project/approvals/2026-10-22-bounded-release-admin.md`,
 `docs/plans/2026-10-22-0002-fix-production-readiness-plan.md`.
 
-Pull request: https://github.com/eka-auto/jpbir/pull/192
+Pull request: https://github.com/eka-auto/jpbir/pull/192 (merged, deployed at `ea706b12`)

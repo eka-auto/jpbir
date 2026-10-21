@@ -341,6 +341,8 @@ function fsDocs(entries) {
 function attestedS24(minAgo, overrides = {}) {
   const lastSeen = new Date(Date.now() - minAgo * 60000).toISOString();
   return {
+    // The signed timestamp must exactly match the same heartbeat's lastSeen.
+    lastSeen: { timestampValue: lastSeen },
     agentVersion: { stringValue: 's24-termux-broker-2026-09-21.2' },
     connectionMethod: { stringValue: 'signed-broker-v2' },
     heartbeatAuth: { stringValue: 'termux-phone' },

@@ -100,7 +100,7 @@ jobs:
       - name: Reconcile the production migration ledger
         env:
           HEALTH_CHECK_KEY: ${{ secrets.HEALTH_CHECK_KEY }}
-        run: node scripts/stack-ledger-reconcile.mjs /workspace/ledger.json
+        run: node scripts/stack-ledger-reconcile.mjs ledger.json
 
       - name: Merge the check reports
         run: |

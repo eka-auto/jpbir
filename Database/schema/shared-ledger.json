@@ -1,0 +1,32 @@
+{
+  "_comment": "Who else writes the shared schema_migrations ledger, and which of our own migrations are retired. The ledger lives in one Neon database and two repositories write to it: this one and jaytibirthday-site. A row naming a migration this repository does not ship is normally the other owner's work, not a divergence, and the reconciliation in scripts/stack-ledger-reconcile.mjs has to be able to tell the two apart. The alias map records the migrations the two repositories SHARE; this file records the ones only the other repository owns, and the ones this repository applied and then retired.",
+  "owners": [
+    {
+      "repository": "jaytipargal/jaytibirthday-site",
+      "_comment": "The sibling repository that writes the same shared ledger. The names listed here are the migrations that repository owns and that it has applied to the shared database under. Its current numbering and the numbering it used earlier are both listed, because it renumbered its files without recording the equivalence in its own repository, and the shared ledger still holds the earlier names. A name this repository ships, or that its own alias map already records, must NOT appear here: listing one would silence a real divergence instead of explaining a foreign row.",
+      "migrations": [
+        "001_init.sql",
+        "002_enrich_events.sql",
+        "003_fix_city_decode.sql",
+        "004_fix_city_decode.sql",
+        "007_site_api_enrichment.sql",
+        "008_site_api_enrichment.sql",
+        "008_slide_dwell_and_device_network.sql",
+        "009_device_telemetry.sql",
+        "009_slide_dwell_and_device_network.sql",
+        "010_normalize_event_telemetry.sql",
+        "010_session_duration.sql",
+        "011_device_telemetry.sql",
+        "011_web_vitals_and_client_probe.sql",
+        "012_normalize_event_telemetry.sql",
+        "012_reclean_whatsapp_senders.sql",
+        "013_session_duration.sql",
+        "014_web_vitals_and_client_probe.sql",
+        "015_reclean_whatsapp_senders.sql"
+      ]
+    }
+  ],
+  "retired": {
+    "010_telegram.sql": "Applied on 2026-10-21 by #189 and retired the same day by #190, which replaced the Telegram stack with a copy of the WhatsApp client and added 013_drop_telegram.sql to drop the tables it created. The ledger row stays: the migration did run, and removing the file does not unrun it."
+  }
+}
