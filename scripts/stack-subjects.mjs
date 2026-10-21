@@ -52,7 +52,8 @@ async function schemaFiles() {
   const names = await readdir(dir);
   const sql = names.filter((n) => n.endsWith('.sql')).sort();
   const aliases = names.includes('migration-aliases.json') ? ['migration-aliases.json'] : [];
-  return [...sql, ...aliases].map((n) => 'Database/schema/' + n);
+  const shared = names.includes('shared-ledger.json') ? ['shared-ledger.json'] : [];
+  return [...sql, ...aliases, ...shared].map((n) => 'Database/schema/' + n);
 }
 
 async function hashFile(relativePath) {

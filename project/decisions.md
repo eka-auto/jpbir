@@ -300,3 +300,66 @@ Baseline for contract rule 11 and T-04, verified against the provider on 2026-10
 - The new strict gate (`release-readiness.yml`) is added as a separate workflow rather than
   as a change to a protected control, so it can gate a release without anyone having to
   weaken or re-point an existing rule.
+### D-25: The shared ledger has two writers, and the reconciliation must know the difference (devops, 2026-10-22)
+
+PR #192 is merged and live at `ea706b12`. The strict readiness contract is now deployed and
+working: `/api/jp-stack` answers with `readiness.verdict`, `readiness.reason` and
+`schedule.present/stale/age_minutes`, and the native cron receipt carries `verdict`,
+`notification` and `completed_at`. The verdict is `fail` for the six device rows, and the
+schedule is alive — the native receipt is minutes old.
+
+Receipt publication was blocked, and the reason was a real design error rather than a
+transient fault.
+
+- `schema_migrations` lives in one Neon database and **two** repositories write to it: this
+  one and `jaytipargal/jaytibirthday-site`. The reconciliation asked "is every name in the
+  production ledger explainable by THIS repository?" and answered no for eleven names. Ten
+  of them belong to the sibling repository (verified against both of its local checkouts:
+  `001_init.sql`, `002_enrich_events.sql`, `003_fix_city_decode.sql`,
+  `007_site_api_enrichment.sql`, `008_slide_dwell_and_device_network.sql`,
+  `009_device_telemetry.sql`, `010_normalize_event_telemetry.sql`, `010_session_duration.sql`,
+  `011_web_vitals_and_client_probe.sql`, `012_reclean_whatsapp_senders.sql`). The eleventh,
+  `010_telegram.sql`, was **ours**: applied by #189 on 2026-10-21 and retired the same day by
+  #190, which replaced the Telegram stack with a copy of the WhatsApp client and added
+  `013_drop_telegram.sql` to drop the tables it created. Its ledger row stays, because the
+  migration did run.
+- The alias map cannot carry this. It records migrations the two repositories **share**, and
+  it changes what the runner does: a name listed there means "this file's SQL already ran
+  under that name, skip it". Listing a foreign name there would make the runner skip a
+  migration that still has to run — the sibling's `012_reclean_whatsapp_senders.sql` is a
+  deliberate re-application of our `007_clean_whatsapp_senders.sql` under a new name, and
+  treating the two as equivalents would stop ours from ever running.
+- So the knowledge is kept in a separate reviewed manifest,
+  `Database/schema/shared-ledger.json`: who else writes the ledger, which names are theirs
+  (both the numbering they use now and the one they used earlier, because they renumbered
+  without recording the equivalence in their own repository), and which of our own
+  migrations are retired. The manifest changes only what the reconciliation BELIEVES; the
+  alias map still decides what the runner does.
+- The manifest may not name a migration this repository ships or records as an alias. That
+  guard is the point: if it could, an unrecorded **rename** of one of our files would be
+  waved through as "that is the sibling's", and the runner would re-apply a migration that
+  has already run. `assertManifestAgreesWithTree` refuses such a manifest, and a suite pins
+  it.
+- The reconciliation is still one-directional on purpose: production having applied fewer
+  migrations than this repository ships is a pending deploy and is reported, not failed on.
+  Production having applied a migration nothing explains is a divergence and fails closed.
+
+### D-26: Two defects of mine were found by the CI run, and one of them was raising a false alarm (devops, 2026-10-22)
+
+Moving the checks into the project environment is what made these visible; they were
+invisible while the checks ran on the runner. PR #193 repairs the first two and the third.
+
+- **jq's `//` treats `false` as absent.** The outside monitor read the schedule with
+  `jq -r '.schedule.stale // true'`, so a healthy schedule (`stale: false`) evaluated to
+  `true` and the monitor announced "the unattended scheduler has not run for 2 min (max 20
+  min) — the schedule is stopped" every fifteen minutes, for a scheduler that had run two
+  minutes earlier. That is a false alarm manufactured by the monitor, which is the exact
+  failure this whole change exists to remove. The reading is now
+  `.schedule.stale != false`: `false` stays `false`, and a missing field still fails closed.
+- **A runner path that only exists in a container.** The ledger reconciliation step wrote
+  its report to `/workspace/ledger.json` while running on the runner, where `/workspace`
+  does not exist, and died with `ENOENT` before the reconciliation could run at all.
+- **A millisecond race in a test fixture.** The attestation compares
+  `enrollment.lastSignedHeartbeatAt` with `lastSeen` as exact strings, and the fixture built
+  the two from two separate `Date.now()` calls, so a millisecond boundary between them would
+  turn the S24 red intermittently. One `lastSeen` now feeds both.

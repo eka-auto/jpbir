@@ -60,7 +60,7 @@ export const SUBJECTS = {
         },
         {
           "path": "Database/scripts/lib/migration-plan.mjs",
-          "sha256": "4d61438270e947c0a50c7bde195793d594a54e10b19247874d794b2c8e3f00a3"
+          "sha256": "3da8b58502b56fb45065c8c83d0f0ffdb1be2e7ff6938cec3c30fffd3ae18564"
         },
         {
           "path": "Database/scripts/_env.mjs",
@@ -101,9 +101,13 @@ export const SUBJECTS = {
         {
           "path": "Database/schema/migration-aliases.json",
           "sha256": "123719c02d4a8a297e5e913b025f765fb4714ee44f44e8e719ebe03ebf320c4e"
+        },
+        {
+          "path": "Database/schema/shared-ledger.json",
+          "sha256": "a99f77de3f160e61087b38ac22de9ca37585c8696bf6ea3a715675e69e5bb74d"
         }
       ],
-      "digest": "sha256:7091f1ed59ca7a8f9d2ae92806b1c1cc479349a15ff0a2cc6eebfa19e63cd1ec"
+      "digest": "sha256:b19cbaee559290232005d886061b6ff50f74a5288382cee0060719f816ad9ff2"
     }
   };
 
