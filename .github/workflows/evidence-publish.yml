@@ -102,24 +102,11 @@ jobs:
           HEALTH_CHECK_KEY: ${{ secrets.HEALTH_CHECK_KEY }}
         run: node scripts/stack-ledger-reconcile.mjs ledger.json
 
+      # One script defines the report's shape and the publisher reads it. They
+      # used to disagree about where a subject's checks sat, and every
+      # publication failed while every proof was green.
       - name: Merge the check reports
-        run: |
-          node --input-type=module -e "
-            import { readFileSync, writeFileSync } from 'node:fs';
-            const read = (p) => JSON.parse(readFileSync(p, 'utf8'));
-            const runtime = read('runtime-contract.json');
-            const migration = read('migration-tooling.json');
-            const ledger = read('ledger.json');
-            const checks = {
-              'runtime-contract': runtime.checks,
-              'migration-tooling': { ...migration.checks, ...ledger.checks },
-            };
-            const notes = [...(runtime.notes || []), ...(migration.notes || []), ...(ledger.notes || [])];
-            const failed = Object.values(checks).some((c) => Object.values(c).some((v) => v !== 'pass'));
-            writeFileSync('checks.json', JSON.stringify({ result: failed ? 'fail' : 'pass', checks, notes }, null, 2));
-            console.log(JSON.stringify({ checks, notes }, null, 2));
-            if (failed) { console.error('at least one proof did not pass'); process.exit(1); }
-          "
+        run: node scripts/stack-merge-checks.mjs runtime-contract.json migration-tooling.json ledger.json checks.json
 
       # The receipts are signed with a key the runtime also holds, so a receipt
       # cannot be forged by anything that merely has write access to the

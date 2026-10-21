@@ -22,6 +22,8 @@
 // (default 90).
 
 import { readFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import crypto from 'crypto';
 
 import { signBody } from '../Backend/lib/stack-evidence.js';
@@ -109,6 +111,37 @@ function firestoreBase(projectId) {
   return 'https://firestore.googleapis.com/v1/projects/' + projectId + '/databases/' + FIRESTORE_DB + '/documents';
 }
 
+/**
+ * The checks a subject recorded in a merged report.
+ *
+ * The report's shape is defined ONCE, by scripts/stack-merge-checks.mjs, and
+ * read here. It used to be defined in a node -e snippet inside the workflow
+ * and consumed here, and the two disagreed about where the subject entries
+ * sat: the merge wrote them under `checks` and this read them from the top
+ * level, so every publication failed with "the check report has no entry for
+ * runtime-contract" while every proof on the page was green. One shape, one
+ * place, one test.
+ */
+export function subjectChecksFrom(report, subject) {
+  const checks = report && report.checks && report.checks[subject];
+  if (!checks || typeof checks !== 'object' || !Object.keys(checks).length) {
+    throw new Error('the check report has no entry for ' + subject);
+  }
+  return checks;
+}
+
+/**
+ * A subject's result: pass only when every one of its checks passed.
+ *
+ * Computed per subject rather than taken from the report's overall result,
+ * because a receipt describes one subject. A subject with a failing check
+ * gets a failing receipt, which the panel refuses, which keeps the row
+ * unproven and the release gate closed.
+ */
+export function subjectResult(checks) {
+  return Object.values(checks).every((value) => value === 'pass') ? 'pass' : 'fail';
+}
+
 async function main() {
   if (!FIREBASE_SA_JSON) throw new Error('FIREBASE_SERVICE_ACCOUNT_JSON is not configured');
   if (!KEY) throw new Error('STACK_EVIDENCE_KEY is not configured');
@@ -121,6 +154,18 @@ async function main() {
   const producedAt = new Date();
   const expiresAt = new Date(producedAt.getTime() + expiresInDays * 86400000);
 
+  // Fail closed before anything is written: a subject with a failing check
+  // gets no receipt at all, rather than a receipt that says "fail".
+  const pending = [];
+  for (const subject of Object.keys(SUBJECT_KEYS)) {
+    const checks = subjectChecksFrom(report, subject);
+    const result = subjectResult(checks);
+    if (result !== 'pass') pending.push(subject + ' (' + Object.entries(checks).filter(([, v]) => v !== 'pass').map(([k]) => k).join(', ') + ')');
+  }
+  if (pending.length) {
+    throw new Error('refusing to publish a receipt for a subject whose checks did not pass: ' + pending.join('; '));
+  }
+
   const token = await accessToken();
   const projectId = JSON.parse(FIREBASE_SA_JSON).project_id;
   const url = firestoreBase(projectId) + '/' + EVIDENCE_DOC;
@@ -130,8 +175,7 @@ async function main() {
 
   const fields = {};
   for (const [subject, key] of Object.entries(SUBJECT_KEYS)) {
-    const subjectChecks = report[subject];
-    if (!subjectChecks) throw new Error('the check report has no entry for ' + subject);
+    const subjectChecks = subjectChecksFrom(report, subject);
     const pinned = SUBJECTS[subject];
     if (!pinned) throw new Error('no pinned subject named ' + subject);
 
@@ -142,7 +186,7 @@ async function main() {
       workflow: WORKFLOW,
       producer: PRODUCER,
       run_id: RUN_ID,
-      result: report.result || 'pass',
+      result: subjectResult(subjectChecks),
       produced_at: producedAt.toISOString(),
       expires_at: expiresAt.toISOString(),
       checks: subjectChecks,
@@ -172,7 +216,16 @@ async function main() {
   console.log('evidence published');
 }
 
-main().catch((err) => {
-  console.error('evidence publication failed:', err.code || err.name, err.message ? String(err.message).slice(0, 200) : '');
-  process.exitCode = 1;
-});
+// Only publish when this file is the program being run. The suite imports it
+// to read the report's shape, and a module that published on import would
+// fail that suite with "FIREBASE_SERVICE_ACCOUNT_JSON is not configured" —
+// which is exactly what happened the first time the suite was run.
+const invokedDirectly = process.argv[1] &&
+  resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+
+if (invokedDirectly) {
+  main().catch((err) => {
+    console.error('evidence publication failed:', err.code || err.name, err.message ? String(err.message).slice(0, 200) : '');
+    process.exitCode = 1;
+  });
+}
