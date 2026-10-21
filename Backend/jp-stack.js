@@ -536,9 +536,7 @@ async function readEvidenceBundle() {
       headers: { Authorization: 'Bearer ' + token },
       signal: AbortSignal.timeout(PROBE_TIMEOUT_MS - 200),
     });
-    if (!res.ok) return { available: false, reason: 'the CI evidence store answered HTTP ' + res.status, receipts: {} };
-    const doc = await res.json().catch(() => ({}));
-    return { available: true, reason: null, receipts: decodeFirestoreDocument(doc) };
+    return evidenceBundleFromResponse(res.status, res.ok ? await res.json().catch(() => ({})) : {});
   } catch (e) {
     return {
       available: false,
@@ -548,9 +546,51 @@ async function readEvidenceBundle() {
   }
 }
 
+/**
+ * The evidence store's answer, read for what it actually says.
+ *
+ * A 404 is NOT an unreachable store. Firestore answered perfectly — the
+ * DOCUMENT does not exist, because no receipt has been published yet. The old
+ * wording reported both as "the CI evidence store is unreachable", which sent
+ * the reader looking at the store when the thing that was missing was a
+ * receipt. Two different problems, two different fixes.
+ */
+export function evidenceBundleFromResponse(status, doc) {
+  if (status === 404) {
+    return { available: true, reason: 'no CI evidence has been published yet', receipts: {} };
+  }
+  if (status < 200 || status >= 300) {
+    return { available: false, reason: 'the CI evidence store answered HTTP ' + status, receipts: {} };
+  }
+  return { available: true, reason: null, receipts: decodeFirestoreDocument(doc) };
+}
+
 /** The revision this deployment is running, when the platform tells us. */
 function runningRevision() {
   return _env['VERCEL_' + 'GIT_COMMIT_SHA'] || _env['STACK_' + 'SOURCE_REVISION'] || null;
+}
+
+/**
+ * The FIRST precondition the evidence probes are missing, or null.
+ *
+ * Order matters, because the panel reports one reason and the reader has to
+ * know which thing to go and fix. The revision comes first: it is free to
+ * check, and without it no receipt can be bound to anything. The store comes
+ * second: a receipt can be missing from a perfectly reachable store.
+ *
+ * The revision check used to run last, behind the store's, so a deployment
+ * that could not name its own revision was reported as an unreachable store
+ * and the real blocker stayed invisible.
+ */
+export function evidencePrecondition(input = {}) {
+  if (!input.revision) {
+    return 'the running source revision is unknown, so no CI evidence can be bound to it';
+  }
+  const evidence = input.evidence || {};
+  if (!evidence.available) {
+    return 'the CI evidence store could not be read: ' + (evidence.reason || 'unknown');
+  }
+  return null;
 }
 
 /**
@@ -583,13 +623,11 @@ function receiptFor(evidence, subjectKey, revision) {
  * contracted release.
  */
 export function probeRuntimeContract(input = {}) {
+  const blocked = evidencePrecondition(input);
+  if (blocked) {
+    return { status: UNKNOWN, problem: blocked };
+  }
   const evidence = input.evidence || {};
-  if (!evidence.available) {
-    return { status: UNKNOWN, problem: 'the CI evidence store is unreachable: ' + (evidence.reason || 'unknown') };
-  }
-  if (!input.revision) {
-    return { status: UNKNOWN, problem: 'the running source revision is unknown, so no CI evidence can be bound to it' };
-  }
   const receipt = receiptFor(evidence, 'runtimeContract', input.revision);
   const verdict = verifyReceipt(receipt, 'runtime-contract', {
     nowMs: input.nowMs,
@@ -631,13 +669,11 @@ export function probeRuntimeContract(input = {}) {
  * receipt, so a receipt missing one of them leaves the row unproven.
  */
 export function probeMigrationTooling(input = {}) {
+  const blocked = evidencePrecondition(input);
+  if (blocked) {
+    return { status: UNKNOWN, problem: blocked };
+  }
   const evidence = input.evidence || {};
-  if (!evidence.available) {
-    return { status: UNKNOWN, problem: 'the CI evidence store is unreachable: ' + (evidence.reason || 'unknown') };
-  }
-  if (!input.revision) {
-    return { status: UNKNOWN, problem: 'the running source revision is unknown, so no CI evidence can be bound to it' };
-  }
   const receipt = receiptFor(evidence, 'migrationTooling', input.revision);
   const verdict = verifyReceipt(receipt, 'migration-tooling', {
     nowMs: input.nowMs,
