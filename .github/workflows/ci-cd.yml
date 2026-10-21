@@ -52,11 +52,13 @@ jobs:
       # the shared libraries; the browser itself is installed here, inside the
       # environment, so the browser check exercises the same runtime the
       # manifest describes.
-      - name: Install Chromium in the project environment
-        run: docker compose -f project/environment/compose.yaml run --rm dev npx playwright install chromium
-
+      #
+      # Install and test in the SAME container: the browser is downloaded into
+      # the container's own cache, and `docker compose run --rm` throws the
+      # container away afterwards, so a separate install step would leave the
+      # test step with no browser at all.
       - name: Run browser checks inside the project environment
-        run: docker compose -f project/environment/compose.yaml run --rm dev npm run test:browser
+        run: docker compose -f project/environment/compose.yaml run --rm dev sh -lc "npx playwright install chromium && npm run test:browser"
 
   s24-mcp-runtime:
     name: S24 MCP compatibility (Python ${{ matrix.python }})
