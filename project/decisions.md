@@ -363,3 +363,24 @@ invisible while the checks ran on the runner. PR #193 repairs the first two and 
   `enrollment.lastSignedHeartbeatAt` with `lastSeen` as exact strings, and the fixture built
   the two from two separate `Date.now()` calls, so a millisecond boundary between them would
   turn the S24 red intermittently. One `lastSeen` now feeds both.
+### D-27: The device's remote wake path was exercised, and it did not answer (devops, 2026-10-22)
+
+The plan asks for a physical action on the phone only when no verified remote execution path
+can perform the recovery, so the remote path was tried rather than assumed to be impossible.
+
+- The phone's collector holds a persistent outbound listener on an ntfy.sh topic and wakes on a
+  push. The topic is derived deterministically from the project id and the device id, and the
+  phone's own source records that the topic is not a secret and that a wake event triggers a
+  heartbeat, never a command.
+- A wake event was published to `eka-s24-26a3af13e6164634f00b` at 2026-10-21T21:36:56Z and
+  confirmed present on the topic (`id: wF1CwQww6E1u`).
+- The device did not answer: at 21:42:25Z and at 21:44:38Z the live projection still reported
+  `lastSeenCoarse: ">1d"`, `live: false` and `commandQueueDepth: 5` — the same stored snapshot
+  as before, with the five queued commands still unclaimed.
+- So the phone's Termux process and its listener are not running, or it listens on an
+  overridden secret topic. There is no verified remote path left, and the device has to be
+  recovered by hand: power it on, open Termux, run `Devices/S24/install_s24.sh`. The installer
+  registers the Termux boot package and the JobScheduler job, so the daemon reports as
+  `s24-termux-broker-2026-09-21.2` over `signed-broker-v2` instead of the legacy collector.
+- Nothing else in the product is needed for it. When the device reports, the six device rows
+  and the runtime-contract row go green on their own.

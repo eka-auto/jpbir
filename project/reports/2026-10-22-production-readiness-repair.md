@@ -185,7 +185,27 @@ Findings:
 Review submitted as an approving review; the record is in `project/approvals/
 2026-10-22-bounded-release-admin.md`.
 
+### The device recovery was attempted, not assumed
 
+The plan asks for a physical action only when no verified remote execution path can perform
+the recovery, so the remote path was exercised first.
+
+The phone's collector holds a persistent outbound listener on an ntfy.sh topic and wakes on a
+push; the topic is derived deterministically from the project id and the device id (the
+phone's own source documents that the topic is not a secret, and that a wake event only
+triggers a heartbeat, never a command). A wake event was published to
+`eka-s24-26a3af13e6164634f00b` at 2026-10-21T21:36:56Z and confirmed present on the topic
+(`id: wF1CwQww6E1u`).
+
+The device did not answer: at 21:42:25Z and again at 21:44:38Z the live projection still
+reported `lastSeenCoarse: ">1d"`, `live: false`, `commandQueueDepth: 5` — the same stored
+snapshot as before, with the five queued commands still unclaimed.
+
+So either the phone's Termux process and its listener are not running, or it listens on an
+overridden secret topic. Either way there is no verified remote path left, and the device has
+to be recovered by hand. That is the whole of gate A.
+
+## 6. The 24-hour observation
 
 The window starts when the strict gate first reports `ready: true`, and covers at least one
 nightly repair tick and one unattended night.
