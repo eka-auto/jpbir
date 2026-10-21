@@ -29,8 +29,119 @@ export async function loadAliases(schemaDir) {
   return aliases;
 }
 
+/**
+ * The names the shared ledger can hold without being a divergence.
+ *
+ * Three sources, and each answers a different question:
+ *
+ *   ours         the files this repository ships, plus the historical names its
+ *                alias map records as equivalent. A row under any of these
+ *                proves that migration ran.
+ *   owners       the migrations the sibling repository owns and applied to the
+ *                same ledger. A row under one of these is the other owner's
+ *                business.
+ *   retired      the migrations this repository applied and then removed from
+ *                the tree. Their rows stay, because the migration did run.
+ *
+ * Anything else in the ledger is a divergence, and the runner must not be
+ * trusted with it.
+ */
+export function explainableNames(files, aliasesByFile, shared) {
+  const ours = new Set(files);
+  for (const names of Object.values(aliasesByFile || {})) for (const name of names) ours.add(name);
+  const explainable = new Set(ours);
+  for (const owner of (shared.owners || [])) for (const name of owner.migrations) explainable.add(name);
+  for (const name of Object.keys(shared.retired || {})) explainable.add(name);
+  return { ours, explainable };
+}
+
+/**
+ * Refuses a shared-ledger manifest that claims one of our own names.
+ *
+ * The manifest exists to explain FOREIGN rows. If it also lists a migration
+ * this repository ships, or one its alias map records, then an unrecorded
+ * rename of ours would be waved through as "that is the sibling's" — which is
+ * the exact divergence the reconciliation exists to catch. A name cannot be
+ * both ours and theirs.
+ */
+export function assertManifestAgreesWithTree(files, aliasesByFile, shared) {
+  const { ours } = explainableNames(files, aliasesByFile, shared);
+  for (const owner of (shared.owners || [])) {
+    for (const name of owner.migrations) {
+      if (ours.has(name)) {
+        throw new Error(
+          'the shared ledger manifest lists "' + name + '" as owned by ' + owner.repository +
+          ', but this repository ships it or records it as an alias. A name cannot be both.',
+        );
+      }
+    }
+  }
+  for (const name of Object.keys(shared.retired || {})) {
+    if (ours.has(name)) {
+      throw new Error('the shared ledger manifest retires "' + name + '", but this repository still ships it');
+    }
+    if (files.includes(name)) {
+      throw new Error('a retired migration must not still be in the tree: ' + name);
+    }
+  }
+  return true;
+}
+
 export function listMigrations(files) {
   return [...files].filter((file) => file.endsWith('.sql')).sort();
+}
+
+/**
+ * The other writers of the shared ledger, and this repository's retired
+ * migrations.
+ *
+ * `schema_migrations` lives in one Neon database and two repositories write to
+ * it. The alias map records the migrations the two SHARE; this file records
+ * the migrations only the OTHER repository owns, so that a foreign row in the
+ * ledger is recognisable as foreign rather than as an unrecorded rename of one
+ * of ours — which is the failure the reconciliation exists to catch.
+ *
+ * It is kept apart from the alias map on purpose. The alias map changes what
+ * the RUNNER does: a name listed there means "this file's SQL already ran
+ * under that name, skip it". A name listed here changes only what the
+ * reconciliation BELIEVES, and listing a rename of ours there would skip a
+ * migration that still has to run.
+ *
+ * Validation is deliberately strict: a malformed manifest must fail loudly
+ * rather than quietly explain fewer rows and turn a divergence into a pass.
+ */
+export async function loadSharedLedger(schemaDir) {
+  const path = join(schemaDir, 'shared-ledger.json');
+  if (!existsSync(path)) return { owners: [], retired: {} };
+  const raw = JSON.parse(await readFile(path, 'utf8'));
+  const owners = [];
+  const retired = {};
+  const seen = new Set();
+
+  for (const owner of raw.owners || []) {
+    if (!owner || typeof owner.repository !== 'string' || !owner.repository.length
+      || !Array.isArray(owner.migrations)) {
+      throw new Error('Invalid shared ledger owner');
+    }
+    for (const name of owner.migrations) {
+      if (!filename.test(name)) throw new Error('Invalid shared ledger migration name: ' + name);
+      if (seen.has(name)) throw new Error('Shared ledger migration names must not overlap: ' + name);
+      seen.add(name);
+    }
+    owners.push({ repository: owner.repository, migrations: [...owner.migrations] });
+  }
+
+  for (const [name, reason] of Object.entries(raw.retired || {})) {
+    if (!filename.test(name)) throw new Error('Invalid retired migration name: ' + name);
+    if (typeof reason !== 'string' || !reason.length) {
+      throw new Error('A retired migration must say why it was retired: ' + name);
+    }
+    if (seen.has(name)) throw new Error('Shared ledger migration names must not overlap: ' + name);
+    seen.add(name);
+    retired[name] = reason;
+  }
+
+  return { owners, retired };
 }
 
 // A recorded equivalent is proof that the SQL already ran. Missing names are
