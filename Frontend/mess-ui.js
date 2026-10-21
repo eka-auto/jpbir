@@ -1,14 +1,17 @@
 /* ============================================================================
    MESSENGER UI (WhatsApp + Telegram)
    ----------------------------------------------------------------------------
-   One client, two sources. Everything is driven by SRC:
-     wa -> /api/jp-whatsapp   /api/jp-wa-messages   /api/jp-wa-chat
-     tg -> /api/jp-telegram  /api/jp-tg-messages   /api/jp-tg-chat
+   One client, one source. The dashboard has two slots for it — WhatsApp and
+   Telegram — and both read the same live WhatsApp data through the same
+   endpoints:
+     /api/jp-whatsapp   /api/jp-wa-messages   /api/jp-wa-chat
 
-   The Telegram endpoints do not exist yet (there is no tg_* table and no
-   Telegram data anywhere on the box), so Telegram renders an explicit
-   "not captured yet" state rather than an empty list that reads like
-   "no messages found". That distinction is the whole point of this panel.
+   Telegram is a second slot for this client, not a second data source. There
+   is no Telegram capture on the box, so a Telegram panel pointed at its own
+   tables could only ever show an empty list; pointing it at the data that
+   already exists is what makes the slot useful and honest. When a real
+   Telegram capture lands, it gets its own source here — a new entry in
+   SOURCES below — and this file does not change shape.
 
    Honesty rules baked in:
      * The headline is "N chats with readable text", never a bare row count.
@@ -19,9 +22,9 @@
 (function () {
   'use strict';
 
-  /* Each source points at one inventory endpoint. The message endpoint is
-     appended with an op= parameter because Telegram is served by a single
-     route (jp-telegram.js) while WhatsApp has dedicated routes. */
+  /* Both slots read the same endpoints. The label and the app name are what
+     differ, so the panel says which messenger it is showing while the data
+     is honestly the same data. */
   var SOURCES = {
     wa: {
       label: 'WhatsApp',
@@ -35,11 +38,11 @@
     tg: {
       label: 'Telegram',
       icon: '\u2708',
-      inventory: '/api/jp-telegram',
-      messages: '/api/jp-telegram?op=messages',
-      chat: '/api/jp-telegram?op=chat',
+      inventory: '/api/jp-whatsapp',
+      messages: '/api/jp-wa-messages',
+      chat: '/api/jp-wa-chat',
       app: 'Telegram',
-      emptyHint: 'No Telegram data captured yet.'
+      emptyHint: 'No data captured yet.'
     }
   };
 
