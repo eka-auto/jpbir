@@ -78,7 +78,7 @@ async function accessToken() {
 }
 
 /** Firestore REST value encoding. */
-function encodeValue(value) {
+export function encodeValue(value) {
   if (value === null || value === undefined) return { nullValue: null };
   if (typeof value === 'boolean') return { booleanValue: value };
   if (typeof value === 'number') {
