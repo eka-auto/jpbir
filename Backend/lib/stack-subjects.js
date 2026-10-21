@@ -46,10 +46,10 @@ export const SUBJECTS = {
         },
         {
           "path": "Devices/S24/requirements-broker.txt",
-          "sha256": "1940ba363c2b88d6cae8eeecf14bda2479268122a65f8b548147201883f76977"
+          "sha256": "37b13c7d746d596e7da6e73098dfba792eab1a49c8acc7e0a5ab287b56b107d5"
         }
       ],
-      "digest": "sha256:bc7e03da432ab70a421a010840d021c4c70e7ec4a718f4002aa815ed9485fdfe"
+      "digest": "sha256:225e8215cba5ecc143e3b60ca221b60f9f1b3af8aa86116b61766713ccb8224b"
     },
     "migration-tooling": {
       "description": "Migration runner, plan library and the schema it applies",
@@ -68,42 +68,42 @@ export const SUBJECTS = {
         },
         {
           "path": "Database/schema/004_whatsapp.sql",
-          "sha256": "f25ec42030593266d3386c7fc4d9e38f24570495d3f583d0bd03600ab7a6a37e"
+          "sha256": "a2cbb1b59c8e7dc7a8c10e9e143a80cf9bce413b61f97618555628ecf0940230"
         },
         {
           "path": "Database/schema/005_s24_local_sync.sql",
-          "sha256": "01936f08e7d3c6b112ebcc2543d2b971373a62bb73d1891b9f94e109c530d5d1"
+          "sha256": "0ca4a6318c96ba1140ee2c284a754e34d04bf310b933109b2425cbbace3e79b0"
         },
         {
           "path": "Database/schema/005_wa_attachments.sql",
-          "sha256": "cb2b589ce971af6144120390578fdc776dab1a1214ede0c44d7df8c843bd10a4"
+          "sha256": "7f0ddd2b5ec189cd329e7ee684dc1066567c453813cbaaf4466a87b1ab23abdd"
         },
         {
           "path": "Database/schema/006_s24_normalized.sql",
-          "sha256": "0f045d0161ec8050a680d244c515cf8d57c0b71100adff76dfeff59fdcbcba23"
+          "sha256": "2f376fb3060a4d488db7fb243d8766f4a16c65352c11c2ed10b339088d212869"
         },
         {
           "path": "Database/schema/007_clean_whatsapp_senders.sql",
-          "sha256": "eb59214b2013f85b0f5da7f54bc9c3347e8efbec13628af15234c19bb3eec24b"
+          "sha256": "3cbd3b125f94bdb8b9be99468450b4c3a75a45641261f4b0366798a8e8fd97de"
         },
         {
           "path": "Database/schema/008_wa_sync_attachment_counts.sql",
-          "sha256": "f3e903db4afe8a430bf5cac55139533acf8700aca2ae7beabdd63bde3882716f"
+          "sha256": "d3a5fc74f0ae1a719b52e55458683d79ea221552965f399fc5dd34abab98cb64"
         },
         {
           "path": "Database/schema/009_dynamodb_repair_state.sql",
-          "sha256": "dd805179a9644ae2fa196b9537b92ef654c6b23d8e9ae598689187fc5452dc67"
+          "sha256": "554a1ab33433ccaeed631e4321d9aa7428a44d63e9ded0e59ba7fbf4bc7091ec"
         },
         {
           "path": "Database/schema/013_drop_telegram.sql",
-          "sha256": "475f691c059c6fca102cac13950bd5829b6a398ca2733755861547169abb9eac"
+          "sha256": "14ffdfabed2858feb5efbab9fad881d1240eb47f8bd57dcedbf3e121c24c8745"
         },
         {
           "path": "Database/schema/migration-aliases.json",
           "sha256": "123719c02d4a8a297e5e913b025f765fb4714ee44f44e8e719ebe03ebf320c4e"
         }
       ],
-      "digest": "sha256:447d2da16624ce6fedbf31ce4eb2794fe921f778acc6ab4b9998d8463a0b6866"
+      "digest": "sha256:7091f1ed59ca7a8f9d2ae92806b1c1cc479349a15ff0a2cc6eebfa19e63cd1ec"
     }
   };
 

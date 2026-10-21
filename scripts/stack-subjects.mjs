@@ -57,7 +57,23 @@ async function schemaFiles() {
 
 async function hashFile(relativePath) {
   const bytes = await readFile(join(ROOT, relativePath));
-  return { path: relativePath.split(sep).join('/'), sha256: createHash('sha256').update(bytes).digest('hex') };
+  return { path: relativePath.split(sep).join('/'), sha256: createHash('sha256').update(normaliseText(bytes)).digest('hex') };
+}
+
+/**
+ * The bytes a subject is hashed over: line endings normalised to LF.
+ *
+ * Git checks the same file out with CRLF on Windows and LF on Linux, so the
+ * raw bytes of a subject differ per platform while the file is identical. A
+ * digest over the raw bytes would therefore pin a value that only one
+ * platform can reproduce — the CI producer on Linux would compute a different
+ * digest from the one pinned here, and every receipt it published would be
+ * refused as "the checked subject has changed". The same normalisation is
+ * used by the generator and by the manifest comparison, so the pinned value
+ * describes the file's text rather than one checkout's line endings.
+ */
+function normaliseText(bytes) {
+  return Buffer.from(bytes.toString('utf8').replace(/\r\n/g, '\n'), 'utf8');
 }
 
 async function buildSubjects() {
@@ -139,7 +155,9 @@ const next = render(subjects, s24Contract);
 if (process.argv.includes('--check')) {
   let current = null;
   try {
-    current = await readFile(OUT, 'utf8');
+    // Compared with line endings normalised, for the same reason the digests
+    // are: the working copy's CRLF and the generated LF are the same file.
+    current = normaliseText(await readFile(OUT)).toString('utf8');
   } catch {
     current = null;
   }
