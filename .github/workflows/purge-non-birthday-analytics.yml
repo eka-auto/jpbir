@@ -89,11 +89,13 @@ jobs:
           const projectId = process.env.NEON_PROJECT_ID || 'fancy-cloud-99501540';
           const project = await json(API + '/projects/' + projectId);
           const branches = (await json(API + '/projects/' + projectId + '/branches')).branches || [];
-          const databases = (await json(API + '/projects/' + projectId + '/databases')).databases || [];
-          const database = databases.find((d) => d.name === 'neondb') || databases[0];
-          if (!database) throw new Error('the project has no database');
+          // The database name is the one the connection strings use. The API has
+          // no route for listing a project's databases, and the project object
+          // does not carry them either, so the name is named and the query
+          // endpoint is the thing that validates it.
+          const databaseName = 'neondb';
           const query = async (branchId, sql) => {
-            const r = await json(API + '/projects/' + projectId + '/databases/' + database.name + '/query?branch=' + branchId, {
+            const r = await json(API + '/projects/' + projectId + '/databases/' + databaseName + '/query?branch=' + branchId, {
               method: 'POST', body: JSON.stringify({ query: sql }),
             });
             return (r.data || []).map((row) => Object.fromEntries((r.fields || []).map((f, i) => [f.name, row[i]])));
@@ -123,7 +125,7 @@ jobs:
           console.error('target verified: branch ' + match.branch.id + ' (' + match.branch.name + ')');
           writeFileSync('/tmp/target.json', JSON.stringify({
             project_id: projectId, project_name: project.name,
-            database: database.name, branch_id: match.branch.id, branch_name: match.branch.name,
+            database: databaseName, branch_id: match.branch.id, branch_name: match.branch.name,
             sites: [...theirs].map(([site, n]) => ({ site, n })),
           }));
           EOF
