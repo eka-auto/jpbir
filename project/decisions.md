@@ -384,3 +384,80 @@ can perform the recovery, so the remote path was tried rather than assumed to be
   `s24-termux-broker-2026-09-21.2` over `signed-broker-v2` instead of the legacy collector.
 - Nothing else in the product is needed for it. When the device reports, the six device rows
   and the runtime-contract row go green on their own.
+### D-28: The report's shape was defined in two places that had never met (devops, 2026-10-22)
+
+Receipt publication failed on every run since PR #192 merged, with "the check report has no
+entry for runtime-contract", while every proof on the page was green.
+
+- The workflow's merge step wrote a subject's checks under `checks`; the publisher looked for
+  them at the **top level** of the report. Two definitions of one shape, in a workflow snippet
+  and in a script, neither covered by a test — which is how they survived a review and a merge.
+  The ledger reconciliation was the only thing standing in front of it, and once that passed
+  (PR #194) the mismatch surfaced.
+- The shape now lives in `scripts/stack-merge-checks.mjs`, and the publisher reads it through
+  `subjectChecksFrom`. The workflow calls the script instead of embedding a `node -e` snippet.
+- The publisher computes each subject's result from **that subject's** checks rather than
+  taking the report's overall result, and refuses to publish a subject whose checks did not
+  pass — failing closed before anything is written, instead of writing a receipt that says
+  "fail".
+- The publisher no longer publishes when it is imported: the suite imports it to read the
+  shape, and a module that published on import failed that suite with "FIREBASE_SERVICE_ACCOUNT_JSON
+  is not configured".
+- `_shared/tests/evidence-publish.test.mjs` runs the merge script and feeds its output to the
+  publisher's reader, so the two halves are pinned against each other. A change of shape now
+  breaks a test instead of a publication.
+- The four proof reports are git-ignored: they are evidence for one CI run, bound to that
+  run's revision, and a stale receipt in the tree would look like a proof.
+
+### D-29: A CDN edge broke the browser download, and a network fault is not a defect (devops, 2026-10-22)
+
+The `Lint & Test` job failed on PR #196 with `ERR_TLS_CERT_ALTNAME_INVALID`:
+`cdn.playwright.dev` was served an `*.azureedge.net` certificate, so the Chromium download
+failed and with it the job. Nothing in this repository caused it.
+
+- The download is a network fetch, so it is now retried with a bounded backoff: three
+  attempts, twenty seconds apart, and the job still fails if the browser cannot be fetched.
+  Operating contract rule 6 draws the line exactly here — a transient fault is retried, a
+  code or configuration defect gets a repair attempt, and only the second counts against the
+  attempt budget.
+- The job passed on the next run with the retry in place.
+### D-30: The last seam, and what the debugging found at each boundary (devops, 2026-10-22)
+
+With the two owner gates outstanding, the useful question was what would still keep the rows
+red AFTER those gates close. Each boundary of the evidence path was walked and checked
+against the provider, the broker and the device bundle, rather than against expectation.
+
+**Boundary 1 — the device to the panel.** The broker stamps `lastSeen` and
+`enrollment.lastSignedHeartbeatAt` with the SAME string (`Backend/device-heartbeat.js`),
+so the attestation's exact string comparison holds; the enrolled `keyType` for the S24 is
+`android-keystore-p256`; `device_agent.py` reports `agentVersion`
+`s24-termux-broker-2026-09-21.2`, which is exactly the contract's `release`; and the
+contract's `sourceType` of `live_daemon` is in the shared module's accepted set. **Sound.**
+
+**Boundary 2 — the CI run to the deployment.** The live production deployment is built from
+`githubCommitSha 91e78dd6d4e89f262e86fba58b154dbdcee3efb1`, which is main's HEAD, so the
+publisher's `GITHUB_SHA` and the runtime's `VERCEL_GIT_COMMIT_SHA` are the same commit and
+the revision binding holds. **Sound.**
+
+**Boundary 3 — Firestore to the panel.** The publisher's encoder and the panel's decoder now
+run over one body in a suite: the panel accepts what the publisher wrote and still refuses a
+receipt altered after publication. **Proven, and it was the last untested seam.**
+
+Two defects were found in the panel's own reporting, and both sent the reader the wrong way:
+
+- A 404 on the evidence document was reported as "the CI evidence store is unreachable". The
+  store answered perfectly; the DOCUMENT does not exist, because no receipt has been
+  published yet. The live panel's reason did not match the actual cause, and I read it
+  without noticing — which is the point: a wrong reason is worse than no reason, because it
+  sends the reader to a system that is working.
+- The revision check ran AFTER the store check, so a deployment that could not name its own
+  revision would still have been reported as an unreachable store, and the real blocker would
+  have stayed invisible.
+
+`evidencePrecondition` now checks the revision first and the store second, and
+`evidenceBundleFromResponse` tells a missing document from an unreadable store.
+
+The general lesson, and the one worth keeping: the two things that were wrong were not in
+the checks, and not in the cryptography. They were in the REASON the panel gave, and in the
+ORDER it gave it. A verdict without a precise reason is a verdict the operator has to
+re-derive by hand.

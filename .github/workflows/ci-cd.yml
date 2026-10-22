@@ -57,8 +57,27 @@ jobs:
       # the container's own cache, and `docker compose run --rm` throws the
       # container away afterwards, so a separate install step would leave the
       # test step with no browser at all.
+      #
+      # The download is a network fetch from a CDN, and a CDN edge once served
+      # an *.azureedge.net certificate for cdn.playwright.dev, which failed the
+      # download and with it the whole job. That is a transient fault, so it is
+      # retried with a bounded backoff rather than treated as a defect: three
+      # attempts, 20 seconds apart, and the job fails if the browser still
+      # cannot be fetched.
       - name: Run browser checks inside the project environment
-        run: docker compose -f project/environment/compose.yaml run --rm dev sh -lc "npx playwright install chromium && npm run test:browser"
+        run: |
+          docker compose -f project/environment/compose.yaml run --rm dev sh -lc '
+            ok=0
+            for attempt in 1 2 3; do
+              if npx playwright install chromium; then ok=1; break; fi
+              echo "the browser download failed on attempt $attempt; retrying in 20s"
+              sleep 20
+            done
+            if [ "$ok" != "1" ]; then
+              echo "the browser could not be downloaded after three attempts"
+              exit 1
+            fi
+            npm run test:browser'
 
   s24-mcp-runtime:
     name: S24 MCP compatibility (Python ${{ matrix.python }})

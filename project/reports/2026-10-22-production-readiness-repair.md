@@ -147,15 +147,52 @@ which is outside this work order and would collide with their work.
 
 ### Where the product stands now
 
-Read from the deployed production at 2026-10-21T21:10Z:
+Read from the deployed production at 2026-10-22T05:10Z:
 
 | | |
 | --- | --- |
 | rows | 38 — 30 green, 6 failing, 2 unproven |
 | verdict | `fail`, reason: "6 required row(s) failed" — the six device rows |
 | schedule | alive; the native receipt is minutes old, `schedule.stale` is `false` |
-| the two evidence-backed rows | unproven until the CI evidence job publishes a receipt; the shared-ledger reconciliation was the blocker and is now fixed (D-25) |
+| the outside monitor | green on every scheduled run since PR #193 fixed the schedule verdict |
+| the two evidence-backed rows | unproven until the CI evidence job publishes a receipt. The ledger reconciliation was the blocker and is fixed (D-25); the report-shape mismatch behind it is fixed in PR #196 (D-28) |
 | the six device rows | red until the S24 runs the attested broker daemon (gate A) |
+
+### The publication failed on a shape mismatch, not on a failed proof
+
+Worth recording, because it is the second time this plan's own machinery was the thing that
+broke. The evidence job failed on every run with *"the check report has no entry for
+runtime-contract"* while all seven proofs were green: the merge step wrote a subject's checks
+under `checks` and the publisher looked for them at the top level of the report. Two
+definitions of one shape, in a workflow snippet and in a script, neither covered by a test.
+
+The shape now lives in one script, the publisher reads it through one function, and a test
+runs the merge and feeds the result to the publisher. The lesson for the rest of the pipeline:
+a shape agreed between two files is not an agreement until something reads both.
+
+### The boundaries, walked while the two gates were outstanding
+
+With the owner's actions outstanding, the useful question was what would still keep the rows
+red *after* they close. Each boundary of the evidence path was checked against the provider,
+the broker and the device bundle rather than against expectation.
+
+| Boundary | Checked | Result |
+| --- | --- | --- |
+| Device → panel | the broker stamps `lastSeen` and `enrollment.lastSignedHeartbeatAt` with the same string, so the attestation's exact comparison holds; `keyType` is `android-keystore-p256`; `device_agent.py` reports exactly the contract's `release`; `live_daemon` is an accepted source type | sound |
+| CI → deployment | the live production deployment is built from `githubCommitSha 91e78dd6…`, which is main's HEAD, so the publisher's `GITHUB_SHA` and the runtime's `VERCEL_GIT_COMMIT_SHA` are the same commit | sound |
+| Firestore → panel | the publisher's encoder and the panel's decoder now run over one body in a suite: the panel accepts what the publisher wrote, and still refuses a receipt altered after publication | proven (was the last untested seam) |
+
+Two defects were found in the panel's own **reporting**, and both sent the reader the wrong
+way: a 404 on the evidence document was reported as "the CI evidence store is unreachable"
+(the store answered; the document does not exist yet), and the revision check ran after the
+store check, so a deployment that could not name its revision would have been reported as an
+unreachable store. The revision is checked first now, and a missing document is distinguished
+from an unreadable store.
+
+A verdict without a precise reason is a verdict the operator has to re-derive by hand — and
+I read the wrong reason myself without noticing, which is how it went unnoticed for hours.
+
+
 
 ---
 

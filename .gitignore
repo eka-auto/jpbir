@@ -123,3 +123,11 @@ intrepid-stage-*.json
 # Local sysroot used to run the browser suite on a machine without root
 # (see project/reports/2026-10-19-e2e-unblocked.md). Never committed.
 .chromium-deps/
+
+# The proof reports the evidence-publish workflow writes into the checkout.
+# They are evidence for one CI run, bound to that run's revision, and must
+# never be committed: a stale receipt in the tree would look like a proof.
+runtime-contract.json
+migration-tooling.json
+ledger.json
+checks.json
