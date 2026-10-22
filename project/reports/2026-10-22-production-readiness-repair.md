@@ -170,6 +170,29 @@ The shape now lives in one script, the publisher reads it through one function, 
 runs the merge and feeds the result to the publisher. The lesson for the rest of the pipeline:
 a shape agreed between two files is not an agreement until something reads both.
 
+### The boundaries, walked while the two gates were outstanding
+
+With the owner's actions outstanding, the useful question was what would still keep the rows
+red *after* they close. Each boundary of the evidence path was checked against the provider,
+the broker and the device bundle rather than against expectation.
+
+| Boundary | Checked | Result |
+| --- | --- | --- |
+| Device → panel | the broker stamps `lastSeen` and `enrollment.lastSignedHeartbeatAt` with the same string, so the attestation's exact comparison holds; `keyType` is `android-keystore-p256`; `device_agent.py` reports exactly the contract's `release`; `live_daemon` is an accepted source type | sound |
+| CI → deployment | the live production deployment is built from `githubCommitSha 91e78dd6…`, which is main's HEAD, so the publisher's `GITHUB_SHA` and the runtime's `VERCEL_GIT_COMMIT_SHA` are the same commit | sound |
+| Firestore → panel | the publisher's encoder and the panel's decoder now run over one body in a suite: the panel accepts what the publisher wrote, and still refuses a receipt altered after publication | proven (was the last untested seam) |
+
+Two defects were found in the panel's own **reporting**, and both sent the reader the wrong
+way: a 404 on the evidence document was reported as "the CI evidence store is unreachable"
+(the store answered; the document does not exist yet), and the revision check ran after the
+store check, so a deployment that could not name its revision would have been reported as an
+unreachable store. The revision is checked first now, and a missing document is distinguished
+from an unreadable store.
+
+A verdict without a precise reason is a verdict the operator has to re-derive by hand — and
+I read the wrong reason myself without noticing, which is how it went unnoticed for hours.
+
+
 
 ---
 
