@@ -461,3 +461,25 @@ The general lesson, and the one worth keeping: the two things that were wrong we
 the checks, and not in the cryptography. They were in the REASON the panel gave, and in the
 ORDER it gave it. A verdict without a precise reason is a verdict the operator has to
 re-derive by hand.
+### D-31: The warehouse holds one property, and the purge had to go through the application (devops, 2026-10-22)
+
+The owner asked for the data of jaytipargal.tech and jaytipargal.com to be removed completely, and for the product to be built for jaytibirthday.in only.
+
+**The product.** `Backend/lib/warehouse.js` is the single choke point every site derivation routes through, so the narrowing is one edit there and nowhere else: the property allow-list, the beacon endpoint's CORS list, the console's own tracker embed (removed — the console was tracking itself), the nightly repair's import filter, the historical backup importer's attribution rule, the rollup rebuild, and the console's site selector.
+
+**Why the purge could not be a script.** Four routes to the live warehouse were tried and measured:
+
+| Route | Result |
+| --- | --- |
+| the `DATABASE_URL` secret, from CI | `28P01` — the password no longer authenticates |
+| `vercel env pull` | every secret comes back as `[SENSITIVE]` |
+| the Neon API's SQL route | 404 — not reachable with this key |
+| the Neon API's connection URI | reachable — and the key sees only a project whose three branches all hold a **9 October snapshot: 18,869 events against the deployed application's 20,724** |
+
+Every attempt failed closed, before a row was touched. The last row is a finding in its own right: **the local `.env.local`, the `DATABASE_URL` secret and the Vercel production branch all point at that stale copy.** It is why every local analysis of the warehouse looked like it ended on 10 October, and why the repo's own 2026-10-15 diagnosis concluded that the ingest had stopped. The live warehouse is somewhere the API key cannot see.
+
+So the purge is an action on `/api/db-push` — behind the credential gate the route already has, because the only credential that opens the live warehouse is a Vercel Secret inside the application. It purges both ends, the warehouse rows and the DynamoDB journal items, with the same filter, because the journal is what the nightly repair copies from and a purge that undoes itself every night is not a purge. Its scope is pinned by a suite rather than by a comment.
+
+**The invariant, in one line:** the warehouse holds `jaytibirthday.in` and nothing else; a beacon from any other host records nothing; a row that cannot be attributed is skipped and counted; a read of an untracked property is refused.
+
+The live warehouse's identity is still not pinned in `project/targets.json`, which is the omission that let three stale pointers look authoritative for a month. Pinning it needs the live endpoint named, and that is an owner-assisted verification.

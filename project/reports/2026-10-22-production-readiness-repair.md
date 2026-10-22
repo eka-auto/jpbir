@@ -269,7 +269,37 @@ recorded hypothesis; the attempt is never identical to an earlier one.
 
 ---
 
-## 7. Files
+## 7. The warehouse is for jaytibirthday.in only
+
+The owner asked for the data of `jaytipargal.tech` and `jaytipargal.com` to be removed completely, and for the product to be built for `jaytibirthday.in` only. PR #197 carries it.
+
+**The product.** `Backend/lib/warehouse.js` is the single choke point every site derivation routes through, so the narrowing is one edit there and nowhere else: the property allow-list, the beacon endpoint's CORS list, the console's own tracker embed (removed — the console was tracking itself, which is where the "visitors" that were nobody came from), the nightly repair's import filter, the historical backup importer's attribution rule, the rollup rebuild, and the console's site selector.
+
+**What will be deleted**, from the deployed application's own count:
+
+| property | events | |
+| --- | --- | --- |
+| `jaytibirthday.in` | 15,092 | kept |
+| `jaytipargal.tech` | 5,063 | deleted |
+| `jaytipargal.com` | 261 | deleted |
+| mis-attributed hosts (`*.v0.build`, `*.vercel.run`, a device id filed as a website) | 356 | deleted |
+
+**Why the purge had to go through the application.** Four routes to the live warehouse were tried and measured, and every attempt failed closed before a row was touched:
+
+| Route | Result |
+| --- | --- |
+| the `DATABASE_URL` secret, from CI | `28P01` — the password no longer authenticates |
+| `vercel env pull` | every secret comes back as `[SENSITIVE]` |
+| the Neon API's SQL route | 404 — not reachable with this key |
+| the Neon API's connection URI | reachable, but the key sees only a project whose three branches all hold a **9 October snapshot: 18,869 events against the deployed application's 20,724** |
+
+That last row is a finding in its own right, and it explains the earlier confusion: **the local `.env.local`, the `DATABASE_URL` secret and the Vercel production branch all point at that stale copy.** It is why every local analysis of the warehouse looked like it ended on 10 October, and why the repo's own 2026-10-15 diagnosis concluded the ingest had stopped. The live warehouse is somewhere the API key cannot see.
+
+So the purge is an action on `/api/db-push`, behind the credential gate that route already has, and it purces **both** ends — the warehouse rows and the DynamoDB journal items, with the same filter — because the journal is what the nightly repair copies from. Its scope is pinned by `_shared/tests/db-push-purge.test.mjs`: the tracked property and nothing else, the three site-scoped tables, the ledger record, the journal filter, and the gate in front of it.
+
+**Still open:** the live warehouse's identity is not pinned in `project/targets.json`, which is the omission that let three stale pointers look authoritative for a month. Pinning it needs the live endpoint named — an owner-assisted verification.
+
+
 
 Changed: `Backend/jp-stack.js`, `Backend/stack-cron.js`, `Backend/jp-devices.js`,
 `Backend/verify-db.js`, `Backend/lib/stack-map.js`, `Backend/lib/s24-attestation.js`
