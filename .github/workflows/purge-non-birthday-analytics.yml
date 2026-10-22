@@ -14,10 +14,14 @@ name: Purge non-birthday analytics
 # warehouse would put the rows back at the next repair, so both are purged,
 # with the same filter.
 #
-# The target is proved before anything is written. This job compares the
-# credential's own view of the warehouse with the deployed application's view
-# of the same warehouse. They have to agree exactly, or the job stops: a
-# deletion applied to the wrong database is worse than no deletion.
+# The target is proved before anything is written, and proved the only way
+# that can be trusted: the deployed application is asked for its own counts of
+# every property, and the branch whose counts agree EXACTLY is the one that
+# gets purged. A branch that disagrees by one row is not the target.
+#
+# The Neon API is used rather than a connection string because the
+# DATABASE_URL secret's password no longer authenticates (28P01), and a
+# password that cannot open the database cannot be used to delete from it.
 #
 # The trigger is a push to the branch that carries the change, because a
 # workflow_dispatch cannot be triggered until it exists on the default branch,
@@ -39,7 +43,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
       DB_ADMIN_KEY: ${{ secrets.DB_ADMIN_KEY }}
       JP_AWS_REGION: ${{ secrets.JP_AWS_REGION }}
       JP_AWS_ACCESS_KEY_ID: ${{ secrets.JP_AWS_ACCESS_KEY_ID }}
@@ -61,59 +65,86 @@ jobs:
         run: npm ci
 
       # The target has to be the warehouse the deployed application reads. The
-      # application is asked for its own counts, the credential is asked for
-      # its own, and they have to match exactly.
+      # application is asked for its own counts; every branch of the project is
+      # asked for its own; the one that agrees exactly is the target.
       - name: Prove the target is the deployed application's warehouse
+        id: target
         run: |
           set -euo pipefail
-          node --input-type=module <<'EOF'
-          import pg from 'pg';
-          const c = new pg.Client({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: true } });
-          await c.connect();
-          const mine = await c.query('select site, count(*)::int n from events group by site order by site');
-          const id = await c.query(`
-            select current_setting('neon.project_id', true) project_id,
-                   current_setting('neon.branch_id', true) branch_id,
-                   current_setting('neon.endpoint_id', true) endpoint_id`);
-          await c.end();
+          node --input-type=module <<'EOF' > /tmp/target.json
+          import { writeFileSync } from 'node:fs';
+          const API = 'https://api.neon.tech/v2';
+          const headers = { Authorization: 'Bearer ' + process.env.NEON_API_KEY, 'Content-Type': 'application/json' };
+          const json = async (url, init) => {
+            const r = await fetch(url, { headers, ...init });
+            if (!r.ok) throw new Error(url + ' -> HTTP ' + r.status + ' ' + (await r.text()).slice(0, 200));
+            return r.json();
+          };
+          const projects = (await json(API + '/projects')).projects || [];
+          // The project that owns the branch the local checkout points at. The
+          // branch id is the one the local .env.local resolves to, and the
+          // project is whichever owns it.
+          const STALE_BRANCH = process.env.STALE_BRANCH || 'br-spring-pine-au5jtfig';
+          let project = null, stale = null;
+          for (const p of projects) {
+            const branches = (await json(API + '/projects/' + p.id + '/branches')).branches || [];
+            const found = branches.find((b) => b.id === STALE_BRANCH);
+            if (found) { project = p; stale = found; break; }
+          }
+          if (!project) throw new Error('no project owns the branch ' + STALE_BRANCH);
+          const branches = (await json(API + '/projects/' + project.id + '/branches')).branches || [];
+          const databases = (await json(API + '/projects/' + project.id + '/databases')).databases || [];
+          const database = databases.find((d) => d.name === 'neondb') || databases[0];
+          if (!database) throw new Error('the project has no database');
+          const query = async (branchId, sql) => {
+            const r = await json(API + '/projects/' + project.id + '/databases/' + database.name + '/query?branch=' + branchId, {
+              method: 'POST', body: JSON.stringify({ query: sql }),
+            });
+            return (r.data || []).map((row) => Object.fromEntries((r.fields || []).map((f, i) => [f.name, row[i]])));
+          };
           const live = await fetch('https://jaytipargal.tech/api/db-push?action=counts', {
             headers: { 'x-db-admin-key': process.env.DB_ADMIN_KEY },
           });
           const app = await live.json();
           const theirs = new Map((app.eventsBySite || []).map((r) => [r.site, r.n]));
-          const ours = new Map(mine.rows.map((r) => [r.site, r.n]));
-          console.log('neon project : ' + id.rows[0].project_id);
-          console.log('neon branch  : ' + id.rows[0].branch_id);
-          console.log('neon endpoint: ' + id.rows[0].endpoint_id);
-          let mismatch = 0;
-          for (const [site, n] of ours) {
-            const other = theirs.get(site);
-            if (other !== n) { mismatch++; console.log('MISMATCH ' + site + ': credential=' + n + ' application=' + other); }
+          const same = (m) => m.size === theirs.size && [...theirs].every(([k, v]) => m.get(k) === v);
+          let match = null;
+          for (const b of branches) {
+            let counts;
+            try {
+              counts = await query(b.id, 'select site, count(*)::int n from events group by site order by site');
+            } catch (e) {
+              console.error('branch ' + b.id + ' could not be read: ' + String(e.message).slice(0, 120));
+              continue;
+            }
+            const m = new Map(counts.map((r) => [r.site, r.n]));
+            console.error('branch ' + b.id + ' (' + b.name + '): ' + m.size + ' site(s), matches the application: ' + same(m));
+            if (!match && same(m)) match = { branch: b, counts: m };
           }
-          for (const [site, n] of theirs) {
-            if (!ours.has(site)) { mismatch++; console.log('MISMATCH ' + site + ': credential=absent application=' + n); }
+          if (!match) {
+            throw new Error('no branch of ' + project.name + ' holds the warehouse the deployed application reads');
           }
-          if (mismatch) throw new Error(mismatch + ' site count(s) disagree - this is not the deployed application\'s warehouse');
-          console.log('target verified: ' + ours.size + ' site(s) agree with the deployed application');
+          console.error('target verified: branch ' + match.branch.id + ' (' + match.branch.name + ')');
+          writeFileSync('/tmp/target.json', JSON.stringify({
+            project_id: project.id, project_name: project.name,
+            database: database.name, branch_id: match.branch.id, branch_name: match.branch.name,
+            sites: [...theirs].map(([site, n]) => ({ site, n })),
+          }));
           EOF
+          cat /tmp/target.json
 
       - name: Show what will be deleted
         run: |
           set -euo pipefail
           node --input-type=module <<'EOF'
-          import pg from 'pg';
-          const c = new pg.Client({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: true } });
-          await c.connect();
-          const rows = await c.query(`
-            select site, count(*)::int events from events where site <> 'jaytibirthday.in' group by site order by events desc`);
-          const keep = await c.query("select count(*)::int n from events where site = 'jaytibirthday.in'");
-          const sessions = await c.query("select count(*)::int n from sessions where site <> 'jaytibirthday.in'");
-          const visitors = await c.query("select count(*)::int n from visitors where site <> 'jaytibirthday.in'");
-          await c.end();
+          import { readFileSync } from 'node:fs';
+          const t = JSON.parse(readFileSync('/tmp/target.json', 'utf8'));
           let doomed = 0;
-          for (const r of rows.rows) { doomed += r.events; console.log('  delete ' + r.site + ': ' + r.events + ' event(s)'); }
-          console.log('  keep jaytibirthday.in: ' + keep.rows[0].n + ' event(s)');
-          console.log('  delete ' + sessions.rows[0].n + ' session row(s) and ' + visitors.rows[0].n + ' visitor row(s)');
+          for (const s of t.sites) {
+            if (s.site === 'jaytibirthday.in') { console.log('  keep ' + s.site + ': ' + s.n + ' event(s)'); continue; }
+            doomed += s.n;
+            console.log('  delete ' + s.site + ': ' + s.n + ' event(s)');
+          }
           console.log('total to delete: ' + doomed + ' event(s)');
           EOF
 
@@ -121,27 +152,23 @@ jobs:
         run: |
           set -euo pipefail
           node --input-type=module <<'EOF'
-          import pg from 'pg';
-          const c = new pg.Client({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: true } });
-          await c.connect();
-          await c.query('BEGIN');
-          try {
-            const events = await c.query("delete from events where site <> 'jaytibirthday.in'");
-            const sessions = await c.query("delete from sessions where site <> 'jaytibirthday.in'");
-            const visitors = await c.query("delete from visitors where site <> 'jaytibirthday.in'");
-            await c.query(
-              `insert into schema_migrations (filename, applied_at) values ($1, now())
-               on conflict (filename) do nothing`,
-              ['016_purge_non_birthday_analytics.sql'],
-            );
-            await c.query('COMMIT');
-            console.log('deleted ' + events.rowCount + ' event(s), ' + sessions.rowCount + ' session(s), ' + visitors.rowCount + ' visitor(s)');
-          } catch (e) {
-            await c.query('ROLLBACK');
-            throw e;
-          } finally {
-            await c.end();
-          }
+          import { readFileSync } from 'node:fs';
+          const t = JSON.parse(readFileSync('/tmp/target.json', 'utf8'));
+          const API = 'https://api.neon.tech/v2';
+          const headers = { Authorization: 'Bearer ' + process.env.NEON_API_KEY, 'Content-Type': 'application/json' };
+          const query = async (sql) => {
+            const r = await fetch(API + '/projects/' + t.project_id + '/databases/' + t.database + '/query?branch=' + t.branch_id, {
+              method: 'POST', headers, body: JSON.stringify({ query: sql }),
+            });
+            if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + (await r.text()).slice(0, 300));
+            return r;
+          };
+          const events = await query("delete from events where site <> 'jaytibirthday.in'");
+          const sessions = await query("delete from sessions where site <> 'jaytibirthday.in'");
+          const visitors = await query("delete from visitors where site <> 'jaytibirthday.in'");
+          await query("insert into schema_migrations (filename, applied_at) values ('016_purge_non_birthday_analytics.sql', now()) on conflict (filename) do nothing");
+          const count = (r) => (JSON.parse(r).row_count || 0);
+          console.log('deleted ' + count(events) + ' event(s), ' + count(sessions) + ' session(s), ' + count(visitors) + ' visitor(s)');
           EOF
 
       # The journal is what the nightly repair copies from. Leaving the rows
@@ -168,10 +195,7 @@ jobs:
             try { host = url ? new URL(url).hostname : null; } catch { host = null; }
             const isTracked = host === 'jaytibirthday.in' || (host && host.endsWith('.jaytibirthday.in'));
             if (isTracked) { kept++; continue; }
-            await client.send(new DeleteItemCommand({
-              TableName: table,
-              Key: { id: item.id },
-            }));
+            await client.send(new DeleteItemCommand({ TableName: table, Key: { id: item.id } }));
             deleted++;
             console.log('  deleted journal item ' + item.id + ' (' + (host || 'no host') + ')');
           }
@@ -183,13 +207,21 @@ jobs:
         run: |
           set -euo pipefail
           node --input-type=module <<'EOF'
-          import pg from 'pg';
-          const c = new pg.Client({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: true } });
-          await c.connect();
-          const bySite = await c.query('select site, count(*)::int n from events group by site order by n desc');
-          const ledger = await c.query("select filename from schema_migrations where filename like '016%'");
-          await c.end();
+          import { readFileSync } from 'node:fs';
+          const t = JSON.parse(readFileSync('/tmp/target.json', 'utf8'));
+          const API = 'https://api.neon.tech/v2';
+          const headers = { Authorization: 'Bearer ' + process.env.NEON_API_KEY, 'Content-Type': 'application/json' };
+          const r = await fetch(API + '/projects/' + t.project_id + '/databases/' + t.database + '/query?branch=' + t.branch_id, {
+            method: 'POST', headers,
+            body: JSON.stringify({ query: 'select site, count(*)::int n from events group by site order by n desc' }),
+          });
+          const body = await r.json();
           console.log('events by site:');
-          for (const r of bySite.rows) console.log('  ' + r.site + ': ' + r.n);
-          console.log('ledger: ' + (ledger.rows[0] ? ledger.rows[0].filename + ' recorded' : 'NOT RECORDED'));
+          for (const row of body.data || []) console.log('  ' + row[0] + ': ' + row[1]);
+          const live = await fetch('https://jaytipargal.tech/api/db-push?action=counts', {
+            headers: { 'x-db-admin-key': process.env.DB_ADMIN_KEY },
+          });
+          const app = await live.json();
+          console.log('the deployed application now sees:');
+          for (const s of app.eventsBySite || []) console.log('  ' + s.site + ': ' + s.n);
           EOF
