@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  siteFor, insertEvent, botLike,
+  siteFor, insertEvent, botLike, TRACKED_PROPERTY,
   readSyncCursor, writeSyncCursor, clearSyncCursor,
 } from '../../Backend/lib/warehouse.js';
 
@@ -17,16 +17,19 @@ const check = (label, ok, detail = '') => {
   console.log(`${ok ? 'PASS' : 'FAIL'}  ${label}${ok ? '' : `\n      ${detail}`}`);
 };
 
-check('known property is normalized', siteFor('https://www.jaytipargal.tech/path') === 'jaytipargal.tech');
+check('the tracked property is the only property', TRACKED_PROPERTY === 'jaytibirthday.in');
+check('known property is normalized', siteFor('https://www.jaytibirthday.in/path') === 'jaytibirthday.in');
+check('the operator console is no longer a property', siteFor('https://jaytipargal.tech/path') === null);
+check('the retired property is no longer a property', siteFor('https://jaytipargal.com/path') === null);
 check('preview deployment is rejected', siteFor('https://example.vercel.app/path') === null);
 check('bot filter remains conservative', botLike('Mozilla/5.0') === false && botLike('Googlebot/2.1') === true);
 
 const calls = [];
 await insertEvent({
   id: 'test-event', eventType: 'pageview', timestamp: '2026-10-08T00:00:00.000Z', epoch: 1791417600000,
-  sessionId: 'session', visitorId: 'visitor', pageUrl: 'https://jaytipargal.tech/', eventData: {},
-}, { site: 'jaytipargal.tech', sourceSystem: 'test', db: async (sql, params) => { calls.push({ sql, params }); return { rowCount: 1 }; } });
-check('event rows are keyed by property and source id', calls[0]?.params?.[0] === 'jaytipargal.tech:test-event');
+  sessionId: 'session', visitorId: 'visitor', pageUrl: 'https://jaytibirthday.in/', eventData: {},
+}, { site: 'jaytibirthday.in', sourceSystem: 'test', db: async (sql, params) => { calls.push({ sql, params }); return { rowCount: 1 }; } });
+check('event rows are keyed by property and source id', calls[0]?.params?.[0] === 'jaytibirthday.in:test-event');
 check('event insert is idempotent', /ON CONFLICT \(id\) DO NOTHING/.test(calls[0]?.sql || ''));
 
 const cursorCalls = [];
@@ -50,9 +53,16 @@ check('scheduled DynamoDB repair resumes from a durable cursor',
 check('tracker writes directly through the warehouse', /await recordEvent\(item, \{ site, sourceSystem: 'site-api' \}\)/.test(track));
 check('tracker contains no AWS client or copy job', !/@aws-sdk|dynamodb|PutCommand|db-push/i.test(track));
 check('legacy /api/track route delegates to the same handler', /from '\.\/jp-track\.js'/.test(trackCompat));
-for (const origin of ['https://jaytipargal.tech', 'https://www.jaytipargal.tech', 'https://jaytibirthday.in']) {
+for (const origin of ['https://jaytibirthday.in', 'https://www.jaytibirthday.in']) {
   check(`${origin} remains a permitted origin`, track.includes(`'${origin}'`));
 }
+for (const origin of ['https://jaytipargal.tech', 'https://www.jaytipargal.tech', 'https://jaytipargal.com']) {
+  check(`${origin} is no longer a permitted origin`, !track.includes(`'${origin}'`));
+}
+check('the nightly repair imports only the tracked property',
+  /site !== TRACKED_PROPERTY\) return null/.test(dbPush) && !/FALLBACK_SITE/.test(dbPush));
+check('the repair rebuilds the rollups for the tracked property only',
+  /rollupVisitors\(\{ site: TRACKED_PROPERTY \}\)/.test(dbPush));
 
 console.log(`\n${failures ? `${failures} check(s) failed` : 'all checks passed'}`);
 process.exitCode = failures ? 1 : 0;

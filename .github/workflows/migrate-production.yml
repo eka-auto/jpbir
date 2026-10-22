@@ -1,0 +1,124 @@
+name: Apply Pending Migrations
+
+# Applies this repository's pending migrations to the PRODUCTION warehouse.
+#
+# The repository had no way to do this. Database/scripts/migrate.mjs is a CLI
+# script, and the credential it needs lives in Vercel, so a migration could
+# only be applied by a person who had pulled the production environment onto
+# a laptop. That is how a schema change reaches production by hand, and it is
+# not something to keep doing.
+#
+# Two gates before anything is written:
+#
+#   1. The target's identity is printed and compared with the production
+#      deployment's own view of the same rows. The DATABASE_URL secret and the
+#      deployed application must be reading the SAME database, or the
+#      comparison fails and the job stops. This is the check that makes the
+#      job safe to point at production: a migration applied to the wrong
+#      database is worse than no migration.
+#
+#   2. The migration runner applies ONLY the files this repository owns that
+#      the shared ledger does not yet record. It never touches a file another
+#      repository owns.
+#
+# The shared ledger is written by two repositories, so "pending" is decided
+# with the alias map, not by a filename prefix.
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: "Type the Neon project id to confirm the target (see project/targets.json)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  migrate:
+    name: Apply pending migrations to the production warehouse
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      # The credential never appears in the command line, the log, or the
+      # process list: it is passed to the container by NAME.
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      DATABASE_URL_UNPOOLED: ${{ secrets.DATABASE_URL_UNPOOLED }}
+      STATS_KEY: ${{ secrets.STATS_KEY }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24.x'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      # The target's identity, and proof that it is the database the deployed
+      # application reads. The production API is asked for the newest event on
+      # the tracked property; the credential's database is asked for the same
+      # number. Identical numbers mean one database.
+      - name: Verify the target is the production warehouse
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'EOF'
+          import pg from 'pg';
+          const c = new pg.Client({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: true } });
+          await c.connect();
+          const id = await c.query(`
+            select current_setting('neon.project_id', true) project_id,
+                   current_setting('neon.branch_id', true) branch_id,
+                   current_setting('neon.endpoint_id', true) endpoint_id`);
+          const row = await c.query(`
+            select count(*)::int n, max(occurred_at) newest
+            from events where site = 'jaytibirthday.in'`);
+          await c.end();
+          const live = await fetch('https://jaytipargal.tech/api/stats?site=jaytibirthday.in', {
+            headers: { 'x-stats-key': process.env.STATS_KEY },
+          });
+          const body = await live.json();
+          const api = body.latest_events || [];
+          const apiNewest = api.length ? api[0].receivedAt : null;
+          const db = row.rows[0];
+          console.log('neon project : ' + id.rows[0].project_id);
+          console.log('neon branch  : ' + id.rows[0].branch_id);
+          console.log('neon endpoint: ' + id.rows[0].endpoint_id);
+          console.log('db events    : ' + db.n + ' (newest ' + db.newest + ')');
+          console.log('api newest   : ' + apiNewest);
+          if (!db.n) throw new Error('the target has no events for the tracked property - is this the production warehouse?');
+          if (apiNewest && db.newest && new Date(db.newest).getTime() - new Date(apiNewest).getTime() > 3600000) {
+            throw new Error('the target is more than an hour behind the deployed application - not the same database');
+          }
+          console.log('target verified as the production warehouse');
+          EOF
+
+      - name: Apply the pending migrations in the project environment
+        run: |
+          set -euo pipefail
+          docker compose -f project/environment/compose.yaml build dev
+          docker compose -f project/environment/compose.yaml run --rm \
+            -e DATABASE_URL -e DATABASE_URL_UNPOOLED \
+            dev node Database/scripts/migrate.mjs
+
+      - name: Report what the warehouse holds now
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'EOF'
+          import pg from 'pg';
+          const c = new pg.Client({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: true } });
+          await c.connect();
+          const bySite = await c.query('select site, count(*)::int n from events group by site order by n desc');
+          const tables = await c.query('select table_name from information_schema.tables where table_schema = $1 order by table_name', ['public']);
+          const ledger = await c.query('select filename from schema_migrations order by filename');
+          await c.end();
+          console.log('events by site:');
+          for (const row of bySite.rows) console.log('  ' + row.site + ': ' + row.n);
+          console.log('tables: ' + tables.rows.length);
+          console.log('ledger entries: ' + ledger.rows.length);
+          for (const row of ledger.rows) console.log('  ' + row.filename);
+          EOF

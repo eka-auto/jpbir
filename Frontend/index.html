@@ -386,15 +386,19 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
 <script defer src="/_vercel/insights/script.js"></script>
 <script defer src="/_vercel/speed-insights/script.js"></script>
 <!--
-  The first client this deployment has ever had for its own /api/jp-track.
-  jp-tracker.js was written to be embedded on jaytipargal.com and post here
-  cross-origin; no page served FROM jaytipargal.tech ever called it, which is
-  the last reason the warehouse held no rows for this domain even after the
-  ingest path started mirroring into Postgres. Same-origin, so sendBeacon
-  needs no preflight. Delete this one line to stop tracking the dashboard
-  itself; the mirror stays wired for every other client.
+  The console does not track itself.
+
+  This line used to embed jp-tracker.js, so every visit to the operator
+  console was recorded as a visit to jaytipargal.tech — the owner's own
+  sessions, plus the fleet's device probes, arriving with a browser's user
+  agent. The visitor panels then read as traffic that never existed, and the
+  warehouse held a property nobody wanted. The ingest now serves
+  jaytibirthday.in only, and this page is not that.
+
+  The beacon endpoint stays wired for the site that is tracked: the birthday
+  site posts to it from its own origin, cross-origin, and the mirror into
+  Postgres is unaffected by anything here.
 -->
-<script defer src="/jp-tracker.js"></script>
 </head>
 <body>
 <a class="skip-link" href="#main-content">Skip to Main Content</a>
@@ -415,10 +419,8 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
         <div class="spacer"></div>
         <span class="last-updated" id="lastUpdated"></span>
         <label class="sr-only" for="siteSel">Tracked property</label>
-        <select id="siteSel" name="site" aria-label="Tracked property" title="Which tracked property to show. Beacons land directly in Neon.">
+        <select id="siteSel" name="site" aria-label="Tracked property" title="The one tracked property. Beacons land directly in Neon.">
             <option value="jbt" selected>jaytibirthday.in</option>
-            <option value="tech">jaytipargal.tech</option>
-            <option value="jp">jaytipargal.com</option>
         </select>
         <label class="sr-only" for="daysSel">Date range</label>
         <select id="daysSel" name="days" aria-label="Date range">
@@ -430,14 +432,16 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
         <button id="refreshBtn">Refresh</button>
         <button id="lockBtn">Lock</button>
     </div>
-    <!-- One-line data-flow hint under the topbar. Names which properties feed
-         the site selector and where their beacons land, so an operator seeing
-         "jaytibirthday.in" in the dropdown does not have to open the code to
-         learn that the selector switches the whole ANALYZE column between two
-         real, separately-tracked properties. -->
+    <!-- One-line data-flow hint under the topbar. Names the property the
+         console reads and where its beacons land, so an operator does not have
+         to open the code to learn that the ANALYZE column is scoped by it.
+         The console tracks ONE property: jaytibirthday.in. This page is an
+         operator console, not a public site, and its own traffic was the
+         operator's own sessions plus the fleet's probes — which the visitor
+         panels then read as traffic that never existed. -->
     <div class="topbar-hint" id="topbarHint">
-        Site selector reads <b>jaytibirthday.in</b>, <b>jaytipargal.tech</b>, and <b>jaytipargal.com</b>
-        from Postgres (<code>/api/stats?site=</code>). Every ANALYZE panel below is scoped by it.
+        This console reads <b>jaytibirthday.in</b> from Postgres
+        (<code>/api/stats?site=</code>). Every ANALYZE panel below is scoped by it.
     </div>
 
     <div class="layout">
@@ -868,7 +872,7 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
        two together. */
     var siteSelEl = $('siteSel');
     var SITE = sessionStorage.getItem('jbt_site') || (siteSelEl && siteSelEl.value) || 'jbt';
-    var SITE_HOSTS = { jbt: 'jaytibirthday.in', tech: 'jaytipargal.tech', jp: 'jaytipargal.com' };
+    var SITE_HOSTS = { jbt: 'jaytibirthday.in' };
     function siteHost() { return SITE_HOSTS[SITE] || SITE_HOSTS.jbt; }
     /* Every API call carries the key in a header, never the query string: a
        URL credential lands in access logs, browser history and Referers. The
