@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "operation_id": "jpbir-release-192-20261022",
+  "status": "intent",
+  "github_identity": "eka-auto",
+  "repository_id": 1350770272,
+  "repository": "eka-auto/jpbir",
+  "approval": "project/approvals/2026-10-22-bounded-release-admin.md",
+  "operations": [
+    "configure identical STACK_EVIDENCE_KEY in repository and Vercel production",
+    "merge PR 192 at expected head",
+    "observe existing Git production deployment",
+    "review CODEOWNERS PR",
+    "harden ruleset 25339138"
+  ],
+  "pr": 192,
+  "expected_head": "09c6a2f7d4985f599f9725bb8815756f64b48596",
+  "vercel_project": "prj_47peuCvcDnURmUqhU3aFlaBP351J",
+  "vercel_team": "team_gcqCiU4UgkhcUJGRGLZYaQiW",
+  "secret_values_recorded": false
+}

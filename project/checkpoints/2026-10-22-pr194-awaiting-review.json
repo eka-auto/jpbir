@@ -1,0 +1,28 @@
+{
+  "actor": "eka-auto",
+  "repository": "eka-auto/jpbir",
+  "pr": 194,
+  "head": "80246468cd53e2d2c6b7aa3b1a9b4fd58188aef2",
+  "base": "4c383d76fe659c23d71898653da3aac68c4c3f96",
+  "required_checks": {
+    "passed": 8,
+    "total": 8,
+    "ci_run": 39685275457,
+    "quality_run": 39685275524,
+    "vercel": "success"
+  },
+  "review": {
+    "decision": "REVIEW_REQUIRED",
+    "reviews": [],
+    "requested_reviewer": "jaytipargal"
+  },
+  "merge": {
+    "state": "BLOCKED",
+    "attempted": false,
+    "reason": "Provider requires an actual approving review; owner authorization to merge does not bypass GitHub's review requirement."
+  },
+  "remaining": {
+    "pr194": "Approve current head through GitHub; then merge and verify signed live receipts.",
+    "s24": "Physical phone action in Termux required before runtime contract and 24-hour observation can be proven."
+  }
+}

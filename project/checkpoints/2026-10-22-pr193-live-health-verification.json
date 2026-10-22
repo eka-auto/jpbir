@@ -1,0 +1,42 @@
+{
+  "actor": "eka-auto",
+  "revision": "4c383d76fe659c23d71898653da3aac68c4c3f96",
+  "deployment": "dpl_DNty1oLTk3bjMDWKrEMBbL7uscU4",
+  "environment": "production",
+  "domain": "jaytipargal.tech",
+  "ci": {
+    "main": {
+      "run": 39685211293,
+      "conclusion": "success"
+    },
+    "endpoint_health": {
+      "run": 39685369144,
+      "conclusion": "success",
+      "trigger": "workflow_dispatch",
+      "target": "live production"
+    },
+    "strict_readiness": {
+      "run": 39685210876,
+      "conclusion": "failure",
+      "reason": "six S24-dependent rows fail; not release-ready"
+    },
+    "evidence": {
+      "run": 39685211831,
+      "conclusion": "failure",
+      "failed_step": "Reconcile the production migration ledger",
+      "reason": "11 unexplained migration identities; PR 194 pending",
+      "path_fix": "ENOENT resolved; reconciliation reached"
+    }
+  },
+  "s24": {
+    "live": false,
+    "heartbeat_age_minutes": 8726,
+    "observation_24h": "not started"
+  },
+  "pr194": {
+    "head": "80246468cd53e2d2c6b7aa3b1a9b4fd58188aef2",
+    "reviewDecision": "REVIEW_REQUIRED",
+    "reviewer": "jaytipargal",
+    "checks": "running"
+  }
+}

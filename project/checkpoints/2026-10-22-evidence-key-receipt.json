@@ -1,0 +1,15 @@
+{
+  "operation_id": "jpbir-release-192-20261022",
+  "status": "key-configured",
+  "github_secret": "STACK_EVIDENCE_KEY",
+  "vercel_variable": "STACK_EVIDENCE_KEY",
+  "vercel_variable_id": "LAPD85W630lcfhKp",
+  "vercel_target": [
+    "production"
+  ],
+  "same_source_value": true,
+  "random_bytes": 32,
+  "value_printed": false,
+  "plaintext_file_created": false,
+  "runtime_verification": "pending deployment and signed evidence workflow"
+}

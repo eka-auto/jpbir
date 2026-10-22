@@ -1,0 +1,33 @@
+{
+  "actor": "eka-auto",
+  "repository": "eka-auto/jpbir",
+  "pr": 193,
+  "reviewed_head": "bf24e3f12e71f988a363105df0f809f613f179dd",
+  "merge": "4c383d76fe659c23d71898653da3aac68c4c3f96",
+  "merged": true,
+  "deployment": {
+    "id": "dpl_DNty1oLTk3bjMDWKrEMBbL7uscU4",
+    "state": "READY",
+    "target": "production",
+    "alias": "jaytipargal.tech",
+    "source": "git"
+  },
+  "live_snapshot": {
+    "at": "2026-10-21T22:16:48.381Z",
+    "rows_ok": 30,
+    "rows_failed": 6,
+    "rows_unproven": 2,
+    "schedule_stale": false,
+    "schedule_age_minutes": 1,
+    "s24_age_minutes": 8726
+  },
+  "pr194": {
+    "updated_head": "80246468cd53e2d2c6b7aa3b1a9b4fd58188aef2",
+    "base": "4c383d76fe659c23d71898653da3aac68c4c3f96",
+    "review": "REVIEW_REQUIRED",
+    "review_requested": "jaytipargal",
+    "checks": "running",
+    "merge": "not attempted; required approval absent"
+  },
+  "next": "Verify new health-check run; 194 remains gated by actual approving review. Do not bypass controls."
+}
