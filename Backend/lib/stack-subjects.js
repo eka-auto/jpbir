@@ -100,7 +100,7 @@ export const SUBJECTS = {
         },
         {
           "path": "Database/schema/016_purge_non_birthday_analytics.sql",
-          "sha256": "868c9fcdbd1836e63d7fd5783ca7028c7535ef534df97e313f7f4054486dfcf4"
+          "sha256": "d3fe54bd2ee5dd07bcc739140f0eb0896fda95c9672ea7ae0e32877ae3c25fb6"
         },
         {
           "path": "Database/schema/migration-aliases.json",
@@ -111,7 +111,7 @@ export const SUBJECTS = {
           "sha256": "a99f77de3f160e61087b38ac22de9ca37585c8696bf6ea3a715675e69e5bb74d"
         }
       ],
-      "digest": "sha256:2fe209d6c214af8bcba3ae808e41d995288bf7039e12de05c63fbbf3fec76689"
+      "digest": "sha256:0c6f93bd6ecbeb13330034eeacd15328154140bff447766d8f38a6b33a3da44c"
     }
   };
 
