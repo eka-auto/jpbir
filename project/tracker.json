@@ -8,7 +8,7 @@
     "approval": null
   },
   "events_processed": {
-    "devops": 35,
+    "devops": 36,
     "orchestrator": 11,
     "hod": 4
   },
@@ -570,10 +570,28 @@
           "revision": "b4e0da71",
           "subject": "the local .env.local, the DATABASE_URL secret and the Vercel production branch all resolve to a Neon branch whose warehouse stops on 2026-10-09, while the deployed application reads a warehouse that is live to today - project/targets.json still leaves the Neon target's project and branch ids unfilled, which is how three stale pointers looked authoritative for a month",
           "location": "project/targets.json; project/decisions.md D-31"
+        },
+        {
+          "producer": "devops",
+          "check": "purge-executed-and-verified",
+          "result": "pass",
+          "time": "2026-10-22T04:45:00Z",
+          "revision": "84792c72",
+          "subject": "the deployed application's own count after the purge: 15,092 events, 349 visitors, 556 sessions, and one property - jaytibirthday.in; deleted 5,634 events, 277 session rows, 134 visitor rows and 23 journal items; the retired properties are refused by the read path with 400 and the console no longer embeds the tracker, so it stops tracking itself",
+          "location": "GET /api/db-push?action=purge; project/reports/2026-10-22-production-readiness-repair.md section 7"
+        },
+        {
+          "producer": "devops",
+          "check": "fresh-database-migration-defect",
+          "result": "fail",
+          "time": "2026-10-22T04:45:00Z",
+          "revision": "b2c222ae",
+          "subject": "the purge migration failed on a fresh database with 42P01 - events, sessions and visitors are the sibling repository's tables, created by its migrations 001-003 - which failed the migration proof, the evidence job and therefore the receipt for the new revision; PR #198 guards each delete with a table-existence check and is green on all twelve checks",
+          "location": "PR #198; Database/schema/016_purge_non_birthday_analytics.sql"
         }
       ],
-      "updated_at": "2026-10-22T01:45:00Z",
-      "note": "The warehouse is now for jaytibirthday.in only, and the other domains' data is to be removed completely. PR #197 carries the product change and the purge, and is green on every check; it needs the owner's approving review because it touches /.github/ and /project/. The purge is an action on /api/db-push rather than a script, because the live warehouse turned out to be reachable from nowhere else: the DATABASE_URL secret's password no longer authenticates (28P01), vercel env pull redacts every secret, the Neon API's SQL route is not reachable with this key, and the connection URI route reaches only a project whose three branches all hold a 9-October snapshot - 18,869 events against the deployed application's 20,724. That last finding explains the earlier confusion: the local .env.local, the DATABASE_URL secret and the Vercel production branch all point at that stale copy, which is why every local analysis looked like the warehouse ended on 10 October. The purge deletes the 5,680 rows that are not jaytibirthday.in, the rollups that go with them, and the matching DynamoDB journal items with the same filter, so the nightly repair cannot put them back; its scope is pinned by a suite. The live warehouse's identity is still unpinned in project/targets.json, which is the omission that let three stale pointers look authoritative for a month."
+      "updated_at": "2026-10-22T04:45:00Z",
+      "note": "The purge is DONE and verified. PR #197 merged at 04:27:59Z and the purge ran through the deployed application's own credential, which is the only thing that opens the live warehouse. Deleted 5,634 events, 277 session rows, 134 visitor rows and all 23 DynamoDB journal items, so the nightly repair cannot resurrect them; the warehouse went from 20,726 events across 15 properties to 15,092 events in one, and the read path now refuses the retired properties with 400. The purge exposed one defect: the migration FILE could not be applied to a fresh database, because events, sessions and visitors are created by the sibling repository's migrations 001-003 and a plain DELETE against them fails with 42P01. That failed the migration proof and with it the evidence job, so the newly deployed revision could not publish a receipt and both evidence-backed rows went unproven with the honest reason 'no CI evidence has been published for ...'. PR #198 makes the delete check each table exists before touching it, re-pins the subject digest, and is green on all twelve checks; it needs the owner's approving review."
     },
     {
       "id": "T-23",
