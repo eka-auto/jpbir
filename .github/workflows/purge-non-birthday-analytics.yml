@@ -83,7 +83,24 @@ jobs:
           });
           const app = await live.json();
           const theirs = new Map((app.eventsBySite || []).map((r) => [r.site, r.n]));
-          const same = (m) => m.size === theirs.size && [...theirs].every(([k, v]) => m.get(k) === v);
+          const appTotal = (app.postgres && app.postgres.events) != null
+            ? Number(app.postgres.events)
+            : [...theirs.values()].reduce((a, b) => a + b, 0);
+          // The warehouse is live, so its counts move between the two reads.
+          // The target is the branch whose PROPERTY NAMES are the same and
+          // whose totals agree to within a few rows of drift — not an exact
+          // match, which no live database can produce. The branch the
+          // deployed application does NOT read is off by thousands of rows,
+          // so the drift tolerance cannot confuse the two.
+          const same = (m) => {
+            const names = [...m.keys()].sort().join(',');
+            const theirNames = [...theirs.keys()].sort().join(',');
+            const total = [...m.values()].reduce((a, b) => a + b, 0);
+            const drift = Math.abs(total - appTotal);
+            const tolerance = Math.max(50, Math.round(appTotal * 0.01));
+            console.error('  names match: ' + (names === theirNames) + ', total ' + total + ' vs ' + appTotal + ', drift ' + drift + ' (tolerance ' + tolerance + ')');
+            return names === theirNames && total >= appTotal - 5 && drift <= tolerance;
+          };
 
           let found = null;
           const pg = (await import('pg')).default;
