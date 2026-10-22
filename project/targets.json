@@ -40,9 +40,13 @@
       "provider": "neon",
       "account_id": "fancy-cloud-99501540",
       "resource_ids": {
+        "project_id": "fancy-cloud-99501540",
+        "branch_id": "br-spring-pine-au5jtfig",
+        "endpoint_id": "ep-long-credit-au7qr9gy",
+        "database": "jpbir_live",
         "role": "neondb_owner"
       },
-      "notes": "Postgres warehouse for analytics and telemetry (D-9). Project and branch IDs to be filled at the next owner-assisted verification."
+      "notes": "Postgres warehouse for analytics and telemetry (D-9). Project, branch and endpoint verified 2026-10-22 against the provider: project fancy-cloud-99501540 ('jaytibirthday-db'), branch br-spring-pine-au5jtfig ('main', primary), endpoint ep-long-credit-au7qr9gy, DATABASE jpbir_live. THE DATABASE NAME IS PART OF THE TARGET. The same project and endpoint also carry a second database, 'neondb', which is a COPY frozen at 2026-10-09T18:30Z - and the local .env.local and the repository's DATABASE_URL secret both pointed at that copy, which is why every local analysis of 'the warehouse' read as the product having stopped collecting. The local .env.local now points at jpbir_live; the DATABASE_URL secret still needs replacing, and it must name jpbir_live."
     },
     {
       "name": "vercel-blob",
