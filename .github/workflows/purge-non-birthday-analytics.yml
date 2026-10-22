@@ -86,39 +86,42 @@ jobs:
           const same = (m) => m.size === theirs.size && [...theirs].every(([k, v]) => m.get(k) === v);
 
           let found = null;
+          const pg = (await import('pg')).default;
           for (const b of branches) {
-            // The roles a branch inherits, and the connection URI for one of
-            // them. The password comes back in the URI; it is used, never
-            // printed.
-            let uri = null;
+            // Every role the branch has, and the connection URI for each. The
+            // password comes back in the URI; it is used, never printed. A role
+            // that cannot read the events table is skipped rather than
+            // accepted: the first role is often a read-only one, and the role
+            // that owns the warehouse is the one that can delete from it.
+            let roles = [];
             for (const rolesUrl of [
               API + '/projects/' + projectId + '/branches/' + b.id + '/roles',
               API + '/projects/' + projectId + '/roles?branch_id=' + b.id,
             ]) {
-              let roles = [];
               try { roles = (await json(rolesUrl)).roles || []; } catch { continue; }
-              for (const role of roles) {
-                try {
-                  const c = await json(API + '/projects/' + projectId + '/connection_uri?branch=' + b.id + '&database_name=neondb&role_name=' + encodeURIComponent(role.name));
-                  if (c && c.uri) { uri = c.uri; break; }
-                } catch { /* try the next role */ }
-              }
-              if (uri) break;
+              if (roles.length) break;
             }
-            if (!uri) { console.error('branch ' + b.id + ': no connection URI could be obtained'); continue; }
-            const pg = (await import('pg')).default;
-            const client = new pg.Client({ connectionString: uri, ssl: { rejectUnauthorized: true } });
-            let counts = null;
-            try {
-              await client.connect();
-              const r = await client.query('select site, count(*)::int n from events group by site order by site');
-              counts = new Map(r.rows.map((x) => [x.site, x.n]));
-            } catch (e) {
-              console.error('branch ' + b.id + ': could not be read: ' + String(e.message).slice(0, 140));
-            } finally { try { await client.end(); } catch { /* already closed */ } }
-            if (!counts) continue;
-            console.error('branch ' + b.id + ' (' + b.name + '): ' + counts.size + ' site(s), matches the application: ' + same(counts));
-            if (!found && same(counts)) found = { branch: b, uri, counts };
+            if (!roles.length) { console.error('branch ' + b.id + ': no role could be listed'); continue; }
+            for (const role of roles) {
+              let uri = null;
+              try {
+                const c = await json(API + '/projects/' + projectId + '/connection_uri?branch=' + b.id + '&database_name=neondb&role_name=' + encodeURIComponent(role.name));
+                if (c && c.uri) uri = c.uri;
+              } catch { continue; }
+              if (!uri) continue;
+              const client = new pg.Client({ connectionString: uri, ssl: { rejectUnauthorized: true } });
+              let counts = null;
+              try {
+                await client.connect();
+                const r = await client.query('select site, count(*)::int n from events group by site order by site');
+                counts = new Map(r.rows.map((x) => [x.site, x.n]));
+              } catch (e) {
+                console.error('branch ' + b.id + ' role ' + role.name + ': ' + String(e.message).slice(0, 90));
+              } finally { try { await client.end(); } catch { /* already closed */ } }
+              if (!counts) continue;
+              console.error('branch ' + b.id + ' (' + b.name + ') as ' + role.name + ': ' + counts.size + ' site(s), matches the application: ' + same(counts));
+              if (!found && same(counts)) found = { branch: b, role: role.name, uri, counts };
+            }
           }
           if (!found) throw new Error('no branch of the project holds the warehouse the deployed application reads');
           console.error('target verified: branch ' + found.branch.id + ' (' + found.branch.name + ')');
