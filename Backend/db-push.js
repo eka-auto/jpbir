@@ -200,7 +200,40 @@ export default async function handler(req, res) {
           out[which] = { configured: true, error: e.message };
         }
       }
-      return res.status(200).json({ ok: true, table: TABLE, region: AWS_REGION, credentials: out });
+      // Which DATABASE are we talking to?
+      //
+      // The credential is a Vercel Secret, so nothing outside this deployment
+      // can read it - which is how two different Neon copies came to look
+      // authoritative: this machine's .env.local and the repository's
+      // DATABASE_URL secret both pointed at a copy frozen on 2026-10-09,
+      // while production read a live one. Every local analysis of "the
+      // warehouse" was therefore an analysis of the wrong database, and it
+      // looked like the product had stopped collecting.
+      //
+      // The database can answer for itself. Neon publishes its own project,
+      // branch and endpoint as session settings, so the identity is a fact
+      // read from the connection rather than a name somebody has to remember.
+      const postgres = await (async () => {
+        try {
+          const r = await query(`SELECT current_setting('neon.project_id', true)  AS project_id,
+                                       current_setting('neon.branch_id', true)   AS branch_id,
+                                       current_setting('neon.endpoint_id', true) AS endpoint_id,
+                                       current_database()                       AS database,
+                                       version()                                AS server_version`);
+          const row = r.rows[0] || {};
+          return {
+            configured: true,
+            project_id: row.project_id || null,
+            branch_id: row.branch_id || null,
+            endpoint_id: row.endpoint_id || null,
+            database: row.database || null,
+            server_version: row.server_version ? String(row.server_version).split(' ')[0] : null,
+          };
+        } catch (e) {
+          return { configured: false, error: String(e.message).slice(0, 120) };
+        }
+      })();
+      return res.status(200).json({ ok: true, table: TABLE, region: AWS_REGION, credentials: out, postgres });
     }
 
     if (action === 'push') {
