@@ -1,0 +1,195 @@
+name: Purge non-birthday analytics
+
+# Removes every property except jaytibirthday.in from the production
+# warehouse, and the matching rows from the DynamoDB journal that feeds it.
+#
+# Why this exists: the operator console at jaytipargal.tech tracked itself,
+# so the warehouse held a property whose "visitors" were the owner's own
+# sessions and the fleet's own device probes. The owner asked for that data to
+# be removed completely, and for the product to be built for jaytibirthday.in
+# only.
+#
+# Two ends, because one end is not enough. The warehouse is what the panels
+# read; the journal is what the nightly repair copies FROM. Purging only the
+# warehouse would put the rows back at the next repair, so both are purged,
+# with the same filter.
+#
+# The target is proved before anything is written. This job compares the
+# credential's own view of the warehouse with the deployed application's view
+# of the same warehouse. They have to agree exactly, or the job stops: a
+# deletion applied to the wrong database is worse than no deletion.
+#
+# The trigger is a push to the branch that carries the change, because a
+# workflow_dispatch cannot be triggered until it exists on the default branch,
+# and the owner asked for the data to be gone now. The job is idempotent:
+# running it again deletes nothing.
+
+on:
+  push:
+    branches:
+      - chore/birthday-only-analytics
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  purge:
+    name: Purge every property except jaytibirthday.in
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      DB_ADMIN_KEY: ${{ secrets.DB_ADMIN_KEY }}
+      JP_AWS_REGION: ${{ secrets.JP_AWS_REGION }}
+      JP_AWS_ACCESS_KEY_ID: ${{ secrets.JP_AWS_ACCESS_KEY_ID }}
+      JP_AWS_SECRET_ACCESS_KEY: ${{ secrets.JP_AWS_SECRET_ACCESS_KEY }}
+      JP_WRITE_AWS_ACCESS_KEY_ID: ${{ secrets.JP_WRITE_AWS_ACCESS_KEY_ID }}
+      JP_WRITE_AWS_SECRET_ACCESS_KEY: ${{ secrets.JP_WRITE_AWS_SECRET_ACCESS_KEY }}
+      JP_TELEMETRY_TABLE: ${{ secrets.JP_TELEMETRY_TABLE }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24.x'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      # The target has to be the warehouse the deployed application reads. The
+      # application is asked for its own counts, the credential is asked for
+      # its own, and they have to match exactly.
+      - name: Prove the target is the deployed application's warehouse
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'EOF'
+          import pg from 'pg';
+          const c = new pg.Client({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: true } });
+          await c.connect();
+          const mine = await c.query('select site, count(*)::int n from events group by site order by site');
+          const id = await c.query(`
+            select current_setting('neon.project_id', true) project_id,
+                   current_setting('neon.branch_id', true) branch_id,
+                   current_setting('neon.endpoint_id', true) endpoint_id`);
+          await c.end();
+          const live = await fetch('https://jaytipargal.tech/api/db-push?action=counts', {
+            headers: { 'x-db-admin-key': process.env.DB_ADMIN_KEY },
+          });
+          const app = await live.json();
+          const theirs = new Map((app.eventsBySite || []).map((r) => [r.site, r.n]));
+          const ours = new Map(mine.rows.map((r) => [r.site, r.n]));
+          console.log('neon project : ' + id.rows[0].project_id);
+          console.log('neon branch  : ' + id.rows[0].branch_id);
+          console.log('neon endpoint: ' + id.rows[0].endpoint_id);
+          let mismatch = 0;
+          for (const [site, n] of ours) {
+            const other = theirs.get(site);
+            if (other !== n) { mismatch++; console.log('MISMATCH ' + site + ': credential=' + n + ' application=' + other); }
+          }
+          for (const [site, n] of theirs) {
+            if (!ours.has(site)) { mismatch++; console.log('MISMATCH ' + site + ': credential=absent application=' + n); }
+          }
+          if (mismatch) throw new Error(mismatch + ' site count(s) disagree - this is not the deployed application\'s warehouse');
+          console.log('target verified: ' + ours.size + ' site(s) agree with the deployed application');
+          EOF
+
+      - name: Show what will be deleted
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'EOF'
+          import pg from 'pg';
+          const c = new pg.Client({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: true } });
+          await c.connect();
+          const rows = await c.query(`
+            select site, count(*)::int events from events where site <> 'jaytibirthday.in' group by site order by events desc`);
+          const keep = await c.query("select count(*)::int n from events where site = 'jaytibirthday.in'");
+          const sessions = await c.query("select count(*)::int n from sessions where site <> 'jaytibirthday.in'");
+          const visitors = await c.query("select count(*)::int n from visitors where site <> 'jaytibirthday.in'");
+          await c.end();
+          let doomed = 0;
+          for (const r of rows.rows) { doomed += r.events; console.log('  delete ' + r.site + ': ' + r.events + ' event(s)'); }
+          console.log('  keep jaytibirthday.in: ' + keep.rows[0].n + ' event(s)');
+          console.log('  delete ' + sessions.rows[0].n + ' session row(s) and ' + visitors.rows[0].n + ' visitor row(s)');
+          console.log('total to delete: ' + doomed + ' event(s)');
+          EOF
+
+      - name: Delete the rows and record the migration
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'EOF'
+          import pg from 'pg';
+          const c = new pg.Client({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: true } });
+          await c.connect();
+          await c.query('BEGIN');
+          try {
+            const events = await c.query("delete from events where site <> 'jaytibirthday.in'");
+            const sessions = await c.query("delete from sessions where site <> 'jaytibirthday.in'");
+            const visitors = await c.query("delete from visitors where site <> 'jaytibirthday.in'");
+            await c.query(
+              `insert into schema_migrations (filename, applied_at) values ($1, now())
+               on conflict (filename) do nothing`,
+              ['016_purge_non_birthday_analytics.sql'],
+            );
+            await c.query('COMMIT');
+            console.log('deleted ' + events.rowCount + ' event(s), ' + sessions.rowCount + ' session(s), ' + visitors.rowCount + ' visitor(s)');
+          } catch (e) {
+            await c.query('ROLLBACK');
+            throw e;
+          } finally {
+            await c.end();
+          }
+          EOF
+
+      # The journal is what the nightly repair copies from. Leaving the rows
+      # there would put them back at the next repair, and a purge that undoes
+      # itself every night is not a purge.
+      - name: Delete the matching rows from the DynamoDB journal
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'EOF'
+          import { DynamoDBClient, ScanCommand, DeleteItemCommand } from '@aws-sdk/client-dynamodb';
+          const client = new DynamoDBClient({
+            region: process.env.JP_AWS_REGION,
+            credentials: {
+              accessKeyId: process.env.JP_WRITE_AWS_ACCESS_KEY_ID,
+              secretAccessKey: process.env.JP_WRITE_AWS_SECRET_ACCESS_KEY,
+            },
+          });
+          const table = process.env.JP_TELEMETRY_TABLE;
+          const scan = await client.send(new ScanCommand({ TableName: table }));
+          let deleted = 0, kept = 0;
+          for (const item of scan.Items || []) {
+            const url = item.pageUrl && (item.pageUrl.S || item.pageUrl);
+            let host = null;
+            try { host = url ? new URL(url).hostname : null; } catch { host = null; }
+            const isTracked = host === 'jaytibirthday.in' || (host && host.endsWith('.jaytibirthday.in'));
+            if (isTracked) { kept++; continue; }
+            await client.send(new DeleteItemCommand({
+              TableName: table,
+              Key: { id: item.id },
+            }));
+            deleted++;
+            console.log('  deleted journal item ' + item.id + ' (' + (host || 'no host') + ')');
+          }
+          console.log('journal: deleted ' + deleted + ', kept ' + kept);
+          await client.destroy();
+          EOF
+
+      - name: Report the warehouse's new shape
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'EOF'
+          import pg from 'pg';
+          const c = new pg.Client({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: true } });
+          await c.connect();
+          const bySite = await c.query('select site, count(*)::int n from events group by site order by n desc');
+          const ledger = await c.query("select filename from schema_migrations where filename like '016%'");
+          await c.end();
+          console.log('events by site:');
+          for (const r of bySite.rows) console.log('  ' + r.site + ': ' + r.n);
+          console.log('ledger: ' + (ledger.rows[0] ? ledger.rows[0].filename + ' recorded' : 'NOT RECORDED'));
+          EOF

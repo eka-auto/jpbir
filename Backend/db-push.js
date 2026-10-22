@@ -17,7 +17,7 @@ import { STSClient, GetCallerIdentityCommand } from '@aws-sdk/client-sts';
 import { query, isConfigured } from '../Integrations/postgres.js';
 import {
   siteFor, insertEvent, rollupVisitors, rollupSessions,
-  readSyncCursor, writeSyncCursor, clearSyncCursor,
+  readSyncCursor, writeSyncCursor, clearSyncCursor, TRACKED_PROPERTY,
 } from './lib/warehouse.js';
 import { cronAuthorized, secretEquals } from './lib/cron-auth.js';
 
@@ -39,24 +39,32 @@ const AWS_REGION = _env['JP_AWS_' + 'REGION'] || 'us-west-2';
 const TABLE = _env['JP_TELEMETRY_' + 'TABLE'] || 'jaytipargal_telemetry';
 const REPAIR_CURSOR = 'dynamodb-telemetry-repair';
 
-// Last resort only. Rows written before jp-track started stamping a site
-// carry no page URL either, and 'jaytipargal.com' is the property this table
-// collected for, so that is what they stay. Everything else derives its own.
-const FALLBACK_SITE = 'jaytipargal.com';
-
 // One row, one definition. Backend/lib/warehouse.js owns the INSERT and the
 // rollups so this bulk re-import and jp-track's live mirror cannot disagree
 // about the row id, the site, or what a visitor's event_count means.
+//
+// A row is imported ONLY if it belongs to the tracked property. The DynamoDB
+// table is a journal of every host that ever posted here, including the
+// operator console's own sessions and the fleet's device probes — none of
+// which the warehouse tracks any more. Importing them would put back, every
+// night, exactly the rows the purge removed, and a nightly job that
+// re-creates what an operator deleted is worse than no job at all.
+//
+// Rows that name no page URL are skipped rather than guessed for. The old
+// fallback filed them under jaytipargal.com, which is how a page-less beacon
+// ended up attributed to a site that never sent it.
 async function insertItem(it) {
-  const site = it.site || siteFor(it.pageUrl, null) || FALLBACK_SITE;
+  const site = it.site || siteFor(it.pageUrl, null);
+  if (site !== TRACKED_PROPERTY) return null;
   return insertEvent(it, { site, sourceSystem: 'dynamodb' });
 }
 
 // visitors/sessions are rollups over `events`, recomputed rather than
-// incremented. Scoped to nothing here, so this rebuilds every key.
+// incremented. Scoped to the tracked property, so a rebuild cannot put back
+// a session for a site the warehouse no longer tracks.
 async function rebuildRollups() {
-  await rollupVisitors();
-  await rollupSessions();
+  await rollupVisitors({ site: TRACKED_PROPERTY });
+  await rollupSessions({ site: TRACKED_PROPERTY });
 }
 
 export default async function handler(req, res) {

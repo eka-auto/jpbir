@@ -19,7 +19,7 @@ import { readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { query } from '../../Integrations/postgres.js';
-import { insertEvent, rollupVisitors, rollupSessions, siteFor } from '../../Backend/lib/warehouse.js';
+import { insertEvent, rollupVisitors, rollupSessions, siteFor, TRACKED_PROPERTY } from '../../Backend/lib/warehouse.js';
 import { loadEnv } from './_env.mjs';
 
 loadEnv();
@@ -27,9 +27,9 @@ loadEnv();
 const HERE = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_BACKUP = join(HERE, '..', 'backups', 'dynamodb-telemetry-backup.json');
 
-// Rows written before jp-track stamped a site carry no page URL either, and
-// 'jaytipargal.com' is the property that table collected for.
-const FALLBACK_SITE = 'jaytipargal.com';
+// No fallback property. A row that names no page URL cannot be attributed,
+// and this warehouse tracks one property - so an unattributable row is
+// skipped, not filed under a site that never sent it.
 
 export function unmarshal(node) {
   if (Array.isArray(node)) return node.map(unmarshal);
@@ -60,10 +60,18 @@ export function unmarshal(node) {
  * testable without a database: the legacy rows are the only copy of that
  * history, and a mapping that silently returns null would import nothing and
  * report success.
+ *
+ * `site` is null for a row that does not belong to the tracked property, and
+ * the importer SKIPS those rows. The backup holds every host that ever posted
+ * to the shared journal — including the operator console's own sessions and
+ * the fleet's device probes — and the warehouse tracks jaytibirthday.in only.
+ * A row with no page URL is skipped rather than guessed for: the old fallback
+ * filed it under jaytipargal.com, which is how a page-less beacon ended up
+ * attributed to a site that never sent it.
  */
 export function rowFor(item) {
   return {
-    site: siteFor(item.pageUrl, null) || FALLBACK_SITE,
+    site: siteFor(item.pageUrl, null),
     id: item.id,
     occurredAt: item.timestamp || item.epoch,
     pageUrl: item.pageUrl,
@@ -81,15 +89,16 @@ async function main() {
     return;
   }
 
-  let inserted = 0, skipped = 0;
+  let inserted = 0, skipped = 0, other = 0;
   for (const item of items) {
     const row = rowFor(item);
+    if (row.site !== TRACKED_PROPERTY) { other++; continue; }
     const wrote = await insertEvent(item, { site: row.site, sourceSystem: row.sourceSystem });
     if (wrote) inserted++;
     else skipped++;
   }
-  await rollupVisitors();
-  await rollupSessions();
+  await rollupVisitors({ site: TRACKED_PROPERTY });
+  await rollupSessions({ site: TRACKED_PROPERTY });
 
   const totals = (await query(
     `SELECT site, COUNT(*)::int n FROM events WHERE source_system = 'dynamodb-backup'
@@ -97,6 +106,7 @@ async function main() {
   console.log(`read      ${items.length} item(s) from ${file}`);
   console.log(`inserted  ${inserted}`);
   console.log(`already   ${skipped} (same row id already in events)`);
+  console.log(`skipped   ${other} (not the tracked property)`);
   for (const row of totals) console.log(`  ${row.site}: ${row.n} row(s) from this backup`);
 }
 

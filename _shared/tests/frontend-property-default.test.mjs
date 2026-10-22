@@ -100,4 +100,15 @@ t('every property the selector offers is a property the script can read', () => 
     'two selector entries point at the same property');
 });
 
+t('the console tracks exactly one property', () => {
+  // The warehouse holds jaytibirthday.in and nothing else. The console at
+  // jaytipargal.tech used to track itself, so the visitor panels read as
+  // traffic that was the owner's own sessions and the fleet's own probes.
+  // Offering a second property again would put that back.
+  assert.equal(optionValues.length, 1,
+    'expected the selector to offer exactly one property, found ' + optionValues.join(', '));
+  assert.deepEqual(Object.keys(hostMap), ['jbt'],
+    'SITE_HOSTS should map the one selector entry, found ' + Object.keys(hostMap).join(', '));
+});
+
 console.log('\n  ' + pass + '/' + total + ' passed');
