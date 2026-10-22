@@ -80,24 +80,20 @@ jobs:
             if (!r.ok) throw new Error(url + ' -> HTTP ' + r.status + ' ' + (await r.text()).slice(0, 200));
             return r.json();
           };
-          const projects = (await json(API + '/projects')).projects || [];
-          // The project that owns the branch the local checkout points at. The
-          // branch id is the one the local .env.local resolves to, and the
-          // project is whichever owns it.
-          const STALE_BRANCH = process.env.STALE_BRANCH || 'br-spring-pine-au5jtfig';
-          let project = null, stale = null;
-          for (const p of projects) {
-            const branches = (await json(API + '/projects/' + p.id + '/branches')).branches || [];
-            const found = branches.find((b) => b.id === STALE_BRANCH);
-            if (found) { project = p; stale = found; break; }
-          }
-          if (!project) throw new Error('no project owns the branch ' + STALE_BRANCH);
-          const branches = (await json(API + '/projects/' + project.id + '/branches')).branches || [];
-          const databases = (await json(API + '/projects/' + project.id + '/databases')).databases || [];
+          // The project is named rather than discovered: the API's project
+          // LISTING now wants an org id, and a branch's own metadata does not.
+          // The project id is the one the local checkout's branch belongs to,
+          // and the branch that is actually purged is chosen by evidence below
+          // — by its counts agreeing with the deployed application — not by
+          // this id.
+          const projectId = process.env.NEON_PROJECT_ID || 'fancy-cloud-99501540';
+          const project = await json(API + '/projects/' + projectId);
+          const branches = (await json(API + '/projects/' + projectId + '/branches')).branches || [];
+          const databases = (await json(API + '/projects/' + projectId + '/databases')).databases || [];
           const database = databases.find((d) => d.name === 'neondb') || databases[0];
           if (!database) throw new Error('the project has no database');
           const query = async (branchId, sql) => {
-            const r = await json(API + '/projects/' + project.id + '/databases/' + database.name + '/query?branch=' + branchId, {
+            const r = await json(API + '/projects/' + projectId + '/databases/' + database.name + '/query?branch=' + branchId, {
               method: 'POST', body: JSON.stringify({ query: sql }),
             });
             return (r.data || []).map((row) => Object.fromEntries((r.fields || []).map((f, i) => [f.name, row[i]])));
@@ -126,7 +122,7 @@ jobs:
           }
           console.error('target verified: branch ' + match.branch.id + ' (' + match.branch.name + ')');
           writeFileSync('/tmp/target.json', JSON.stringify({
-            project_id: project.id, project_name: project.name,
+            project_id: projectId, project_name: project.name,
             database: database.name, branch_id: match.branch.id, branch_name: match.branch.name,
             sites: [...theirs].map(([site, n]) => ({ site, n })),
           }));
