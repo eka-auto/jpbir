@@ -297,7 +297,18 @@ That last row is a finding in its own right, and it explains the earlier confusi
 
 So the purge is an action on `/api/db-push`, behind the credential gate that route already has, and it purces **both** ends — the warehouse rows and the DynamoDB journal items, with the same filter — because the journal is what the nightly repair copies from. Its scope is pinned by `_shared/tests/db-push-purge.test.mjs`: the tracked property and nothing else, the three site-scoped tables, the ledger record, the journal filter, and the gate in front of it.
 
-**Still open:** the live warehouse's identity is not pinned in `project/targets.json`, which is the omission that let three stale pointers look authoritative for a month. Pinning it needs the live endpoint named — an owner-assisted verification.
+**The purge, done and verified** (2026-10-22, through `/api/db-push?action=purge` after PR #197 merged):
+
+| | before | after |
+| --- | --- | --- |
+| events | 20,726 | **15,092** |
+| visitors | 483 | **349** |
+| sessions | 833 | **556** |
+| properties | 15 | **1** |
+
+Deleted: 5,634 events, 277 session rows, 134 visitor rows, and all 23 DynamoDB journal items — the journal held nothing but the retired properties, so the nightly repair cannot resurrect them. `jaytibirthday.in`'s 15,092 events are untouched, and the read path now refuses the retired properties (`?site=jaytipargal.tech`, `?site=jaytipargal.com` and `?site=jbt` all answer 400).
+
+**One thing the purge exposed.** The migration file could not be applied to a *fresh* database: `events`, `sessions` and `visitors` are created by the sibling repository's migrations (001–003), so a database with only this repository's schema has no such tables, and a plain `DELETE` against them fails with `42P01`. That failed the migration proof, and with it the evidence job — so the newly deployed revision could not publish a receipt and both evidence-backed rows went unproven with the honest reason *"no CI evidence has been published for …"*. PR #198 makes the delete check that each table exists before it touches it, and re-pins the subject digest.
 
 
 
