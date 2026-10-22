@@ -76,8 +76,9 @@ jobs:
             if (!r.ok) throw new Error(url + ' -> HTTP ' + r.status + ' ' + text.slice(0, 300));
             return JSON.parse(text);
           };
-          const projectId = 'fancy-cloud-99501540';
-          const branches = (await json(API + '/projects/' + projectId + '/branches')).branches || [];
+          const orgId = process.env.NEON_ORG_ID || 'org-cold-lake-91548510';
+          const projects = (await json(API + '/projects?org_id=' + orgId)).projects || [];
+          if (!projects.length) throw new Error('the API key sees no project in ' + orgId);
           const live = await fetch('https://jaytipargal.tech/api/db-push?action=counts', {
             headers: { 'x-db-admin-key': process.env.DB_ADMIN_KEY },
           });
@@ -89,9 +90,9 @@ jobs:
           // The warehouse is live, so its counts move between the two reads.
           // The target is the branch whose PROPERTY NAMES are the same and
           // whose totals agree to within a few rows of drift — not an exact
-          // match, which no live database can produce. The branch the
-          // deployed application does NOT read is off by thousands of rows,
-          // so the drift tolerance cannot confuse the two.
+          // match, which no live database can produce. A branch that is not
+          // the one the deployed application reads is off by thousands of
+          // rows, so the drift tolerance cannot confuse the two.
           const same = (m) => {
             const names = [...m.keys()].sort().join(',');
             const theirNames = [...theirs.keys()].sort().join(',');
@@ -104,51 +105,55 @@ jobs:
 
           let found = null;
           const pg = (await import('pg')).default;
-          for (const b of branches) {
-            // Every role the branch has, and the connection URI for each. The
-            // password comes back in the URI; it is used, never printed. A role
-            // that cannot read the events table is skipped rather than
-            // accepted: the first role is often a read-only one, and the role
-            // that owns the warehouse is the one that can delete from it.
-            let roles = [];
-            for (const rolesUrl of [
-              API + '/projects/' + projectId + '/branches/' + b.id + '/roles',
-              API + '/projects/' + projectId + '/roles?branch_id=' + b.id,
-            ]) {
-              try { roles = (await json(rolesUrl)).roles || []; } catch { continue; }
-              if (roles.length) break;
-            }
-            if (!roles.length) { console.error('branch ' + b.id + ': no role could be listed'); continue; }
-            for (const role of roles) {
-              let uri = null;
-              try {
-                const c = await json(API + '/projects/' + projectId + '/connection_uri?branch=' + b.id + '&database_name=neondb&role_name=' + encodeURIComponent(role.name));
-                if (c && c.uri) uri = c.uri;
-              } catch { continue; }
-              if (!uri) continue;
-              const client = new pg.Client({ connectionString: uri, ssl: { rejectUnauthorized: true } });
-              let counts = null;
-              try {
-                await client.connect();
-                const r = await client.query('select site, count(*)::int n from events group by site order by site');
-                counts = new Map(r.rows.map((x) => [x.site, x.n]));
-              } catch (e) {
-                console.error('branch ' + b.id + ' role ' + role.name + ': ' + String(e.message).slice(0, 90));
-              } finally { try { await client.end(); } catch { /* already closed */ } }
-              if (!counts) continue;
-              console.error('branch ' + b.id + ' (' + b.name + ') as ' + role.name + ': ' + counts.size + ' site(s), matches the application: ' + same(counts));
-              if (!found && same(counts)) found = { branch: b, role: role.name, uri, counts };
+          for (const p of projects) {
+            let branches = [];
+            try { branches = (await json(API + '/projects/' + p.id + '/branches')).branches || []; } catch { continue; }
+            for (const b of branches) {
+              // Every role the branch has, and the connection URI for each. The
+              // password comes back in the URI; it is used, never printed. A
+              // role that cannot read the events table is skipped rather than
+              // accepted: the first role is often a read-only one, and the role
+              // that owns the warehouse is the one that can delete from it.
+              let roles = [];
+              for (const rolesUrl of [
+                API + '/projects/' + p.id + '/branches/' + b.id + '/roles',
+                API + '/projects/' + p.id + '/roles?branch_id=' + b.id,
+              ]) {
+                try { roles = (await json(rolesUrl)).roles || []; } catch { continue; }
+                if (roles.length) break;
+              }
+              if (!roles.length) { console.error('project ' + p.id + ' branch ' + b.id + ': no role could be listed'); continue; }
+              for (const role of roles) {
+                let uri = null;
+                try {
+                  const c = await json(API + '/projects/' + p.id + '/connection_uri?branch=' + b.id + '&database_name=neondb&role_name=' + encodeURIComponent(role.name));
+                  if (c && c.uri) uri = c.uri;
+                } catch { continue; }
+                if (!uri) continue;
+                const client = new pg.Client({ connectionString: uri, ssl: { rejectUnauthorized: true } });
+                let counts = null;
+                try {
+                  await client.connect();
+                  const r = await client.query('select site, count(*)::int n from events group by site order by site');
+                  counts = new Map(r.rows.map((x) => [x.site, x.n]));
+                } catch (e) {
+                  console.error('project ' + p.id + ' branch ' + b.id + ' role ' + role.name + ': ' + String(e.message).slice(0, 90));
+                } finally { try { await client.end(); } catch { /* already closed */ } }
+                if (!counts) continue;
+                console.error('project ' + p.id + ' branch ' + b.id + ' (' + b.name + ') as ' + role.name + ': ' + counts.size + ' site(s), matches the application: ' + same(counts));
+                if (!found && same(counts)) found = { project: p, branch: b, role: role.name, uri, counts };
+              }
             }
           }
-          if (!found) throw new Error('no branch of the project holds the warehouse the deployed application reads');
-          console.error('target verified: branch ' + found.branch.id + ' (' + found.branch.name + ')');
+          if (!found) throw new Error('no branch of any project in ' + orgId + ' holds the warehouse the deployed application reads');
+          console.error('target verified: project ' + found.project.id + ', branch ' + found.branch.id + ' (' + found.branch.name + ') as ' + found.role);
           writeFileSync('/tmp/target.json', JSON.stringify({
-            project_id: projectId, branch_id: found.branch.id, branch_name: found.branch.name,
-            uri: found.uri,
+            project_id: found.project.id, branch_id: found.branch.id, branch_name: found.branch.name,
+            role: found.role, uri: found.uri,
             sites: [...theirs].map(([site, n]) => ({ site, n })),
           }));
           EOF
-          node -e "const t=require('/tmp/target.json'); console.log('branch ' + t.branch_id + ' (' + t.branch_name + ')'); console.log('uri ' + new URL(t.uri).host + '/' + new URL(t.uri).pathname);"
+          node -e "const t=require('/tmp/target.json'); console.log('project ' + t.project_id + ', branch ' + t.branch_id + ' (' + t.branch_name + ') as ' + t.role); console.log('uri ' + new URL(t.uri).host + '/' + new URL(t.uri).pathname);"
 
       - name: Show what will be deleted
         run: |
