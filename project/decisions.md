@@ -483,3 +483,15 @@ So the purge is an action on `/api/db-push` — behind the credential gate the r
 **The invariant, in one line:** the warehouse holds `jaytibirthday.in` and nothing else; a beacon from any other host records nothing; a row that cannot be attributed is skipped and counted; a read of an untracked property is refused.
 
 The live warehouse's identity is still not pinned in `project/targets.json`, which is the omission that let three stale pointers look authoritative for a month. Pinning it needs the live endpoint named, and that is an owner-assisted verification.
+
+### D-32: ASN / network-org labels are added to R1 as an owner-approved scope addition (opencode session, 2026-10-27)
+
+The visitor drawer printed `unattributed network: <ip>` for every visitor, because nothing anywhere resolved an address to its ASN or organization — the warehouse's `asn_org` column exists and is read by `db-api` and `db.html`, but no writer has ever filled it, and the trackers never captured an ASN. The owner asked for names instead, was shown a preview rendered with the shipped drawer code, and answered **YES** to the batched question, which is the scope amendment this decision records: it changes D-16 ("R1 = stabilize and harden, no new features") for this feature only. The durable approval is `project/approvals/2026-10-27-asn-network-labels.md` on `project-state`.
+
+**The technical choice (mine, per contract rule 15): read-time enrichment, not an ingest column.** `Backend/lib/ip-intel.js` resolves each unique address when the drawer opens — `ipwho.is` first, `ipinfo.io` as fallback — with a 1.5 s timeout, a 2.5 s overall budget, deduplication, a 7-day per-instance cache, and private/reserved addresses (`10/8`, `127/8`, `169.254/16`, `100.64/10`, `172.16/12`, `192.168/16`, CGNAT, `::1`, `fc00::/7`, `fe80::/10`, multicast) never sent anywhere. It was chosen over writing `asn_org` at ingest because that alternative needs a production-data backfill of 15,092 rows through the migration pipeline — a much larger, harder-to-reverse change for the same visible result. Read-time enrichment also fixes historical rows, which an ingest column would not without the backfill.
+
+**What it touches:** `Backend/visitor.js`, `Backend/jp-visitor.js` (each gains one enrichment call before the summary and projection are built) and one new test suite. No schema change, no database write, no ingest change, no backfill.
+
+**Egress, accepted by the YES:** unique visitor IPs are sent to `ipwho.is` (fallback `ipinfo.io`) — two public geolocation/ASN services, no key, no storage on our side, cached per warm instance. If the owner later wants zero third-party egress, the ingest-column route above is the alternative and is a reviewed data change.
+
+**Rollback:** revert the merge commit. No data is written, so there is nothing to undo beyond the code.
