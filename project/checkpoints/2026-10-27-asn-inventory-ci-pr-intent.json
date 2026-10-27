@@ -1,0 +1,30 @@
+{
+  "operation": "asn-inventory-ci-pr-20261027",
+  "kind": "intent",
+  "contractRules": ["10", "11", "12"],
+  "recordedAt": "2026-10-27T13:00:00+05:30",
+  "ownerApproval": "project/approvals/2026-10-27-asn-inventory-ci.md (owner: 'add it')",
+  "identity": {
+    "actor": "opencode session, author role (recorded in project/ACCESS.md)",
+    "githubLogin": "eka-auto for push/PR; @jaytipargal is the code owner for review of the workflow file",
+    "target": "eka-auto/jpbir (repository id 1350770272, matches project/targets.json)"
+  },
+  "action": {
+    "type": "branch-and-pull-request",
+    "branch": "feat/asn-inventory-ci",
+    "base": "main",
+    "files": [
+      "Database/scripts/asn-inventory.mjs (new, SELECT-only)",
+      ".github/workflows/asn-inventory.yml (new workflow: workflow_dispatch + push-to-main paths filter)",
+      "_shared/tests/asn-inventory.test.mjs (new contract suite)"
+    ],
+    "changesProductionData": false,
+    "schemaChange": false,
+    "pipelineChange": true,
+    "pipelineChangeJustification": "contract rule 12 satisfied by this reviewed PR; new workflow only, no existing workflow modified",
+    "mergeRequiresOwnerReview": true
+  },
+  "testEvidence": "asn-inventory 6/6; guard path run locally exits 1 with DATABASE_URL unset; ip-intel 26/26; visitor-enrichment 5/5; full npm test 59/62 (three known Windows-checkout failures only)",
+  "rollback": "close the PR or revert the merge; no data written",
+  "receipt": "pending"
+}
