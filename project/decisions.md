@@ -570,7 +570,7 @@ node .github/scripts/repoint-warehouse-secrets.mjs --yes
 
 Until it runs, the dry-run job fails its identity check - which is the enforcement working, and not a fault in it.
 
-## D-38 - The repoint was carried out, and the dry run proves it (2026-10-27)
+### D-38: The repoint was carried out, and the dry run proves it (Cline session, 2026-10-27)
 
 The paragraph above left one command for the owner. It has now run, and the result is what
 D-36 was designed to produce: the repository's credential and the database production reads
