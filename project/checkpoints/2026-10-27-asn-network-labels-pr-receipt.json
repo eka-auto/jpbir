@@ -1,0 +1,31 @@
+{
+  "operation": "asn-network-labels-pr-20261027",
+  "kind": "receipt",
+  "contractRules": ["10"],
+  "recordedAt": "2026-10-27T06:47:54+05:30",
+  "intent": "project/checkpoints/2026-10-27-asn-network-labels-pr-intent.json",
+  "outcome": "completed",
+  "pullRequest": {
+    "number": 201,
+    "url": "https://github.com/eka-auto/jpbir/pull/201",
+    "repository": "eka-auto/jpbir",
+    "branch": "feat/asn-network-labels",
+    "base": "main",
+    "headCommit": "2a0612aa215169ebd812cf0df619ed2e3b534427",
+    "title": "feat(analytics): resolve ASN and network org for the visitor drawer",
+    "reviewDecision": "REVIEW_REQUIRED",
+    "mergeable": "MERGEABLE"
+  },
+  "stateRecords": {
+    "approvalAndIntent": "project-state 9d89649",
+    "branch": "project-state"
+  },
+  "ciOnOpen": {
+    "lintAndTest": "pending",
+    "securityScan": "pending",
+    "codeQuality": "pending",
+    "vercelPreview": "pass",
+    "note": "Checks were still running at receipt time; a later receipt may be appended when they settle."
+  },
+  "merge": "awaiting owner review (contract: merge requires owner approval; no agent shell deploys)"
+}
