@@ -44,11 +44,25 @@ check('the script reads its target from the manifest', /findTarget\(readManifest
 // usually Windows: npm installs the Neon CLI as `neon.cmd` there, and Node
 // refuses to spawn a `.cmd` without a shell, so the Linux-only invocation died
 // with ENOENT before it ever reached Neon.
-const onWindows = neonInvocation('win32');
-const onLinux = neonInvocation('linux');
-check('the Windows invocation uses the .cmd the installer writes', onWindows.command === 'neon.cmd' && onWindows.options.shell === true, JSON.stringify(onWindows));
-check('the elsewhere invocation calls neon directly, without a shell', onLinux.command === 'neon' && !onLinux.options.shell, JSON.stringify(onLinux));
-check('the connection string comes through the platform invocation', /neonInvocation\(\)/.test(source) && !/run\('neon',\s*args\)/.test(source));
+const NEON_ARGS = ['connection-string', '--project-id', 'bitter-glade-72523152', '--database-name', 'jpbir_live', '--pooled'];
+const onWindows = neonInvocation(NEON_ARGS, 'win32');
+const onLinux = neonInvocation(NEON_ARGS, 'linux');
+check(
+  'the Windows invocation uses the .cmd the installer writes',
+  onWindows.command === ['neon.cmd', ...NEON_ARGS].join(' ') && onWindows.options.shell === true,
+  JSON.stringify(onWindows),
+);
+check(
+  'the Windows invocation carries its arguments in the command string, so shell: true gets no args array',
+  Array.isArray(onWindows.args) && onWindows.args.length === 0,
+  JSON.stringify(onWindows.args),
+);
+check(
+  'the elsewhere invocation calls neon directly, without a shell',
+  onLinux.command === 'neon' && onLinux.args.join(' ') === NEON_ARGS.join(' ') && !onLinux.options.shell,
+  JSON.stringify(onLinux),
+);
+check('the connection string comes through the platform invocation', /neonInvocation\(args\)/.test(source) && !/run\('neon',\s*args\)/.test(source));
 
 // A Neon API key belongs to one organization. The mirror and the source
 // projects are in different ones, so the wrong key used to fail with a bare

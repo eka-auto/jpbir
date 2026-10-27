@@ -66,13 +66,27 @@ function run(command, args, options = {}) {
  *
  * npm installs the CLI as `neon.cmd` and `neon.ps1` on Windows, and Node
  * refuses to spawn a `.cmd` without a shell, so `spawnSync('neon', ...)` fails
- * with ENOENT there while working on Linux and macOS. Exported so the
- * difference can be checked without running the CLI.
+ * with ENOENT there while working on Linux and macOS.
+ *
+ * On Windows the arguments are joined into the command string rather than
+ * passed as an array. `shell: true` with a non-empty `args` emits DEP0190 -
+ * the arguments are concatenated, not escaped - and this command is person-run,
+ * so the warning would land in the owner's terminal for no gain. Joining the
+ * arguments is only safe because `assertPlainIdentifier` refuses every value
+ * that is not a plain identifier before it can reach the shell; the guard is
+ * what keeps this form honest, not the quoting.
+ *
+ * Exported so both forms can be checked without running the CLI.
  */
-export function neonInvocation(platform = process.platform) {
-  return platform === 'win32'
-    ? { command: 'neon.cmd', options: { shell: true } }
-    : { command: 'neon', options: {} };
+export function neonInvocation(args = [], platform = process.platform) {
+  if (platform === 'win32') {
+    return {
+      command: ['neon.cmd', ...args].join(' '),
+      args: [],
+      options: { shell: true },
+    };
+  }
+  return { command: 'neon', args, options: {} };
 }
 
 /**
@@ -118,10 +132,10 @@ export function connectionString(target, { pooled }) {
     '--role-name', assertPlainIdentifier(target.role || 'neondb_owner', 'role'),
   ];
   if (pooled) args.push('--pooled');
-  const invocation = neonInvocation();
+  const invocation = neonInvocation(args);
   let out;
   try {
-    out = run(invocation.command, args, invocation.options);
+    out = run(invocation.command, invocation.args, invocation.options);
   } catch (error) {
     throw explainNeonFailure(error, target);
   }
