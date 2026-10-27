@@ -73,12 +73,25 @@ function embedToV4(groups) {
 export function normalizeIp(value) {
   let s = String(value == null ? '' : value).trim().toLowerCase();
   if (!s || s === 'unknown') return null;
-  if (s.indexOf('.') !== -1 && s.indexOf(':') !== -1) {
+  const zone = s.indexOf('%');
+  if (zone !== -1) s = s.slice(0, zone);
+  if (s.indexOf(':') !== -1) {
     const groups = expandIpv6(s);
-    const embedded = groups && embedToV4(groups);
-    if (embedded) return embedded;
+    if (groups) {
+      const mapped = groups[0] === 0 && groups[1] === 0 && groups[2] === 0 &&
+        groups[3] === 0 && groups[4] === 0 && groups[5] === 0xffff;
+      if (s.indexOf('.') !== -1 || mapped) {
+        const embedded = embedToV4(groups);
+        if (embedded) return embedded;
+      }
+    }
+    return s;
   }
-  if (s.startsWith('::ffff:') && !s.slice(7).includes(':')) s = s.slice(7);
+  const parts = s.split('.');
+  if (parts.length === 4 && parts.every(p => /^[0-9]{1,3}$/.test(p))) {
+    const nums = parts.map(Number);
+    if (nums.every(n => n <= 255)) return nums.join('.');
+  }
   return s;
 }
 
@@ -88,6 +101,13 @@ function isNonPublic(ip) {
     if (!groups) return true;
     const embedded = embedToV4(groups);
     if (embedded) return isNonPublic(embedded);
+    if (groups[0] === 0x0064 && groups[1] === 0xff9b &&
+      groups[2] === 0 && groups[3] === 0 && groups[4] === 0 && groups[5] === 0) {
+      return isNonPublic(dotted(groups[6], groups[7]));
+    }
+    if (groups[0] === 0x2002) return isNonPublic(dotted(groups[1], groups[2]));
+    if (groups[0] === 0x2001 && groups[1] === 0x0db8) return true;
+    if (groups[0] === 0x0100 && groups[1] === 0 && groups[2] === 0 && groups[3] === 0) return true;
     if (groups[0] >= 0xff00) return true;
     if ((groups[0] & 0xfe00) === 0xfc00) return true;
     if ((groups[0] & 0xffc0) === 0xfe80) return true;
@@ -106,7 +126,10 @@ function isNonPublic(ip) {
   if (a === 169 && b === 254) return true;
   if (a === 172 && b >= 16 && b <= 31) return true;
   if (a === 192 && b === 168) return true;
+  if (a === 192 && b === 0 && nums[2] === 2) return true;
+  if (a === 198 && b === 51 && nums[2] === 100) return true;
   if (a === 198 && (b === 18 || b === 19)) return true;
+  if (a === 203 && b === 0 && nums[2] === 113) return true;
   if (a >= 224) return true;
   return false;
 }
@@ -156,10 +179,11 @@ async function fetchJson(url, fetchImpl, deadline) {
 }
 
 async function lookupRemote(ip, fetchImpl, deadline) {
-  // An attempt that was aborted (timeout or budget) told us nothing about the
-  // address: it must never be recorded as a completed failure, or the one-hour
-  // negative cache would hide the address from every later drawer open.
-  let aborted = false;
+  // Anything that stops before the provider gives a usable answer - abort,
+  // HTTP fault, DNS failure, unparseable body - told us nothing about the
+  // address and must never become the one-hour negative cache entry. Only a
+  // provider that ANSWERED with no usable data counts as a completed failure.
+  let uninformative = false;
   try {
     const body = await fetchJson(
       'https://ipwho.is/' + encodeURIComponent(ip) + '?fields=success,connection',
@@ -174,7 +198,7 @@ async function lookupRemote(ip, fetchImpl, deadline) {
     }
   } catch (err) {
     if (isDeadline(err)) return undefined;
-    if (isAbort(err)) aborted = true;
+    uninformative = true;
   }
 
   try {
@@ -185,24 +209,53 @@ async function lookupRemote(ip, fetchImpl, deadline) {
     );
     const parsed = parseAsnOrg(body && body.org);
     if (parsed && (parsed.asn != null || parsed.asOrganization)) return parsed;
+    // A parsed 200 with no org at all is a completed "this provider has
+    // nothing", unless the other attempt already failed uninformatively.
   } catch (err) {
     if (isDeadline(err)) return undefined;
-    if (isAbort(err)) aborted = true;
+    uninformative = true;
   }
 
-  return aborted ? undefined : null;
+  return uninformative ? undefined : null;
 }
+
+const pending = globalThis.__jpIpIntelPending || (globalThis.__jpIpIntelPending = new Map());
 
 export async function lookupIp(value, opts = {}) {
   const ip = normalizeIp(value);
   if (!ip || isNonPublic(ip)) return null;
   const cached = readCache(ip);
   if (cached !== undefined) return cached;
-  const deadline = opts.deadline || Date.now() + 2 * LOOKUP_TIMEOUT_MS;
-  const result = await lookupRemote(ip, opts.fetch || globalThis.fetch, deadline);
-  if (result === undefined) return null;
-  writeCache(ip, result, result ? CACHE_TTL_MS : NEGATIVE_TTL_MS);
-  return result;
+  const inFlight = pending.get(ip);
+  if (inFlight) {
+    // The joiner keeps its OWN deadline: waiting on someone else's work must
+    // not outlast this caller's budget. Whoever is owed the result on the
+    // original promise still gets it - only the late joiner may walk away.
+    const deadline = opts.deadline || Date.now() + 2 * LOOKUP_TIMEOUT_MS;
+    let timer;
+    const timeout = new Promise(resolve => {
+      timer = setTimeout(() => resolve(null), Math.max(0, deadline - Date.now()));
+      if (typeof timer.unref === 'function') timer.unref();
+    });
+    try {
+      return await Promise.race([inFlight, timeout]);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+  const work = (async () => {
+    const deadline = opts.deadline || Date.now() + 2 * LOOKUP_TIMEOUT_MS;
+    const result = await lookupRemote(ip, opts.fetch || globalThis.fetch, deadline);
+    if (result === undefined) return null;
+    writeCache(ip, result, result ? CACHE_TTL_MS : NEGATIVE_TTL_MS);
+    return result;
+  })();
+  pending.set(ip, work);
+  try {
+    return await work;
+  } finally {
+    pending.delete(ip);
+  }
 }
 
 export async function resolveIps(values, opts = {}) {
@@ -220,7 +273,6 @@ export async function resolveIps(values, opts = {}) {
 
   async function run() {
     while (index < ips.length) {
-      if (Date.now() >= deadline) return;
       const ip = ips[index++];
       const intel = await lookupIp(ip, { ...opts, deadline }).catch(() => null);
       if (intel) out.set(ip, intel);
@@ -228,6 +280,11 @@ export async function resolveIps(values, opts = {}) {
   }
 
   await Promise.all(Array.from({ length: Math.min(LOOKUP_CONCURRENCY, ips.length) }, run));
+  if (opts.stats && typeof opts.stats === 'object') {
+    opts.stats.attempted = ips.length;
+    opts.stats.resolved = out.size;
+    opts.stats.over_budget = ips.length > 0 && Date.now() >= deadline;
+  }
   return out;
 }
 
