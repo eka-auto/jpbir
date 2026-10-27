@@ -189,7 +189,8 @@ export default async function handler(req, res) {
     )).rows;
 
     const events = rows.map(asEvent);
-    await enrichEvents(events);
+    const intelStats = { attempted: 0, resolved: 0, over_budget: false };
+    await enrichEvents(events, { stats: intelStats });
 
     return res.status(200).json({
       success: true,
@@ -197,6 +198,7 @@ export default async function handler(req, res) {
       partial: false,
       source: 'postgres',
       query: { visitor, session },
+      intel: intelStats,
       summary: summarize(events, visitor),
       events: events.map(projectEvent),
     });

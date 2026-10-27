@@ -67,7 +67,8 @@ export default async function handler(req, res) {
       });
     }
 
-    const intel = await resolveIps([...ips]);
+    const stats = { attempted: 0, resolved: 0, over_budget: false };
+    const intel = await resolveIps([...ips], { stats });
     const intelFor = (ip) => intel.get(normalizeIp(ip)) || null;
     if (latestNetwork) latestNetwork = applyIntel(latestNetwork, intelFor(latestNetwork.ip));
 
@@ -75,6 +76,7 @@ export default async function handler(req, res) {
       success: true,
       source: 'neon',
       partial: false,
+      intel: stats,
       query: { visitor: visitor || null, session: session || null },
       summary: {
         visitor_id: visitor || events[0]?.visitor_id || null,
