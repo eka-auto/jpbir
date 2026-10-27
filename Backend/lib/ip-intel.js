@@ -227,7 +227,22 @@ export async function lookupIp(value, opts = {}) {
   const cached = readCache(ip);
   if (cached !== undefined) return cached;
   const inFlight = pending.get(ip);
-  if (inFlight) return inFlight;
+  if (inFlight) {
+    // The joiner keeps its OWN deadline: waiting on someone else's work must
+    // not outlast this caller's budget. Whoever is owed the result on the
+    // original promise still gets it - only the late joiner may walk away.
+    const deadline = opts.deadline || Date.now() + 2 * LOOKUP_TIMEOUT_MS;
+    let timer;
+    const timeout = new Promise(resolve => {
+      timer = setTimeout(() => resolve(null), Math.max(0, deadline - Date.now()));
+      if (typeof timer.unref === 'function') timer.unref();
+    });
+    try {
+      return await Promise.race([inFlight, timeout]);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
   const work = (async () => {
     const deadline = opts.deadline || Date.now() + 2 * LOOKUP_TIMEOUT_MS;
     const result = await lookupRemote(ip, opts.fetch || globalThis.fetch, deadline);

@@ -334,4 +334,27 @@ await t('resolveIps fills the stats block the API reports', async () => {
   assert.deepStrictEqual(stats, { attempted: 1, resolved: 1, over_budget: false });
 });
 
+await t('a joined lookup still returns by the joiner own deadline', async () => {
+  clearIpIntelCache();
+  urls.length = 0;
+  const slow = (url) => {
+    urls.push(url);
+    return new Promise(resolve => setTimeout(() => resolve({
+      ok: true, status: 200,
+      json: async () => ({ success: true, connection: { asn: 133275, org: 'Slow Net' } })
+    }), 700));
+  };
+  const started = Date.now();
+  const first = lookupIp('4.4.4.4', { fetch: slow, deadline: Date.now() + 2000 });
+  await new Promise(resolve => setTimeout(resolve, 50));
+  const second = await lookupIp('4.4.4.4', { fetch: slow, deadline: Date.now() + 120 });
+  const elapsed = Date.now() - started;
+  assert.strictEqual(second, null, 'the joiner walks away at its own deadline');
+  assert.ok(elapsed < 400, 'the joiner returned near 120ms, took ' + elapsed + 'ms');
+  assert.strictEqual(urls.length, 1, 'still exactly one in-flight request');
+  const firstResult = await first;
+  assert.strictEqual(firstResult && firstResult.asn, 133275, 'the original caller is undisturbed');
+  assert.strictEqual(urls.length, 1);
+});
+
 console.log(`\n${pass} passed`);
