@@ -1,0 +1,35 @@
+name: ASN inventory
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'Database/scripts/asn-inventory.mjs'
+      - 'Backend/lib/ip-intel.js'
+      - '.github/workflows/asn-inventory.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  inventory:
+    name: Read-only warehouse ASN counts
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24.x'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Inventory stored ASN per site
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: node Database/scripts/asn-inventory.mjs
