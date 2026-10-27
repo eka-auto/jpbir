@@ -10,7 +10,7 @@ import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { buildSecretPlan, describePlan } from '../../.github/scripts/repoint-warehouse-secrets.mjs';
+import { buildSecretPlan, describePlan, assertPlainIdentifier, explainNeonFailure, neonInvocation } from '../../.github/scripts/repoint-warehouse-secrets.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 let failures = 0;
@@ -39,6 +39,46 @@ check('the script hands the value to gh on standard input', /input:\s*value/.tes
 check('the script refuses to run without an explicit --yes', /--yes/.test(source) && /process\.exit\(1\)/.test(source));
 check('the script refuses an identity that may not write secrets', /permissions\.admin/.test(source) && /may not write secrets/.test(source));
 check('the script reads its target from the manifest', /findTarget\(readManifest\(\)/.test(source));
+
+// The command is run by a person on their own machine, and that machine is
+// usually Windows: npm installs the Neon CLI as `neon.cmd` there, and Node
+// refuses to spawn a `.cmd` without a shell, so the Linux-only invocation died
+// with ENOENT before it ever reached Neon.
+const onWindows = neonInvocation('win32');
+const onLinux = neonInvocation('linux');
+check('the Windows invocation uses the .cmd the installer writes', onWindows.command === 'neon.cmd' && onWindows.options.shell === true, JSON.stringify(onWindows));
+check('the elsewhere invocation calls neon directly, without a shell', onLinux.command === 'neon' && !onLinux.options.shell, JSON.stringify(onLinux));
+check('the connection string comes through the platform invocation', /neonInvocation\(\)/.test(source) && !/run\('neon',\s*args\)/.test(source));
+
+// A Neon API key belongs to one organization. The mirror and the source
+// projects are in different ones, so the wrong key used to fail with a bare
+// "project not found" that named neither.
+const TARGET = {
+  project_id: 'bitter-glade-72523152',
+  organization_id: 'org-billowing-meadow-62228264',
+  branch_id: 'br-hidden-leaf-b8l1j76r',
+  database: 'jpbir_live',
+  role: 'neondb_owner',
+};
+const scoped = explainNeonFailure(new Error('neon.cmd connection-string failed: ERROR: project not found'), TARGET);
+check(
+  'a credential scoped to another organization names the organization to use',
+  scoped.message.includes('org-billowing-meadow-62228264') && /NEON_API_KEY/.test(scoped.message),
+  scoped.message,
+);
+const passedThrough = explainNeonFailure(new Error('the Neon CLI did not return a connection string'), TARGET);
+check('an unrelated failure is passed through unchanged', passedThrough.message === 'the Neon CLI did not return a connection string', passedThrough.message);
+
+// The Windows invocation goes through a shell, so an identifier carrying a
+// metacharacter would be interpreted rather than passed.
+let refused = false;
+try {
+  assertPlainIdentifier('jpbir_live; rm -rf /', 'database');
+} catch {
+  refused = true;
+}
+check('an identifier carrying a shell metacharacter is refused', refused);
+check('a plain identifier passes through unchanged', assertPlainIdentifier('jpbir_live', 'database') === 'jpbir_live');
 
 console.log(failures ? `\n${failures} check(s) failed.` : '\nWarehouse secret repoint verified.');
 process.exitCode = failures ? 1 : 0;

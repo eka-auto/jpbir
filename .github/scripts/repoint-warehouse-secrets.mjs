@@ -61,16 +61,70 @@ function run(command, args, options = {}) {
   return res.stdout || '';
 }
 
+/**
+ * How to invoke the Neon CLI on this platform.
+ *
+ * npm installs the CLI as `neon.cmd` and `neon.ps1` on Windows, and Node
+ * refuses to spawn a `.cmd` without a shell, so `spawnSync('neon', ...)` fails
+ * with ENOENT there while working on Linux and macOS. Exported so the
+ * difference can be checked without running the CLI.
+ */
+export function neonInvocation(platform = process.platform) {
+  return platform === 'win32'
+    ? { command: 'neon.cmd', options: { shell: true } }
+    : { command: 'neon', options: {} };
+}
+
+/**
+ * Identifiers from the manifest are used to build a command line, and on
+ * Windows that line goes through a shell. Neon's project, branch, database and
+ * role names are plain identifiers, so refuse anything that is not - a value
+ * carrying a shell metacharacter would otherwise be interpreted rather than
+ * passed.
+ */
+const PLAIN_IDENTIFIER = /^[A-Za-z0-9_.-]+$/;
+
+export function assertPlainIdentifier(value, label) {
+  const text = String(value ?? '');
+  if (!PLAIN_IDENTIFIER.test(text)) {
+    throw new Error(`${label} "${text}" is not a plain identifier - refusing to build a command line from it`);
+  }
+  return text;
+}
+
+/**
+ * Neon API keys belong to one organization, and a key for the wrong one fails
+ * with a bare "project not found". Say which project and which organization,
+ * and what to set, instead of leaving the operator to guess.
+ */
+export function explainNeonFailure(error, target) {
+  const detail = String(error && error.message ? error.message : error);
+  const scopeProblem = /project not found|not allowed to perform this action on the organization/i;
+  if (!scopeProblem.test(detail)) return error instanceof Error ? error : new Error(detail);
+  const org = target.organization_id ? ` (${target.organization_id})` : '';
+  return new Error(
+    `the Neon credential cannot see project ${target.project_id}. Neon API keys are scoped to one ` +
+      `organization, so run this with NEON_API_KEY set to a key for the organization that owns ` +
+      `project ${target.project_id}${org}. The CLI said: ${detail}`,
+  );
+}
+
 export function connectionString(target, { pooled }) {
   const args = [
     'connection-string',
-    '--project-id', target.project_id,
-    '--branch', target.branch_id,
-    '--database-name', target.database,
-    '--role-name', target.role || 'neondb_owner',
+    '--project-id', assertPlainIdentifier(target.project_id, 'project'),
+    '--branch', assertPlainIdentifier(target.branch_id, 'branch'),
+    '--database-name', assertPlainIdentifier(target.database, 'database'),
+    '--role-name', assertPlainIdentifier(target.role || 'neondb_owner', 'role'),
   ];
   if (pooled) args.push('--pooled');
-  const out = run('neon', args);
+  const invocation = neonInvocation();
+  let out;
+  try {
+    out = run(invocation.command, args, invocation.options);
+  } catch (error) {
+    throw explainNeonFailure(error, target);
+  }
   const url = out.split('\n').map((line) => line.trim()).find((line) => /^postgres(ql)?:\/\//.test(line));
   if (!url) throw new Error('the Neon CLI did not return a connection string');
   return url;
