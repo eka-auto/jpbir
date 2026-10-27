@@ -1,0 +1,46 @@
+{
+  "operation": "asn-inventory-ci-merge-20261027",
+  "kind": "receipt",
+  "contractRules": ["1", "10", "12"],
+  "recordedAt": "2026-10-27T12:55:00+05:30",
+  "intent": "project/checkpoints/2026-10-27-asn-inventory-ci-pr-intent.json",
+  "approval": "project/approvals/2026-10-27-asn-inventory-proceed-merge.md (owner: proceed)",
+  "outcome": "completed",
+  "pullRequest": {
+    "number": 204,
+    "state": "MERGED",
+    "mergedAt": "2026-10-27T07:09:38Z",
+    "mergedBy": "eka-auto",
+    "method": "squash",
+    "mergeCommit": "d6915e058e71d62f1363fd458489a08780350f6a",
+    "review": "APPROVED by @jaytipargal on head 414cf9f after eleven green checks and zero review threads (Vercel Agent Review passed clean); labelled self-review (contract rule 7, Internal tier D-1)",
+    "identityNote": "the branch's first push went out under jaytipargal by mistake; eka-auto re-pushed with an explicit empty commit (414cf9f) so last-push-approval could be satisfied by the code owner without any bypass"
+  },
+  "workflowRuns": {
+    "pushTrigger": { "id": 40465441508, "conclusion": "success", "duration": "15s" },
+    "manualDispatch": { "id": 40465480606, "conclusion": "success" }
+  },
+  "liveWarehouseEvidence": {
+    "database": "jpbir_live",
+    "role": "neondb_owner",
+    "columns": ["asn", "asn_org"],
+    "sites": [
+      { "site": "jaytibirthday.in", "total": 15681, "asn_n": 6134, "asn_org_n": 6134, "first_day": "2026-08-19", "last_day": "2026-10-27" }
+    ],
+    "totals": "6134/15681 rows carry stored asn (39.1%)",
+    "interpretation": "the live asn count equals the frozen neondb copy's count (6,134) while total rows grew from 14,557 to 15,681 - no new stored-ASN row has been written since that snapshot, so every recent row is attributed at READ time by ip-intel. The sibling ingest writer is historical, not active.",
+    "settles": "batch-2 question 2 remainder - no longer Blocked; D-32 addendum's live-count gap is answered by run log 40465441508"
+  },
+  "postMergeEvidence": {
+    "ciCdPipeline": "success (run 40465441486, 1m19s)",
+    "vercelJpbirOnMergeSha": "success - production built from d6915e05",
+    "aliasesVerified": ["jaytipargal.tech -> 200", "www.jaytipargal.tech -> 200", "jpbir.vercel.app -> 200"]
+  },
+  "parallelActivityNotOurs": {
+    "pullRequest": 205,
+    "title": "Project state",
+    "detail": "authored by eka-auto, approved by @jaytipargal, merged 2026-10-27T07:13:56Z OUTSIDE this session; it moved the project-state run files (tracker, approvals incl. today's, checkpoints, events) onto main through the normal gates. Recorded so the run history does not attribute it to this session; Release Readiness failed on its push, the known pre-existing S24 gate.",
+    "effect": "none on this operation - this session keeps writing run state to project-state as before"
+  },
+  "rollback": "revert d6915e05; workflow and script are additive; no data or schema change"
+}
