@@ -15,7 +15,16 @@ class DeadlineExceeded extends Error {
   }
 }
 
+class AttemptAborted extends Error {
+  constructor() {
+    super('lookup attempt aborted before the provider answered');
+    this.attemptAborted = true;
+  }
+}
+
 const isDeadline = (err) => err instanceof DeadlineExceeded || (err && err.deadlineExceeded === true);
+const isAbort = (err) => err instanceof AttemptAborted ||
+  (err && (err.name === 'TimeoutError' || err.name === 'AbortError'));
 
 function expandIpv6(ip) {
   let s = ip;
@@ -132,15 +141,25 @@ function writeCache(ip, value, ttl) {
 async function fetchJson(url, fetchImpl, deadline) {
   const remaining = deadline - Date.now();
   if (remaining < MIN_ATTEMPT_MS) throw new DeadlineExceeded();
-  const res = await fetchImpl(url, {
-    headers: { accept: 'application/json' },
-    signal: AbortSignal.timeout(Math.min(LOOKUP_TIMEOUT_MS, remaining))
-  });
+  let res;
+  try {
+    res = await fetchImpl(url, {
+      headers: { accept: 'application/json' },
+      signal: AbortSignal.timeout(Math.min(LOOKUP_TIMEOUT_MS, remaining))
+    });
+  } catch (err) {
+    if (isAbort(err)) throw new AttemptAborted();
+    throw err;
+  }
   if (!res.ok) throw new Error('HTTP ' + res.status);
   return res.json();
 }
 
 async function lookupRemote(ip, fetchImpl, deadline) {
+  // An attempt that was aborted (timeout or budget) told us nothing about the
+  // address: it must never be recorded as a completed failure, or the one-hour
+  // negative cache would hide the address from every later drawer open.
+  let aborted = false;
   try {
     const body = await fetchJson(
       'https://ipwho.is/' + encodeURIComponent(ip) + '?fields=success,connection',
@@ -155,6 +174,7 @@ async function lookupRemote(ip, fetchImpl, deadline) {
     }
   } catch (err) {
     if (isDeadline(err)) return undefined;
+    if (isAbort(err)) aborted = true;
   }
 
   try {
@@ -167,9 +187,10 @@ async function lookupRemote(ip, fetchImpl, deadline) {
     if (parsed && (parsed.asn != null || parsed.asOrganization)) return parsed;
   } catch (err) {
     if (isDeadline(err)) return undefined;
+    if (isAbort(err)) aborted = true;
   }
 
-  return null;
+  return aborted ? undefined : null;
 }
 
 export async function lookupIp(value, opts = {}) {

@@ -200,4 +200,17 @@ await t('the budget caps the whole run, and skipped addresses are not poisoned',
   assert.strictEqual(second.size, ips.length, 'addresses skipped by the budget resolve normally later');
 });
 
+await t('an aborted attempt is never recorded as a completed failure', async () => {
+  clearIpIntelCache();
+  urls.length = 0;
+  const aborting = (url) => {
+    urls.push(url);
+    return Promise.reject(Object.assign(new Error('aborted'), { name: 'TimeoutError' }));
+  };
+  assert.strictEqual(await lookupIp('7.7.7.7', { fetch: aborting }), null);
+  assert.strictEqual(urls.length, 2, 'both providers were tried');
+  assert.strictEqual(await lookupIp('7.7.7.7', { fetch: aborting }), null);
+  assert.strictEqual(urls.length, 4, 'an aborted lookup must not be negative-cached for an hour');
+});
+
 console.log(`\n${pass} passed`);
