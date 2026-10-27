@@ -297,23 +297,23 @@ test('a failed thread load says so, rather than claiming the chat is empty', asy
   await expect(body).not.toContainText('No message rows stored for this chat.');
 });
 
-test('Telegram panel is a second slot for the same client and the same data', async ({ page }) => {
+test('Telegram panel uses a separate source and keeps an honest empty state', async ({ page }) => {
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
   const seen = await messengerApi(page);
+  await page.route('**/api/jp-telegram*', route => {
+    seen.add('/api/jp-telegram');
+    return route.fulfill({json:{ok:true,migrated:true,chats:[],totals:{chats:0},runs:[]}});
+  });
   await page.goto('/');
   await page.locator('button[data-page="telegram"]').click();
 
   const panel = page.locator('#page-telegram');
   await expect(panel).toBeVisible();
-  // It is a copy of the WhatsApp client, so it lists the same chats.
-  await expect(panel.locator('#tgChatList .mess-chat')).toHaveCount(2);
-  // The headline is the readable count, not a bare row count.
-  await expect(panel.locator('#tgSplit .mess-split-cell.readable .n')).toHaveText('2');
-  // It reads the same endpoints as WhatsApp. There is no second backend and
-  // no separate Telegram source: the slot is the client, not a new dataset.
-  expect(seen.has('/api/jp-whatsapp')).toBe(true);
-  expect(seen.has('/api/jp-telegram')).toBe(false);
+  await expect(panel.locator('#tgChatList .mess-chat')).toHaveCount(0);
+  await expect(panel.locator('#tgChatList')).toContainText('No Telegram records captured yet.');
+  expect(seen.has('/api/jp-whatsapp')).toBe(false);
+  expect(seen.has('/api/jp-telegram')).toBe(true);
   expect(errors).toEqual([]);
 });
 

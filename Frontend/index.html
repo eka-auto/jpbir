@@ -399,6 +399,7 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
   site posts to it from its own origin, cross-origin, and the mirror into
   Postgres is unaffected by anything here.
 -->
+<script src="/section-presentation.js"></script>
 </head>
 <body>
 <a class="skip-link" href="#main-content">Skip to Main Content</a>
@@ -683,15 +684,16 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
                                 <th>Type / model</th>
                                 <th>Status</th>
                                 <th>Last seen</th>
-                                <th>Fields</th>
+                                 <th>Source</th>
                             </tr></thead>
                             <tbody></tbody>
                         </table>
                     </div>
                 </div>
                 <div class="panel">
-                    <div class="panel-head"><div><h2>Complete Firestore payloads</h2><div class="hint">Raw decoded documents from the <code>devices</code> collection. Replaces on each poll — no cluttered history.</div></div></div>
-                    <div id="firestorePayloadList" class="payload-list"></div>
+                    <div class="panel-head"><div><h2>Current source values</h2><div class="hint">Readable source values. Updates replace the same record; unavailable sources retain their last successful observation.</div></div></div>
+                     <div id="firestorePayloadList" class="payload-list"></div>
+                     <div id="firestoreCurrentRows" class="table-wrap"></div>
                 </div>
                 <div class="panel">
                     <div class="panel-head">
@@ -767,7 +769,7 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
             <section class="page" id="page-telegram">
                 <div class="panel" style="margin-bottom:14px">
                     <div class="panel-head">
-                        <div><h2>Telegram</h2><div class="hint">The same client as WhatsApp, in a second slot. It reads the same live data &mdash; there is no separate Telegram capture on the box yet, so this shows the WhatsApp chats rather than a plausible-looking zero.</div></div>
+                        <div><h2>Telegram</h2><div class="hint">Telegram conversations from their own database tables. This section stays empty until real Telegram records arrive.</div></div>
                         <div style="display:flex;gap:8px;align-items:center"><span class="hint" id="tgStatus"></span><button id="tgRefresh" class="btn" type="button">Refresh</button></div>
                     </div>
                     <div id="tgSplit" class="mess-split"></div>
@@ -1016,7 +1018,24 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
     // snapshot lives on screen.
     var _fsTimer = null;
 
+    async function refreshCurrentSourceRows() {
+        var host = $('firestoreCurrentRows');
+        if (!host) return;
+        try {
+            var response = await fetch('/api/dashboard-sections?section=firestore', { headers: authHeaders() });
+            var data = await response.json();
+            if (!response.ok || !data.ok) throw new Error('Current source storage unavailable');
+            var source = (data.sections || []).filter(function(s){ return s.id === 'firestore'; })[0];
+            var observations = source ? source.observations : [];
+            var stale = !observations.length || observations.some(function(s){ return s.stale || !s.complete; });
+            host.innerHTML = '<p>' + (stale ? 'Last stored values — synchronization incomplete or stale' : 'Current stored source values') + '</p>' +
+                (data.rows || []).map(function(r){ return '<section><h3>' + esc(r.record_id) + '</h3><p>Source updated ' + esc(r.source_updated_at) + '</p>' + (r.media ? SectionPresentation.preview(r.media) : SectionPresentation.table(r.values)) + '</section>'; }).join('');
+            if (!(data.rows || []).length) host.innerHTML += '<p>No synchronized source records available.</p>';
+        } catch(e) { host.insertAdjacentHTML('afterbegin', '<p>Stored source refresh unavailable. Previous values retained.</p>'); }
+    }
+
     async function refreshFirestorePage() {
+        refreshCurrentSourceRows();
         var summary = $('firestoreSummary');
         var head = $('firestoreHead');
         var tbody = document.querySelector('#firestoreTable tbody');
@@ -1028,7 +1047,7 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
             // have no writers in the current pipeline; the real content lives
             // in Postgres wa_attachments/wa_messages, which the separate
             // /api/jp-live-content call renders below.
-            var res = await fetch('/api/jp-devices?full=1', { headers: authHeaders() });
+             var res = await fetch('/api/jp-devices', { headers: authHeaders() });
             var j = await res.json();
             if (!res.ok || j.success === false) {
                 throw new Error(j.error || ('HTTP ' + res.status));
@@ -1037,8 +1056,6 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
             var when = j.generated_at ? new Date(j.generated_at) : new Date();
 
             tbody.innerHTML = devices.map(function (d) {
-                var full = d.full_payload || {};
-                var fields = Object.keys(full).length;
                 var pill = d.live
                     ? '<span class="pill" style="background:rgba(62,142,78,.2);color:#A8D8B0">live</span>'
                     : '<span class="pill">offline</span>';
@@ -1047,7 +1064,7 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
                     '<td>' + esc((d.deviceType || '–') + ' · ' + (d.model || '')) + '</td>' +
                     '<td>' + pill + '</td>' +
                     '<td>' + esc(d.lastSeen || '–') + '</td>' +
-                    '<td>' + fields + ' field(s)</td>' +
+                     '<td>Firestore</td>' +
                     '</tr>';
             }).join('') || '<tr><td colspan="5" class="hint">no documents in Firestore</td></tr>';
 
@@ -1062,12 +1079,11 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
             } else {
                 var rendered = 0;
                 devices.forEach(function (d, i) {
-                    if (!d.full_payload) return;
                     payload.appendChild(renderLiveDevicePayload(d, rendered));
                     rendered++;
                 });
                 if (!rendered) {
-                    payload.innerHTML = '<div class="hint">devices returned but no full_payload — endpoint called without ?full=1</div>';
+                     payload.innerHTML = '<div class="hint">Source values unavailable</div>';
                 }
             }
 
@@ -1134,7 +1150,7 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
     // back to blob_url only for legacy public rows that predate the proxy.
     function waMediaSrc(a) {
         if (a && a.att_id && a.media_token) return '/api/wa-media?att_id=' + encodeURIComponent(a.att_id) + '&token=' + encodeURIComponent(a.media_token);
-        return (a && a.blob_url) || '';
+        return '';
     }
 
     // Attachment rows carry chat_id only, and that id is the export's own id
@@ -1183,49 +1199,7 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
         card.appendChild(head);
 
         var body = document.createElement('div');
-        var url = waMediaSrc(a);
-        var mime = (a.mime || '').toLowerCase();
-        var isImage = a.kind === 'image' || /^image\//.test(mime);
-        var isVideo = a.kind === 'video' || /^video\//.test(mime);
-        var isAudio = a.kind === 'audio' || a.kind === 'ptt' || /^audio\//.test(mime);
-        var isZip = /zip|compressed|application\/x-7z|application\/x-tar|application\/x-rar/.test(mime) || /\.(zip|7z|tar|gz|rar)$/i.test(a.file_name || '');
-
-        if (isImage && url) {
-            var img = document.createElement('img');
-            img.src = url;
-            img.loading = 'lazy';
-            img.style.cssText = 'width:100%;height:140px;object-fit:cover;border-radius:8px;background:rgba(200,122,30,.08);';
-            img.alt = a.file_name || 'image';
-            body.appendChild(img);
-        } else if (isVideo && url) {
-            var vid = document.createElement('video');
-            vid.src = url;
-            vid.controls = true;
-            vid.style.cssText = 'width:100%;max-height:180px;border-radius:8px;background:#000;';
-            body.appendChild(vid);
-        } else if (isAudio && url) {
-            var aud = document.createElement('audio');
-            aud.src = url;
-            aud.controls = true;
-            aud.style.cssText = 'width:100%;';
-            body.appendChild(aud);
-        } else if (url) {
-            // Documents, zips, everything else — inline preview isn't safe or
-            // useful, so a labeled download link stands in.
-            var doc = document.createElement('a');
-            doc.href = url;
-            doc.target = '_blank';
-            doc.rel = 'noopener';
-            doc.style.cssText = 'display:block;padding:14px;border:1px dashed #444;border-radius:8px;text-decoration:none;color:#F4E9DC;';
-            var icon = isZip ? '🗜️' : '📄';
-            doc.innerHTML = '<div style="font-size:22px">' + icon + '</div>' +
-                '<div style="margin-top:4px">' + esc(a.file_name || '(unnamed)') + '</div>' +
-                '<div class="hint" style="font-size:10.5px;margin-top:2px">' + esc([mime || 'unknown mime', fmtBytes(a.size_bytes)].filter(Boolean).join(' · ')) + '</div>' +
-                '<div class="hint" style="font-size:10.5px;margin-top:6px;color:#F0B968">Open / download →</div>';
-            body.appendChild(doc);
-        } else {
-            body.textContent = a.file_name || '(no blob_url)';
-        }
+        body.innerHTML = SectionPresentation.preview(a);
         card.appendChild(body);
 
         var foot = document.createElement('div');
@@ -1263,7 +1237,7 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
             if (!r.ok || j.ok === false) throw new Error(j.error || ('HTTP ' + r.status));
             grid.innerHTML = '';
             grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;';
-            (j.attachments || []).forEach(function (a) {
+            (j.attachments || []).filter(SectionPresentation.mediaKind).forEach(function (a) {
                 grid.appendChild(renderAttachmentCard(a));
             });
             // The cards name their chat from the WhatsApp inventory, which
@@ -2082,7 +2056,7 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
             ['Heartbeats', t.heartbeats, ''],
             ['Email opens', t.email_opens != null ? t.email_opens : '–', '']
         ].map(function (c) {
-            return '<div class="kpi"><div class="v">' + (c[1] == null ? 0 : c[1]) + '</div><div class="k">' + c[0] + '</div>' +
+            return '<div class="kpi"><div class="v">' + SectionPresentation.value(c[1]) + '</div><div class="k">' + c[0] + '</div>' +
                 (c[2] ? '<div class="sub">' + esc(c[2]) + '</div>' : '') + '</div>';
         }).join('');
 
@@ -2698,121 +2672,17 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
     }
 
     function renderLiveDevicePayload(d, index) {
-        var payload = d.full_payload || d;
-        var live = d.live != null ? d.live : payloadFirst(payload, ['online', 'liveDeviceVerified'], false);
-        var title = payloadFirst(payload, ['deviceDisplayName', 'deviceId', 'canonicalDeviceId'], d.deviceId || 'Device');
-        var details = document.createElement('details');
-        details.className = 'payload-card';
-        if (index === 0) details.open = true;
-        details.appendChild(payloadCardSummary(
-            title,
-            payloadFirst(payload, ['canonicalDeviceId', 'deviceId'], d.deviceId),
-            [
-                [live ? 'LIVE' : 'OFFLINE', live ? 'good' : 'bad'],
-                [payloadText(payloadFirst(payload, ['model'])), ''],
-                [payloadTime(payloadFirst(payload, ['lastSeen'], d.lastSeen)), '']
-            ]
-        ));
-        var body = document.createElement('div');
-        body.className = 'payload-card-body';
-        var stats = document.createElement('div');
-        stats.className = 'payload-stats';
-        payloadStat(stats, 'Status', live ? 'Live' : 'Offline');
-        payloadStat(stats, 'Model', payloadFirst(payload, ['model']));
-        payloadStat(stats, 'Battery', payloadFirst(payload, ['batteryLevel', 'battery']));
-        payloadStat(stats, 'Agent', payloadFirst(payload, ['agentVersion']));
-        payloadStat(stats, 'Last seen', payloadFirst(payload, ['lastSeen'], d.lastSeen), { time: true });
-        payloadStat(stats, 'Queue depth', d.commandQueueDepth != null ? d.commandQueueDepth : (payload.commandQueue ? Object.keys(payload.commandQueue).length : 0));
-        body.appendChild(stats);
-
-        var identity = payloadSection(body, 'Identity & runtime', 'Device identity, liveness, and daemon state');
-        payloadGrid(identity, [
-            ['Canonical device ID', payloadFirst(payload, ['canonicalDeviceId', 'deviceId'], d.deviceId), { mono: true }],
-            ['Display name', payloadFirst(payload, ['deviceDisplayName'])],
-            ['Manufacturer', payloadFirst(payload, ['manufacturer'])],
-            ['Model', payloadFirst(payload, ['model'])],
-            ['Device type', payloadFirst(payload, ['deviceType'])],
-            ['Android version', payloadFirst(payload, ['androidVersion'])],
-            ['Agent version', payloadFirst(payload, ['agentVersion']), { mono: true }],
-            ['Online', payloadFirst(payload, ['online'], live)],
-            ['Live device verified', payloadFirst(payload, ['liveDeviceVerified'])],
-            ['Status', payloadFirst(payload, ['status'])],
-            ['Source type', payloadFirst(payload, ['sourceType'])],
-            ['Connection method', payloadFirst(payload, ['connectionMethod'])],
-            ['Heartbeat auth', payloadFirst(payload, ['heartbeatAuth'])],
-            ['Last seen', payloadFirst(payload, ['lastSeen'], d.lastSeen), { time: true }],
-            ['Updated', payloadFirst(payload, ['updatedAt']), { time: true }],
-            ['Created', payloadFirst(payload, ['createdAt']), { time: true }]
-        ]);
-
-        var network = payloadFirst(payload, ['network']);
-        var networkSection = payloadSection(body, 'Network', 'Current connectivity and carrier information');
-        payloadGrid(networkSection, [
-            ['Public IP', payloadFirst(payload, ['publicIp']), { mono: true }],
-            ['Network type', payloadFirst(payload, ['networkType'])],
-            ['Carrier', payloadFirst(payload, ['carrier', 'carrierOrg'])],
-            ['Phone country', payloadFirst(payload, ['phoneCountry'])],
-            ['Phone number', payloadFirst(payload, ['devicePhoneNumber'])],
-            ['Connection', payloadFirst(payload, ['connectionMethod'])]
-        ]);
-        if (network && typeof network === 'object') {
-            var networkDetail = document.createElement('div');
-            networkDetail.className = 'payload-label';
-            networkDetail.style.marginTop = '11px';
-            networkDetail.textContent = 'Network diagnostics';
-            networkSection.appendChild(networkDetail);
-            appendPayloadTree(networkSection, network);
-        }
-        var info = payloadFirst(payload, ['info']);
-        if (info && typeof info === 'object') {
-            var infoDetail = document.createElement('div');
-            infoDetail.className = 'payload-label';
-            infoDetail.style.marginTop = '11px';
-            infoDetail.textContent = 'Device-reported network details';
-            networkSection.appendChild(infoDetail);
-            appendPayloadTree(networkSection, info);
-        }
-
-        var directSync = payloadFirst(payload, ['samsungS24DirectSync']);
-        var collection = payloadFirst(payload, ['samsungS24Collection']);
-        var cloudSync = payloadFirst(payload, ['samsungS24CloudSync']);
-        var collectionSummary = directSync || cloudSync || collection || payloadFirst(payload, ['collection']);
-        appendLiveContent(body, payload, directSync, collection, cloudSync);
-        if (collectionSummary !== undefined && collectionSummary !== null) {
-            var collectionSection = payloadSection(body, 'Collection summary', 'Data collected and uploaded by the daemon');
-            var collectionStats = document.createElement('div');
-            collectionStats.className = 'payload-stats';
-            payloadStat(collectionStats, 'Call logs', payloadCount(collectionSummary, ['callLogs', 'callLogsCount', 'calls']));
-            payloadStat(collectionStats, 'SMS messages', payloadCount(collectionSummary, ['sms', 'smsCount', 'messages']));
-            payloadStat(collectionStats, 'Contacts', payloadCount(collectionSummary, ['contacts', 'contactsCount']));
-            payloadStat(collectionStats, 'Location', payloadFirst(collectionSummary, ['location', 'locationStatus']));
-            payloadStat(collectionStats, 'Collected', payloadFirst(collectionSummary, ['collectedAt', 'syncedAt', 'updatedAt']), { time: true });
-            payloadStat(collectionStats, 'Upload status', payloadFirst(collectionSummary, ['status', 'uploadStatus', 'syncStatus']));
-            collectionSection.appendChild(collectionStats);
-            if (collection && typeof collection === 'object') {
-                var collectionDetail = document.createElement('div');
-                collectionDetail.className = 'payload-label';
-                collectionDetail.style.marginTop = '11px';
-                collectionDetail.textContent = 'Collection diagnostics';
-                collectionSection.appendChild(collectionDetail);
-                appendPayloadTree(collectionSection, collection);
-            }
-        }
-
-        appendCommandQueue(body, payloadFirst(payload, ['commandQueue']));
-
-        var known = {};
-        ['commandPriority', 'deviceType', 'lastVerifiedStateReason', 'canonicalDeviceId', 'connectionMethod', 'lastSeen',
-            'deviceDisplayName', 'commandId', 'batteryLevel', 'agentCommand', 'commandQueue', 'phoneNumberUpdatedAt',
-            'androidVersion', 'sourceType', 'publicIp', 'deviceId', 'staleAlert', 'forceSync', 'battery', 'cpuTemperature',
-            'carrier', 'agentVersion', 'lastNetworkCheck', 'wakeupSignal', 'commandPending', 'samsungS24DirectSync',
-            'createdAt', 'enrollment', 'liveDeviceVerified', 'info', 'status', 'devicePhoneNumber', 'resetStatus',
-            'heartbeatAuth', 'model', 'forceWakeup', 'heartbeat', 'networkType', 'syncRequestedAt', 'phoneCountry',
-            'online', 'updatedAt', 'manufacturer', 'carrierOrg', 'network', 'samsungS24Collection', 'samsungS24CloudSync',
-            'collection', 'browserHistory', 'browser_history', 'history', 'downloads', 'downloadedFiles', 'downloaded_files'].forEach(function (key) { known[key] = true; });
-        appendPayloadExtras(body, payload, known);
-        details.appendChild(body);
-        return details;
+        var card = document.createElement('section');
+        card.className = 'payload-card';
+        var values = {};
+        ['deviceId','model','deviceType','lastSeen','agentVersion','status','hostname','battery','batteryLevel'].forEach(function(k){
+            var v = d[k] != null ? d[k] : (d.full_payload || {})[k];
+            if (v !== undefined) values[k] = v;
+        });
+        // Only the existing server attestation verdict can label this device live.
+        values.connection = d.live === true ? 'Live' : 'Not verified live';
+        card.innerHTML = SectionPresentation.table(values);
+        return card;
     }
 
     /* ===== DEVICE HISTORY ===== */
@@ -3521,6 +3391,7 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
         });
     });
     /* ===== AGENT ===== */
+    var agentConversationId = crypto.randomUUID();
     function agentAdd(role, text) {
         var el = $('agentChat');
         var div = document.createElement('div');
@@ -3544,7 +3415,7 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
         fetch('/api/jp-agent', {
             method: 'POST',
             headers: authHeaders({ 'Content-Type': 'application/json' }),
-            body: JSON.stringify({ question: q })
+            body: JSON.stringify({ question: q, conversation_id: agentConversationId, request_id: crypto.randomUUID() })
         })
             .then(function (r) { return r.json().then(function (j) { return { status: r.status, body: j }; }); })
             .then(function (res) {

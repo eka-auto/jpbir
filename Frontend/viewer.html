@@ -217,6 +217,7 @@
         .page-head h1 { font-size: 22px; }
     }
 </style>
+<script src="/section-presentation.js"></script>
 </head>
 <body>
 
@@ -465,11 +466,7 @@
     // proxy, which redirects to a short-lived presigned URL. The legacy
     // fallback (public rows from before the proxy) is only ever an https URL,
     // so a stored value can never become a javascript: link.
-    function mediaSrc(a) {
-        if (a && a.att_id && a.media_token) return '/api/wa-media?att_id=' + encodeURIComponent(a.att_id) + '&token=' + encodeURIComponent(a.media_token);
-        var legacy = str(a && a.blob_url);
-        return /^https:\/\//i.test(legacy) ? legacy : '';
-    }
+    function mediaSrc(a) { return SectionPresentation.mediaSrc(a); }
 
     function chatInfo(a) {
         var id = a && a.chat_id != null ? String(a.chat_id) : '';
@@ -577,6 +574,8 @@
         } else if (mode === 'audio') {
             visual = '<div class="media media-audio"><div class="audio-label">' + esc(k === 'ptt' ? 'Voice note' : 'Audio') + (dur ? ' · ' + esc(dur) : '') + '</div>' +
                 '<audio controls preload="none" src="' + esc(url) + '" data-src="' + esc(url) + '" aria-label="' + esc(alt) + '"></audio></div>';
+        } else if (SectionPresentation.mediaKind(a) === 'pdf') {
+            visual = SectionPresentation.preview(a);
         } else {
             var t = docType(a);
             visual = '<div class="media media-doc"><div class="doc-icon' + (t.archive ? ' is-archive' : '') + '" aria-hidden="true"><span>' + esc(t.badge) + '</span></div>' +
@@ -804,7 +803,7 @@
         });
     }
     function render(j, askedDays) {
-        var rows = Array.isArray(j.attachments) ? j.attachments : [];
+         var rows = Array.isArray(j.attachments) ? j.attachments.filter(SectionPresentation.mediaKind) : [];
         var wd = toNum(j.window_days);
         state.items = rows.filter(function (a) { return a && typeof a === 'object'; });
         state.windowDays = wd > 0 ? wd : askedDays;

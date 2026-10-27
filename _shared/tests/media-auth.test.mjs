@@ -22,7 +22,7 @@ const index = readFileSync(join(ROOT, 'Frontend', 'index.html'), 'utf8');
 assert.match(media, /verifyMediaToken/);
 assert.doesNotMatch(viewer, /wa-media\?att_id=['"].*&key=/);
 assert.doesNotMatch(index, /wa-media\?att_id=['"].*&key=/);
-assert.match(viewer, /&token=/);
+assert.match(readFileSync(join(ROOT,'Frontend','section-presentation.js'),'utf8'), /&token=/);
 assert.match(index, /&token=/);
 
 console.log('media token authentication verified');

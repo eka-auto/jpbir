@@ -79,6 +79,7 @@
     .gate-box .send { width: 100%; padding: 11px; }
     .gate-err { color: var(--bad); font-size: 12.5px; min-height: 18px; margin-top: 8px; }
 </style>
+<script src="/section-presentation.js"></script>
 </head>
 <body>
 <a class="skip-link" href="#main-content">Skip to Main Content</a>
@@ -182,7 +183,8 @@
         node.appendChild(ol);
     }
 
-    function api(path, init) {
+     var agentConversationId = crypto.randomUUID();
+     function api(path, init) {
         init = init || {};
         init.headers = Object.assign({ 'x-stats-key': KEY }, init.headers || {});
         return fetch(path, init).then(function (res) {
@@ -300,7 +302,7 @@
         api('/agent/query', {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ query: q, use_rag: $('useRag').checked })
+            body: JSON.stringify({ query: q, use_rag: $('useRag').checked, conversation_id: agentConversationId, request_id: crypto.randomUUID() })
         }).then(function (r) {
             pending.remove();
             if (r.res.status === 401) { showGate('Your key was not accepted.'); add('err', 'Locked. Unlock and send again.'); return; }

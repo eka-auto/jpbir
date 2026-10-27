@@ -112,7 +112,7 @@ function dec(v) {
   if (!v) return null;
   if ('stringValue' in v) return v.stringValue;
   if ('booleanValue' in v) return v.booleanValue;
-  if ('integerValue' in v) return Number(v.integerValue);
+   if ('integerValue' in v) { const n=Number(v.integerValue); return Number.isSafeInteger(n)?n:String(v.integerValue); }
   if ('doubleValue' in v) return v.doubleValue;
   if ('timestampValue' in v) return v.timestampValue;
   if ('mapValue' in v) {
@@ -569,15 +569,15 @@ async function handleDevices(req, res) {
               `${base}/devices/${encodeURIComponent(d.deviceId)}/${encodeURIComponent(name)}?pageSize=${subLimit}`,
               { headers: { Authorization: `Bearer ${token}` } }
             );
-            if (!sr.ok) { perDevice[name] = []; return; }
+             if (!sr.ok) { perDevice[name] = null; return; }
             const sd = await sr.json();
             perDevice[name] = (sd.documents || []).map((doc) => {
-              const out = { id: (doc.name || '').split('/').pop() };
+               const out = { id: (doc.name || '').split('/').pop(), source_updated_at:doc.updateTime };
               for (const [k, v] of Object.entries(doc.fields || {})) out[k] = dec(v);
               return out;
             });
           } catch (_) {
-            perDevice[name] = [];
+             perDevice[name] = null;
           }
         }));
         d.subcollections = perDevice;

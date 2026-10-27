@@ -4,11 +4,26 @@
     {
       "source": "/(.*)",
       "headers": [
-        { "key": "Content-Security-Policy", "value": "frame-ancestors 'none'; object-src 'none'; base-uri 'self'" },
-        { "key": "Permissions-Policy", "value": "camera=(), microphone=(), geolocation=(), payment=(), usb=()" },
-        { "key": "Referrer-Policy", "value": "no-referrer" },
-        { "key": "X-Content-Type-Options", "value": "nosniff" },
-        { "key": "X-Frame-Options", "value": "DENY" }
+        {
+          "key": "Content-Security-Policy",
+          "value": "frame-ancestors 'none'; object-src 'none'; base-uri 'self'"
+        },
+        {
+          "key": "Permissions-Policy",
+          "value": "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+        },
+        {
+          "key": "Referrer-Policy",
+          "value": "no-referrer"
+        },
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        },
+        {
+          "key": "X-Frame-Options",
+          "value": "DENY"
+        }
       ]
     }
   ],
@@ -28,6 +43,10 @@
     {
       "path": "/api/stack-cron",
       "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/dashboard-sync",
+      "schedule": "*/15 * * * *"
     }
   ],
   "builds": [
@@ -190,6 +209,18 @@
     {
       "src": "Backend/jp-device.js",
       "use": "@vercel/node"
+    },
+    {
+      "src": "Backend/dashboard-sections.js",
+      "use": "@vercel/node"
+    },
+    {
+      "src": "Backend/dashboard-sync.js",
+      "use": "@vercel/node"
+    },
+    {
+      "src": "Backend/jp-telegram.js",
+      "use": "@vercel/node"
     }
   ],
   "routes": [
@@ -203,6 +234,14 @@
         "X-Frame-Options": "DENY"
       },
       "continue": true
+    },
+    {
+      "src": "/api/wa-media",
+      "headers": {
+        "Content-Security-Policy": "frame-ancestors 'self'; object-src 'none'; base-uri 'none'",
+        "X-Frame-Options": "SAMEORIGIN"
+      },
+      "dest": "Backend/wa-media.js"
     },
     {
       "src": "/agent",

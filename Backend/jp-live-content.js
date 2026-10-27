@@ -17,6 +17,7 @@ import { requireKey } from './_auth.js';
 import { query, isConfigured } from '../Integrations/postgres.js';
 import { displayMessageBody, messageSenderLabel, normalizeSender } from '../Integrations/wa-store.js';
 import { issueMediaToken } from './lib/media-auth.js';
+import { mediaKind } from './lib/media-policy.js';
 
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'private, no-store');
@@ -95,7 +96,7 @@ export default async function handler(req, res) {
       window_days: days,
       newest_message_at: newestMsg.rows[0] ? newestMsg.rows[0].ts : null,
       newest_attachment_at: newestAtt.rows[0] ? newestAtt.rows[0].ts : null,
-      attachments: att.rows.map((a) => ({
+       attachments: att.rows.filter(a=>mediaKind(a)).map((a) => ({
         att_id: a.att_id,
         chat_id: a.chat_id,
         msg_id: a.msg_id,
@@ -106,11 +107,10 @@ export default async function handler(req, res) {
         duration_sec: a.duration_sec,
         width: a.width,
         height: a.height,
-        blob_url: a.blob_url,
         sent_at: a.sent_at,
         ingested_at: a.ingested_at,
         device_id: a.device_id,
-        media_token: issueMediaToken(a.att_id),
+         media_token: a.blob_url ? issueMediaToken(a.att_id) : '',
       })),
       messages: msgs.rows.map((m) => ({
         msg_id: m.msg_id,

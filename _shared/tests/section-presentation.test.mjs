@@ -1,0 +1,16 @@
+import assert from 'node:assert/strict';
+await import('../../Frontend/section-presentation.js');
+const p=globalThis.SectionPresentation;
+assert.equal(p.value(0),'0');assert.equal(p.value(null),'Unavailable');
+assert.equal(p.value('9007199254740993'),'9007199254740993');
+assert.equal(p.value({raw:1}),'Unavailable');
+assert.equal(p.value('{"secret":1}'),'Unavailable');
+assert.equal(p.value('<img onerror=x>'),'&lt;img onerror=x&gt;');
+for(const a of [{file_name:'data.json'},{file_name:'report.PDF',mime:'application/problem+json'},{file_name:'metadata.txt'},{file_name:'vector.svg',mime:'image/svg+xml'},{file_name:'index.html',mime:'text/html'}]) assert.equal(p.mediaKind(a),null);
+assert.equal(p.mediaKind({file_name:'file.pdf',mime:'application/pdf'}),'pdf');
+assert.equal(p.mediaKind({file_name:'photo.jpg',mime:'image/jpeg'}),'image');
+assert.equal(p.mediaSrc({blob_url:'https://arbitrary.example/image.png'}),'');
+assert.equal(p.mediaSrc({att_id:'a',media_token:'signed'}),'/api/wa-media?att_id=a&token=signed');
+assert.match(p.preview({file_name:'file.pdf',att_id:'a',media_token:'signed'}),/<iframe/);
+assert.ok(!p.table({raw_payload:{secret:'x'},count:0,name:'<test>'}).includes('raw_payload'));
+console.log('typed values, exact digits, escaped text, metadata rejection and authenticated previews passed');

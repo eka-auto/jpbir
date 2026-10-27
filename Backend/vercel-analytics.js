@@ -93,6 +93,7 @@ async function webAnalytics(c, since, until) {
 }
 
 export default async function handler(req, res) {
+  const observedAt=new Date().toISOString();
   res.setHeader('Cache-Control', 'no-store');
   // Traffic figures plus this project's own Vercel identifiers, so it is
   // gated before the config is even read.
@@ -176,8 +177,15 @@ export default async function handler(req, res) {
     ])
   );
 
-  return res.status(200).json({
-    configured: true,
+   let storage='unavailable';
+   try {
+     const { persistProviderSection }=await import('./lib/section-data.js');
+     const rows=Object.entries(panels).map(([name,p])=>({id:name,values:{name,status:p.ok?'available':'unavailable',count:Array.isArray(p.data)?p.data.length:null}}));
+     await persistProviderSection('vercel',rows,observedAt);storage='saved';
+   } catch { /* The provider response remains usable, storage failure is explicit. */ }
+   return res.status(200).json({
+     configured: true,
+     storage,
     projectId,
     teamId: c.teamId,
     window: { days, since: new Date(sinceMs).toISOString(), until: new Date(untilMs).toISOString() },

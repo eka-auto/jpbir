@@ -1,24 +1,3 @@
-/* ============================================================================
-   MESSENGER UI (WhatsApp + Telegram)
-   ----------------------------------------------------------------------------
-   One client, one source. The dashboard has two slots for it — WhatsApp and
-   Telegram — and both read the same live WhatsApp data through the same
-   endpoints:
-     /api/jp-whatsapp   /api/jp-wa-messages   /api/jp-wa-chat
-
-   Telegram is a second slot for this client, not a second data source. There
-   is no Telegram capture on the box, so a Telegram panel pointed at its own
-   tables could only ever show an empty list; pointing it at the data that
-   already exists is what makes the slot useful and honest. When a real
-   Telegram capture lands, it gets its own source here — a new entry in
-   SOURCES below — and this file does not change shape.
-
-   Honesty rules baked in:
-     * The headline is "N chats with readable text", never a bare row count.
-     * Metadata-only chats are a separate, labelled bucket.
-     * Every number comes from the API payload; none is typed in here.
-     * Encrypted rows are drawn as visibly locked, not as fake text.
-   ========================================================================= */
 (function () {
   'use strict';
 
@@ -38,11 +17,11 @@
     tg: {
       label: 'Telegram',
       icon: '\u2708',
-      inventory: '/api/jp-whatsapp',
-      messages: '/api/jp-wa-messages',
-      chat: '/api/jp-wa-chat',
+      inventory: '/api/jp-telegram',
+      messages: '/api/jp-telegram',
+      chat: '/api/jp-telegram',
       app: 'Telegram',
-      emptyHint: 'No data captured yet.'
+      emptyHint: 'No Telegram records captured yet.'
     }
   };
 
@@ -324,6 +303,7 @@
      message that carried it share a chat and a sent_at. Both keys are
      indexed, so a row that does carry msg_id is matched exactly. */
   function loadMedia(s, chatId) {
+    if (s.src !== 'wa') { s.media = { byMsg: {}, byTime: {}, total: 0 }; return; }
     if (!chatId) return;
     fetch('/api/jp-wa-attachments?chat_id=' + encodeURIComponent(chatId) + '&limit=200', {
       cache: 'no-store', headers: { 'x-stats-key': key() },

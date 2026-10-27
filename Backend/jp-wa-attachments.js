@@ -13,6 +13,7 @@
 import { requireKey } from './_auth.js';
 import { query, isConfigured } from '../Integrations/postgres.js';
 import { issueMediaToken } from './lib/media-auth.js';
+import { mediaKind } from './lib/media-policy.js';
 
 const KINDS = new Set(['image', 'video', 'audio', 'ptt', 'document', 'sticker', 'other']);
 
@@ -88,25 +89,24 @@ export default async function handler(req, res) {
       [chatId]
     );
 
-    const rows = r.rows.map((a) => ({
+     const rows = r.rows.filter(a=>mediaKind(a)).map((a) => ({
       att_id: a.att_id,
       msg_id: a.msg_id,
       kind: a.kind,
       mime: a.mime,
       file_name: a.file_name,
-      size_bytes: a.size_bytes == null ? null : Number(a.size_bytes),
+       size_bytes: a.size_bytes,
       duration_sec: a.duration_sec,
       width: a.width,
       height: a.height,
-      blob_url: a.blob_url,
       sent_at: a.sent_at ? new Date(a.sent_at).toISOString() : null,
       device_id: a.device_id || null,
-      media_token: issueMediaToken(a.att_id),
+       media_token: a.blob_url ? issueMediaToken(a.att_id) : '',
     }));
 
     // Built from the raw row: ingested_at is deliberately not carried on the
     // mapped rows. Emitting sent_at alone leaves the parser above unreachable.
-    const last = rows.length === limit ? r.rows[r.rows.length - 1] : null;
+     const last = r.rows.length === limit ? r.rows[r.rows.length - 1] : null;
     const cursor = last
       ? `${last.sent_at ? new Date(last.sent_at).toISOString() : ''}|${new Date(last.ingested_at).toISOString()}`
       : null;

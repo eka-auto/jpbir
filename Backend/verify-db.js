@@ -45,6 +45,8 @@ export const REQUIRED_TABLES = [
   's24_files', 's24_ingest_seen', 's24_locations', 's24_queue_items', 's24_records', 's24_sms',
   's24_sync_datasets', 's24_sync_runs',
   'wa_attachments', 'wa_chats', 'wa_messages', 'wa_sync_runs',
+  'dashboard_current_records','dashboard_sync_state','dashboard_sync_cursors','dashboard_sync_members',
+  'dashboard_agent_exchanges','tg_chats','tg_messages','tg_sync_runs',
 ];
 
 /**
