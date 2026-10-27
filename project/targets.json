@@ -9,7 +9,7 @@
         "repository": "eka-auto/jpbir",
         "repository_id": "1350770272"
       },
-      "notes": "The repository was transferred from jaytipargal/jpbir to eka-auto/jpbir (D-18, verified 2026-10-22). The immutable repository id 1350770272 is unchanged and `repos/1350770272` still resolves to this repository, so the id still binds the target and the old name only redirects. It is a transfer, not a fork: isFork is false and parent is null. Visibility is now public, which differs from D-15's recorded private choice. Active protection is ruleset 25339138 (deletion and non-fast-forward on the default branch only, bypass: never); no required checks, reviews or CODEOWNERS (D-24)."
+      "notes": "The repository was transferred from jaytipargal/jpbir to eka-auto/jpbir (D-18, verified 2026-10-22). The immutable repository id 1350770272 is unchanged and `repos/1350770272` still resolves to this repository, so the id still binds the target and the old name only redirects. It is a transfer, not a fork: isFork is false and parent is null. Visibility is now public, which differs from D-15's recorded private choice. Active protection is ruleset 25339138 (deletion and non-fast-forward on the default branch only, bypass: never); no required checks, reviews or CODEOWNERS (D-24). The owner removed that ruleset on 2026-10-27 (D-33), so the recorded protection no longer exists and direct pushes to main are accepted."
     },
     {
       "name": "vercel-jayti2",
@@ -21,7 +21,7 @@
         "domains": "jaytipargal.tech, www.jaytipargal.tech, jpbir.vercel.app",
         "production_deployment": "dpl_H1hzbgVy2Q4fhxT5zZ8NeZHR521E"
       },
-      "notes": "Live hosting verified 2026-10-12 (D-12): jaytipargal.tech served by project jpbir under team jayti2, deployment READY at commit f6e21fc. The deployment id was re-verified against the provider on 2026-10-22 (D-18): the live production deployment is dpl_H1hzbgVy2Q4fhxT5zZ8NeZHR521E (jpbir-g5xlzoeut-jayti2, Ready, created 2026-10-21), and it carries the aliases jaytipargal.tech, www.jaytipargal.tech and jpbir.vercel.app. Six production deployments are retained and Ready, so a rollback target exists; the previous id in this manifest no longer identified the live deployment and was replaced rather than left to rot."
+      "notes": "Live hosting verified 2026-10-12 (D-12): jaytipargal.tech served by project jpbir under team jayti2, deployment READY at commit f6f21fc. The deployment id was re-verified against the provider on 2026-10-22 (D-18): the live production deployment is dpl_H1hzbgVy2Q4fhxT5zZ8NeZHR521E (jpbir-g5xlzoeut-jayti2, Ready, created 2026-10-21), and it carries the aliases jaytipargal.tech, www.jaytipargal.tech and jpbir.vercel.app. Six production deployments are retained and Ready, so a rollback target exists; the previous id in this manifest no longer identified the live deployment and was replaced rather than left to rot. The section release's merge commit 1dfb2d6 deployed as dpl_HedKAZ6LSTch8azmuW1M5wdpeuJp and channel-sandbox as dpl_2APfwtns5XxgL5ntQykh3AFoVHUr (both READY and PROMOTED, 2026-10-27)."
     },
     {
       "name": "firestore-eka-agent",
@@ -38,15 +38,59 @@
       "name": "neon-jaytibirthday-db",
       "environment": "production",
       "provider": "neon",
-      "account_id": "fancy-cloud-99501540",
+      "account_id": "bitter-glade-72523152",
       "resource_ids": {
-        "project_id": "fancy-cloud-99501540",
-        "branch_id": "br-spring-pine-au5jtfig",
-        "endpoint_id": "ep-long-credit-au7qr9gy",
+        "project_id": "bitter-glade-72523152",
+        "organization_id": "org-billowing-meadow-62228264",
+        "branch_id": "br-hidden-leaf-b8l1j76r",
+        "branch_name": "main",
+        "endpoint_id": "ep-holy-silence-b88j1f4i",
         "database": "jpbir_live",
         "role": "neondb_owner"
       },
-      "notes": "Postgres warehouse for analytics and telemetry (D-9). Project, branch and endpoint verified 2026-10-22 against the provider: project fancy-cloud-99501540 ('jaytibirthday-db'), branch br-spring-pine-au5jtfig ('main', primary), endpoint ep-long-credit-au7qr9gy, DATABASE jpbir_live. THE DATABASE NAME IS PART OF THE TARGET. The same project and endpoint also carry a second database, 'neondb', which is a COPY frozen at 2026-10-09T18:30Z - and the local .env.local and the repository's DATABASE_URL secret both pointed at that copy, which is why every local analysis of 'the warehouse' read as the product having stopped collecting. The local .env.local now points at jpbir_live; the DATABASE_URL secret still needs replacing, and it must name jpbir_live."
+      "notes": "Postgres warehouse for analytics and telemetry (D-9). REPRECED 2026-10-27 (D-36): the production warehouse is the meadow mirror project bitter-glade-72523152 ('jaytibirthday-db') of organization org-billowing-meadow-62228264, branch br-hidden-leaf-b8l1j76r ('main'), endpoint ep-holy-silence-b88j1f4i, database jpbir_live - the database name is part of the target and was preserved. This is where production writes and reads: the deployed console's 40 current section records and 15 sync states live there, and the post-release read-back at 2026-10-27T16:00:52Z was taken there. The Vercel branch is protected as a production branch (delete and endpoint-move actions are refused by Neon with reason 'vercel production branch'). The three application-facing branch databases of the same project are neondb on main (endpoint ep-holy-silence-b88j1f4i), neondb on birthday-isolated-20261010 (branch br-winter-salad-b82mip7n, endpoint ep-bitter-cell-b8tv0g1m) and neondb on dashboard-isolated-20261010 (branch br-curly-mode-b8354j8j, endpoint ep-spring-dust-b8tnhvt5) - the owner's approved application mapping is channel-sandbox to main/neondb and jaytibirthday-site to birthday-isolated-20261010/neondb. The move from org-cold-lake-91548510 was a migration, not an organization transfer: both organizations are Vercel-managed (managed_by=vercel) and Neon cannot transfer projects into or out of such an organization (D-35). Ten of the eleven source databases were reproduced exactly, verified with exact counts over the direct endpoint; globaldevices-db/main differs by one row, the mirror being the later snapshot."
+    },
+    {
+      "name": "neon-meadow-mirror",
+      "environment": "production",
+      "provider": "neon",
+      "account_id": "org-billowing-meadow-62228264",
+      "resource_ids": {
+        "organization_id": "org-billowing-meadow-62228264",
+        "projects": "bitter-glade-72523152, cool-sun-03737675, super-dawn-27320917, still-dust-80774694, gentle-lab-27506181, tiny-credit-99856334",
+        "branches": "9 (jaytibirthday-db x3, training-data-search-db, training-text-files-db, globaldevices-db x2, private-file-gate-db, neon-aqua-ferry)",
+        "databases": "11 (neondb x7, jpbir_live, jtagent_agent, txt_file_db x2)"
+      },
+      "notes": "The mirror of the source estate inside the meadow organization, verified with the Neon CLI on 2026-10-27 (D-36). cool-sun-03737675 ('training-data-search-db') carries jtagent_agent, neondb (35,110 rows: chat_messages 119, chats 2, document_chunks 34,262, sources 727) and txt_file_db; super-dawn-27320917 ('training-text-files-db') carries txt_file_db (documents 1,219, matching the source exactly) and exists because the source training branch exceeds the destination Free branch limit; still-dust-80774694 ('globaldevices-db') carries neondb on main (2 rows) and on whatsapp-chat-dashboard (604 rows); gentle-lab-27506181 ('private-file-gate-db') and tiny-credit-99856334 ('neon-aqua-ferry') carry neondb with no tables, matching their empty sources. The source estate is eight branches and eleven databases; the mirror covers all eight, with txt_file_db split into its own project as the owner's approved specification describes (docs/superpowers/specs/2026-10-27-dashboard-section-data-design.md)."
+    },
+    {
+      "name": "neon-consolidated-copy",
+      "environment": "production",
+      "provider": "neon",
+      "account_id": "jolly-cake-01200063",
+      "resource_ids": {
+        "project_id": "jolly-cake-01200063",
+        "organization_id": "org-billowing-meadow-62228264",
+        "branch_id": "br-royal-wave-b8y8k9vw",
+        "branch_name": "main",
+        "endpoint_id": "ep-dark-dew-b8hbowlx",
+        "databases": "jpbir_live, trainingdata, globaldevices, aqua_ferry, privatefilegate, jtagent_agent, neondb, txt_file_db",
+        "role": "neondb_owner"
+      },
+      "notes": "The consolidated migration target recorded in D-35, and the project the repository's four connection secrets (DATABASE_URL, DATABASE_URL_UNPOOLED, POSTGRES_URL, POSTGRES_URL_NON_POOLING, repointed 2026-10-27T14:46Z) still name until the owner runs the repoint. It holds jpbir_live with the same 37 tables and the same 15,748 events as the production mirror, and it is the only database in either organization still receiving writes (newest events.ingested_at 2026-10-27T08:11:17.866919Z), but it holds no console section records, so production reads the mirror instead (D-36). Two of its databases are empty: neondb has no tables at all and txt_file_db holds a documents table with zero rows - both artifacts of the restore behind D-35, whose cause is that Neon's dumps are PG16-format archives that pg_restore 16 refuses ('unsupported version (1.16) in file header') and that read with postgres:18. The five satellite databases (trainingdata 35,110, globaldevices 2, aqua_ferry 0, privatefilegate 0, jtagent_agent 0) duplicate the mirror's. The owner approved the repoint of the four secrets at the mirror (project/approvals/2026-10-27-neon-estate-decisions.md, question 1) and decided that the two empty databases are kept rather than dropped or filled (D-37), which leaves this project an inert duplicate; the whole project can still be dropped later on a separate approval."
+    },
+    {
+      "name": "neon-source-cold-lake",
+      "environment": "source",
+      "provider": "neon",
+      "account_id": "org-cold-lake-91548510",
+      "resource_ids": {
+        "organization_id": "org-cold-lake-91548510",
+        "projects": "fancy-cloud-99501540, crimson-sun-45026271, small-leaf-69604039, lingering-band-61529106, still-sunset-46940815",
+        "branches": "8 (jaytibirthday-db x3, training-data-search-db, globaldevices-db x2, private-file-gate-db, neon-aqua-ferry)",
+        "databases": "11 (neondb x7, jpbir_live, jtagent_agent, txt_file_db)"
+      },
+      "notes": "The five retained source projects, left intact on purpose so the migration is reversible (D-35) and because the pg_dump archives are the backup of record. The neondb database of jaytibirthday-db exists once per branch and each holds the branch's analytics dataset - main (events 18,869, sessions 723, visitors 404), birthday-isolated-20261010 (events 19,741, sessions 795, visitors 463) and dashboard-isolated-20261010 (events 19,510, sessions 772, visitors 420) - frozen at 2026-10-10, 2026-10-27T03:15Z and 2026-10-17 respectively, and each holds exactly the values its mirror twin holds (D-36). Deleting these projects is a separate decision with its own approval and is not safe until the two applications' connection variables are repointed at the meadow mirror and verified by a read that returns meadow values."
     },
     {
       "name": "vercel-blob",

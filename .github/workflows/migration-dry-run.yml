@@ -1,0 +1,112 @@
+name: Migration Dry Run
+
+# Report the pending migrations, without writing anything.
+#
+# The apply workflow (.github/workflows/migrate-production.yml) is
+# workflow_dispatch on purpose: a person types the Neon project id to confirm
+# the target before anything is written to production, because a migration
+# applied to the wrong database is worse than no migration. The cost of that
+# gate is a step nobody can see: a schema change merged into main leaves a
+# migration pending, and whether anyone notices depends on remembering.
+#
+# This job is that missing step. It runs on every schema change to main, plans
+# the pending migrations inside a read-only transaction, and reports them. It
+# also proves the credential names the warehouse project/targets.json records
+# before it reports anything, so a credential that has drifted away from the
+# manifest is caught here rather than at the next apply.
+#
+# It writes nothing. The human confirmation stays where it is, in front of the
+# write.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - Database/schema/**
+      - Database/scripts/**
+      - .github/scripts/warehouse-target.mjs
+      - .github/scripts/verify-production-warehouse.mjs
+      - project/targets.json
+      - project/environment/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: migration-dry-run
+  cancel-in-progress: false
+
+jobs:
+  dry-run:
+    name: Report pending migrations (read only)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      # The credential never appears in the command line, the log, or the
+      # process list: it is passed to the container by NAME.
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      DATABASE_URL_UNPOOLED: ${{ secrets.DATABASE_URL_UNPOOLED }}
+      STATS_KEY: ${{ secrets.STATS_KEY }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24.x'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      # The same check the apply workflow performs, from one script: the
+      # credential must resolve to the project, branch and database the
+      # manifest records, and to a database the deployed application still
+      # writes to. Two byte-identical copies of a warehouse exist, so the
+      # manifest is what makes the answer unambiguous.
+      - name: Verify the credential names the production warehouse
+        run: node .github/scripts/verify-production-warehouse.mjs
+
+      # Plan only. migrate.mjs --dry-run opens a read-only transaction and
+      # prints what it would do; it never writes.
+      - name: Plan the pending migrations without writing
+        run: |
+          set -euo pipefail
+          docker compose -f project/environment/compose.yaml build dev
+          docker compose -f project/environment/compose.yaml run --rm \
+            -e DATABASE_URL -e DATABASE_URL_UNPOOLED \
+            dev node Database/scripts/migrate.mjs --dry-run | tee /tmp/plan.txt
+
+      - name: Report
+        run: |
+          set -euo pipefail
+          {
+            echo '### Pending migrations'
+            echo
+            if grep -q '^plan apply:' /tmp/plan.txt; then
+              grep '^plan apply:' /tmp/plan.txt
+              echo
+              echo 'These are not applied. Dispatch **Apply Pending Migrations**'
+              echo '(migrate-production.yml) with the Neon project id from'
+              echo 'project/targets.json to apply them to production.'
+            else
+              echo 'None. Every migration this repository owns is recorded in the ledger.'
+            fi
+            echo
+            echo '### Full plan'
+            echo
+            echo '```'
+            cat /tmp/plan.txt
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Fail while migrations are pending
+        run: |
+          set -euo pipefail
+          if grep -q '^plan apply:' /tmp/plan.txt; then
+            echo '::error::migrations are pending - dispatch migrate-production.yml with the Neon project id from project/targets.json'
+            exit 1
+          fi
+          echo 'no migrations are pending'
