@@ -24,6 +24,14 @@ function blobOptions(req) {
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'private, no-store');
   res.setHeader('Referrer-Policy', 'no-referrer');
+  // A PDF iframe renders error bodies too. Keep authentication/storage refusals
+  // readable instead of showing the API's JSON inside the document preview.
+  if(req.headers?.['sec-fetch-dest']==='iframe') {
+    res.json=()=>{
+      res.setHeader('Content-Type','text/plain; charset=utf-8');
+      return res.send('This file is unavailable. Refresh the dashboard to check access.');
+    };
+  }
   if (req.method !== 'GET' && req.method !== 'HEAD') {
     res.setHeader('Allow', 'GET, HEAD');
     return res.status(405).json({ ok: false, error: 'GET only' });

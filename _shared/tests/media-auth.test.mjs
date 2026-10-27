@@ -26,3 +26,10 @@ assert.match(readFileSync(join(ROOT,'Frontend','section-presentation.js'),'utf8'
 assert.match(index, /&token=/);
 
 console.log('media token authentication verified');
+
+const {default:mediaHandler}=await import('../../Backend/wa-media.js');
+const iframeRes={statusCode:200,headers:{},setHeader(k,v){this.headers[k]=v;},status(n){this.statusCode=n;return this;},json(v){this.body=v;return this;},send(v){this.body=v;return this;}};
+await mediaHandler({method:'GET',query:{att_id:'expired-fixture'},headers:{'sec-fetch-dest':'iframe'}},iframeRes);
+assert.equal(iframeRes.statusCode,401);
+assert.equal(typeof iframeRes.body,'string','a PDF preview refusal must be a sentence, never a JSON document');
+assert.match(iframeRes.headers['Content-Type'],/^text\/plain/);
