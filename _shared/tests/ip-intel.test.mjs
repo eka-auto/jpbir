@@ -150,4 +150,54 @@ await t('resolveIps deduplicates repeated addresses', async () => {
   assert.strictEqual(urls.length, 1);
 });
 
+await t('IPv6 multicast, expanded loopback and expanded mapped-private addresses are never sent', async () => {
+  clearIpIntelCache();
+  urls.length = 0;
+  const neverSent = [
+    'ff02::1', 'ff00::fb', '0:0:0:0:0:0:0:1', '0:0:0:0:0:0:0:0', '::1',
+    'fec0::1', '0:0:0:0:0:ffff:192.168.1.1', '::ffff:10.0.0.1',
+    'fe80::1', 'fc00::1', 'fd00::1'
+  ];
+  for (const ip of neverSent) {
+    assert.strictEqual(await lookupIp(ip), null, ip);
+  }
+  assert.strictEqual(urls.length, 0);
+});
+
+await t('unparseable IPv6 fails closed instead of being looked up', async () => {
+  clearIpIntelCache();
+  urls.length = 0;
+  assert.strictEqual(await lookupIp('1::2::3'), null);
+  assert.strictEqual(await lookupIp('fe80::zzzz'), null);
+  assert.strictEqual(urls.length, 0);
+});
+
+await t('an expanded IPv4-mapped address folds onto its IPv4 lookup', async () => {
+  clearIpIntelCache();
+  urls.length = 0;
+  const fetchImpl = mockFetch(() => whois('Example Network'));
+  const intel = await lookupIp('0:0:0:0:0:ffff:8.8.8.8', { fetch: fetchImpl });
+  assert.deepStrictEqual(intel, { asn: 133275, asOrganization: 'Example Network' });
+  assert.ok(urls[0].includes('8.8.8.8'), urls[0]);
+  assert.strictEqual(normalizeIp('0:0:0:0:0:ffff:8.8.8.8'), '8.8.8.8');
+});
+
+await t('the budget caps the whole run, and skipped addresses are not poisoned', async () => {
+  clearIpIntelCache();
+  urls.length = 0;
+  const slowFetch = () => new Promise(resolve => setTimeout(() => resolve({
+    ok: true, status: 200,
+    json: async () => ({ success: true, connection: { asn: 133275, org: 'Slow Net' } })
+  }), 400));
+  const ips = ['1.1.1.1', '1.0.0.1', '8.8.8.8', '8.8.4.4', '9.9.9.9', '104.16.0.1', '1.2.3.4', '5.6.7.8'];
+  const started = Date.now();
+  const first = await resolveIps(ips, { fetch: slowFetch, budgetMs: 300 });
+  const elapsed = Date.now() - started;
+  assert.ok(first.size <= 6, 'only in-flight workers may be fetched, got ' + first.size);
+  assert.ok(first.size < ips.length, 'the budget must cut the run short');
+  assert.ok(elapsed < 3000, 'the run took ' + elapsed + 'ms');
+  const second = await resolveIps(ips, { fetch: slowFetch });
+  assert.strictEqual(second.size, ips.length, 'addresses skipped by the budget resolve normally later');
+});
+
 console.log(`\n${pass} passed`);

@@ -1,24 +1,90 @@
 const LOOKUP_TIMEOUT_MS = 1500;
 const LOOKUP_BUDGET_MS = 2500;
 const LOOKUP_CONCURRENCY = 6;
+const MIN_ATTEMPT_MS = 150;
 const CACHE_TTL_MS = 7 * 86400000;
 const NEGATIVE_TTL_MS = 3600000;
 const MAX_CACHE_ENTRIES = 500;
 
 const cache = globalThis.__jpIpIntelCache || (globalThis.__jpIpIntelCache = new Map());
 
+class DeadlineExceeded extends Error {
+  constructor() {
+    super('lookup deadline exceeded');
+    this.deadlineExceeded = true;
+  }
+}
+
+const isDeadline = (err) => err instanceof DeadlineExceeded || (err && err.deadlineExceeded === true);
+
+function expandIpv6(ip) {
+  let s = ip;
+  const zone = s.indexOf('%');
+  if (zone !== -1) s = s.slice(0, zone);
+  const lastColon = s.lastIndexOf(':');
+  if (s.indexOf('.') !== -1 && lastColon !== -1) {
+    const quad = s.slice(lastColon + 1);
+    if (quad.indexOf('.') !== -1) {
+      const parts = quad.split('.');
+      if (parts.length !== 4) return null;
+      const nums = parts.map(Number);
+      if (nums.some(n => !Number.isInteger(n) || n < 0 || n > 255)) return null;
+      s = s.slice(0, lastColon + 1) +
+        ((nums[0] << 8) | nums[1]).toString(16) + ':' +
+        ((nums[2] << 8) | nums[3]).toString(16);
+    }
+  }
+  const halves = s.split('::');
+  if (halves.length > 2) return null;
+  const parse = (seg) => {
+    if (seg === '') return [];
+    const parts = seg.split(':');
+    if (parts.some(p => !/^[0-9a-f]{1,4}$/.test(p))) return null;
+    return parts.map(p => parseInt(p, 16));
+  };
+  const head = parse(halves[0]);
+  if (head === null) return null;
+  if (halves.length === 1) return head.length === 8 ? head : null;
+  const tail = parse(halves[1]);
+  if (tail === null) return null;
+  const missing = 8 - head.length - tail.length;
+  if (missing < 1) return null;
+  return head.concat(new Array(missing).fill(0), tail);
+}
+
+const dotted = (hi, lo) => `${hi >> 8}.${hi & 255}.${lo >> 8}.${lo & 255}`;
+
+function embedToV4(groups) {
+  if (groups[0] !== 0 || groups[1] !== 0 || groups[2] !== 0 || groups[3] !== 0 || groups[4] !== 0) return null;
+  if (groups[5] === 0xffff) return dotted(groups[6], groups[7]);
+  if (groups[5] === 0 && (groups[6] !== 0 || groups[7] !== 0)) return dotted(groups[6], groups[7]);
+  return null;
+}
+
 export function normalizeIp(value) {
   let s = String(value == null ? '' : value).trim().toLowerCase();
   if (!s || s === 'unknown') return null;
-  if (s.startsWith('::ffff:')) s = s.slice(7);
+  if (s.indexOf('.') !== -1 && s.indexOf(':') !== -1) {
+    const groups = expandIpv6(s);
+    const embedded = groups && embedToV4(groups);
+    if (embedded) return embedded;
+  }
+  if (s.startsWith('::ffff:') && !s.slice(7).includes(':')) s = s.slice(7);
   return s;
 }
 
 function isNonPublic(ip) {
   if (ip.includes(':')) {
-    if (ip === '::' || ip === '::1') return true;
-    if (/^f[cd][0-9a-f]{0,2}:/.test(ip)) return true;
-    if (/^fe[89ab][0-9a-f]?:/.test(ip)) return true;
+    const groups = expandIpv6(ip);
+    if (!groups) return true;
+    const embedded = embedToV4(groups);
+    if (embedded) return isNonPublic(embedded);
+    if (groups[0] >= 0xff00) return true;
+    if ((groups[0] & 0xfe00) === 0xfc00) return true;
+    if ((groups[0] & 0xffc0) === 0xfe80) return true;
+    if ((groups[0] & 0xffc0) === 0xfec0) return true;
+    if (groups[7] === 1 && groups.slice(0, 7).every(z => z === 0)) return true;
+    if (groups.every(z => z === 0)) return true;
     return false;
   }
   const parts = ip.split('.');
@@ -63,20 +129,23 @@ function writeCache(ip, value, ttl) {
   cache.set(ip, { value, expires: Date.now() + ttl });
 }
 
-async function fetchJson(url, fetchImpl) {
+async function fetchJson(url, fetchImpl, deadline) {
+  const remaining = deadline - Date.now();
+  if (remaining < MIN_ATTEMPT_MS) throw new DeadlineExceeded();
   const res = await fetchImpl(url, {
     headers: { accept: 'application/json' },
-    signal: AbortSignal.timeout(LOOKUP_TIMEOUT_MS)
+    signal: AbortSignal.timeout(Math.min(LOOKUP_TIMEOUT_MS, remaining))
   });
   if (!res.ok) throw new Error('HTTP ' + res.status);
   return res.json();
 }
 
-async function lookupRemote(ip, fetchImpl) {
+async function lookupRemote(ip, fetchImpl, deadline) {
   try {
     const body = await fetchJson(
       'https://ipwho.is/' + encodeURIComponent(ip) + '?fields=success,connection',
-      fetchImpl
+      fetchImpl,
+      deadline
     );
     if (body && body.success && body.connection) {
       const asn = Number(body.connection.asn);
@@ -84,13 +153,21 @@ async function lookupRemote(ip, fetchImpl) {
       if (Number.isInteger(asn) && asn > 0) return { asn, asOrganization: org };
       if (org) return { asn: null, asOrganization: org };
     }
-  } catch {}
+  } catch (err) {
+    if (isDeadline(err)) return undefined;
+  }
 
   try {
-    const body = await fetchJson('https://ipinfo.io/' + encodeURIComponent(ip) + '/json', fetchImpl);
+    const body = await fetchJson(
+      'https://ipinfo.io/' + encodeURIComponent(ip) + '/json',
+      fetchImpl,
+      deadline
+    );
     const parsed = parseAsnOrg(body && body.org);
     if (parsed && (parsed.asn != null || parsed.asOrganization)) return parsed;
-  } catch {}
+  } catch (err) {
+    if (isDeadline(err)) return undefined;
+  }
 
   return null;
 }
@@ -100,7 +177,9 @@ export async function lookupIp(value, opts = {}) {
   if (!ip || isNonPublic(ip)) return null;
   const cached = readCache(ip);
   if (cached !== undefined) return cached;
-  const result = await lookupRemote(ip, opts.fetch || globalThis.fetch);
+  const deadline = opts.deadline || Date.now() + 2 * LOOKUP_TIMEOUT_MS;
+  const result = await lookupRemote(ip, opts.fetch || globalThis.fetch, deadline);
+  if (result === undefined) return null;
   writeCache(ip, result, result ? CACHE_TTL_MS : NEGATIVE_TTL_MS);
   return result;
 }
@@ -114,14 +193,15 @@ export async function resolveIps(values, opts = {}) {
   }
 
   const out = new Map();
-  const start = Date.now();
+  const budgetMs = Number.isFinite(opts.budgetMs) ? opts.budgetMs : LOOKUP_BUDGET_MS;
+  const deadline = Date.now() + budgetMs;
   let index = 0;
 
   async function run() {
     while (index < ips.length) {
-      if (Date.now() - start > LOOKUP_BUDGET_MS) return;
+      if (Date.now() >= deadline) return;
       const ip = ips[index++];
-      const intel = await lookupIp(ip, opts).catch(() => null);
+      const intel = await lookupIp(ip, { ...opts, deadline }).catch(() => null);
       if (intel) out.set(ip, intel);
     }
   }
