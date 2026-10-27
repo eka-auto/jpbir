@@ -1,0 +1,32 @@
+{
+  "operation": "asn-review-followup-pr-20261027",
+  "kind": "intent",
+  "contractRules": ["10", "11"],
+  "recordedAt": "2026-10-27T12:30:00+05:30",
+  "ownerApproval": "project/approvals/2026-10-27-asn-review-followup.md (batch-2 answers: 1 yes, 2 yes)",
+  "identity": {
+    "actor": "opencode session, author role (recorded in project/ACCESS.md)",
+    "githubLogin": "eka-auto for push/PR; @jaytipargal remains the only code owner for approval",
+    "target": "eka-auto/jpbir (repository id 1350770272, matches project/targets.json)"
+  },
+  "action": {
+    "type": "branch-and-pull-request",
+    "branch": "fix/asn-review-followup",
+    "base": "main",
+    "files": [
+      "Backend/lib/ip-intel.js",
+      "Backend/visitor.js",
+      "Backend/jp-visitor.js",
+      "_shared/tests/ip-intel.test.mjs",
+      "_shared/tests/visitor-enrichment.test.mjs (new)",
+      "project/decisions.md (D-32 addendum)"
+    ],
+    "changesProductionData": false,
+    "schemaChange": false,
+    "pipelineOrControlFiles": "none - no workflow, CODEOWNERS or project/audit change",
+    "mergeRequiresOwnerReview": true
+  },
+  "testEvidence": "ip-intel 25/25; visitor-enrichment 5/5; ip-grouping 24/24; full npm test 58/61 with only the three pre-existing Windows-checkout failures (installer-pins, s24-action-gate, visitor-restore)",
+  "rollback": "close the PR or revert the merge; no data written",
+  "receipt": "pending"
+}
