@@ -1,0 +1,36 @@
+{
+  "operation": "asn-network-labels-pr-20261027",
+  "kind": "intent",
+  "contractRules": ["10", "11", "15"],
+  "recordedAt": "2026-10-27T06:37:41+05:30",
+  "ownerApproval": "project/approvals/2026-10-27-asn-network-labels.md (question 1 YES, 2026-10-27)",
+  "scopeAmendment": "D-32 amends D-16 for this feature only",
+  "identity": {
+    "actor": "opencode session, author role",
+    "githubLogin": "jaytipargal",
+    "githubId": 313854821,
+    "verifiedPermissions": "push=true, admin=false",
+    "repository": "eka-auto/jpbir",
+    "repositoryId": 1350770272,
+    "targetsMatch": true
+  },
+  "action": {
+    "type": "branch-and-pull-request",
+    "branch": "feat/asn-network-labels",
+    "base": "main",
+    "files": [
+      "Backend/lib/ip-intel.js (new)",
+      "Backend/visitor.js",
+      "Backend/jp-visitor.js",
+      "_shared/tests/ip-intel.test.mjs (new)",
+      "project/ACCESS.md (record the acting session)",
+      "project/decisions.md (D-32)"
+    ],
+    "changesProductionData": false,
+    "schemaChange": false,
+    "mergeRequiresOwnerReview": true
+  },
+  "whatItDoes": "Enriches visitor-drawer server_location with asn/asOrganization from ipwho.is (fallback ipinfo.io) at read time, so the drawer names the network instead of 'unattributed network'. No writes to Neon, no ingest change, no backfill.",
+  "rollback": "Close the PR, or revert the merge commit; no data was written, so nothing needs undoing beyond the code.",
+  "receipt": "pending"
+}
