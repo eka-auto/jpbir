@@ -60,42 +60,12 @@ jobs:
         run: npm ci
 
       # The target's identity, and proof that it is the database the deployed
-      # application reads. The production API is asked for the newest event on
-      # the tracked property; the credential's database is asked for the same
-      # number. Identical numbers mean one database.
+      # application reads. One script, shared with the dry-run workflow, so the
+      # two cannot drift apart: the credential must resolve to the project,
+      # branch and database project/targets.json records, and to a database the
+      # deployed application still writes to.
       - name: Verify the target is the production warehouse
-        run: |
-          set -euo pipefail
-          node --input-type=module <<'EOF'
-          import pg from 'pg';
-          const c = new pg.Client({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: true } });
-          await c.connect();
-          const id = await c.query(`
-            select current_setting('neon.project_id', true) project_id,
-                   current_setting('neon.branch_id', true) branch_id,
-                   current_setting('neon.endpoint_id', true) endpoint_id`);
-          const row = await c.query(`
-            select count(*)::int n, max(occurred_at) newest
-            from events where site = 'jaytibirthday.in'`);
-          await c.end();
-          const live = await fetch('https://jaytipargal.tech/api/stats?site=jaytibirthday.in', {
-            headers: { 'x-stats-key': process.env.STATS_KEY },
-          });
-          const body = await live.json();
-          const api = body.latest_events || [];
-          const apiNewest = api.length ? api[0].receivedAt : null;
-          const db = row.rows[0];
-          console.log('neon project : ' + id.rows[0].project_id);
-          console.log('neon branch  : ' + id.rows[0].branch_id);
-          console.log('neon endpoint: ' + id.rows[0].endpoint_id);
-          console.log('db events    : ' + db.n + ' (newest ' + db.newest + ')');
-          console.log('api newest   : ' + apiNewest);
-          if (!db.n) throw new Error('the target has no events for the tracked property - is this the production warehouse?');
-          if (apiNewest && db.newest && new Date(db.newest).getTime() - new Date(apiNewest).getTime() > 3600000) {
-            throw new Error('the target is more than an hour behind the deployed application - not the same database');
-          }
-          console.log('target verified as the production warehouse');
-          EOF
+        run: node .github/scripts/verify-production-warehouse.mjs
 
       - name: Apply the pending migrations in the project environment
         run: |

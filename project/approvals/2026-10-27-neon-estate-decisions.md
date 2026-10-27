@@ -34,26 +34,56 @@ consolidated copy never had.
 
 ## How each YES is carried out
 
-- **Question 1 - the secrets.** The connection strings are minted by Neon
-  itself for the mirror's branch and database, and written to the repository's
-  secret store with `gh secret set`, reading the value from standard input so
-  it never appears in a command line, a log, or this repository. No secret
-  value is read, printed, logged or committed by the agent that performs the
-  change. The identity used is the registered automation identity
-  `eka-auto`, which owns the repository and is the only identity with
-  permission to write repository secrets; `project/ACCESS.md` records that
-  identity's scope, and this owner-approved action is the authority for this
-  one change. Verification is by the new dry-run job, which prints the Neon
-  project, branch and endpoint of whatever database the secret resolves to and
-  compares its newest event with the one the deployed application reports.
-- **Question 4 - the dry run.** `migrate.mjs` already supports `--dry-run`,
+- **Question 1 - the secrets.** The change is **person-run**, by the owner,
+  because `project/ACCESS.md` keeps the personal identity out of secret
+  mutations and the only identity with permission to write repository secrets
+  is the repository owner. The repository ships the command:
+
+  ```
+  node .github/scripts/repoint-warehouse-secrets.mjs --yes
+  ```
+
+  It mints the pooled and unpooled connection strings for the project, branch
+  and database `project/targets.json` records - straight from Neon, so nothing
+  is typed by hand - and hands each one to `gh secret set` on standard input.
+  No value is printed, logged, or written to this repository. The script
+  refuses to run without `--yes`, and refuses an identity that may not write
+  secrets on the repository.
+
+  **CI enforces the answer from then on.** The new
+  `.github/workflows/migration-dry-run.yml` runs on every schema change to
+  `main` and starts by proving that the credential resolves to the project,
+  branch and database the manifest records - the same check the apply
+  workflow performs, now from one shared script
+  (`.github/scripts/verify-production-warehouse.mjs`). A credential that drifts
+  away from the manifest fails the job and says so, rather than being
+  discovered at the next apply.
+- **Question 4 - the dry run.** `migrate.mjs` already supported `--dry-run`,
   which plans the pending migrations inside a read-only transaction and writes
-  nothing. The new workflow runs that plan on every schema change, and the
-  target-identity check that `migrate-production.yml` performs inline is
-  extracted into one script both workflows call, so there is one definition of
-  "is this the production warehouse" rather than two.
+  nothing. The new workflow runs that plan on every schema change, reports the
+  pending migrations in the job summary, and fails while any are pending, with
+  the dispatch command in the failure message. The human confirmation stays
+  where it is, in front of the write.
 - **Question 2 - nothing to carry out.** The answer is NO, so no resource is
   deleted and no permission is widened.
+
+## Question 3, decided after question 1
+
+The two empty databases in the consolidated project `jolly-cake-01200063` -
+`neondb` with no tables, and `txt_file_db` holding a `documents` table with
+zero rows - are **kept**, and the consolidated project becomes an inert
+duplicate rather than a second source of truth.
+
+The reasoning: dropping them is a cloud-resource deletion, and the owner's
+answer to question 2 was to keep the five source projects for exactly the
+reason that reversibility is worth more here than tidiness. Nothing will name
+those two databases once the four secrets point at the mirror, they hold no
+data to lose, and the `txt_file_db` data itself is already present and
+verified in the mirror's `super-dawn-27320917`. Filling `txt_file_db` with the
+1,219 documents instead would duplicate 270 MB that is already in the meadow
+organization and would recreate the pattern that caused this exercise - two
+copies of one dataset. The whole project can still be dropped later on
+request, and that would be a separate approval.
 
 Reviewer: the owner, in session, 2026-10-27. Recorded by the `opencode-session`
 identity; see `project/ACCESS.md` for that identity's scope and
