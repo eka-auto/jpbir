@@ -569,3 +569,53 @@ node .github/scripts/repoint-warehouse-secrets.mjs --yes
 ```
 
 Until it runs, the dry-run job fails its identity check - which is the enforcement working, and not a fault in it.
+
+## D-38 - The repoint was carried out, and the dry run proves it (2026-10-27)
+
+The paragraph above left one command for the owner. It has now run, and the result is what
+D-36 was designed to produce: the repository's credential and the database production reads
+are the same database, and CI says so on every schema change rather than depending on
+someone remembering.
+
+**The blocker was three things, and only one of them was the identity.** `project/ACCESS.md`
+keeps the personal identity out of secret mutations and `jaytipargal` holds
+`permissions.admin: false` on this repository, so the instruction stood as written. Behind
+it, the command could not have run on the owner's machine at all: npm installs the Neon CLI
+as `neon.cmd` on Windows and Node refuses to spawn a `.cmd` without a shell, so it died with
+`spawnSync neon ENOENT` before reaching Neon. That is repaired in #209, with the platform
+invocation, the message and an identifier guard covered by `warehouse-secrets.test.mjs`.
+Behind that sat a third: the Neon API key in the environment is an organization key for
+`org-cold-lake-91548510`, which cannot read the meadow organization at all - even
+`neon projects list --org-id org-billowing-meadow-62228264` is refused. The Neon CLI also
+holds a stored session that *is* a member of `org-billowing-meadow-62228264`, and the
+environment variable was masking it. With `NEON_API_KEY` unset for the run, the CLI minted
+both strings from the correct organization and the script handed them to `gh secret set` on
+standard input.
+
+**No value was printed, logged or written.** The script's output was the manifest target and
+the four secret names with the form each carries. The minted endpoint was
+`ep-holy-silence-b88j1f4i-pooler`, which is the endpoint `project/targets.json` records.
+
+**The change.** `DATABASE_URL`, `DATABASE_URL_UNPOOLED`, `POSTGRES_URL` and
+`POSTGRES_URL_NON_POOLING` were rewritten at 2026-10-27T18:30:58Z-18:31:01Z by `eka-auto`,
+the repository owner (`admin: true`) - the identity the approval names as the only one able
+to write them.
+
+**The proof, from the workflow itself.** `migration-dry-run.yml` run 40560758000 on `main`,
+dispatched 18:31:23Z, concluded success and printed:
+
+| | Before (run 40556501585, failed) | After (run 40560758000, success) |
+| --- | --- | --- |
+| project | jolly-cake-01200063 | bitter-glade-72523152 |
+| branch | br-royal-wave-b8y8k9vw | br-hidden-leaf-b8l1j76r |
+| endpoint | - | ep-holy-silence-b88j1f4i |
+| database | jpbir_live | jpbir_live |
+| newest event | 15,748, newest 08:11:17Z | 15,760, newest 18:06:31Z |
+
+The deployed application reported its newest event at 18:06:31.191Z, the same second the
+database holds it, so the freshness half of the check passes too and both halves agree for
+the first time.
+
+**What did not change.** Nothing was deleted. The consolidated project `jolly-cake-01200063`
+remains an inert duplicate per D-37, still holding its two empty databases, and the five
+source projects in `org-cold-lake-91548510` remain intact so the migration stays reversible.
