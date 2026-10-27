@@ -1,0 +1,96 @@
+{
+  "operation": "dashboard-section-release-20261027",
+  "kind": "receipt",
+  "contractRules": ["1", "4", "10", "11"],
+  "recordedAt": "2026-10-27T15:53:00Z",
+  "recordedBy": "opencode-session (identity jaytipargal, id 313854821), devops role",
+  "intent": "project/checkpoints/2026-10-27-dashboard-section-release-intent.json",
+  "approval": "project/approvals/2026-10-27-dashboard-section-release.md",
+  "outcome": "completed",
+  "crashRecovery": {
+    "terminatedSession": "codex 01a17cfe-63be-7d51-b253-f34b65bf584d",
+    "terminatedAt": "2026-10-27T15:39:25Z",
+    "terminatedBy": "usage_limit_exceeded",
+    "stateAtTermination": "the merge and the production deployment had already completed (15:38:36Z and 15:38:43Z); the production verification and the crash-safe receipts had not been written",
+    "actionTaken": "this session read the real remote state first (contract rule 10 - the outcome of an interrupted action is checked against the provider before anything is repeated), confirmed the release had landed, then wrote the receipts. Nothing was repeated, re-merged or re-deployed."
+  },
+  "pullRequest": {
+    "number": 206,
+    "title": "feat: persist dashboard sections and sync current source data",
+    "state": "MERGED",
+    "mergedAt": "2026-10-27T15:38:36Z",
+    "mergedBy": "eka-auto",
+    "method": "squash",
+    "headCommit": "4321a94da16858477c77bb73ad8eee66ab15a3dc",
+    "mergeCommit": "1dfb2d672160b33bb19405658b698e92732dea26",
+    "filesChanged": 47,
+    "review": "APPROVED by the owner as @jaytipargal, the code owner; the reviewer is the author of the code, so it is a labelled self-review under contract rule 7, Internal tier (D-1)"
+  },
+  "production": {
+    "targetMatch": "project jpbir, team jayti2 - matches project/targets.json",
+    "deployment": "dpl_HedKAZ6LSTch8azmuW1M5wdpeuJp (jpbir-7xnfjeegw-jayti2.vercel.app)",
+    "status": "READY, target production, created 2026-10-27T15:38:43Z",
+    "builtFrom": "githubCommitSha 1dfb2d672160b33bb19405658b698e92732dea26, githubCommitRef main - the merge commit itself",
+    "deployRoute": "the Vercel Git integration on the merge push; no agent shell deploy",
+    "aliasesVerifiedOnDeployment": [
+      "jaytipargal.tech",
+      "www.jaytipargal.tech",
+      "jpbir.vercel.app",
+      "jpbir-jayti2.vercel.app",
+      "jpbir-git-main-jayti2.vercel.app"
+    ]
+  },
+  "postMergeEvidence": {
+    "ciCdPipeline": "success (run 40533008574)",
+    "codeQualityChecks": "success (run 40533008437)",
+    "publishStackEvidence": "success (run 40533008407)",
+    "endpointHealthOnDeployment": "success (runs 40533144191 and 40533169017)",
+    "releaseReadiness": "FAILED (run 40533008432) - see knownPreExistingFailure; reported as a failing check, never as a pass (contract rule 1)",
+    "devEnvironmentPrebuilds": "still running at the time of this receipt (run 40533008188)"
+  },
+  "productionVerification": {
+    "source": "CI, on the exact merge commit, uploaded by the executor - not from an agent shell (contract rule 4)",
+    "run": "40533169017, Endpoint Health Check, 2026-10-27T15:40:14Z, 33 seconds after the deployment was created",
+    "results": [
+      "Homepage OK - https://jaytipargal.tech/ answered 200",
+      "Devices API OK - HTTP 401, the unauthenticated request is refused as designed",
+      "Stats API OK - HTTP 401, the unauthenticated request is refused as designed",
+      "Neon answered with the full schema (31 tables) - the deployed application is reading its database",
+      "Stack Health: cloud probes all green; cloud_fail 0; the 6 red rows are device freshness only",
+      "Unattended scheduler ran 0 min ago (max 20 min) - the monitoring schedule is alive"
+    ],
+    "panelPayload": {
+      "success": false,
+      "overall": "fail",
+      "cloud_fail": 0,
+      "summary": { "ok": 31, "warn": 0, "fail": 6, "unknown": 1, "total": 38 },
+      "readiness": {
+        "ready": false,
+        "verdict": "fail",
+        "reason": "6 required row(s) failed: Backend/device-heartbeat.js, Backend/device-enroll.js, Backend/device-commands-poll.js, Backend/lib/s24-attestation.js, Backend/s24-ingest.js, Backend/check-stale.js",
+        "scope": { "rows_total": 38, "rows_ok": 31, "rows_warn": 0, "rows_fail": 6, "rows_unproven": 1 }
+      },
+      "schedule": { "present": true, "stale": false, "age_minutes": 0, "cadence_minutes": 5, "max_age_minutes": 20, "missed_runs": 0 }
+    },
+    "independentReadBack": {
+      "method": "read directly from the destination provider after the release, not through the application",
+      "target": "bitter-glade-72523152 / br-hidden-leaf-b8l1j76r / jpbir_live",
+      "finding": "dashboard_sync_state observed_at advanced to 2026-10-27T15:45:49Z-15:45:51Z, which is after the deployment was created at 15:38:43Z. The released application is actively refreshing the destination database from Firestore: 15 scopes, all complete. This is the owner's requirement that the Firestore-sourced data keeps updating and the old data is replaced, rather than accumulating."
+    }
+  },
+  "knownPreExistingFailure": {
+    "check": "Release Readiness (Strict production readiness)",
+    "verdict": "not caused by this change - every scheduled run of this workflow on main has failed since at least 2026-10-27T01:55:31Z (8 consecutive runs, back to before the Neon migration began), with the identical 6 S24 device rows and the identical 31/0/6/1 panel. cloud_fail is 0: every cloud-side probe is green.",
+    "rootCause": "the physical S24 Ultra has not attested the runtime contract. That is a device-side action no cloud-side change can replace.",
+    "note": "reported as a failing check, never as a pass (contract rule 1). The strict gate stays open on the S24; this release did not close it and did not widen it."
+  },
+  "sectionCoverage": {
+    "sectionsInScope": 19,
+    "schemaReady": 19,
+    "realDataObserved": 14,
+    "realDataNotYetObserved": ["vercel", "telegram", "ask-agent", "jayti-agent", "product-engineering"],
+    "reason": "those five keep their existing authoritative readers and their new durable rows will be populated by actual calls after the code release. Telegram capture and prior agent history do not exist. No production fixture was inserted; a source record is not proof of a physically live S24 or ASUS."
+  },
+  "rollback": "revert commit 1dfb2d6. For the database, the three former application databases remain read-only in org-cold-lake-91548510 and the previous secret values are recoverable; the source projects were never deleted.",
+  "confidentialMaterial": "Generated migration receipts, pg_dump archives and rollback material stay in the restricted temporary migration directory outside Git. No API key, connection string or password value is written in this receipt."
+}

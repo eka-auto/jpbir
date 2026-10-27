@@ -1,0 +1,106 @@
+{
+  "operation": "neon-estate-verification-20261027",
+  "kind": "verification-receipt",
+  "recordedAt": "2026-10-27T22:52:00+05:30",
+  "recordedAtUtc": "2026-10-27T17:22:00Z",
+  "actor": "devops",
+  "actor_id": "opencode-session",
+  "readOnly": true,
+  "finding": "The meadow organization holds two overlapping copies of the estate, and they disagree about which database production reads. Six projects reproduce the source estate one for one (nine branches, eleven databases); a seventh project holds the consolidated migration target that the repository's four connection secrets still name. Both copies of jpbir_live are identical today (37 tables, 15,748 events), but production writes and reads the mirror, where the console's section records live, while the secrets point at the consolidated copy, where the only live writes are landing. The next workflow write and the next migration dispatched by migrate-production.yml would therefore land in the copy the console does not read.",
+  "target": {
+    "repository": "eka-auto/jpbir",
+    "repository_id": "1350770272",
+    "branch": "docs/neon-estate-verification",
+    "commit": "8203f80a395312ca122acbfd96e9d2e116f4aba2",
+    "pull_request": "https://github.com/eka-auto/jpbir/pull/208",
+    "meadow_organization": "org-billowing-meadow-62228264",
+    "source_organization": "org-cold-lake-91548510",
+    "decision_record": "project/decisions.md D-36",
+    "manifest": "project/targets.json"
+  },
+  "estate": {
+    "meadow_projects": 7,
+    "meadow_branches": 10,
+    "meadow_databases": 19,
+    "mirror": {
+      "projects": {
+        "bitter-glade-72523152": {
+          "name": "jaytibirthday-db",
+          "branches": {
+            "main": ["neondb", "jpbir_live"],
+            "birthday-isolated-20261010": ["neondb"],
+            "dashboard-isolated-20261010": ["neondb"]
+          }
+        },
+        "cool-sun-03737675": { "name": "training-data-search-db", "databases": ["jtagent_agent", "neondb", "txt_file_db"] },
+        "super-dawn-27320917": { "name": "training-text-files-db", "databases": ["txt_file_db"] },
+        "still-dust-80774694": { "name": "globaldevices-db", "branches": { "main": ["neondb"], "whatsapp-chat-dashboard": ["neondb"] } },
+        "gentle-lab-27506181": { "name": "private-file-gate-db", "databases": ["neondb"] },
+        "tiny-credit-99856334": { "name": "neon-aqua-ferry", "databases": ["neondb"] }
+      }
+    },
+    "consolidated": {
+      "project": "jolly-cake-01200063",
+      "name": "neon-cyan-fountain",
+      "branch": "main (br-royal-wave-b8y8k9vw)",
+      "endpoint": "ep-dark-dew-b8hbowlx",
+      "databases": ["jpbir_live", "trainingdata", "globaldevices", "aqua_ferry", "privatefilegate", "jtagent_agent", "neondb", "txt_file_db"],
+      "note": "the project the repository's four connection secrets name (repointed 2026-10-27T14:46Z)"
+    },
+    "source_retained": {
+      "projects": ["fancy-cloud-99501540", "crimson-sun-45026271", "small-leaf-69604039", "lingering-band-61529106", "still-sunset-46940815"],
+      "branches": 8,
+      "databases": 11,
+      "note": "left intact on purpose so the migration stays reversible (D-35); deletion needs the owner's approval and a verified repoint of the two applications"
+    }
+  },
+  "fidelity": {
+    "method": "exact table and row counts over the direct endpoint with a postgres:18 client, plus newest-timestamp comparison per branch - not statistics",
+    "exact": 10,
+    "of": 11,
+    "difference": "globaldevices-db/main holds one row in the source and two in the mirror; the mirror is the later snapshot",
+    "documents": "super-dawn-27320917/txt_file_db holds all 1,219 documents, matching the source exactly",
+    "application_facing_databases": "the three neondb branch databases (about 133,000-135,000 rows each) exist only in the mirror; the consolidated copy has no copy of them"
+  },
+  "live_database": {
+    "database": "bitter-glade-72523152/br-hidden-leaf-b8l1j76r/jpbir_live",
+    "evidence": "40 dashboard_current_records and 15 dashboard_sync_state rows written by the deployed console, plus the post-release read-back at 2026-10-27T16:00:52Z",
+    "branch_protection": "Neon refuses delete and endpoint-move on this branch with reason 'vercel production branch'",
+    "only_database_receiving_writes": "jolly-cake-01200063/jpbir_live - newest events.ingested_at 2026-10-27T08:11:17.866919Z",
+    "frozen_branch_copies": {
+      "main": "2026-10-10T09:07:24Z (events.ingested_at)",
+      "birthday-isolated-20261010": "2026-10-27T03:14:57Z (device_telemetry.last_seen_at)",
+      "dashboard-isolated-20261010": "2026-10-17T15:18:06Z"
+    },
+    "frozen_copies_note": "each source copy holds exactly its mirror twin's values, so this is a pause rather than a divergence"
+  },
+  "divergence": {
+    "repository_secrets": ["DATABASE_URL", "DATABASE_URL_UNPOOLED", "POSTGRES_URL", "POSTGRES_URL_NON_POOLING"],
+    "secrets_name": "jolly-cake-01200063 (consolidated)",
+    "console_environment_names": "bitter-glade-72523152 (mirror)",
+    "risk": "identical data today, so nothing is broken yet; the next workflow write and the next dispatched migration land in the copy the console does not read, and a schema change applied to the wrong database surfaces as a console failure at runtime rather than as a failing job"
+  },
+  "restore_cause": {
+    "wrong_description": "the txt_file_db restore was previously described as hung",
+    "actual_cause": "Neon's dumps are archives in PG16 format; pg_restore 16 refuses them with 'unsupported version (1.16) in file header'. The archives read with postgres:18.",
+    "data_status": "intact - 1,219 documents in super-dawn-27320917/txt_file_db, matching the source exactly",
+    "empty_byproducts_in_the_consolidated_project": "neondb has no tables at all; txt_file_db holds a documents table with zero rows"
+  },
+  "notVerified": {
+    "check": "which project channel-sandbox and jaytibirthday-site name",
+    "result": "error - the check could not be run without exposing secret values, and it is recorded as an error, never as a pass",
+    "attempts": "Vercel's API returns decrypted values only for non-encrypted entries; `vercel env pull` produced no file for these projects; a functional probe of the deployed routes returned the application shell for every path tried",
+    "consequence": "both copies hold identical values, so the applications behave the same whichever they name; the fact matters for deleting the source projects, which is not safe until those variables are repointed at the meadow mirror and confirmed by a read that returns meadow values"
+  },
+  "recommendation": "One database, named by both the secrets the workflows read and the environment the console reads. The mirror is the recommendation: production already writes there, its branch is protected as a Vercel production branch, it holds the three application-facing branch databases the consolidated copy lacks, and it is the structure the owner's approved mapping describes.",
+  "openQuestions": [
+    "1. Repoint the four repository connection secrets to bitter-glade-72523152/br-hidden-leaf-b8l1j76r/jpbir_live so workflows and production share one database. Owner-run (a secret rotation); the tool is at the session's temporary directory as rotate-secrets.ps1. NO costs a future migration landing in the copy the console does not read.",
+    "2. Delete the five source projects in org-cold-lake-91548510. Recommended NO for now: not safe until question 1 is done and the two applications' variables are verified to return meadow values.",
+    "3. The two empty databases in the consolidated project (neondb with no tables, txt_file_db with zero rows): drop them, or fill txt_file_db with the 1,219 documents. Recommended: only act once question 1 decides whether that project is retired.",
+    "4. Add a dry run on every schema change to migrate-production.yml, so a pending migration is visible in CI while the human confirmation stays in front of the write. Recommended YES."
+  ],
+  "collaboration": {
+    "branch_name_collision": "another actor was using the branch name feat/console-db-coverage; its commits never reached the remote (no 017_console_coverage.sql exists on any remote branch), and this session moved its own records to docs/neon-estate-verification and closed PR #207 in favour of PR #208",
+    "not_merged": "project/ACCESS.md scopes the opencode-session identity to push and open pull requests, with no merge, so PR #208 is left for the owner to merge"
+  }
+}

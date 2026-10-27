@@ -1,0 +1,94 @@
+{
+  "operation": "neon-org-migration-20261027",
+  "kind": "receipt",
+  "contractRules": ["4", "10", "11"],
+  "recordedAt": "2026-10-27T15:52:00Z",
+  "recordedBy": "opencode-session (identity jaytipargal, id 313854821), devops role",
+  "recoveryNote": "The session that performed this migration (codex 01a17cfe-63be-7d51-b253-f34b65bf584d) was terminated by a usage limit at 2026-10-27T15:39:25Z, after the copy and verification work was complete but before this receipt was written. This receipt was written by the recovering session from the artefacts that run left behind and from a fresh read of the provider. Nothing here is reconstructed from memory; every number below was read back from the destination.",
+  "ownerDirection": [
+    "'transfer neon org-cold-lake-91548510 temp api key (napi_gykgrhu...) to neon org-billowing-meadow-62228264 temp api key (napi_yzbvqf...)' - the request, 2026-10-27T10:54:15Z",
+    "'yes completev migration with all data' - 2026-10-27T11:01:30Z",
+    "'jpbir -> main/jpbir_live; channel-sandbox -> main/neondb' - 2026-10-27T11:34:15Z",
+    "'Put txt_file_db in an additional Free project (Recommended; no paid upgrade)' - 2026-10-27T11:47:12Z",
+    "'YES - build this database coverage for all listed sections' - 2026-10-27T12:04:15Z"
+  ],
+  "constraintFound": "Both organizations are Vercel-managed (managed_by = vercel), so Neon's project-transfer feature cannot move projects into or out of either organization. The sanctioned route was therefore a full data copy into projects of the destination organization, with the source projects left intact as the rollback.",
+  "migration": {
+    "strategy": "one destination project per source application, one branch per source branch, one database per source database, pg_dump/pg_restore with source and destination schema compared before and after",
+    "sourceOrganization": "org-cold-lake-91548510",
+    "destinationOrganization": "org-billowing-meadow-62228264",
+    "verified": "11 of 11 databases restored and verified (expected 11, verified 11)",
+    "databases": [
+      { "source": "crimson-sun-45026271/br-sparkling-frost-b77fab25/main/jtagent_agent", "destination": "cool-sun-03737675/br-silent-lake-b7ge8d4w/jtagent_agent", "restored": true, "verified": true },
+      { "source": "crimson-sun-45026271/br-sparkling-frost-b77fab25/main/neondb", "destination": "cool-sun-03737675/br-silent-lake-b7ge8d4w/neondb", "restored": true, "verified": true },
+      { "source": "crimson-sun-45026271/br-sparkling-frost-b77fab25/main/txt_file_db", "destination": "super-dawn-27320917/br-steep-king-b7mkr0p6/txt_file_db", "restored": true, "verified": true, "note": "held in the additional Free project training-text-files-db because the training branch was 754 MB, above the 537 MB Free limit of the destination project" },
+      { "source": "small-leaf-69604039/br-cool-glitter-avsd1mzq/main/neondb", "destination": "still-dust-80774694/br-small-math-b7uvok3a/neondb", "restored": true, "verified": true },
+      { "source": "small-leaf-69604039/br-royal-tooth-avb8aydu/whatsapp-chat-dashboard/neondb", "destination": "still-dust-80774694/br-bold-leaf-b7ay8u1x/neondb", "restored": true, "verified": true },
+      { "source": "lingering-band-61529106/br-long-darkness-aw9yvdh9/main/neondb", "destination": "tiny-credit-99856334/br-bold-breeze-b8wl8qkm/neondb", "restored": true, "verified": true },
+      { "source": "fancy-cloud-99501540/br-spring-pine-au5jtfig/main/jpbir_live", "destination": "bitter-glade-72523152/br-hidden-leaf-b8l1j76r/jpbir_live", "restored": true, "verified": true },
+      { "source": "fancy-cloud-99501540/br-spring-pine-au5jtfig/main/neondb", "destination": "bitter-glade-72523152/br-hidden-leaf-b8l1j76r/neondb", "restored": true, "verified": true },
+      { "source": "fancy-cloud-99501540/br-dawn-brook-au7o9wmt/birthday-isolated-20261010/neondb", "destination": "bitter-glade-72523152/br-winter-salad-b82mip7n/neondb", "restored": true, "verified": true },
+      { "source": "fancy-cloud-99501540/br-shiny-tree-aurzyz64/dashboard-isolated-20261010/neondb", "destination": "bitter-glade-72523152/br-curly-mode-b8354j8j/neondb", "restored": true, "verified": true },
+      { "source": "still-sunset-46940815/br-wild-tree-awf3h26z/main/neondb", "destination": "gentle-lab-27506181/br-sparkling-silence-b83ugm7j/neondb", "restored": true, "verified": true }
+    ],
+    "destinationProjectsCreated": [
+      "cool-sun-03737675 training-data-search-db",
+      "super-dawn-27320917 training-text-files-db",
+      "still-dust-80774694 globaldevices-db",
+      "tiny-credit-99856334 neon-aqua-ferry",
+      "bitter-glade-72523152 jaytibirthday-db",
+      "gentle-lab-27506181 private-file-gate-db"
+    ],
+    "paidUpgradeApplied": false,
+    "sourceProjectsStillExist": "all source projects remain in org-cold-lake-91548510; the three former application databases are read-only and exist for recovery. Deleting them needs explicit owner approval and was not done.",
+    "temporaryReplicationRemoved": true
+  },
+  "applicationCutover": {
+    "jpbir": "bitter-glade-72523152 / br-hidden-leaf-b8l1j76r / jpbir_live",
+    "channel-sandbox": "main / neondb",
+    "jaytibirthday-site": "br-winter-salad-b82mip7n / neondb",
+    "vercelEnvironmentSecretsUpdated": 14,
+    "vercelEnvironmentSecretScope": "DATABASE_URL, DATABASE_URL_UNPOOLED, POSTGRES_URL, POSTGRES_URL_NON_POOLING and NEON_PROJECT_ID across jpbir, channel-sandbox and jaytibirthday-site, each applied to its production/preview/development targets",
+    "githubRepositorySecretsUpdated": {
+      "eka-auto/jpbir": ["DATABASE_URL", "DATABASE_URL_UNPOOLED", "POSTGRES_URL", "POSTGRES_URL_NON_POOLING"],
+      "jaytipargal/jaytibirthday-site": ["DATABASE_URL", "DATABASE_URL_UNPOOLED", "POSTGRES_URL", "POSTGRES_URL_NON_POOLING"]
+    },
+    "localFilesUpdated": ["C:\\Users\\abcom\\jaytibirthday-site\\.env.local"]
+  },
+  "postCutoverReadBack": {
+    "method": "read directly from the destination provider at 2026-10-27T15:47Z",
+    "target": "bitter-glade-72523152 / br-hidden-leaf-b8l1j76r / jpbir_live",
+    "tablesPresent": 38,
+    "schema017Tables": {
+      "dashboard_current_records": 40,
+      "dashboard_sync_state": 15,
+      "dashboard_agent_exchanges": 0,
+      "dashboard_sync_cursors": 0,
+      "dashboard_sync_members": 0,
+      "tg_chats": 0,
+      "tg_messages": 0,
+      "tg_sync_runs": 0,
+      "device_dataset_status": 0
+    },
+    "historicalTablesPreserved": {
+      "events": 15748,
+      "visitors": 360,
+      "sessions": 571,
+      "wa_messages": 113770,
+      "wa_chats": 863,
+      "wa_attachments": 33,
+      "email_opens": 58,
+      "devices": 4,
+      "device_telemetry": 3,
+      "video_events": 155,
+      "schema_migrations": 26
+    },
+    "note": "The 8 private section tables were added and 28 historical data tables were preserved. A second migration run applied 0 changes and the security/schema checks reported 0 drift warnings. The empty tables are empty by evidence, not by omission: there is no Telegram capture and no prior agent history to persist."
+  },
+  "liveSync": {
+    "firstPass": "13 scopes complete, 35 current records inserted",
+    "secondPass": "0 duplicates, 2 changed records updated, 32 S24 call logs unchanged",
+    "stillRefreshingAfterRelease": "dashboard_sync_state observed_at advanced to 2026-10-27T15:45:49Z-15:45:51Z, which is after the production deployment was created at 15:38:43Z - the released application is actively refreshing the destination database from Firestore, which is the owner's 'keep it updated, do not accumulate' requirement"
+  },
+  "confidentialMaterial": "Generated migration receipts, pg_dump archives and the rollback material stay in the restricted temporary migration directory outside Git. No API key, connection string or password value is written in this receipt."
+}

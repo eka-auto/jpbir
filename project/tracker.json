@@ -8,7 +8,7 @@
     "approval": null
   },
   "events_processed": {
-    "devops": 38,
+    "devops": 41,
     "orchestrator": 11,
     "hod": 4
   },
@@ -606,10 +606,55 @@
           "revision": "89d2e425",
           "subject": "project-state carries the whole run state - tracker.json, TRACKER.md, three event logs, 15 checkpoints, a readiness record and 24 reports - with STOP absent on purpose, and tracker.py audit passes every check; the two copilot branches are historical and hold no live run state",
           "location": "project-state; project/audit/SKILL.md"
+        },
+        {
+          "producer": "devops",
+          "check": "neon-org-migration-verified",
+          "result": "pass",
+          "time": "2026-10-27T15:53:00Z",
+          "revision": "1dfb2d6",
+          "subject": "11 of 11 databases across 8 branches copied and verified into 6 projects of org-billowing-meadow-62228264; the destination read back after the release holds 38 tables - 40 dashboard_current_records, 15 dashboard_sync_state, 15748 events, 360 visitors, 571 sessions, 113770 wa_messages, 863 wa_chats, 33 wa_attachments - the 8 private section tables were added and 28 historical data tables preserved, a second migration run applied 0 changes with 0 drift warnings, no paid upgrade was applied, and the source projects still exist read-only for recovery",
+          "location": "project/checkpoints/2026-10-27-neon-org-migration-receipt.json"
+        },
+        {
+          "producer": "devops",
+          "check": "dashboard-section-release-live",
+          "result": "pass",
+          "time": "2026-10-27T15:38:43Z",
+          "revision": "1dfb2d6",
+          "subject": "PR #206 was approved by the owner and merged at 2026-10-27T15:38:36Z as 1dfb2d672160b33bb19405658b698e92732dea26, then deployed by the Vercel Git integration as dpl_HedKAZ6LSTch8azmuW1M5wdpeuJp - READY, target production, built from that same commit - carrying all five aliases jaytipargal.tech, www.jaytipargal.tech, jpbir.vercel.app, jpbir-jayti2.vercel.app and jpbir-git-main-jayti2.vercel.app",
+          "location": "project/checkpoints/2026-10-27-dashboard-section-release-receipt.json; project/approvals/2026-10-27-dashboard-section-release.md"
+        },
+        {
+          "producer": "devops",
+          "check": "production-endpoint-health",
+          "result": "pass",
+          "time": "2026-10-27T15:40:14Z",
+          "revision": "1dfb2d6",
+          "subject": "the Endpoint Health Check on the merge commit reported the homepage OK, the unauthenticated device and stats requests refused with 401 as designed, Neon answering with the full schema of 31 tables, cloud_fail 0, and the unattended scheduler 0 minutes old against a 20-minute limit - CI ran it on the exact deployed revision, not from an agent shell",
+          "location": "https://github.com/eka-auto/jpbir/actions/runs/40533169017"
+        },
+        {
+          "producer": "devops",
+          "check": "destination-refreshes-after-release",
+          "result": "pass",
+          "time": "2026-10-27T15:53:00Z",
+          "revision": "1dfb2d6",
+          "subject": "dashboard_sync_state observed_at advanced to 2026-10-27T15:45:49Z-15:45:51Z, after the deployment was created at 15:38:43Z: the released application is refreshing the destination database from Firestore across 15 completed scopes, so the live data is replaced rather than accumulated",
+          "location": "destination provider read-back, bitter-glade-72523152/br-hidden-leaf-b8l1j76r/jpbir_live"
+        },
+        {
+          "producer": "devops",
+          "check": "strict-release-gate-s24-rows",
+          "result": "fail",
+          "time": "2026-10-27T15:38:44Z",
+          "revision": "1dfb2d6",
+          "subject": "Release Readiness failed on this merge commit: 31 green, 0 warnings, 6 failing and 1 unproven across 38 rows, the six failing rows being Backend/device-heartbeat.js, Backend/device-enroll.js, Backend/device-commands-poll.js, Backend/lib/s24-attestation.js, Backend/s24-ingest.js and Backend/check-stale.js. Every scheduled run of that workflow on main has failed identically since at least 2026-10-27T01:55:31Z, before the migration began, and cloud_fail is 0, so the cause is the physical S24 not having attested the runtime contract and not this change. The release neither closed nor widened that gate",
+          "location": "https://github.com/eka-auto/jpbir/actions/runs/40533008432"
         }
       ],
-      "updated_at": "2026-10-22T04:54:00Z",
-      "note": "PR #198 was approved and merged, and the evidence job published for the deployed revision: it succeeded on the merge push and again on its schedule. The migration-tooling row is green again, and the panel is 31 green, 6 failing, 1 unproven. The one unproven row now says the honest thing - 'the device has not attested the runtime contract (the S24 is fail)' - which is the device's fault and not the pipeline's. The purge is done and verified: 5,634 events, 277 session rows, 134 visitor rows and all 23 journal items removed, leaving jaytibirthday.in's 15,092 events as the only property in the warehouse, and the read path refuses the retired ones with 400. The repository's branch list was checked directly: main, project-state, and two historical branches - copilot/cicd-devops-pipeline-test-run (old code, from #152 and #153) and copilot/jpbir-verified-facts (the 2026-10-18 run-state line, which still holds that older tracker.json). Neither is the live run state; project-state is, and its audit passes every check. The S24 is the only remaining gate for the strict gate."
+      "updated_at": "2026-10-27T15:53:00Z",
+      "note": "The Neon organization migration is finished and the dashboard section release is live. The owner's request was to move the Neon temporary API key of org-cold-lake-91548510 to org-billowing-meadow-62228264 and then to complete the migration with all data; both organizations are Vercel-managed, so Neon's project-transfer feature cannot move projects into or out of either one and the sanctioned route was a full data copy, with the source left intact as the rollback. 11 of 11 databases across 8 branches were copied and verified into 6 destination projects; no paid upgrade was applied; the source projects still exist read-only for recovery. The owner then approved the console database coverage scope, and PR #206 was approved, merged at 15:38:36Z as 1dfb2d6 and deployed by the Vercel Git integration as dpl_HedKAZ6LSTch8azmuW1M5wdpeuJp. The Endpoint Health Check on that merge commit reported the homepage OK and Neon answering with the full schema of 31 tables, with cloud_fail 0; an independent read of the destination afterwards showed the released application refreshing it from Firestore across 15 completed scopes, so the data keeps updating rather than accumulating. The session that owned this work was terminated by a usage limit at 15:39:25Z after the release had landed but before the receipts were written; this event and the receipts close that gap, and nothing was repeated or redeployed. The strict gate is still open on the S24 alone: Release Readiness failed on this merge commit with the identical six S24 device rows it has failed with on every scheduled run since at least 01:55:31Z, before the migration began. It is reported as a failure, not a pass."
     },
     {
       "id": "T-23",
@@ -814,10 +859,64 @@
           "revision": "84b4d037",
           "subject": "the run state that the owner's force-push removed from project-state is intact locally - tracker.json, events, checkpoints and TRACKER.md at 84b4d037 with this event on top - and is deliberately not pushed until the owner chooses between restoring it and building a fresh one",
           "location": "C:/Users/abcom/jpbir-project-state"
+        },
+        {
+          "producer": "devops",
+          "check": "post-release-verification-executed",
+          "result": "pass",
+          "time": "2026-10-27T15:53:30Z",
+          "revision": "1dfb2d6",
+          "subject": "the production deployment was verified against the service levels 33 seconds after it was created - homepage 200, unauthenticated device and stats requests refused with 401, Neon answering with the full schema of 31 tables, cloud_fail 0, monitoring schedule alive with 0 missed runs - and section coverage is 19 of 19 schema-ready with 14 showing real data and 5 empty for want of a source, not for want of a table",
+          "location": "project/reports/2026-10-27-neon-dashboard-section-release.md"
+        },
+        {
+          "producer": "devops",
+          "check": "observation-window-not-started",
+          "result": "fail",
+          "time": "2026-10-27T15:53:30Z",
+          "revision": "1dfb2d6",
+          "subject": "readiness.ready is still false on the deployed production: 31 green, 6 failing (device rows), 1 unproven, with the reason naming the six S24 runtime-contract files. The release did not close that gate and did not widen it; clearing it needs the physical S24 to attest the contract",
+          "location": "https://jaytipargal.tech/api/jp-stack"
+        },
+        {
+          "producer": "ci",
+          "check": "release-readiness-pre-existing-baseline",
+          "result": "pass",
+          "time": "2026-10-27T16:09:11Z",
+          "revision": "1dfb2d6",
+          "subject": "the Release Readiness verdict is byte-identical on 12 consecutive runs from 2026-10-23T06:06:46Z (47b43fd) through the merge commit - rows=38 ok=31 warn=0 fail=6 unproven=1 with the same six S24 device rows - so the red gate predates both the Neon migration and this release by four days",
+          "location": "https://github.com/eka-auto/jpbir/actions/runs/40533008432"
+        },
+        {
+          "producer": "ci",
+          "check": "merge-commit-checks-and-codespaces-prebuild",
+          "result": "pass",
+          "time": "2026-10-27T16:09:11Z",
+          "revision": "1dfb2d6",
+          "subject": "CI/CD Pipeline, Code Quality Checks, Publish Stack Evidence and Endpoint Health Check (twice) all succeeded on the merge commit, and the dynamic codespaces prebuild run 40533008188 completed successfully at 2026-10-27T16:05:47Z",
+          "location": "https://github.com/eka-auto/jpbir/actions/runs/40533008188"
+        },
+        {
+          "producer": "devops",
+          "check": "destination-sync-fresh-and-section-coverage",
+          "result": "pass",
+          "time": "2026-10-27T16:09:11Z",
+          "revision": "1dfb2d6",
+          "subject": "the destination read back at 2026-10-27T16:00:52Z holds 15 completed sync scopes and 40 current records (35 firestore, 4 vercel, 1 stack), the s24, vivobook and jteka aliases each with an identity record, and every section table present: 19 of 19 schema_ready, 16 showing real data and 3 empty by evidence (telegram, ask agent, jayti agent)",
+          "location": "bitter-glade-72523152/br-hidden-leaf-b8l1j76r/jpbir_live"
+        },
+        {
+          "producer": "devops",
+          "check": "in-flight-branch-is-not-production",
+          "result": "pass",
+          "time": "2026-10-27T16:09:11Z",
+          "revision": "ea53b29",
+          "subject": "feat/console-db-coverage is preview-only (jpbir dpl_AnKTRpoo5SSC1hju7cTZnZcEGXSE, readySubstate STAGED), unmerged, with no open pull request, and its duplicate 017_ migration prefix is harmless because the ledger is keyed by filename",
+          "location": "origin/feat/console-db-coverage"
         }
       ],
-      "updated_at": "2026-10-22T00:18:00Z",
-      "note": "PR #196 merged at 00:09:25Z (1b340e3b) and the evidence-publish job on main SUCCEEDED for the first time. The live panel moved from 30 green and 2 unproven to 31 green, 6 failing and 1 unproven: the migration-tooling row is now GREEN on a signed, revision-bound receipt, and the runtime-contract row carries the honest remaining reason - 'the device has not attested the runtime contract (the S24 is fail)' - rather than the old misleading 'the CI evidence store answered HTTP 404'. The outside monitor is green on every scheduled run (22:57:20Z, 23:26:11Z, 23:55:13Z). The 24-hour observation window is still NOT started and must not be: readiness.ready is false because the six device rows are red. The S24 still reports s24-termux-https-worker-2026-07-27.1 over termux-direct-cloud with a heartbeat older than a day and five queued commands unclaimed, so the only remaining gate is the physical action on the phone. NOTE ON THE BRANCH: project-state was force-pushed to main's HEAD by the owner at about 00:14Z, which removed the run state from the branch. It is intact locally at 84b4d037 with this event on top; it is held back from the remote pending the owner's decision on whether to restore that state or to build a fresh one, because pushing it would re-create what was just reset."
+      "updated_at": "2026-10-27T16:09:11Z",
+      "note": "Independent post-release verification of the dashboard section release, carried out after the Codex session that owned it was cut off by a usage limit. PR #206 is merged as 1dfb2d672160b33bb19405658b698e92732dea26 (2026-10-27T15:38:36Z) and both production deployments are READY and PROMOTED from that commit: jpbir dpl_HedKAZ6LSTch8azmuW1M5wdpeuJp and channel-sandbox dpl_2APfwtns5XxgL5ntQykh3AFoVHUr. On the merge commit CI/CD Pipeline, Code Quality Checks, Publish Stack Evidence and Endpoint Health Check (twice) all succeeded. The '[main]' run 40533008188 is GitHub's dynamic codespaces prebuild rather than a project gate, and it completed successfully at 2026-10-27T16:05:47Z in 27 minutes, against 24 minutes for each of the two previous main pushes. Release Readiness remains the single red gate and is recorded as a failure, never as a pass: 31 green, 0 warnings, 6 failing, 1 unproven across 38 rows, with the identical six S24 device rows. The baseline was extended past the earlier evidence: the same panel and the same six rows appear on 12 consecutive runs from 2026-10-23T06:06:46Z (commit 47b43fd) through the merge commit, so that gate was already open four days before the Neon migration began. cloud_fail is 0, the cause is the physical S24 not having attested the runtime contract, and this release neither closed nor widened the gate. A read-back of the destination at 2026-10-27T16:00:52Z shows 15 sync scopes all complete and 40 current records (35 firestore, 4 vercel, 1 stack), with the s24, vivobook and jteka device aliases each carrying their identity record. Section coverage is 19 of 19 schema_ready and 16 of 19 show real data, up from 14 in the 15:53 report because vercel and product engineering now carry real records; the three still empty are telegram, ask agent and jayti agent, empty by evidence because their tables exist and no source has produced a row. The live data keeps being replaced rather than accumulated. Branch feat/console-db-coverage at ea53b2977eb87213af44a892d5cbef6ec67755ae is preview-deployed only (jpbir dpl_AnKTRpoo5SSC1hju7cTZnZcEGXSE, readySubstate STAGED), unmerged, with no open pull request; its Database/schema/017_console_coverage.sql sits beside 017_dashboard_sections.sql, and the shared version prefix is harmless because schema_migrations is keyed by filename and planMigrations matches filenames rather than numeric prefixes, so the new file resolves to action=apply. That branch also repoints project/targets.json at the migrated Neon project, which on main still names the pre-migration project as the production warehouse. No independent HOD completion is claimed."
     },
     {
       "id": "T-33",

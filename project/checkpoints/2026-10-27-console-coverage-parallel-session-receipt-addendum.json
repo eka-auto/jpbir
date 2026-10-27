@@ -1,0 +1,15 @@
+{
+  "operation": "console-coverage-parallel-session-20261027",
+  "kind": "receipt-addendum",
+  "recordedAt": "2026-10-27T16:45:00+05:30",
+  "corrects": "the earlier note in 2026-10-27-console-coverage-parallel-session-receipt.json that said migrate-production.yml 'never runs'",
+  "finding": "migrate-production.yml is workflow_dispatch-only BY DESIGN: a person types the Neon project id to confirm the target before the write, because a migration applied to the wrong database is worse than no migration. The gap after PR #206 was therefore an un-dispatched job, not a broken trigger - a merge does not carry that step with it. The improvement worth making is a dry run on every schema change (visible in CI, no write), keeping the human confirmation in front of the write.",
+  "verificationAfterTheFix": {
+    "static_vs_live": "main's application SQL references exactly one table-shaped name that does not exist live - 'device_agent' - and it is a fixture label in _shared/tests/s24-command.test.mjs, not a table. No production table reference is broken.",
+    "live_tables_not_mentioned_by_application_sql": "device_dataset_status, device_downloads, device_telemetry - live with rows (0/0/3) but never named by application SQL; either written from a path outside this repository or residue worth a look.",
+    "pre_move_identifiers_in_main": "only in historical records (project/checkpoints, project/approvals, project/plans) and in project/targets.json, which PR #207 corrects to the verified live warehouse.",
+    "orphan_tables_removed": "the seven tables from this session's withdrawn draft were dropped (all empty) and the 017_console_coverage.sql ledger row deleted; the ledger now holds 017_dashboard_sections.sql only.",
+    "source_projects": "all five pre-move projects are still present in org-cold-lake-91548510 and intact, as the rollback copy; deletion still needs the owner's explicit approval.",
+    "codex_session": "the Codex session 01a17cfe could not be resumed - it fails on pre-sampling compaction with the usage limit (resets Oct 28th, 2026 12:29 AM), so this session performed the verification itself"
+  }
+}
