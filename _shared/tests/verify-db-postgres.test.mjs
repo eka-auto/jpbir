@@ -95,6 +95,9 @@ const { verifyPostgres, REQUIRED_TABLES } = await import('../../Backend/verify-d
 const pgFiles = readdirSync(BACKEND)
   .filter((f) => f.endsWith('.js'))
   .filter((f) => readFileSync(join(BACKEND, f), 'utf8').includes('Integrations/postgres.js'));
+// Durable section/conversation reads live in shared store modules, rather than
+// duplicating SQL in each route. They belong to the same health contract.
+pgFiles.push('../Integrations/dashboard-store.js','../Integrations/agent-store.js','../Integrations/telegram-store.js');
 
 // Write-side helpers keep their own bookkeeping tables (s24_sync_batches) and
 // db-push mirrors from DynamoDB; the health check covers what the READ paths

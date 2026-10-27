@@ -25,6 +25,7 @@
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+await import('../../Frontend/section-presentation.js');
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const html = readFileSync(join(ROOT, 'Frontend', 'db.html'), 'utf8');

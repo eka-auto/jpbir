@@ -1051,5 +1051,11 @@ export default async function handler(req, res) {
     scheduleSnapshot(),
     lastRun(),
   ]);
-  res.status(200).json({ success: true, ...snap, last_cron_run: cron, last_run: anyRun, schedule });
+   let storage='unavailable';
+   try {
+     const { persistProviderSection }=await import('./lib/section-data.js');
+     await persistProviderSection('stack',[{id:'overall',values:{name:'Product engineering',status:snap.overall,count:snap.cloud_fail}}],new Date().toISOString());
+     storage='saved';
+   } catch { /* Surface storage failure without inventing probe success. */ }
+   res.status(200).json({ success: true, ...snap, storage, last_cron_run: cron, last_run: anyRun, schedule });
 }

@@ -19,9 +19,11 @@ import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+await import('../../Frontend/section-presentation.js');
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const html = readFileSync(join(ROOT, 'Frontend', 'viewer.html'), 'utf8');
+const sharedPresentation = readFileSync(join(ROOT,'Frontend','section-presentation.js'),'utf8');
 const script = html.match(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/)[1];
 // Comments explain history (including the dead route's name); only code counts.
 const code = script.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
@@ -44,7 +46,7 @@ t('the sidebar\'s Media entry still lands on this page (index.html -> /viewer ->
 });
 
 t('every /api route the page calls resolves to a Backend handler — the old page called one that did not', () => {
-  const routes = [...new Set([...code.matchAll(/'\/api\/([a-z0-9-]+)/g)].map((m) => m[1]))];
+  const routes = [...new Set([...(code+sharedPresentation).matchAll(/'\/api\/([a-z0-9-]+)/g)].map((m) => m[1]))];
   assert.deepEqual(routes.sort(), ['jp-live-content', 'jp-whatsapp', 'wa-media']);
   for (const r of routes) {
     assert.ok(existsSync(join(ROOT, 'Backend', r + '.js')), `/api/${r} has no Backend/${r}.js, so it 404s in production`);
@@ -70,7 +72,7 @@ t('only an auth failure clears the key: a 503 store outage branches on _auth.js\
 t('the dashboard key never enters a URL; media uses a short-lived attachment token', () => {
   const lines = code.split('\n').filter((l) => /[?&]key=/.test(l));
   assert.equal(lines.length, 0, 'a URL still carries the long-lived dashboard key');
-  assert.match(code, /\/api\/wa-media\?att_id=.*&token=/, 'media proxy has no attachment token');
+  assert.match(sharedPresentation, /\/api\/wa-media\?att_id=.*&token=/, 'media proxy has no attachment token');
   assert.match(code, /'x-stats-key': KEY/, 'API requests no longer send the x-stats-key header');
 });
 
@@ -172,7 +174,7 @@ t('every media src uses a short-lived attachment token; the dashboard key never 
   assert.equal(M.mediaSrc({ att_id: 'a:b c', media_token: 'expires.sig' }), '/api/wa-media?att_id=a%3Ab%20c&token=expires.sig');
   assert.equal(M.mediaSrc({ att_id: 'a:b c' }), '');
   assert.equal(M.mediaSrc({ blob_url: 'javascript:alert(1)' }), '');
-  assert.equal(M.mediaSrc({ blob_url: 'https://x.public.blob.vercel-storage.com/a.jpg' }), 'https://x.public.blob.vercel-storage.com/a.jpg');
+  assert.equal(M.mediaSrc({ blob_url: 'https://x.public.blob.vercel-storage.com/a.jpg' }), '', 'unindexed URLs must not bypass authenticated media transport');
   assert.equal(M.mediaSrc({}), '');
 });
 
@@ -194,7 +196,7 @@ t('each of the seven wa_attachments kinds renders as the right element, never as
   assert.match(card('audio', 'audio/mpeg', 'a.mp3'), /<audio controls preload="none" src="\/api\/wa-media\?/);
   assert.match(card('ptt', 'audio/ogg; codecs=opus', 'p.opus'), /Voice note[\s\S]*<audio controls preload="none"/);
   const pdf = card('document', 'application/pdf', 'Rent.pdf');
-  assert.match(pdf, /doc-icon[^"]*"[^>]*><span>PDF<\/span>/);
+  assert.match(pdf, /<iframe[^>]*title="Rent.pdf"[^>]*src="\/api\/wa-media\?att_id=/);
   assert.match(pdf, /application\/pdf/);
   assert.match(pdf, /<a class="open" href="\/api\/wa-media\?[^"]*" target="_blank" rel="noopener noreferrer">Open/);
   const zip = card('document', 'application/zip', 'backup.zip');

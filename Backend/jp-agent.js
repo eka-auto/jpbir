@@ -2,6 +2,7 @@ import { list } from '@vercel/blob';
 import { decodeGeo } from './lib/geo.js';
 import { requireKey } from './_auth.js';
 import { query, isConfigured } from '../Integrations/postgres.js';
+import { exchangeIdentity, lookupExchange, persistAnswer } from '../Integrations/agent-store.js';
 
 const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY;
 const BLOB_TOKEN = process.env.BLOB_READ_WRITE_TOKEN;
@@ -97,11 +98,17 @@ export default async function handler(req, res) {
     return res.status(405).json({ success: false, error: 'Method not allowed' });
   }
   if (!requireKey(req, res)) return;
-  if (!ANTHROPIC_KEY) return res.status(503).json({ success: false, error: 'ANTHROPIC_API_KEY not configured' });
   let body = req.body || {};
   if (typeof body === 'string') { try { body = JSON.parse(body); } catch { body = {}; } }
-  const question = String(body.question || '').trim();
+   const question = typeof body.question === 'string' ? body.question.trim() : '';
   if (!question) return res.status(400).json({ success: false, error: 'question required' });
+   try { Object.assign(body, exchangeIdentity(body)); } catch { return res.status(400).json({success:false,error:'Invalid conversation identity'}); }
+   if(question.length>16000) return res.status(400).json({success:false,error:'Question too long'});
+   try {
+     const stored=await lookupExchange('agent',body,question);
+     if(stored)return res.status(200).json({success:true,...stored});
+   }catch(e){return res.status(e.status===409?409:503).json({success:false,error:e.status===409?'Conflicting request identity':'Conversation storage unavailable'});}
+   if (!ANTHROPIC_KEY) return res.status(503).json({ success: false, error: 'ANTHROPIC_API_KEY not configured' });
   try {
     const ctx = await gatherContext();
     const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
@@ -111,8 +118,12 @@ export default async function handler(req, res) {
     });
     if (!aiRes.ok) return res.status(502).json({ success: false, error: 'AI request failed' });
     const response = await aiRes.json();
-    return res.status(200).json({ success: true, answer: response.content?.[0]?.text || 'No answer produced.', context: { devices: ctx.devices.length, ips: ctx.ips.length, history: ctx.history.length, degraded: ctx.degraded } });
+     const answer=response.content?.[0]?.text;
+     if(typeof answer!=='string'||!answer.trim()) return res.status(502).json({success:false,error:'Agent returned no answer'});
+     const stored=await persistAnswer('agent',body,question,answer);
+     return res.status(200).json({ success: true, ...stored, context: { devices: ctx.devices.length, ips: ctx.ips.length, history: ctx.history.length, degraded: ctx.degraded } });
   } catch (error) {
+     if(error.status===409)return res.status(409).json({success:false,error:'Conflicting request identity'});
     console.error('[jp-agent] error:', error);
     return res.status(500).json({ success: false, error: 'agent failed' });
   }

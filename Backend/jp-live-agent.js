@@ -8,6 +8,7 @@
 // privileged route here, and the guard runs before the config check so an
 // unauthenticated caller cannot learn whether this deployment is wired up.
 import { requireKey } from './_auth.js';
+import { exchangeIdentity, lookupExchange, persistAnswer } from '../Integrations/agent-store.js';
 
 const _env = (typeof process !== 'undefined' ? process : globalThis['proc' + 'ess']).env;
 
@@ -41,7 +42,7 @@ export default async function handler(req, res) {
   // Fails closed. The old default of http://127.0.0.1:8000 can never be right on
   // Vercel, so an unset URL is reported as unconfigured rather than as a
   // confusing connection error.
-  if (!url) {
+   if (!url && (req.method==='GET' || req.query?.op==='health')) {
     return res.status(503).json({ success: false, error: 'Agent not configured', missing: ['AGENT_API_URL'] });
   }
   // nginx on the VPS checks X-API-Key for /agent/*; sent only when configured so
@@ -70,10 +71,17 @@ export default async function handler(req, res) {
     try { body = JSON.parse(body); } catch { body = {}; }
   }
 
-  const query = String(body.query || body.question || '').trim();
+   const query = typeof (body.query || body.question) === 'string' ? (body.query || body.question).trim() : '';
   if (!query) {
     return res.status(400).json({ success: false, error: 'query required' });
   }
+   try { Object.assign(body,exchangeIdentity(body)); } catch{return res.status(400).json({success:false,error:'Invalid conversation identity'});}
+   if(query.length>16000) return res.status(400).json({success:false,error:'Question too long'});
+   try {
+     const stored=await lookupExchange('jayti-agent',body,query);
+     if(stored)return res.status(200).json({success:true,...stored,response:stored.answer});
+   }catch(e){return res.status(e.status===409?409:503).json({success:false,error:e.status===409?'Conflicting request identity':'Conversation storage unavailable'});}
+   if(!url)return res.status(503).json({success:false,error:'Agent not configured',missing:['AGENT_API_URL']});
 
   const payload = {
     query,
@@ -98,11 +106,15 @@ export default async function handler(req, res) {
         success: false,
         error: 'Agent upstream error',
         upstream_status: upstream.status,
-        details: data,
       });
     }
-    return res.status(200).json({ success: true, ...data });
+     const answer=data.answer || data.response;
+     if(typeof answer!=='string'||!answer.trim()) return res.status(502).json({success:false,error:'Agent returned no readable answer'});
+     const stored=await persistAnswer('jayti-agent',body,query,answer);
+     const source_docs=Array.isArray(data.source_docs)?data.source_docs.slice(0,20).map(d=>({doc_id:typeof d.doc_id==='string'?d.doc_id:null,snippet:typeof d.snippet==='string'?d.snippet:null})):[];
+     return res.status(200).json({success:true,...stored,response:stored.answer,source_docs,sources:data.sources,total_time_ms:data.total_time_ms});
   } catch (error) {
+     if(error.status===409)return res.status(409).json({success:false,error:'Conflicting request identity'});
     return res.status(502).json({ success: false, error: error.message || 'Agent request failed' });
   }
 }

@@ -26,6 +26,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+await import('../../Frontend/section-presentation.js');
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const html = readFileSync(join(ROOT, 'Frontend', 'db.html'), 'utf8');
@@ -180,7 +181,8 @@ await t('a 30-second time_on_page, which arrives in milliseconds, reads "30s" an
 await t('a drawer tree reads time_on_page and the tracker\'s timeOnPage as a duration too, the stored ms on hover', () => {
   // The Events table said "30s" while the event drawer, a tree, printed the
   // same field as a bare 30000 and left the unit to a guess.
-  const out = treeHtml({ time_on_page: 30000, raw_payload: { timeOnPage: '95500' }, loadTime: 1234 });
+  const out = treeHtml({ time_on_page: 30000, timeOnPage: '95500', raw_payload: { secret:'hidden' }, loadTime: 1234 });
+  assert.equal(out.includes('raw_payload'),false);
   assert.match(out, /<dt>time_on_page<\/dt><dd><span title="30000 ms">30s<\/span><\/dd>/);
   assert.match(out, /<dt>timeOnPage<\/dt><dd><span title="95500 ms">1m 36s<\/span><\/dd>/);
   assert.match(out, /<dt>loadTime<\/dt><dd>1234<\/dd>/, 'only the two millisecond fields are converted');
@@ -202,14 +204,13 @@ await t('a TEXT column holding JSON, like events.screen, renders as a labelled t
   assertNoJson(out, 'the tree');
 });
 
-await t('text that only starts with a bracket stays text, and unparseable JSON is shown in full as well as described', () => {
+await t('ordinary bracketed text remains readable and malformed JSON never becomes a raw dump', () => {
   for (const line of ['[INFO] daemon started', '[2026-09-22 10:00] daemon started', '[123456] is your OTP', '[-] failed']) {
     assert.equal(visible(treeHtml(line)), line, `a log line or message was hidden: ${line}`);
   }
   const cut = treeHtml('{"records": ["abc", "de');
-  assert.match(cut, /does not parse/);
-  // A note about a value is not the value: the stored text follows the note.
-  assert.match(visible(cut), /records/, 'the stored text was replaced by a note about it');
+  assert.match(cut, /unavailable/);
+  assert.equal(cut.includes('records'),false);
 });
 
 await t('a deep tree renders every level: no depth cap and no shape summary', () => {
@@ -270,12 +271,10 @@ await t('interactions and visitor_device get a one-line summary in a table cell 
   assert.equal(briefHtml(0), '0');
 });
 
-await t('a stored JSON file renders as a full tree under a summary, every key included', () => {
+await t('a stored JSON file is excluded from the product preview', () => {
   const out = fileContentHtml(BIG_JSON, { filename: 'result.json', fileType: 'json' });
-  assert.match(out, /JSON object with 300 keys/);
-  assert.match(out, /value-250/, 'entries past the old cap are rendered');
-  assert.equal(out.includes('more'), false, 'entries were replaced by a count of entries');
-  assertNoJson(out, 'the JSON file');
+  assert.match(out,/File preview unavailable/);
+  assert.doesNotMatch(out,/result.json|value-250/);
 });
 await t('a plain-text file shows its name, type, length and its whole content', () => {
   const out = fileContentHtml(LONG_TEXT, { filename: 'notes.txt', fileType: 'txt' });
@@ -285,16 +284,15 @@ await t('a plain-text file shows its name, type, length and its whole content', 
   assert.match(out, /END-OF-FILE-MARKER/, 'the whole file reaches the drawer');
   assert.equal(/<pre[\s>]/.test(out), false);
 });
-await t('a PDF, base64 or unparseable JSON stored as text is shown as text', () => {
+await t('PDF bytes, base64 and malformed JSON never appear as encoded text', () => {
   const pdf = fileContentHtml('%PDF-1.7\n' + 'x'.repeat(900));
-  assert.match(pdf, /%PDF-1\.7/);
-  assert.equal(pdf.includes('Not shown'), false);
+  assert.match(pdf, /preview unavailable/);
+  assert.equal(pdf.includes('%PDF'),false);
   const b64 = Buffer.from(Array.from({ length: 900 }, (_, i) => (i * 37) % 256)).toString('base64').replace(/(.{76})/g, '$1\n');
-  assert.match(fileContentHtml(b64), /Content \u00b7 /);
-  assert.equal(fileContentHtml(b64).includes('Not shown'), false);
+  assert.match(fileContentHtml(b64), /preview unavailable/);
   const cut = fileContentHtml('{"records": ["' + 'x'.repeat(800));
-  assert.match(cut, /records/);
-  assert.equal(cut.includes('Not shown'), false);
+  assert.match(cut, /preview unavailable/);
+  assert.equal(cut.includes('records'),false);
 });
 await t('a file that is only a list of numbers or ids is shown in full, like any other text', () => {
   const numbers = Array.from({ length: 40 }, (_, i) => '98765' + String(10000 + i)).join('\n');

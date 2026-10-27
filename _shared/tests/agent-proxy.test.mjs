@@ -19,6 +19,10 @@ const check = (label, ok, detail) => {
 };
 
 process.env.STATS_KEY = 'k-test';
+// This suite isolates upstream transport; durable retries use real Postgres in
+// section-conversations.test.mjs.
+delete process.env.DATABASE_URL;
+delete process.env.POSTGRES_URL;
 delete process.env.AGENT_API_URL;
 delete process.env.AGENT_API_KEY;
 

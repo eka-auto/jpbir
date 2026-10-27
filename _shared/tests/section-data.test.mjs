@@ -1,0 +1,21 @@
+import assert from 'node:assert/strict';
+import { decodeField, projectFields, fetchCollection, displayReadModel } from '../../Backend/lib/section-data.js';
+assert.equal(decodeField({integerValue:'9007199254740993'}),'9007199254740993');
+assert.equal(decodeField({integerValue:'0'}),0);
+assert.deepEqual(displayReadModel({raw_payload:'secret',payload:{secret:'x'},name:'Record',body:'{"amount":9007199254740993,"metadata":"hidden"}'}),{name:'Record',body:{amount:'9007199254740993'}});
+assert.deepEqual(projectFields({name:'Ada', count:0, raw_payload:{secret:'no'}, private_key:'no', nested:{a:1}}),{name:'Ada',count:0});
+assert.deepEqual(projectFields({info:{hostname:'fixture-laptop',cpu:{percent:0},private_key:'hidden'},batteryLevel:0,phone_number:'fixture-number'}),{info_hostname:'fixture-laptop',info_cpu_percent:0,batteryLevel:0,phone_number:'fixture-number'});
+const response = body => ({ok:true,json:async()=>body});
+let requests=[];
+const result=await fetchCollection({base:'https://firestore.googleapis.com/v1/projects/test/databases/eka-agent/documents',scope:'devices',token:'fixture',generation:'2026-01-01T00:00:00Z',fetcher:async url=>{
+ requests.push(url);return requests.length===1?response({documents:[{name:'devices/a',updateTime:'2026-01-01T00:00:00Z',fields:{name:{stringValue:'A'}}}],nextPageToken:'next'}):response({documents:[]});
+}});
+assert.equal(requests.length,2);assert.equal(result.complete,true);assert.equal(result.records[0].revision,'2026-01-01T00:00:00Z');
+assert.ok(requests.every(u=>new URL(u).searchParams.get('readTime')==='2026-01-01T00:00:00Z'));
+const partial=await fetchCollection({base:'https://firestore.googleapis.com/v1/projects/test/databases/eka-agent/documents',scope:'devices',token:'fixture',generation:'2026-01-01T00:00:00Z',maxPages:1,fetcher:async()=>response({documents:[],nextPageToken:'remaining'})});
+assert.equal(partial.complete,false);
+const {sourceMediaReferences}=await import('../../Backend/dashboard-sections.js');
+const hidden=await sourceMediaReferences([{scope:'devices/test/whatsappMedia',values:{file_name:'metadata.json',mime:'application/json'}}],async()=>({rows:[]}));
+assert.equal(hidden.length,0,'a rejected metadata attachment must not fall back to a filename/MIME table');
+await assert.rejects(fetchCollection({base:'https://firestore.googleapis.com/v1/projects/test/databases/eka-agent/documents',scope:'devices',token:'fixture',generation:'2026-01-01T00:00:00Z',fetcher:async()=>({ok:false,status:403})}),/source unavailable/);
+console.log('section projection, exact integers, pagination, read time and partial-source checks passed');

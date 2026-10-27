@@ -14,6 +14,7 @@
 // Firestore as before, and mirror into Postgres.
 import { query, isConfigured } from '../Integrations/postgres.js';
 import { checkKey } from './_auth.js';
+import { displayReadModel } from './lib/section-data.js';
 
 const DEFAULT_SITE = 'jaytibirthday.in';
 
@@ -656,7 +657,7 @@ export default async function handler(req, res) {
       name: req.query.name ? String(req.query.name).slice(0, 80) : null,
       includeNoise: req.query.noise === '1',
     });
-    return res.status(200).json({ ok: true, view, data });
+    return res.status(200).json({ ok: true, view, data:displayReadModel(data) });
   } catch (err) {
     console.error('[db-api]', view, err);
     return res.status(500).json({ ok: false, view, error: err.message });

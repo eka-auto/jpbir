@@ -4,6 +4,7 @@ import { requireKey } from './_auth.js';
 import { verifyMediaToken } from './lib/media-auth.js';
 import { query, isConfigured } from '../Integrations/postgres.js';
 import { get } from '@vercel/blob';
+import { mediaKind } from './lib/media-policy.js';
 
 const _env = (typeof process !== 'undefined' ? process : globalThis['proc' + 'ess']).env;
 
@@ -23,6 +24,14 @@ function blobOptions(req) {
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'private, no-store');
   res.setHeader('Referrer-Policy', 'no-referrer');
+  // A PDF iframe renders error bodies too. Keep authentication/storage refusals
+  // readable instead of showing the API's JSON inside the document preview.
+  if(req.headers?.['sec-fetch-dest']==='iframe') {
+    res.json=()=>{
+      res.setHeader('Content-Type','text/plain; charset=utf-8');
+      return res.send('This file is unavailable. Refresh the dashboard to check access.');
+    };
+  }
   if (req.method !== 'GET' && req.method !== 'HEAD') {
     res.setHeader('Allow', 'GET, HEAD');
     return res.status(405).json({ ok: false, error: 'GET only' });
@@ -39,9 +48,10 @@ export default async function handler(req, res) {
     return res.status(503).json({ ok: false, error: 'Blob is not configured on this deployment' });
   }
   let row;
-  try { row = (await query(`SELECT blob_url FROM wa_attachments WHERE att_id = $1`, [attId])).rows[0]; }
+   try { row = (await query(`SELECT blob_url, mime, file_name FROM wa_attachments WHERE att_id = $1`, [attId])).rows[0]; }
   catch (err) { return res.status(500).json({ ok: false, error: err.message || 'lookup failed' }); }
   if (!row || !row.blob_url) return res.status(404).json({ ok: false, error: 'not found' });
+   if(!mediaKind(row)) return res.status(404).json({ok:false,error:'Unsupported file'});
   const pathname = pathnameOf(row.blob_url);
   if (!pathname) return res.status(422).json({ ok: false, error: 'attachment has no usable blob path' });
   try {
@@ -49,7 +59,12 @@ export default async function handler(req, res) {
     if (!result || ![200, 206].includes(result.statusCode) || !result.stream) {
       return res.status(404).json({ ok: false, error: 'not found' });
     }
-    res.setHeader('Content-Type', result.blob.contentType || 'application/octet-stream');
+     const mime=result.blob.contentType || 'application/octet-stream';
+     if(!mediaKind({...row,mime})) return res.status(415).json({ok:false,error:'Unsupported file'});
+     res.setHeader('Content-Type', mime);
+     res.setHeader('Content-Security-Policy', "frame-ancestors 'self'; object-src 'none'; base-uri 'none'");
+     res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+     res.setHeader('Content-Disposition', (mediaKind({...row,mime})==='document'?'attachment':'inline')+'; filename="'+String(row.file_name||'document').replace(/[\r\n"\\]/g,'_').slice(0,180)+'"');
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('ETag', result.blob.etag);
     for (const header of ['accept-ranges', 'content-length', 'content-range']) {
