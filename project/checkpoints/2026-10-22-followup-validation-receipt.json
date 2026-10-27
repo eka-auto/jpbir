@@ -1,0 +1,44 @@
+{
+  "operation_id": "jpbir-release-192-20261022",
+  "followup_pr": 193,
+  "head": "08c1a6fa4a75eb25fd518a1241bf23420bb9513d",
+  "required_checks": {
+    "passed": 8,
+    "total": 8
+  },
+  "test_suites": {
+    "passed": 51,
+    "total": 51,
+    "run": 39675608795
+  },
+  "branch_health": {
+    "run": 39675806940,
+    "result": "success",
+    "native_schedule_stale": false
+  },
+  "branch_evidence": {
+    "run": 39675690533,
+    "result": "failure",
+    "runtime_contract": "pass",
+    "migration_proof": "pass",
+    "restore_drill": "pass",
+    "ledger_reconciliation": "fail",
+    "unrecognized_applied_migrations": 11,
+    "signed_receipts_published": false
+  },
+  "production": {
+    "revision": "ea706b12294d23ad43b980a4885b95da7b5d9ca0",
+    "ready": false,
+    "green_rows": 30,
+    "device_failures": 6,
+    "unproven_rows": 2,
+    "strict_readiness_run": 39675697831
+  },
+  "pending": [
+    "Independent approving GitHub review on PR 193; CODEOWNERS and workflow repairs are not on main",
+    "Reconcile 11 production migration identities against authoritative shared migration history; no guessed aliases",
+    "Device readiness remains failing"
+  ],
+  "local_product_checkout_modified": false,
+  "key_value_disclosed": false
+}

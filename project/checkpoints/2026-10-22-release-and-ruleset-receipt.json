@@ -1,0 +1,54 @@
+{
+  "operation_id": "jpbir-release-192-20261022",
+  "status": "production-deployed-controls-active-followup-awaiting-review",
+  "merged_pr": 192,
+  "merge_commit": "ea706b12294d23ad43b980a4885b95da7b5d9ca0",
+  "deployment": {
+    "id": "dpl_B4BPkX5yw3dTAPP3NmEoqVXh2fPh",
+    "project": "prj_47peuCvcDnURmUqhU3aFlaBP351J",
+    "source": "git",
+    "state": "READY",
+    "production_alias": "jaytipargal.tech"
+  },
+  "ruleset": {
+    "id": 25339138,
+    "enforcement": "active",
+    "required_checks": 8,
+    "approving_reviews": 1,
+    "code_owner_review": true,
+    "last_push_approval": true,
+    "dismiss_stale_approvals": true,
+    "bypass_actors": [],
+    "deletion_and_force_push_protected": true
+  },
+  "enforcement_probe": {
+    "unchecked_same_tree_commit": "264b84b9ae82b7330cba137146d48749b0fa1870",
+    "result": "rejected",
+    "message": "Changes must be made through a pull request. 8 of 8 required status checks are expected.",
+    "main_unchanged": true
+  },
+  "followup": {
+    "pr": 193,
+    "reviewer": "jaytipargal",
+    "contains": [
+      "CODEOWNERS",
+      "bounded ACCESS amendment",
+      "host ledger output path fix",
+      "false schedule stale extraction fix",
+      "signed heartbeat fixture timestamp correction"
+    ],
+    "state": "awaiting independent review and CI"
+  },
+  "production_readiness": {
+    "ready": false,
+    "green_rows": 30,
+    "device_failures": 6,
+    "unproven_rows": 2,
+    "native_schedule": {
+      "present": true,
+      "stale": false,
+      "age_minutes": 0
+    }
+  },
+  "key_value_disclosed": false
+}

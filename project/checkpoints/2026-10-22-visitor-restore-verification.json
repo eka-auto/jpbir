@@ -1,0 +1,49 @@
+{
+  "operation": "visitor-repair-20261022",
+  "status": "verified",
+  "first_apply": {
+    "inserted": 872,
+    "visitors_refreshed": 61,
+    "sessions_refreshed": 72,
+    "events_before": 14220,
+    "events_after": 15092
+  },
+  "second_apply": {
+    "inserted": 0,
+    "visitors_refreshed": 0,
+    "sessions_refreshed": 0,
+    "events_after": 15092,
+    "checked_at": "2026-10-21T22:10:28.530Z"
+  },
+  "source_reconciliation": {
+    "source_rows": 1068,
+    "matching_target_rows": 1068,
+    "missing": 0,
+    "source_digest": "cc2e1c66c4155127998d665bacf8804ec80bc282abf7d205786b9e3ab706eb58"
+  },
+  "original_gap": {
+    "window_ist": "2026-10-11 through 2026-10-16",
+    "source_events": 755,
+    "source_sessions": 40,
+    "sessions_found_in_live_api": 40,
+    "sessions_missing_in_live_api": 0
+  },
+  "live_api": {
+    "url": "https://jaytipargal.tech/api/stats?site=jaytibirthday.in&days=90",
+    "http": 200,
+    "events": 15092,
+    "sessions": 557,
+    "partial": false
+  },
+  "ci": {
+    "run": 39684115211,
+    "test_suites_passed": 52,
+    "test_suites_total": 52,
+    "required_checks_passed": 8
+  },
+  "pull_request": 195,
+  "source_preserved": true,
+  "existing_target_events_overwritten": 0,
+  "encrypted_rollback_record_created": true,
+  "user_display_instruction": "Select jaytibirthday.in, Last 30 days or Last 90 days, then Refresh to include October 10–16."
+}

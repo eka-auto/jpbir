@@ -1,0 +1,56 @@
+{
+  "operation": "visitor-repair-20261022",
+  "mode": "dry-run",
+  "options": {
+    "site": "jaytibirthday.in",
+    "since": "2026-10-10T00:00:00+05:30",
+    "until": "2026-10-21T22:01:03.470Z",
+    "maxRows": 5000
+  },
+  "sourceIdentity": {
+    "database": "neondb",
+    "role": "neondb_owner"
+  },
+  "targetIdentity": {
+    "database": "jpbir_live",
+    "role": "neondb_owner"
+  },
+  "sourceFingerprint": "26aa04d6c3284dccd8cca3ce18506d7aa7ec6fe095395d2d469c7b950ae81a44",
+  "targetFingerprint": "54630545ea1855e7a48e91c74762a17a0710294a3e10f40031517d76af55b629",
+  "baseline": {
+    "events": 14220,
+    "sessions": 485
+  },
+  "site": "jaytibirthday.in",
+  "since": "2026-10-10T00:00:00+05:30",
+  "until": "2026-10-21T22:01:03.470Z",
+  "sourceDigest": "cc2e1c66c4155127998d665bacf8804ec80bc282abf7d205786b9e3ab706eb58",
+  "missingDigest": "f1dc43340ea4d172671713f37959c8e27c65fc85dcc42a68c4d823d4459ef33a",
+  "sourceCount": 1068,
+  "existingCount": 196,
+  "missingCount": 872,
+  "status": "awaiting-local-executor-exception",
+  "requested_by_owner": "@Compound-Engineering fix it",
+  "reviewed_implementation": "e4bcaebe45f41783f6b4a19a5bdf4cee5204d712",
+  "pull_request": 195,
+  "isolated_postgres_checks": {
+    "pass": 13,
+    "total": 13
+  },
+  "independent_review": "No remaining Critical or Important findings; review_visitor_restore",
+  "scope": [
+    "Insert missing birthday event IDs only",
+    "Retain all original fields and timestamps",
+    "Refresh affected visitor/session aggregates",
+    "Encrypted rollback images persisted before commit",
+    "Read-only source; existing target events are never overwritten"
+  ],
+  "guardrails": [
+    "Verified live event count and complete session-ID set",
+    "Identical 55-column schemas",
+    "Reviewed source and missing-row digests",
+    "Table write locks coordinate ingestion",
+    "Single transaction, full rollback on error",
+    "Zero-insert second run required"
+  ]
+}

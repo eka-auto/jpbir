@@ -1,0 +1,837 @@
+{
+  "schema_version": 1,
+  "skill_version": "2.2.0",
+  "release": {
+    "id": "R1",
+    "scope_frozen": false,
+    "approved_by": null,
+    "approval": null
+  },
+  "events_processed": {
+    "devops": 38,
+    "orchestrator": 11,
+    "hod": 4
+  },
+  "tasks": [
+    {
+      "id": "T-01",
+      "title": "Discover read-only and preserve existing work",
+      "step": 0,
+      "owner": "orchestrator",
+      "state": "done",
+      "updated_at": "2026-10-18T10:07:55.508Z",
+      "evidence": [
+        {
+          "producer": "orchestrator",
+          "check": "backup-integrity-sha256",
+          "result": "pass",
+          "time": "2026-10-18T10:07:55.508Z",
+          "revision": "69ec45a7",
+          "subject": "sha256:8018DA68AE3A9FB59F5DDB8B250EA5168152613E99FC923EB73F1FC48805E4CA jpbir-20261012-072232.bundle",
+          "location": "C:/Users/abcom/.local/share/kilo/cicd-backups"
+        },
+        {
+          "producer": "orchestrator",
+          "check": "backup-integrity-sha256",
+          "result": "pass",
+          "time": "2026-10-18T10:07:55.508Z",
+          "revision": "69ec45a7",
+          "subject": "sha256:124A6EE2842D663DF554CFEEDF5B4629747684439079BDBA6D6541499678BFB4 jpbir-untracked-20261012-072820.zip",
+          "location": "C:/Users/abcom/.local/share/kilo/cicd-backups"
+        }
+      ],
+      "verified_by": "hod",
+      "verified_at": "2026-10-18T10:07:55.508Z"
+    },
+    {
+      "id": "T-02",
+      "title": "Set profile, risk tier, compliance scope, budgets and recovery targets",
+      "step": 0,
+      "owner": "orchestrator",
+      "state": "done",
+      "updated_at": "2026-10-18T10:07:55.508Z",
+      "evidence": [
+        {
+          "producer": "orchestrator",
+          "check": "profile-assembled-from-owner-confirmed-decisions",
+          "result": "pass",
+          "time": "2026-10-18T10:07:55.508Z",
+          "revision": "256253f4",
+          "subject": "project/PROFILE.md (D-1 risk tier Internal, D-10 DPDP scope, D-11 budgets removed)",
+          "location": "jaytipargal/jpbir feat/jp-agent-droplet-runner commit 256253f4"
+        }
+      ],
+      "verified_by": "hod",
+      "verified_at": "2026-10-18T10:07:55.508Z"
+    },
+    {
+      "id": "T-03",
+      "title": "Create the environment manifest and the target manifest",
+      "step": 0,
+      "owner": "orchestrator",
+      "state": "done",
+      "updated_at": "2026-10-18T10:07:55.508Z",
+      "evidence": [
+        {
+          "producer": "orchestrator",
+          "check": "environment-manifest-restored",
+          "result": "pass",
+          "time": "2026-10-18T10:07:55.508Z",
+          "revision": "256253f4",
+          "subject": "project/environment/Dockerfile + compose.yaml + run per D-8",
+          "location": "jaytipargal/jpbir feat/jp-agent-droplet-runner commit 256253f4"
+        },
+        {
+          "producer": "hod",
+          "check": "tracker.py-audit-targets-json",
+          "result": "pass",
+          "time": "2026-10-18T10:07:55.508Z",
+          "revision": "256253f4",
+          "subject": "project/targets.json: 6 targets complete, no placeholders",
+          "location": "C:/Users/abcom/jpbir-project-state/hod-audit-last.log"
+        }
+      ],
+      "verified_by": "hod",
+      "verified_at": "2026-10-18T10:07:55.508Z"
+    },
+    {
+      "id": "T-04",
+      "title": "Baseline CI, branch protection and protected controls proven",
+      "step": 0,
+      "owner": "devops",
+      "state": "in_progress",
+      "updated_at": "2026-10-22T00:25:00Z",
+      "evidence": [
+        {
+          "producer": "devops",
+          "check": "render-cutover-live-probes",
+          "result": "pass",
+          "time": "2026-10-19T02:46:15.652Z",
+          "revision": "c2fd5408",
+          "subject": "runner.jaytipargal.tech on Render: /health 200 {service jp-agent, mcp in-process}, /sessions 401, TLS CN runner.jaytipargal.tech valid; PR #180 merged; workspace persistence and S24_SERVICE_ACCOUNT_KEY still unexercised",
+          "location": "jaytipargal/jpbir main project/reports/2026-10-19-render-live-verification.md"
+        },
+        {
+          "producer": "devops",
+          "check": "droplet-removed-from-repo",
+          "result": "pass",
+          "time": "2026-10-19T02:46:16.652Z",
+          "revision": "a67d6b05",
+          "subject": "deploy-droplet.yml deleted (57eff98); ci-cd job renamed to jp-agent tests (a67d6b05), dead token-sync step removed (f15a14f); actionlint 0 errors in 8 workflows; droplet infra teardown remains an owner checklist (Railway/Render env verification first)",
+          "location": "jaytipargal/jpbir main project/reports/2026-10-19-retire-jp-agent-droplet.md"
+        },
+        {
+          "producer": "devops",
+          "check": "browser-e2e-suite-green",
+          "result": "pass",
+          "time": "2026-10-19T02:46:17.652Z",
+          "revision": "ca3c5b74",
+          "subject": "npm run test:browser 17/17 on unchanged e2e/Frontend code (diff 191cb326..HEAD empty); false failures were missing X/fonts libs on the test machine; project/environment/Dockerfile now installs them",
+          "location": "jaytipargal/jpbir main project/reports/2026-10-19-e2e-unblocked.md"
+        },
+        {
+          "producer": "devops",
+          "check": "workflows-run-green-on-real-runners",
+          "result": "pass",
+          "time": "2026-10-19T02:46:18.652Z",
+          "revision": "6c271ab2",
+          "subject": "fork runs on trees identical to upstream: CI/CD 39184766541 + Code Quality 39184768836 success; rename re-proved on a second pair (39185314234, 39185316653); every other job reproduced locally; sync-keys duplicate comment removed (63174c33)",
+          "location": "jaytipargal/jpbir main project/reports/2026-10-19-workflow-verification.md"
+        },
+        {
+          "producer": "devops",
+          "check": "workflow-gates-green-on-final-tree",
+          "result": "pass",
+          "time": "2026-10-19T03:06:59.585Z",
+          "revision": "9595ec00",
+          "subject": "Final-tree re-proof at 9595ec00 (= 63174c33 + workflow_dispatch trigger lines in ci-cd.yml and code-quality.yml, 2 insertions, diff verified; upstream main adds only the reports-only fff1be51): CI/CD 39186354373 5/5 incl. Validate workflow definitions (actionlint over all workflows, covering the edited sync-keys file); Code Quality 39186356644 2/2; first dispatch raced the branch push (latched 0f48108c) and was discarded via head_sha",
+          "location": "https://github.com/eka-auto/jpbir/actions/runs/39186354373; https://github.com/eka-auto/jpbir/actions/runs/39186356644"
+        },
+        {
+          "producer": "devops",
+          "location": "agent-local curl probes, informational; CI corroboration: Endpoint Health Check run 39194636856 success (deployment_status, 2026-10-19T03:25:41Z)",
+          "check": "production-endpoint-probes",
+          "subject": "GET jaytipargal.tech/ -> 200; /api/stats -> 401 auth_missing (STATS_KEY gate works; authenticated view is owner-side via browser); runner.jaytipargal.tech/health -> 200 ok:true jp-agent mcp:in-process; /sessions -> 401 unauthorized (as required)",
+          "result": "pass",
+          "revision": "c6ccaa217e1cb38d40df05826f9d6ecebdf6d365",
+          "time": "2026-10-19T03:57:20.981Z"
+        },
+        {
+          "producer": "devops",
+          "check": "sync-keys-dry-run-green-on-hosted-runner",
+          "result": "pass",
+          "time": "2026-10-19T05:25:00.000Z",
+          "revision": "c6ccaa21",
+          "subject": "Dispatch 39196651993 approved in browser and completed success: 20/24 SYNC_KEYS present, 'production is up to date', no adds and no redeploy; sync script re-verified add-only; approval is browser-only for this gate (REST approve returns 403)",
+          "location": "https://github.com/eka-auto/jpbir/actions/runs/39196651993"
+        },
+        {
+          "producer": "devops",
+          "check": "hosted-ci-green-on-main-post-transfer",
+          "result": "pass",
+          "time": "2026-10-19T05:25:00.000Z",
+          "revision": "c6ccaa21",
+          "subject": "Hosted push-runs on main@c6ccaa21: CI/CD 39194567759 5/5; Code Quality 39194567772 2/2 - billing lock no longer blocks hosted runners",
+          "location": "https://github.com/eka-auto/jpbir/actions/runs/39194567759; https://github.com/eka-auto/jpbir/actions/runs/39194567772"
+        },
+        {
+          "producer": "devops",
+          "check": "residue-credential-revoked-and-clone-residue-removed",
+          "result": "pass",
+          "time": "2026-10-19T05:25:00.000Z",
+          "revision": "n/a",
+          "subject": "Firebase key f57ce7f2 (fbsvc-intrep) deleted via gcloud; no consumers found (filename sweep clean, .config and .claude.json clean; Eka Runner content sweep timed out - limitation noted); fbsvc/fbsvc-intrep remaining unaccounted user keys inventoried; jpbir-fresh + jpbir-ci clones deleted after all-ref bundles verified; AGENTS.md stale repo list fixed with backup",
+          "location": "D:\\AgentAuditRuns\\DirectoryAudit_dup-repo-families_2026-10-19_a\\cleanup-addendum-2026-10-19-jpbir-clones-keys-prs.md"
+        },
+        {
+          "producer": "devops",
+          "check": "real-sync-written-and-production-rebuilt",
+          "result": "pass",
+          "time": "2026-10-19T05:50:00.000Z",
+          "revision": "c6ccaa21",
+          "subject": "39205879216 success: log line 'adding VERCEL_ANALYTICS_PROJECT_ID -> production' then 'rebuilding the live production deployment'; newest Production deployment jpbir-17nv2ly10-jayti2.vercel.app Ready 32s; jaytipargal.tech 200",
+          "location": "https://github.com/eka-auto/jpbir/actions/runs/39205879216"
+        },
+        {
+          "producer": "devops",
+          "check": "ci-green-on-main-and-pull-requests",
+          "result": "pass",
+          "time": "2026-10-21T20:16:30Z",
+          "revision": "dcca9779",
+          "subject": "CI/CD Pipeline and Code Quality Checks green on main push and pull_request on 2026-10-21; the billing lock that stopped hosted jobs before their first step is no longer observable",
+          "location": "https://github.com/eka-auto/jpbir/actions/runs/39594539131"
+        },
+        {
+          "producer": "devops",
+          "check": "release-controls-baseline",
+          "result": "pass",
+          "time": "2026-10-21T20:16:30Z",
+          "revision": "dcca9779",
+          "subject": "ruleset 25339138 active on the default branch: deletion + non_fast_forward, current_user_can_bypass never; no required checks, no required reviews, no CODEOWNERS; 13 deployment environments exist and none has protection rules",
+          "location": "gh api repos/eka-auto/jpbir/rulesets/25339138"
+        },
+        {
+          "producer": "devops",
+          "check": "source-target-reconciled",
+          "result": "pass",
+          "time": "2026-10-21T20:16:30Z",
+          "revision": "dcca9779",
+          "subject": "jaytipargal/jpbir redirects to eka-auto/jpbir; repos/1350770272 still answers with id 1350770272 and owner eka-auto, isFork false and parent null, so the immutable id still binds the target and the repository was transferred rather than forked; visibility is now public",
+          "location": "project/decisions.md D-18; project/targets.json"
+        },
+        {
+          "producer": "devops",
+          "check": "ci-and-monitor-baseline",
+          "result": "pass",
+          "time": "2026-10-22T00:25:00Z",
+          "revision": "1b340e3b",
+          "subject": "CI/CD Pipeline and Code Quality Checks green on main pushes and pull requests; the scheduled Endpoint Health Check green on every scheduled run since PR #193 (22:57:20Z, 23:26:11Z, 23:55:13Z, and after the 00:09:25Z merge)",
+          "location": "https://github.com/eka-auto/jpbir/actions/workflows/health-check.yml"
+        },
+        {
+          "producer": "devops",
+          "check": "release-controls-hardened",
+          "result": "pass",
+          "time": "2026-10-22T00:25:00Z",
+          "revision": "1b340e3b",
+          "subject": "ruleset 25339138 read back from the provider: 8 required status checks, required_approving_review_count 1, require_code_owner_review, require_last_push_approval, required_review_thread_resolution, require_extra_approval_for_unattributed_changes, current_user_can_bypass never, plus deletion and non-fast-forward; CODEOWNERS merged through PR #193 covering /project/, /.github/ and /Backend/; the owner verified a direct update to main is rejected",
+          "location": "project/approvals/2026-10-22-bounded-release-admin.md"
+        }
+      ],
+      "note": "The baseline this task asks for is now fully proven, and the blocker recorded earlier is gone. CI/CD Pipeline and Code Quality Checks are green on main pushes and on pull requests, and the scheduled Endpoint Health Check has run green on every scheduled tick since PR #193 fixed the schedule verdict. The ruleset the owner hardened on 2026-10-22 (25339138) now requires eight status checks, one approving review, a code-owner review, a last-push approval and resolved review threads, with deletion and non-fast-forward and bypass never; the owner verified that a direct update to main is rejected. CODEOWNERS is merged through PR #193, covering /project/, /.github/ and /Backend/. The durable approval for the administrative operations is project/approvals/2026-10-22-bounded-release-admin.md. What remains is the HOD's verification and its mark of Done, which only the verifier can give - a devops event may move the task but may not mark it done."
+    },
+    {
+      "id": "T-05",
+      "title": "Appoint the HOD; scheduled audit verified running",
+      "step": 0,
+      "owner": "orchestrator",
+      "state": "done",
+      "updated_at": "2026-10-18T10:07:55.508Z",
+      "evidence": [
+        {
+          "producer": "devops",
+          "check": "scheduled-task-exit-code",
+          "result": "pass",
+          "time": "2026-10-18T10:04:36Z",
+          "revision": "256253f4",
+          "subject": "Task Scheduler jpbir-hod-audit LastTaskResult=0; canonical selftest 35/35; audit all-PASS",
+          "location": "C:/Users/abcom/jpbir-project-state/hod-audit-last.log"
+        },
+        {
+          "producer": "hod",
+          "check": "canonical-tracker-selftest",
+          "result": "pass",
+          "time": "2026-10-18T10:07:55.508Z",
+          "revision": "256253f4",
+          "subject": "tracker.py selftest 35/35 PASS (canonical v2.2.0 restored per D-13)",
+          "location": "C:/Users/abcom/jpbir-project-state/hod-audit-last.log"
+        }
+      ],
+      "verified_by": "hod",
+      "verified_at": "2026-10-18T10:07:55.508Z"
+    },
+    {
+      "id": "T-06",
+      "title": "BRD and TRD with measurable acceptance criteria and traceability",
+      "step": 1,
+      "owner": "orchestrator",
+      "state": "in_progress",
+      "note": "Scope direction confirmed by owner (D-16): R1 = stabilize and harden, no new features. BRD/TRD drafting for the stabilization scope is the next work item; owner questions will be batched with the draft.",
+      "updated_at": "2026-10-18T10:11:22.121Z"
+    },
+    {
+      "id": "T-07",
+      "title": "Write STANDARDS.md and GLOSSARY.md for this stack",
+      "step": 1,
+      "owner": "orchestrator",
+      "state": "pending"
+    },
+    {
+      "id": "T-08",
+      "title": "Mark every go-live capability (applicability and status)",
+      "step": 1,
+      "owner": "orchestrator",
+      "state": "pending"
+    },
+    {
+      "id": "T-09",
+      "title": "THREAT_MODEL.md approved by the HOD",
+      "step": 1,
+      "owner": "security",
+      "state": "pending"
+    },
+    {
+      "id": "T-10",
+      "title": "Reconcile both codebases and live production on a named integration branch",
+      "step": 2,
+      "owner": "orchestrator",
+      "state": "pending"
+    },
+    {
+      "id": "T-11",
+      "title": "Baseline of inherited violations and characterization tests on the integration branch",
+      "step": 2,
+      "owner": "qa",
+      "state": "pending"
+    },
+    {
+      "id": "T-12",
+      "title": "Lock shared contracts and plan the slices",
+      "step": 3,
+      "owner": "orchestrator",
+      "state": "pending"
+    },
+    {
+      "id": "T-13",
+      "title": "Assign department agents",
+      "step": 3,
+      "owner": "orchestrator",
+      "state": "pending"
+    },
+    {
+      "id": "T-14",
+      "title": "Department preflight for development",
+      "step": 4,
+      "owner": "orchestrator",
+      "state": "pending"
+    },
+    {
+      "id": "T-15",
+      "title": "Infrastructure as code for every environment, with drift detection",
+      "step": 4,
+      "owner": "devops",
+      "state": "pending"
+    },
+    {
+      "id": "T-16",
+      "title": "Walking skeleton live on staging through the real pipeline",
+      "step": 4,
+      "owner": "devops",
+      "state": "pending"
+    },
+    {
+      "id": "T-17",
+      "title": "Database: schema, tables and migrations complete",
+      "step": 4,
+      "owner": "database",
+      "state": "pending"
+    },
+    {
+      "id": "T-18",
+      "title": "Backend complete",
+      "step": 4,
+      "owner": "backend",
+      "state": "pending"
+    },
+    {
+      "id": "T-19",
+      "title": "Frontend complete",
+      "step": 4,
+      "owner": "frontend",
+      "state": "pending"
+    },
+    {
+      "id": "T-20",
+      "title": "Design complete",
+      "step": 4,
+      "owner": "design",
+      "state": "pending"
+    },
+    {
+      "id": "T-21",
+      "title": "All slices integrated on main, green",
+      "step": 4,
+      "owner": "orchestrator",
+      "state": "pending"
+    },
+    {
+      "id": "T-22",
+      "title": "Full pipeline complete; standards gate passes",
+      "step": 5,
+      "owner": "devops",
+      "state": "in_progress",
+      "evidence": [
+        {
+          "producer": "devops",
+          "check": "environment-manifest-ci",
+          "result": "pass",
+          "time": "2026-10-21T20:16:30Z",
+          "revision": "dcca9779",
+          "subject": "lint pass, 51/52 suites, 27/27 browser checks, all inside project/environment/run; the one failing suite is an untracked file in the tree that asserts a constant its own target file does not define, and it is not in the committed tree",
+          "location": "project/reports/2026-10-22-production-readiness-repair.md"
+        },
+        {
+          "producer": "devops",
+          "check": "strict-release-gate",
+          "result": "pass",
+          "time": "2026-10-21T20:16:30Z",
+          "revision": "dcca9779",
+          "subject": "release-readiness.yml requires readiness.ready and a current unattended schedule; evidence-publish.yml runs the contract and migration proofs in the pinned environment and publishes signed per-revision receipts",
+          "location": ".github/workflows/release-readiness.yml; .github/workflows/evidence-publish.yml"
+        },
+        {
+          "producer": "devops",
+          "check": "pull-request-checks-green",
+          "result": "pass",
+          "time": "2026-10-21T20:35:00Z",
+          "revision": "09c6a2f7",
+          "subject": "PR #192 on eka-auto/jpbir: Lint & Test pass (the whole suite inside project/environment), Code Quality pass, Security Scan pass, Validate workflow definitions pass, jp-agent tests pass, S24 MCP compatibility pass on 3.12 and 3.14, Vercel Agent Review pass, both Vercel deployments completed; Endpoint Health skipped by design because it probes production and the branch is not production",
+          "location": "https://github.com/eka-auto/jpbir/pull/192"
+        },
+        {
+          "producer": "devops",
+          "check": "ci-exposed-defects-fixed",
+          "result": "pass",
+          "time": "2026-10-21T20:35:00Z",
+          "revision": "09c6a2f7",
+          "subject": "git safe.directory for the bind mount; subject digests hashed over line-ending-normalised text so a receipt published on Linux verifies against a digest pinned on Windows; the browser installed and exercised in one container",
+          "location": "project/reports/2026-10-22-production-readiness-repair.md section 3"
+        },
+        {
+          "producer": "devops",
+          "check": "shared-ledger-reconciliation",
+          "result": "pass",
+          "time": "2026-10-21T21:35:00Z",
+          "revision": "e94812c8",
+          "subject": "reconciliation passes against the exact name list the production ledger returned: 13 of this repository's files or recorded aliases, 1 retired migration, 10 belonging to the sibling repository; the manifest is refused if it names one of our own migrations, which is the guard against an unrecorded rename of ours being waved through",
+          "location": "PR #194; Database/schema/shared-ledger.json; project/decisions.md D-25"
+        },
+        {
+          "producer": "devops",
+          "check": "shared-ledger-suite",
+          "result": "pass",
+          "time": "2026-10-21T21:35:00Z",
+          "revision": "e94812c8",
+          "subject": "7/7 in _shared/tests/shared-ledger.test.mjs; npm test 52/53 in the project environment, the one failure being an untracked suite in the tree that is not in the branch; npm run lint pass; all pull request checks green",
+          "location": "PR #194"
+        },
+        {
+          "producer": "devops",
+          "check": "monitor-green-after-193",
+          "result": "pass",
+          "time": "2026-10-21T22:45:00Z",
+          "revision": "4c383d76",
+          "subject": "the scheduled Endpoint Health Check succeeds at 22:24:39Z after PR #193 fixed the schedule verdict; the false 'the unattended scheduler has not run for 0 min' alarm has stopped",
+          "location": "https://github.com/eka-auto/jpbir/actions/runs/39686279735"
+        },
+        {
+          "producer": "devops",
+          "check": "evidence-publication-shape-mismatch",
+          "result": "fail",
+          "time": "2026-10-21T22:45:00Z",
+          "revision": "fc79b96f",
+          "subject": "the evidence job failed on main at 22:20:31Z with 'the check report has no entry for runtime-contract' while contract-bundle-digest, contract-schema-valid, device-bundle-syntax, fresh-apply, second-run-noop, ledger-match and ledger-reconciliation all passed; the merge wrote the subject entries under 'checks' and the publisher read the top level",
+          "location": "https://github.com/eka-auto/jpbir/actions/runs/39685778635"
+        },
+        {
+          "producer": "devops",
+          "check": "report-shape-fixed",
+          "result": "pass",
+          "time": "2026-10-21T22:45:00Z",
+          "revision": "c7b6de58",
+          "subject": "one definition of the report's shape in scripts/stack-merge-checks.mjs, read by the publisher through subjectChecksFrom; per-subject results; refuses to publish a failing subject; 4/4 in the new suite; npm test 53/54 in the project environment; all twelve pull request checks green",
+          "location": "PR #196; project/decisions.md D-28"
+        },
+        {
+          "producer": "devops",
+          "check": "cdn-fault-classified-and-retried",
+          "result": "pass",
+          "time": "2026-10-21T22:45:00Z",
+          "revision": "f546f915",
+          "subject": "the Lint & Test job failed on ERR_TLS_CERT_ALTNAME_INVALID because a CDN edge served an *.azureedge.net certificate for cdn.playwright.dev; the browser download is now retried three times with a twenty-second backoff and the job passed",
+          "location": "project/decisions.md D-29"
+        },
+        {
+          "producer": "devops",
+          "check": "monitor-green-continues",
+          "result": "pass",
+          "time": "2026-10-21T23:30:00Z",
+          "revision": "4c383d76",
+          "subject": "the scheduled Endpoint Health Check succeeds at 22:24:39Z, 22:57:20Z and 23:26:11Z; the schedule verdict is read correctly and the native receipt was 2 minutes old at 23:27Z",
+          "location": "https://github.com/eka-auto/jpbir/actions/runs/39693400048"
+        },
+        {
+          "producer": "devops",
+          "check": "receipt-roundtrip-proven",
+          "result": "pass",
+          "time": "2026-10-21T23:30:00Z",
+          "revision": "c78eda41",
+          "subject": "the publisher's encoder and the panel's decoder run over one real body: the panel accepts what the publisher wrote and still refuses a receipt altered after publication; 2/2 in the new suite",
+          "location": "_shared/tests/evidence-roundtrip.test.mjs"
+        },
+        {
+          "producer": "devops",
+          "check": "observation-window-not-started",
+          "result": "fail",
+          "time": "2026-10-21T23:30:00Z",
+          "revision": "c78eda41",
+          "subject": "readiness.ready is false on the deployed production: 30 green, 6 failing (device rows), 2 unproven (evidence rows); the S24 still reports s24-termux-https-worker-2026-07-27.1 over termux-direct-cloud with a heartbeat older than a day and five queued commands unclaimed; PR #196 remains open with reviewDecision REVIEW_REQUIRED",
+          "location": "https://jaytipargal.tech/api/jp-stack; PR #196"
+        },
+        {
+          "producer": "devops",
+          "check": "boundaries-walked",
+          "result": "pass",
+          "time": "2026-10-21T23:55:00Z",
+          "revision": "8bd95d29",
+          "subject": "device to panel sound (the broker's own stamp satisfies the attestation's exact comparison; the device reports the contracted release exactly); CI to deployment sound (the live deployment's githubCommitSha is main's HEAD, so both sides bind the same commit); Firestore to panel now proven by a suite that runs the publisher's encoder, the panel's decoder and the panel's own probes over one receipt",
+          "location": "project/decisions.md D-30; _shared/tests/stack-evidence-endtoend.test.mjs"
+        },
+        {
+          "producer": "devops",
+          "check": "reporting-defects-fixed",
+          "result": "pass",
+          "time": "2026-10-21T23:55:00Z",
+          "revision": "65c2b03f",
+          "subject": "a 404 on the evidence document is no longer reported as an unreachable store, and the revision precondition is checked before the store, so the panel names the first thing that is missing; 5/5 in the new probe suite and 57/58 suites overall in the project environment",
+          "location": "Backend/jp-stack.js; _shared/tests/stack-evidence-probe.test.mjs"
+        },
+        {
+          "producer": "devops",
+          "check": "pipeline-pattern-audit",
+          "result": "pass",
+          "time": "2026-10-22T00:28:00Z",
+          "revision": "c5d2b8ad",
+          "subject": "tracker.py audit passes every check: tracker rules valid, no STOP file, event log append-only, events applied with none overdue, resolved tasks match the HOD's latest event, TRACKER.md up to date, CONTRACT.md present, pinned skill 2.2.0 present and tracker.py matching, registry complete, CLAUDE.md/AGENTS.md/GEMINI.md pointer blocks present, targets.json with 6 targets",
+          "location": "project-state c5d2b8ad"
+        },
+        {
+          "producer": "devops",
+          "check": "run-state-restored",
+          "result": "pass",
+          "time": "2026-10-22T00:28:00Z",
+          "revision": "c5d2b8ad",
+          "subject": "project-state carries the full run-state layout the pinned skill names - tracker.json, events for three actors, TRACKER.md, 15 checkpoints, readiness, 24 reports - with STOP absent on purpose; the tracker regenerated from the events shows 4 of 34 done, 6 in progress, 24 pending, 0 blocked",
+          "location": "https://github.com/eka-auto/jpbir/tree/project-state/project"
+        },
+        {
+          "producer": "devops",
+          "check": "birthday-only-product",
+          "result": "pass",
+          "time": "2026-10-22T01:45:00Z",
+          "revision": "b4e0da71",
+          "subject": "the property allow-list, the beacon endpoint's CORS list, the nightly repair's import filter, the backup importer's attribution rule, the rollup rebuild and the console's selector all narrowed to jaytibirthday.in; the console no longer embeds the tracker, so it stops tracking itself; the purge is recorded as migration 016 and as a credential-gated action on /api/db-push with its scope pinned by a suite",
+          "location": "PR #197; _shared/tests/db-push-purge.test.mjs; project/decisions.md D-31"
+        },
+        {
+          "producer": "devops",
+          "check": "purge-target-verified",
+          "result": "pass",
+          "time": "2026-10-22T01:45:00Z",
+          "revision": "b4e0da71",
+          "subject": "the deployed application's own counts read through its admin key: jaytibirthday.in 15,092 events kept; jaytipargal.tech 5,063, jaytipargal.com 261 and 356 mis-attributed-host events deleted; the live warehouse was identified by its counts rather than by configuration",
+          "location": "GET /api/db-push?action=counts on the deployed application"
+        },
+        {
+          "producer": "devops",
+          "check": "stale-pointer-finding",
+          "result": "fail",
+          "time": "2026-10-22T01:45:00Z",
+          "revision": "b4e0da71",
+          "subject": "the local .env.local, the DATABASE_URL secret and the Vercel production branch all resolve to a Neon branch whose warehouse stops on 2026-10-09, while the deployed application reads a warehouse that is live to today - project/targets.json still leaves the Neon target's project and branch ids unfilled, which is how three stale pointers looked authoritative for a month",
+          "location": "project/targets.json; project/decisions.md D-31"
+        },
+        {
+          "producer": "devops",
+          "check": "purge-executed-and-verified",
+          "result": "pass",
+          "time": "2026-10-22T04:45:00Z",
+          "revision": "84792c72",
+          "subject": "the deployed application's own count after the purge: 15,092 events, 349 visitors, 556 sessions, and one property - jaytibirthday.in; deleted 5,634 events, 277 session rows, 134 visitor rows and 23 journal items; the retired properties are refused by the read path with 400 and the console no longer embeds the tracker, so it stops tracking itself",
+          "location": "GET /api/db-push?action=purge; project/reports/2026-10-22-production-readiness-repair.md section 7"
+        },
+        {
+          "producer": "devops",
+          "check": "fresh-database-migration-defect",
+          "result": "fail",
+          "time": "2026-10-22T04:45:00Z",
+          "revision": "b2c222ae",
+          "subject": "the purge migration failed on a fresh database with 42P01 - events, sessions and visitors are the sibling repository's tables, created by its migrations 001-003 - which failed the migration proof, the evidence job and therefore the receipt for the new revision; PR #198 guards each delete with a table-existence check and is green on all twelve checks",
+          "location": "PR #198; Database/schema/016_purge_non_birthday_analytics.sql"
+        },
+        {
+          "producer": "devops",
+          "check": "evidence-published-for-the-deployed-revision",
+          "result": "pass",
+          "time": "2026-10-22T05:00:00Z",
+          "revision": "b2c222ae",
+          "subject": "the evidence job succeeded on the merge push and again on its schedule; the live panel is 31 green, 6 failing and 1 unproven, the migration-tooling row green and the runtime-contract row unproven only because the S24 has not attested the contract",
+          "location": "https://jaytipargal.tech/api/jp-stack"
+        },
+        {
+          "producer": "devops",
+          "check": "run-state-on-project-state",
+          "result": "pass",
+          "time": "2026-10-22T05:00:00Z",
+          "revision": "89d2e425",
+          "subject": "project-state carries the whole run state - tracker.json, TRACKER.md, three event logs, 15 checkpoints, a readiness record and 24 reports - with STOP absent on purpose, and tracker.py audit passes every check; the two copilot branches are historical and hold no live run state",
+          "location": "project-state; project/audit/SKILL.md"
+        }
+      ],
+      "updated_at": "2026-10-22T04:54:00Z",
+      "note": "PR #198 was approved and merged, and the evidence job published for the deployed revision: it succeeded on the merge push and again on its schedule. The migration-tooling row is green again, and the panel is 31 green, 6 failing, 1 unproven. The one unproven row now says the honest thing - 'the device has not attested the runtime contract (the S24 is fail)' - which is the device's fault and not the pipeline's. The purge is done and verified: 5,634 events, 277 session rows, 134 visitor rows and all 23 journal items removed, leaving jaytibirthday.in's 15,092 events as the only property in the warehouse, and the read path refuses the retired ones with 400. The repository's branch list was checked directly: main, project-state, and two historical branches - copilot/cicd-devops-pipeline-test-run (old code, from #152 and #153) and copilot/jpbir-verified-facts (the 2026-10-18 run-state line, which still holds that older tracker.json). Neither is the live run state; project-state is, and its audit passes every check. The S24 is the only remaining gate for the strict gate."
+    },
+    {
+      "id": "T-23",
+      "title": "Automated tests green, including authorization and failure cases",
+      "step": 5,
+      "owner": "qa",
+      "state": "pending"
+    },
+    {
+      "id": "T-24",
+      "title": "Source security scanning clean",
+      "step": 5,
+      "owner": "security",
+      "state": "pending"
+    },
+    {
+      "id": "T-25",
+      "title": "Compliance and privacy controls mapped to evidence",
+      "step": 5,
+      "owner": "security",
+      "state": "pending"
+    },
+    {
+      "id": "T-26",
+      "title": "Release candidate built, scanned, signed and attested",
+      "step": 6,
+      "owner": "devops",
+      "state": "pending"
+    },
+    {
+      "id": "T-27",
+      "title": "Staging verified on the exact artifacts; restore drill passed",
+      "step": 7,
+      "owner": "devops",
+      "state": "in_progress",
+      "evidence": [
+        {
+          "producer": "devops",
+          "check": "backup-restore-drill",
+          "result": "pass",
+          "time": "2026-10-21T20:16:30Z",
+          "revision": "dcca9779",
+          "subject": "fresh database migrated, dumped with pg_dump, restored into a second fresh database, 19 tables and 13 ledger rows identical; drill databases dropped afterwards",
+          "location": "scripts/stack-restore-drill.mjs"
+        },
+        {
+          "producer": "devops",
+          "check": "migration-proof-isolated",
+          "result": "pass",
+          "time": "2026-10-21T20:16:30Z",
+          "revision": "dcca9779",
+          "subject": "fresh-apply, second-run-noop and ledger-match all pass against a fresh database inside project/environment; an explicit sslmode=disable is now honoured so the runner works against the isolated Postgres, and a URL without it still gets verify-full TLS",
+          "location": "scripts/stack-migration-proof.mjs; project/decisions.md D-23"
+        }
+      ],
+      "note": "The backup-and-restore path is drilled and green against the isolated environment, and the migration runner now runs inside the pinned environment at all. Remaining for this task: verifying the exact release artifacts on staging, which needs the owner-approved deploy.",
+      "updated_at": "2026-10-21T20:16:30Z"
+    },
+    {
+      "id": "T-28",
+      "title": "Performance, accessibility and DAST verified against the TRD",
+      "step": 7,
+      "owner": "qa",
+      "state": "pending"
+    },
+    {
+      "id": "T-29",
+      "title": "Monitoring and alerting verified end to end",
+      "step": 7,
+      "owner": "devops",
+      "state": "in_progress",
+      "evidence": [
+        {
+          "producer": "devops",
+          "check": "alert-state-machine",
+          "result": "pass",
+          "time": "2026-10-21T20:16:30Z",
+          "revision": "dcca9779",
+          "subject": "verdict-based transitions pinned by suite: fail and unproven alert, warn stays silent, fail->unproven is not a recovery, a first run with no stored state is not a recovery",
+          "location": "_shared/tests/stack-health.test.mjs"
+        },
+        {
+          "producer": "devops",
+          "check": "schedule-and-receipt-separation",
+          "result": "pass",
+          "time": "2026-10-21T20:16:30Z",
+          "revision": "dcca9779",
+          "subject": "native receipt written only by the scheduler, receipt carries the notification outcome, scheduleState rejects a missing, unreadable or future-dated receipt and counts missed runs",
+          "location": "_shared/tests/stack-readiness.test.mjs"
+        },
+        {
+          "producer": "devops",
+          "check": "monitor-fails-on-a-missed-run",
+          "result": "pass",
+          "time": "2026-10-21T20:16:30Z",
+          "revision": "dcca9779",
+          "subject": "the outside monitor reads the native receipt's age and fails when it is stale; the strict gate release-readiness.yml requires readiness.ready plus a current schedule",
+          "location": ".github/workflows/health-check.yml; .github/workflows/release-readiness.yml"
+        },
+        {
+          "producer": "devops",
+          "check": "production-readiness-contract-live",
+          "result": "pass",
+          "time": "2026-10-21T21:35:00Z",
+          "revision": "ea706b12",
+          "subject": "deployed production answers /api/jp-stack with readiness.verdict fail, readiness.reason naming the six device rows, schedule.present true, schedule.stale false, and a native cron receipt 0-2 minutes old carrying verdict, notification and completed_at",
+          "location": "https://jaytipargal.tech/api/jp-stack"
+        },
+        {
+          "producer": "devops",
+          "check": "control-change-reviewed",
+          "result": "pass",
+          "time": "2026-10-21T21:35:00Z",
+          "revision": "bf24e3f1",
+          "subject": "PR #193 reviewed and approved: the jq false-as-absent defect in the schedule verdict, the container-only ledger report path and the millisecond race in the attested-S24 fixture; the access register cited project/approvals/2026-10-22-bounded-release-admin.md, which existed nowhere, and the record was added during the review with provider-verified evidence for each approved operation",
+          "location": "project/approvals/2026-10-22-bounded-release-admin.md; PR #193"
+        },
+        {
+          "producer": "devops",
+          "check": "false-alarm-identified",
+          "result": "pass",
+          "time": "2026-10-21T21:35:00Z",
+          "revision": "ea706b12",
+          "subject": "the scheduled Endpoint Health Check has been failing every 15 minutes with 'the unattended scheduler has not run for 2 min (max 20 min)' for a scheduler that had run two minutes earlier, because jq's // operator treats false as absent; PR #193 changes the reading to .schedule.stale != false, which keeps a missing field failing closed",
+          "location": ".github/workflows/health-check.yml"
+        }
+      ],
+      "updated_at": "2026-10-21T21:35:00Z",
+      "note": "PR #192 merged and deployed at ea706b12: the live /api/jp-stack now answers with the strict readiness verdict, the schedule block and a native cron receipt carrying the notification outcome, and the schedule is alive (the native receipt is minutes old). The verdict is fail on the six device rows, which is the S24 still running the legacy collector. Two defects of mine were found by the branch's own CI run and are repaired in PR #193: jq's // treats false as absent, so the monitor read every healthy schedule as stale and announced a stopped scheduler every fifteen minutes; and the ledger reconciliation wrote its report to a container-only path and died with ENOENT before it could run. PR #193 was reviewed independently and approved, and the access register's citation to an approval record that did not exist was repaired during that review."
+    },
+    {
+      "id": "T-30",
+      "title": "Release approval",
+      "step": 7,
+      "owner": "owner",
+      "state": "pending"
+    },
+    {
+      "id": "T-31",
+      "title": "Release to production with automated halt rules",
+      "step": 8,
+      "owner": "devops",
+      "state": "pending"
+    },
+    {
+      "id": "T-32",
+      "title": "Post-release verification against service levels",
+      "step": 8,
+      "owner": "devops",
+      "state": "in_progress",
+      "evidence": [
+        {
+          "producer": "devops",
+          "check": "remote-wake-path-exercised",
+          "result": "fail",
+          "time": "2026-10-21T21:45:00Z",
+          "revision": "d51d7a86",
+          "subject": "wake event published to eka-s24-26a3af13e6164634f00b at 2026-10-21T21:36:56Z and confirmed on the topic; the device did not report for eight minutes afterwards, so the wake did not reach a running listener",
+          "location": "project/reports/2026-10-22-production-readiness-repair.md section 5; project/decisions.md D-27"
+        },
+        {
+          "producer": "devops",
+          "check": "observation-window-not-started",
+          "result": "fail",
+          "time": "2026-10-21T22:10:00Z",
+          "revision": "ea706b12",
+          "subject": "readiness.ready is false on the deployed production: 30 green, 6 failing (device rows), 2 unproven (evidence rows, HTTP 404 - no receipt published); schedule alive with a native receipt 3 minutes old",
+          "location": "https://jaytipargal.tech/api/jp-stack"
+        },
+        {
+          "producer": "devops",
+          "check": "monitor-false-alarm-continuing",
+          "result": "fail",
+          "time": "2026-10-21T22:10:00Z",
+          "revision": "ea706b12",
+          "subject": "scheduled Endpoint Health Check failed at 21:12:27Z and 21:50:33Z with 'the unattended scheduler has not run for 0 min (max 20 min) - the schedule is stopped' while the native receipt was minutes old; PR #193 carries the fix and is approved but not merged",
+          "location": ".github/workflows/health-check.yml; PR #193"
+        },
+        {
+          "producer": "devops",
+          "check": "evidence-published-and-verified",
+          "result": "pass",
+          "time": "2026-10-22T00:18:00Z",
+          "revision": "1b340e3b",
+          "subject": "the evidence-publish workflow succeeded on main for the first time; the panel accepted a signed receipt bound to the deployed revision and the migration-tooling row went green, taking the live panel to 31 green, 6 failing, 1 unproven",
+          "location": "https://github.com/eka-auto/jpbir/actions/runs/39697963167"
+        },
+        {
+          "producer": "devops",
+          "check": "observation-window-not-started",
+          "result": "fail",
+          "time": "2026-10-22T00:18:00Z",
+          "revision": "1b340e3b",
+          "subject": "readiness.ready is false: the six device rows are red and the runtime-contract row is unproven because the S24 has not attested the runtime contract; the outside monitor is green on every scheduled run",
+          "location": "https://jaytipargal.tech/api/jp-stack"
+        },
+        {
+          "producer": "devops",
+          "check": "run-state-held-locally",
+          "result": "pass",
+          "time": "2026-10-22T00:18:00Z",
+          "revision": "84b4d037",
+          "subject": "the run state that the owner's force-push removed from project-state is intact locally - tracker.json, events, checkpoints and TRACKER.md at 84b4d037 with this event on top - and is deliberately not pushed until the owner chooses between restoring it and building a fresh one",
+          "location": "C:/Users/abcom/jpbir-project-state"
+        }
+      ],
+      "updated_at": "2026-10-22T00:18:00Z",
+      "note": "PR #196 merged at 00:09:25Z (1b340e3b) and the evidence-publish job on main SUCCEEDED for the first time. The live panel moved from 30 green and 2 unproven to 31 green, 6 failing and 1 unproven: the migration-tooling row is now GREEN on a signed, revision-bound receipt, and the runtime-contract row carries the honest remaining reason - 'the device has not attested the runtime contract (the S24 is fail)' - rather than the old misleading 'the CI evidence store answered HTTP 404'. The outside monitor is green on every scheduled run (22:57:20Z, 23:26:11Z, 23:55:13Z). The 24-hour observation window is still NOT started and must not be: readiness.ready is false because the six device rows are red. The S24 still reports s24-termux-https-worker-2026-07-27.1 over termux-direct-cloud with a heartbeat older than a day and five queued commands unclaimed, so the only remaining gate is the physical action on the phone. NOTE ON THE BRANCH: project-state was force-pushed to main's HEAD by the owner at about 00:14Z, which removed the run state from the branch. It is intact locally at 84b4d037 with this event on top; it is held back from the remote pending the owner's decision on whether to restore that state or to build a fresh one, because pushing it would re-create what was just reset."
+    },
+    {
+      "id": "T-33",
+      "title": "Handover pack and runbooks proven by a fresh session",
+      "step": 9,
+      "owner": "documentation",
+      "state": "pending"
+    },
+    {
+      "id": "T-34",
+      "title": "Owner handover accepted; operations and feedback loop live",
+      "step": 9,
+      "owner": "orchestrator",
+      "state": "pending"
+    }
+  ]
+}

@@ -1,0 +1,52 @@
+{
+  "operation": "asn-network-labels-merge-20261027",
+  "kind": "receipt",
+  "contractRules": ["1", "6", "10"],
+  "recordedAt": "2026-10-27T09:40:00+05:30",
+  "intent": "project/checkpoints/2026-10-27-asn-labels-merge-intent.json",
+  "approval": "project/approvals/2026-10-27-asn-labels-proceed-merge.md",
+  "outcome": "completed",
+  "pullRequests": {
+    "closed_restructure": {
+      "number": 201,
+      "reason": "author could not approve own PR under ruleset 25339138 (code owner = @jaytipargal = author); reopened from eka-auto with identical commits"
+    },
+    "merged": {
+      "number": 202,
+      "state": "MERGED",
+      "mergedAt": "2026-10-27T01:55:29Z",
+      "mergedBy": "eka-auto",
+      "method": "squash",
+      "headCommit": "0dd4843",
+      "mergeCommit": "5ae872e9256e58437492fcb90454dbc0c00b2e37",
+      "review": "APPROVED by @jaytipargal on the final head after all three Vercel Agent Review findings were answered (fixes d226ee5, 0dd4843) and all review threads resolved; approval is a labelled self-review under contract rule 7"
+    }
+  },
+  "postMergeEvidence": {
+    "ciCdPipeline": "success (run 40435410079)",
+    "publishStackEvidence": "success (run 40435410170)",
+    "vercelJpbirStatusOnMergeSha": "success - the production deployment was built from 5ae872e9",
+    "endpointHealthOnDeployment": "success (run 40435509107)",
+    "requiredChecksOnMergeSha": [
+      "Lint & Test", "Code Quality", "Security Scan", "Validate workflow definitions",
+      "jp-agent tests", "S24 MCP compatibility (Python 3.12)",
+      "S24 MCP compatibility (Python 3.14)", "Vercel - jpbir"
+    ]
+  },
+  "production": {
+    "targetMatch": "project jpbir, team jayti2 - matches project/targets.json",
+    "deployment": "jpbir-887mf5wyj-jayti2.vercel.app",
+    "status": "Ready, Production, created 2026-10-27T07:25:34+05:30",
+    "aliasesVerified": [
+      "https://jaytipargal.tech/ -> 200",
+      "https://www.jaytipargal.tech/ -> 200",
+      "https://jpbir.vercel.app/ -> 200"
+    ]
+  },
+  "knownPreExistingFailure": {
+    "check": "Release Readiness (Strict production readiness)",
+    "verdict": "not caused by this change - the scheduled runs of this workflow have failed every day since at least 2026-10-22 for the six S24 device rows recorded in T-22/T-29; this merge's run failed identically in 8s",
+    "note": "reported as a failing check, never as a pass (contract rule 1)"
+  },
+  "rollback": "revert commit 5ae872e9; no database or schema change exists to undo"
+}

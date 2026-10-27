@@ -1,0 +1,21 @@
+{
+  "operation": "asn-network-labels-merge-20261027",
+  "kind": "intent",
+  "contractRules": ["1", "7", "10", "11"],
+  "recordedAt": "2026-10-27T06:55:00+05:30",
+  "ownerApproval": "project/approvals/2026-10-27-asn-labels-proceed-merge.md (owner: 'proceed', 2026-10-27)",
+  "whyReopen": "PR 201 was authored by @jaytipargal, who is also the only code owner (CODEOWNERS: /project, /.github, /Backend); GitHub forbids a PR author from approving their own PR, and ruleset 25339138 requires a code-owner approval plus last-push approval. Re-opening the same branch as eka-auto (recorded push/PR identity) makes the code owner a non-author.",
+  "sequence": [
+    "close PR 201 with a comment pointing at the re-opened PR",
+    "switch gh identity to eka-auto; verify identity and repository permissions against targets.json",
+    "commit the ACCESS.md scope notes on the branch as eka-auto (also makes eka-auto the last pusher, satisfying require_last_push_approval)",
+    "open the replacement PR as eka-auto",
+    "wait for all eight required status checks; a check that could not run is Error, never Pass",
+    "approve as @jaytipargal (owner-directed self-review, rule 7, Internal tier D-1)",
+    "squash-merge as eka-auto",
+    "verify the Vercel production deployment of project jpbir against targets.json and record the receipt"
+  ],
+  "identityAfterSwitch": "eka-auto (pending verification at action time)",
+  "rollback": "Close the replacement PR and reopen #201; production is untouched until the merge, and revert covers after it.",
+  "receipt": "pending"
+}

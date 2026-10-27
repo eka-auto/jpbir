@@ -1,0 +1,47 @@
+{
+  "operation": "asn-review-followup-merge-20261027",
+  "kind": "receipt",
+  "contractRules": ["1", "6", "10"],
+  "recordedAt": "2026-10-27T12:10:00+05:30",
+  "intent": "project/checkpoints/2026-10-27-asn-review-followup-pr-intent.json",
+  "approval": "project/approvals/2026-10-27-asn-followup-proceed-merge.md (owner: proceed)",
+  "outcome": "completed",
+  "pullRequest": {
+    "number": 203,
+    "state": "MERGED",
+    "mergedAt": "2026-10-27T06:10:27Z",
+    "mergedBy": "eka-auto",
+    "method": "squash",
+    "mergeCommit": "17668817eeba7296b386d7d5653befb48f88ebba",
+    "heads": "654e482 (scope) + 34a3369 (Vercel finding fix: in-flight join bounded to joiner deadline)",
+    "review": "APPROVED by @jaytipargal on the final head after all checks green and the single Vercel Agent Review thread answered and resolved; labelled self-review (contract rule 7, Internal tier D-1)"
+  },
+  "verifierFindingCycle": {
+    "finding": "a joined lookup could wait past the joiner's own deadline",
+    "fix": "34a3369 - race the in-flight promise against the joiner deadline (unref'd timer, cleared on settle); joiner walks away unknown without disturbing the original promise",
+    "regressionTest": "a joined lookup still returns by the joiner own deadline",
+    "threads": "answered (comment 4385614948) and resolved (PRRT_kwDOUIMeYM6wkSpj)"
+  },
+  "postMergeEvidence": {
+    "ciCdPipeline": "success (run 40459524119, 1m36s)",
+    "vercelJpbirOnMergeSha": "success - production built from 17668817",
+    "endpointHealthOnDeployment": "success (run 40459613397)",
+    "production": {
+      "deployment": "jpbir-l45vlv9km-jayti2.vercel.app",
+      "status": "Ready, Production",
+      "targetMatch": "project jpbir / team jayti2 matches project/targets.json",
+      "aliasesVerified": [
+        "https://jaytipargal.tech/ -> 200",
+        "https://www.jaytipargal.tech/ -> 200",
+        "https://jpbir.vercel.app/ -> 200"
+      ]
+    },
+    "testEvidence": "ip-intel 26/26, visitor-enrichment 5/5, full npm test 58/61 (three known Windows-checkout failures only) on both heads"
+  },
+  "knownPreExistingFailure": {
+    "check": "Release Readiness",
+    "verdict": "failing on its scheduled run at 06:14Z as it has since at least 2026-10-22 - the six S24 device rows from T-22/T-29; not caused by this change, reported as failing (contract rule 1)"
+  },
+  "stillBlocked": "live jpbir_live asn counts (batch-2 question 2 remainder): no local credential reaches the live database; unblock = live DATABASE_URL in a local .env.local (value never shown to an agent) or a read-only CI step",
+  "rollback": "revert 17668817; no data or schema change exists to undo"
+}

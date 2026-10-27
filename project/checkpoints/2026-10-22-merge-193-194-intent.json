@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "actor": "eka-auto",
+  "repository": "eka-auto/jpbir",
+  "repository_id": 1350770272,
+  "owner_direction": "Merge PR #193 (stops the false alarm) and PR #194 (greens the migration-tooling row).",
+  "scope": {
+    "prs": [
+      193,
+      194
+    ],
+    "method": "merge",
+    "deployment": "existing Vercel Git integration only",
+    "expires": "2026-10-23T23:59:59+05:30"
+  },
+  "authorization": "Owner's explicit instruction in this session supersedes the previous PR #192-only merge scope for these two PRs. No bypass or fabricated approval authorized.",
+  "verified": {
+    "identity_id": 339395426,
+    "admin": true,
+    "stop_present": false,
+    "pr193": {
+      "head": "bf24e3f12e71f988a363105df0f809f613f179dd",
+      "review": "APPROVED",
+      "checks": "green",
+      "merge_state": "CLEAN"
+    },
+    "pr194": {
+      "head": "d51d7a86bd90abe67d6d0b0f18509b14596f5a4e",
+      "review": "REVIEW_REQUIRED",
+      "checks": "green"
+    }
+  },
+  "plan": "Merge 193 at reviewed head; verify deployment. Update 194 with main if strict gate requires it, preserving all review requirements. Merge 194 only once actual GitHub approval and all checks pass; verify signed live evidence. Read-only S24 freshness check."
+}
