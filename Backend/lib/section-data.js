@@ -1,13 +1,22 @@
 // Explicit semantic fields. Source credentials, raw records and arbitrary maps
 // cannot enter this read model, even if a provider adds them later.
 const FIELDS = new Set(('name title text body sender phone number count total value unit status model hostname deviceId deviceType lastSeen agentVersion battery cpu memory disk latitude longitude accuracy duration size_bytes file_name mime sent_at updated_at created_at url att_id email country city os browser version result checked_at message label').split(' '));
+for(const k of 'batteryLevel battery_level battery_percent batteryCharging cpu_percent ram_percent memory_percent disk_percent percent total_bytes used_bytes free_bytes phone_number phoneNumber contact_name contactName call_type duration_sec type address called_at received_at manufacturer androidVersion android_version os_name wifiSSID wifiIP networkType carrier publicIp'.split(' '))FIELDS.add(k);
+const METRIC_CONTAINERS=new Set(['info','network','cpu','memory','disk','battery','metrics','telemetry','location']);
 export function projectFields(source) {
   source={...source,file_name:source?.file_name??source?.filename,mime:source?.mime??source?.contentType,url:source?.url??source?.mediaUrl??source?.blob_url};
   const out = {};
-  for (const [k,v] of Object.entries(source || {})) {
-    if (!FIELDS.has(k)) continue;
-    if (v === null || typeof v === 'boolean' || typeof v === 'string' || (typeof v === 'number' && Number.isFinite(v))) out[k] = v;
+  function visit(obj,prefix='',depth=0) {
+    for(const [k,v] of Object.entries(obj||{})) {
+      if(HIDDEN.test(k))continue;
+      const key=prefix?prefix+'_'+k:k;
+      if(v && typeof v==='object' && !Array.isArray(v) && METRIC_CONTAINERS.has(k) && depth<4){visit(v,key,depth+1);continue;}
+      const numeric=typeof v==='number' && Number.isFinite(v);
+      if(!FIELDS.has(k) && !(prefix && numeric))continue;
+      if(v===null || typeof v==='boolean' || typeof v==='string' || numeric)out[key]=v;
+    }
   }
+  visit(source);
   return out;
 }
 const HIDDEN=/^(raw|raw_payload|payload|metadata|meta|debug|private_key|token|secret|credentials|authorization|commandQueue)$|(?:_token|_secret|_password)$/i;

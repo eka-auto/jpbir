@@ -11,6 +11,7 @@ import {
 import { requireKey } from './_auth.js';
 import { DEVICE_IDS, splitFleet } from './broker.js';
 import { query, isConfigured } from '../Integrations/postgres.js';
+import { projectFields } from './lib/section-data.js';
 
 const _env = (typeof process !== 'undefined' ? process : globalThis['proc' + 'ess']).env;
 const FIREBASE_SA_JSON = _env['FIREBASE_' + 'SERVICE_ACCOUNT_JSON'];
@@ -514,6 +515,7 @@ async function handleDevices(req, res) {
         model: f.model || null,
         reportedStatus: f.status || null,
         staleAlertState: (f.staleAlert && f.staleAlert.state) || null,
+        display_values: projectFields(f),
         ...(includeFullPayload ? { full_payload: f } : {}),
       };
     });

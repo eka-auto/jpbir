@@ -4,6 +4,7 @@ assert.equal(decodeField({integerValue:'9007199254740993'}),'9007199254740993');
 assert.equal(decodeField({integerValue:'0'}),0);
 assert.deepEqual(displayReadModel({raw_payload:'secret',payload:{secret:'x'},name:'Record',body:'{"amount":9007199254740993,"metadata":"hidden"}'}),{name:'Record',body:{amount:'9007199254740993'}});
 assert.deepEqual(projectFields({name:'Ada', count:0, raw_payload:{secret:'no'}, private_key:'no', nested:{a:1}}),{name:'Ada',count:0});
+assert.deepEqual(projectFields({info:{hostname:'fixture-laptop',cpu:{percent:0},private_key:'hidden'},batteryLevel:0,phone_number:'fixture-number'}),{info_hostname:'fixture-laptop',info_cpu_percent:0,batteryLevel:0,phone_number:'fixture-number'});
 const response = body => ({ok:true,json:async()=>body});
 let requests=[];
 const result=await fetchCollection({base:'https://firestore.googleapis.com/v1/projects/test/databases/eka-agent/documents',scope:'devices',token:'fixture',generation:'2026-01-01T00:00:00Z',fetcher:async url=>{

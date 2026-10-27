@@ -2674,7 +2674,7 @@ window.vas = window.vas || function() { (window.vass = window.vass || []).push(a
     function renderLiveDevicePayload(d, index) {
         var card = document.createElement('section');
         card.className = 'payload-card';
-        var values = {};
+        var values = Object.assign({}, d.display_values || {});
         ['deviceId','model','deviceType','lastSeen','agentVersion','status','hostname','battery','batteryLevel'].forEach(function(k){
             var v = d[k] != null ? d[k] : (d.full_payload || {})[k];
             if (v !== undefined) values[k] = v;
