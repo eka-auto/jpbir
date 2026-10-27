@@ -38,15 +38,16 @@
       "name": "neon-jaytibirthday-db",
       "environment": "production",
       "provider": "neon",
-      "account_id": "fancy-cloud-99501540",
+      "account_id": "jolly-cake-01200063",
       "resource_ids": {
-        "project_id": "fancy-cloud-99501540",
-        "branch_id": "br-spring-pine-au5jtfig",
-        "endpoint_id": "ep-long-credit-au7qr9gy",
+        "project_id": "jolly-cake-01200063",
+        "organization_id": "org-billowing-meadow-62228264",
+        "branch_id": "br-royal-wave-b8y8k9vw",
+        "endpoint_id": "ep-dark-dew-b8hbowlx",
         "database": "jpbir_live",
         "role": "neondb_owner"
       },
-      "notes": "Postgres warehouse for analytics and telemetry (D-9). Project, branch and endpoint verified 2026-10-22 against the provider: project fancy-cloud-99501540 ('jaytibirthday-db'), branch br-spring-pine-au5jtfig ('main', primary), endpoint ep-long-credit-au7qr9gy, DATABASE jpbir_live. THE DATABASE NAME IS PART OF THE TARGET. The same project and endpoint also carry a second database, 'neondb', which is a COPY frozen at 2026-10-09T18:30Z - and the local .env.local and the repository's DATABASE_URL secret both pointed at that copy, which is why every local analysis of 'the warehouse' read as the product having stopped collecting. The local .env.local now points at jpbir_live; the DATABASE_URL secret still needs replacing, and it must name jpbir_live."
+      "notes": "Postgres warehouse for analytics and telemetry (D-9). MOVED 2026-10-27 (D-35): the data now lives in project jolly-cake-01200063 ('neon-cyan-fountain') of organization org-billowing-meadow-62228264, branch br-royal-wave-b8y8k9vw ('main'), endpoint ep-dark-dew-b8hbowlx, DATABASE jpbir_live - the database name is part of the target and was preserved. The move was a migration, not an organization transfer: both organizations are Vercel-managed (managed_by=vercel) and Neon cannot transfer projects into or out of such an organization. jpbir_live was dumped and restored with exact count verification (29 tables, 132,496 rows on both sides) and the four connection secrets now name this project. The previous warehouse - project fancy-cloud-99501540, branch br-spring-pine-au5jtfig, endpoint ep-long-credit-au7qr9gy, database jpbir_live - is LEFT INTACT as the rollback copy, together with its stale 'neondb' database (a copy frozen at 2026-10-09T18:30Z); deleting it is a separate decision with its own approval. Local credentials live OUTSIDE the repository (a .env.local inside the tree is read by the test suite)."
     },
     {
       "name": "vercel-blob",
