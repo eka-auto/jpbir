@@ -2,13 +2,16 @@ import { decodeOne } from './lib/geo.js';
 import { siteFor, recordEvent, botLike } from './lib/warehouse.js';
 import { isConfigured } from '../Integrations/postgres.js';
 
+// The beacon endpoint serves ONE site.
+//
+// jaytibirthday.in posts here; nothing else does. The console at
+// jaytipargal.tech used to post to itself, which filled the warehouse with
+// the owner's own sessions and the fleet's own probes, and the visitor
+// panels then read as "traffic" that was never anybody. A cross-origin
+// request from any other origin is refused by CORS before it reaches the
+// handler, and the property allow-list refuses it again inside — two
+// independent doors, because this endpoint is public and pasted around.
 const ALLOWED_ORIGINS = new Set([
-  'https://jaytipargal.com',
-  'https://www.jaytipargal.com',
-  'https://dfa5i945koq3k.cloudfront.net',
-  'https://jaytipargal.tech',
-  'https://www.jaytipargal.tech',
-  'https://agent.jaytipargal.tech',
   'https://jaytibirthday.in',
   'https://www.jaytibirthday.in',
 ]);
@@ -22,7 +25,11 @@ function getClientIP(req) {
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
   const origin = req.headers.origin || '';
-  res.setHeader('Access-Control-Allow-Origin', ALLOWED_ORIGINS.has(origin) ? origin : 'https://jaytipargal.com');
+  // The fallback is the tracked site, not a retired one: a request from an
+  // origin we do not serve is answered with the one origin we do, and the
+  // browser refuses it. It used to name jaytipargal.com, a site this
+  // warehouse no longer tracks.
+  res.setHeader('Access-Control-Allow-Origin', ALLOWED_ORIGINS.has(origin) ? origin : 'https://jaytibirthday.in');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 

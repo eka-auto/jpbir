@@ -269,7 +269,48 @@ recorded hypothesis; the attempt is never identical to an earlier one.
 
 ---
 
-## 7. Files
+## 7. The warehouse is for jaytibirthday.in only
+
+The owner asked for the data of `jaytipargal.tech` and `jaytipargal.com` to be removed completely, and for the product to be built for `jaytibirthday.in` only. PR #197 carries it.
+
+**The product.** `Backend/lib/warehouse.js` is the single choke point every site derivation routes through, so the narrowing is one edit there and nowhere else: the property allow-list, the beacon endpoint's CORS list, the console's own tracker embed (removed — the console was tracking itself, which is where the "visitors" that were nobody came from), the nightly repair's import filter, the historical backup importer's attribution rule, the rollup rebuild, and the console's site selector.
+
+**What will be deleted**, from the deployed application's own count:
+
+| property | events | |
+| --- | --- | --- |
+| `jaytibirthday.in` | 15,092 | kept |
+| `jaytipargal.tech` | 5,063 | deleted |
+| `jaytipargal.com` | 261 | deleted |
+| mis-attributed hosts (`*.v0.build`, `*.vercel.run`, a device id filed as a website) | 356 | deleted |
+
+**Why the purge had to go through the application.** Four routes to the live warehouse were tried and measured, and every attempt failed closed before a row was touched:
+
+| Route | Result |
+| --- | --- |
+| the `DATABASE_URL` secret, from CI | `28P01` — the password no longer authenticates |
+| `vercel env pull` | every secret comes back as `[SENSITIVE]` |
+| the Neon API's SQL route | 404 — not reachable with this key |
+| the Neon API's connection URI | reachable, but the key sees only a project whose three branches all hold a **9 October snapshot: 18,869 events against the deployed application's 20,724** |
+
+That last row is a finding in its own right, and it explains the earlier confusion: **the local `.env.local`, the `DATABASE_URL` secret and the Vercel production branch all point at that stale copy.** It is why every local analysis of the warehouse looked like it ended on 10 October, and why the repo's own 2026-10-15 diagnosis concluded the ingest had stopped. The live warehouse is somewhere the API key cannot see.
+
+So the purge is an action on `/api/db-push`, behind the credential gate that route already has, and it purces **both** ends — the warehouse rows and the DynamoDB journal items, with the same filter — because the journal is what the nightly repair copies from. Its scope is pinned by `_shared/tests/db-push-purge.test.mjs`: the tracked property and nothing else, the three site-scoped tables, the ledger record, the journal filter, and the gate in front of it.
+
+**The purge, done and verified** (2026-10-22, through `/api/db-push?action=purge` after PR #197 merged):
+
+| | before | after |
+| --- | --- | --- |
+| events | 20,726 | **15,092** |
+| visitors | 483 | **349** |
+| sessions | 833 | **556** |
+| properties | 15 | **1** |
+
+Deleted: 5,634 events, 277 session rows, 134 visitor rows, and all 23 DynamoDB journal items — the journal held nothing but the retired properties, so the nightly repair cannot resurrect them. `jaytibirthday.in`'s 15,092 events are untouched, and the read path now refuses the retired properties (`?site=jaytipargal.tech`, `?site=jaytipargal.com` and `?site=jbt` all answer 400).
+
+**One thing the purge exposed.** The migration file could not be applied to a *fresh* database: `events`, `sessions` and `visitors` are created by the sibling repository's migrations (001–003), so a database with only this repository's schema has no such tables, and a plain `DELETE` against them fails with `42P01`. That failed the migration proof, and with it the evidence job — so the newly deployed revision could not publish a receipt and both evidence-backed rows went unproven with the honest reason *"no CI evidence has been published for …"*. PR #198 makes the delete check that each table exists before it touches it, and re-pins the subject digest.
+
+
 
 Changed: `Backend/jp-stack.js`, `Backend/stack-cron.js`, `Backend/jp-devices.js`,
 `Backend/verify-db.js`, `Backend/lib/stack-map.js`, `Backend/lib/s24-attestation.js`

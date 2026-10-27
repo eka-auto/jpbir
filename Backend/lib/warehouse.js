@@ -51,7 +51,16 @@ function normaliseHost(host) {
 // so widening the fleet is a one-line edit here and nowhere else.
 //
 // A beacon from any other host records nothing.
-const PROPERTIES = ['jaytibirthday.in', 'jaytipargal.tech', 'jaytipargal.com'];
+//
+// ONE property. jaytibirthday.in is the only site this warehouse tracks, and
+// the owner asked for the others to be removed rather than merely hidden: the
+// operator console at jaytipargal.tech is not a public site, so the traffic
+// it received was the owner's own sessions and the fleet's own probes, and
+// keeping it in the warehouse made the visitor panels say something that was
+// never true. The allow-list is the single choke point, so narrowing the
+// fleet is a one-line edit here and nowhere else.
+export const TRACKED_PROPERTY = 'jaytibirthday.in';
+const PROPERTIES = [TRACKED_PROPERTY];
 function isProperty(host) {
   if (!host) return false;
   return PROPERTIES.some((p) => host === p || host.endsWith('.' + p));
@@ -220,7 +229,15 @@ export async function insertEvent(item, { site, sourceSystem, db = query }) {
 // live path and db-push's rebuild cannot drift into reporting different counts
 // for the same visitor.
 export async function rollupVisitors({ site, visitorId, db = query } = {}) {
-  const scoped = Boolean(site && visitorId);
+  // Scoped by site even when no visitor is named. A site-scoped rebuild is
+  // how the warehouse keeps to one property: an unscoped rebuild would roll
+  // up whatever is in `events`, including a stray row from a host that is no
+  // longer tracked, and put it back into the sessions a reader can see.
+  const scoped = Boolean(site);
+  const where = scoped
+    ? (visitorId ? 'AND site = $1 AND visitor_id = $2' : 'AND site = $1')
+    : '';
+  const params = scoped ? (visitorId ? [site, visitorId] : [site]) : [];
   await db(
     `INSERT INTO visitors (visitor_id, site, first_seen_at, last_seen_at, event_count,
                            session_count, country, region, city, timezone, user_agent,
@@ -235,7 +252,7 @@ export async function rollupVisitors({ site, visitorId, db = query } = {}) {
                 COUNT(*)::int    AS event_count,
                 COUNT(DISTINCT session_id)::int AS session_count
            FROM events
-          WHERE visitor_id IS NOT NULL ${scoped ? 'AND site = $1 AND visitor_id = $2' : ''}
+          WHERE visitor_id IS NOT NULL ${where}
           GROUP BY site, visitor_id
        ) a
        JOIN LATERAL (
@@ -259,12 +276,16 @@ export async function rollupVisitors({ site, visitorId, db = query } = {}) {
        browser       = COALESCE(EXCLUDED.browser, visitors.browser),
        os            = COALESCE(EXCLUDED.os, visitors.os),
        fingerprint   = COALESCE(EXCLUDED.fingerprint, visitors.fingerprint)`,
-    scoped ? [site, visitorId] : []
+    params
   );
 }
 
 export async function rollupSessions({ site, sessionId, db = query } = {}) {
-  const scoped = Boolean(site && sessionId);
+  const scoped = Boolean(site);
+  const where = scoped
+    ? (sessionId ? 'AND site = $1 AND session_id = $2' : 'AND site = $1')
+    : '';
+  const params = scoped ? (sessionId ? [site, sessionId] : [site]) : [];
   await db(
     `INSERT INTO sessions (session_id, site, visitor_id, started_at, last_event_at,
                            event_count, entry_page, exit_page)
@@ -272,13 +293,13 @@ export async function rollupSessions({ site, sessionId, db = query } = {}) {
             (ARRAY_AGG(page_url ORDER BY occurred_at ASC))[1],
             (ARRAY_AGG(page_url ORDER BY occurred_at DESC))[1]
        FROM events
-      WHERE session_id IS NOT NULL ${scoped ? 'AND site = $1 AND session_id = $2' : ''}
+      WHERE session_id IS NOT NULL ${where}
       GROUP BY site, session_id
      ON CONFLICT (site, session_id) DO UPDATE SET
        last_event_at = GREATEST(sessions.last_event_at, EXCLUDED.last_event_at),
        event_count   = EXCLUDED.event_count,
-       exit_page     = EXCLUDED.exit_page`,
-    scoped ? [site, sessionId] : []
+        exit_page     = EXCLUDED.exit_page`,
+    params
   );
 }
 

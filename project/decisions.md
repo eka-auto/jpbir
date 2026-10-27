@@ -461,3 +461,43 @@ The general lesson, and the one worth keeping: the two things that were wrong we
 the checks, and not in the cryptography. They were in the REASON the panel gave, and in the
 ORDER it gave it. A verdict without a precise reason is a verdict the operator has to
 re-derive by hand.
+### D-31: The warehouse holds one property, and the purge had to go through the application (devops, 2026-10-22)
+
+The owner asked for the data of jaytipargal.tech and jaytipargal.com to be removed completely, and for the product to be built for jaytibirthday.in only.
+
+**The product.** `Backend/lib/warehouse.js` is the single choke point every site derivation routes through, so the narrowing is one edit there and nowhere else: the property allow-list, the beacon endpoint's CORS list, the console's own tracker embed (removed — the console was tracking itself), the nightly repair's import filter, the historical backup importer's attribution rule, the rollup rebuild, and the console's site selector.
+
+**Why the purge could not be a script.** Four routes to the live warehouse were tried and measured:
+
+| Route | Result |
+| --- | --- |
+| the `DATABASE_URL` secret, from CI | `28P01` — the password no longer authenticates |
+| `vercel env pull` | every secret comes back as `[SENSITIVE]` |
+| the Neon API's SQL route | 404 — not reachable with this key |
+| the Neon API's connection URI | reachable — and the key sees only a project whose three branches all hold a **9 October snapshot: 18,869 events against the deployed application's 20,724** |
+
+Every attempt failed closed, before a row was touched. The last row is a finding in its own right: **the local `.env.local`, the `DATABASE_URL` secret and the Vercel production branch all point at that stale copy.** It is why every local analysis of the warehouse looked like it ended on 10 October, and why the repo's own 2026-10-15 diagnosis concluded that the ingest had stopped. The live warehouse is somewhere the API key cannot see.
+
+So the purge is an action on `/api/db-push` — behind the credential gate the route already has, because the only credential that opens the live warehouse is a Vercel Secret inside the application. It purges both ends, the warehouse rows and the DynamoDB journal items, with the same filter, because the journal is what the nightly repair copies from and a purge that undoes itself every night is not a purge. Its scope is pinned by a suite rather than by a comment.
+
+**The invariant, in one line:** the warehouse holds `jaytibirthday.in` and nothing else; a beacon from any other host records nothing; a row that cannot be attributed is skipped and counted; a read of an untracked property is refused.
+
+The live warehouse's identity is still not pinned in `project/targets.json`, which is the omission that let three stale pointers look authoritative for a month. Pinning it needs the live endpoint named, and that is an owner-assisted verification.
+
+### D-32: ASN / network-org labels are added to R1 as an owner-approved scope addition (opencode session, 2026-10-27)
+
+The visitor drawer printed `unattributed network: <ip>` for every visitor, because nothing anywhere resolved an address to its ASN or organization — the warehouse's `asn_org` column exists and is read by `db-api` and `db.html`, but no writer has ever filled it, and the trackers never captured an ASN. The owner asked for names instead, was shown a preview rendered with the shipped drawer code, and answered **YES** to the batched question, which is the scope amendment this decision records: it changes D-16 ("R1 = stabilize and harden, no new features") for this feature only. The durable approval is `project/approvals/2026-10-27-asn-network-labels.md` on `project-state`.
+
+**The technical choice (mine, per contract rule 15): read-time enrichment, not an ingest column.** `Backend/lib/ip-intel.js` resolves each unique address when the drawer opens — `ipwho.is` first, `ipinfo.io` as fallback — with a 1.5 s timeout, a 2.5 s overall budget, deduplication, a 7-day per-instance cache, and private/reserved addresses (`10/8`, `127/8`, `169.254/16`, `100.64/10`, `172.16/12`, `192.168/16`, CGNAT, `::1`, `fc00::/7`, `fe80::/10`, multicast) never sent anywhere. It was chosen over writing `asn_org` at ingest because that alternative needs a production-data backfill of 15,092 rows through the migration pipeline — a much larger, harder-to-reverse change for the same visible result. Read-time enrichment also fixes historical rows, which an ingest column would not without the backfill.
+
+**What it touches:** `Backend/visitor.js`, `Backend/jp-visitor.js` (each gains one enrichment call before the summary and projection are built) and one new test suite. No schema change, no database write, no ingest change, no backfill.
+
+**Egress, accepted by the YES:** unique visitor IPs are sent to `ipwho.is` (fallback `ipinfo.io`) — two public geolocation/ASN services, no key, no storage on our side, cached per warm instance. If the owner later wants zero third-party egress, the ingest-column route above is the alternative and is a reviewed data change.
+
+**Rollback:** revert the merge commit. No data is written, so there is nothing to undo beyond the code.
+
+### D-32 addendum: the warehouse already carried ASN data — the premise was wrong (opencode session, 2026-10-27)
+
+An owner-approved read-only probe (batch-2 question 2, `project/approvals/2026-10-27-asn-review-followup.md`) corrected D-32's founding claim. On the only database reachable from this machine (`neondb`, the frozen copy), `events` has the `asn` and `asn_org` columns, and **6,134 of 14,557 `jaytibirthday.in` rows (42%) carry both**, spanning 2026-08-19 to 2026-10-18, newest sampled value `16509 / Amazon.com, Inc.` The sentence "no writer has ever filled it" and "the trackers never captured an ASN" are therefore false: the sibling `jaytibirthday-site` tracker resolves ASN at ingest and mirrors it into the same warehouse.
+
+Consequences, recorded rather than patched silently: (a) stored ASN still wins — `applyIntel` never overwrites an existing value, which is now the correct precedence rather than an unreachable branch; (b) the drawer can mix provenance for one visitor (DB-IP at ingest vs ipwho/ipinfo at read time) with no `asn_source` on the read path, so the frontend's existing `asn_source === 'db_unavailable'` branch never fires from this code — an open gap; (c) `db-api`'s `asn_org` breakdown and `db.html`'s Network surfaces have data after all; (d) live `jpbir_live` counts remain unverified from this machine — one local credential set is dead, one names `neondb`, one is `[SENSITIVE]`-redacted; unblocking needs either a live `DATABASE_URL` placed in a local `.env.local` (value never shown to an agent) or a read-only CI step. D-16 scope and D-32's approved technical choice are unchanged.

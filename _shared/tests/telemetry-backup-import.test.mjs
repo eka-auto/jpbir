@@ -51,17 +51,25 @@ const rows = items.map(rowFor);
 const noSite = rows.filter((r) => !r.site);
 const noTime = rows.filter((r) => !r.occurredAt);
 const noId = rows.filter((r) => !r.id);
-check('every backup item maps to a site', noSite.length === 0, JSON.stringify(noSite.slice(0, 3)));
 check('every backup item maps to a timestamp', noTime.length === 0, JSON.stringify(noTime.slice(0, 3)));
 check('every backup item maps to a row id', noId.length === 0, JSON.stringify(noId.slice(0, 3)));
 check('the rows are labelled as coming from the backup',
   rows.every((r) => r.sourceSystem === 'dynamodb-backup'),
   'the Health page groups on source_system, so an unlabelled import is invisible');
-check('a legacy page URL resolves to one of our properties',
-  rows.every((r) => ['jaytibirthday.in', 'jaytipargal.tech', 'jaytipargal.com'].includes(r.site)),
-  JSON.stringify([...new Set(rows.map((r) => r.site))]));
-check('a page-less item still lands on the property the table collected for',
-  rowFor({ id: 'x', epoch: 1786816172918 }).site === 'jaytipargal.com');
+// The warehouse tracks ONE property, so a row from any other host — including
+// the operator console's own sessions and the fleet's device probes, and
+// including a row that names no page URL at all — is not imported. It is
+// SKIPPED and COUNTED, which is the property that matters: a row that is
+// dropped silently looks identical to a row that was never there.
+const sites = [...new Set(rows.map((r) => r.site))];
+check('an item from another property is not attributed to a property',
+  rows.filter((r) => r.site && r.site !== 'jaytibirthday.in').length === 0,
+  JSON.stringify(sites));
+check('an item with no page URL is unattributed rather than guessed for',
+  rowFor({ id: 'x', epoch: 1786816172918 }).site === null);
+check('the importer reports what it skipped',
+  /skipped\s+\$\{other\}/.test(readFileSync(join(ROOT, 'Database', 'scripts', 'import-telemetry-backup.mjs'), 'utf8')),
+  'a skipped row must be counted, or a silent drop looks like a row that never existed');
 
 console.log(failures ? `\n${failures} check(s) failed` : '\nall checks passed');
 process.exitCode = failures ? 1 : 0;

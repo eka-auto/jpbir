@@ -26,6 +26,7 @@ import { requireKey } from './_auth.js';
 import { decodeGeo } from './lib/geo.js';
 import { query, isConfigured } from '../Integrations/postgres.js';
 import { propertyFromQuery } from './lib/warehouse.js';
+import { enrichEvents } from './lib/ip-intel.js';
 
 // Rebuilds the event exactly as the blob scan used to hand it over. The
 // archived payload wins; the indexed columns fill anything it lacks, which
@@ -188,6 +189,8 @@ export default async function handler(req, res) {
     )).rows;
 
     const events = rows.map(asEvent);
+    const intelStats = { attempted: 0, resolved: 0, over_budget: false };
+    await enrichEvents(events, { stats: intelStats });
 
     return res.status(200).json({
       success: true,
@@ -195,6 +198,7 @@ export default async function handler(req, res) {
       partial: false,
       source: 'postgres',
       query: { visitor, session },
+      intel: intelStats,
       summary: summarize(events, visitor),
       events: events.map(projectEvent),
     });

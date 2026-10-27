@@ -1,4 +1,5 @@
 import { decodeGeo } from './lib/geo.js';
+import { applyIntel, normalizeIp, resolveIps } from './lib/ip-intel.js';
 import { requireKey } from './_auth.js';
 import { query, isConfigured } from '../Integrations/postgres.js';
 
@@ -66,10 +67,16 @@ export default async function handler(req, res) {
       });
     }
 
+    const stats = { attempted: 0, resolved: 0, over_budget: false };
+    const intel = await resolveIps([...ips], { stats });
+    const intelFor = (ip) => intel.get(normalizeIp(ip)) || null;
+    if (latestNetwork) latestNetwork = applyIntel(latestNetwork, intelFor(latestNetwork.ip));
+
     return res.status(200).json({
       success: true,
       source: 'neon',
       partial: false,
+      intel: stats,
       query: { visitor: visitor || null, session: session || null },
       summary: {
         visitor_id: visitor || events[0]?.visitor_id || null,
@@ -84,10 +91,10 @@ export default async function handler(req, res) {
         timestamp: asIso(row.occurred_at), receivedAt: asIso(row.occurred_at),
         time_on_page: row.time_on_page, scroll_percent: row.scroll_percent,
         session_id: row.session_id, visitor_id: row.visitor_id, device_fingerprint: row.fingerprint,
-        server_location: decodeGeo({
+        server_location: applyIntel(decodeGeo({
           ip: row.ip, country: row.country, countryRegion: row.region, city: row.city,
           latitude: row.latitude, longitude: row.longitude, timezone: row.timezone, postalCode: row.postal_code,
-        }),
+        }), intelFor(row.ip)),
         server_request_meta: { userAgent: row.user_agent, referer: row.referrer },
         event_data: row.event_data, ...projectTelemetry(row.event_data), raw: row.raw_payload,
         web_vitals: row.event_type === 'web_vitals' ? row.event_data : undefined,
