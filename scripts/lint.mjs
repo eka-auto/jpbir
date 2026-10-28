@@ -9,7 +9,10 @@ const walk = (dir) => readdirSync(dir, { withFileTypes: true }).flatMap((entry) 
   return entry.isDirectory() ? walk(path) : [path];
 });
 
-for (const dir of ['Backend', 'Integrations', 'scripts']) {
+// The section folders are served as their own endpoints, so their JavaScript is
+// checked here alongside the rest; a syntax error in a section would otherwise
+// reach production without a gate.
+for (const dir of ['Backend', 'Integrations', 'scripts', 'S24', 'VivoBook']) {
   for (const file of walk(join(root, dir)).filter((path) => path.endsWith('.js') || path.endsWith('.mjs'))) {
     const result = spawnSync(process.execPath, ['--check', file], { encoding: 'utf8' });
     if (result.status !== 0) failures.push(`${file}: ${result.stderr.trim()}`);

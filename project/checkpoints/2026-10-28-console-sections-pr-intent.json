@@ -1,0 +1,39 @@
+{
+  "kind": "intent",
+  "action": "push-branch-and-open-pull-request",
+  "task": "T-19/T-18 (sections S24 and VivoBook)",
+  "recorded_at": "2026-10-28T21:20:00Z",
+  "identity": {
+    "git_actor": "jaytipargal",
+    "git_email": "jaytipargl.jp@gmail.com",
+    "verified_by": "gh api user --jq .login",
+    "remote": "https://github.com/eka-auto/jpbir.git"
+  },
+  "target": {
+    "repository": "eka-auto/jpbir",
+    "branch": "feat/console-sections",
+    "base": "main",
+    "base_revision": "b13151d521088adf8e6d37b0b0e3e2862a23db40"
+  },
+  "scope": [
+    "S24/ - six section endpoints, each self-contained (own key gate, own pool, own SQL)",
+    "VivoBook/ - one section endpoint, self-contained",
+    "S24/api.js and VivoBook/api.js - index and forward, no shared logic",
+    "_shared/tests/s24-sections.test.mjs, _shared/tests/vivobook-section.test.mjs",
+    "vercel.json - nine build entries and nine routes added, nothing removed",
+    "scripts/lint.mjs - S24 and VivoBook added to the directories whose JavaScript is syntax-checked"
+  ],
+  "out_of_scope": [
+    "JTE/, Operate/, Shared platform/, The website/ - left exactly as they are, untracked",
+    "no change to Backend/, Frontend/ or any existing endpoint",
+    "no production deployment: this push produces a preview build only"
+  ],
+  "effect": "A preview deployment is created by the Vercel Git integration for the pushed branch. Production is unchanged. Merge to main and the production release remain owner decisions.",
+  "reversible": "Yes - the branch can be deleted and the preview deployment removed; main is untouched at b13151d.",
+  "evidence_so_far": {
+    "syntax": "node --check on all seven section files: pass",
+    "tests": "node _shared/tests/s24-sections.test.mjs and vivobook-section.test.mjs: pass",
+    "lint": "node scripts/lint.mjs: pass, 5 security surfaces",
+    "config": "vercel.json parses; 52 builds, 34 routes"
+  }
+}
