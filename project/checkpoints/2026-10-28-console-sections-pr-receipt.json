@@ -1,0 +1,57 @@
+{
+  "kind": "receipt",
+  "for": "2026-10-28-console-sections-pr-intent.json",
+  "action": "push-branch-and-open-pull-request",
+  "recorded_at": "2026-10-28T22:05:00Z",
+  "identity": {
+    "git_actor": "jaytipargal",
+    "remote": "https://github.com/eka-auto/jpbir.git"
+  },
+  "target": {
+    "repository": "eka-auto/jpbir",
+    "pull_request": 212,
+    "branch": "feat/console-sections",
+    "commits": ["dacf5e8", "891e660"]
+  },
+  "result": "Preview deployment READY. Production untouched.",
+  "deployments": [
+    {
+      "id": "dpl_GZo2dp9MP1Z61kZis9GaBmsX4g6K",
+      "commit": "891e660",
+      "state": "READY",
+      "url": "jpbir-jv3k3cxvi-jayti2.vercel.app",
+      "target": "preview"
+    },
+    {
+      "id": "dpl_AQRPdT9qf9Go9jD92aqhtSA5i4wL",
+      "commit": "dacf5e8",
+      "state": "ERROR",
+      "error_code": "invalid_function_name",
+      "note": "superseded by the space-free entrypoint fix"
+    }
+  ],
+  "ci_on_891e660": {
+    "Lint & Test": "pass (1m18s)",
+    "Code Quality": "pass",
+    "Security Scan": "pass",
+    "Validate workflow definitions": "pass",
+    "S24 MCP compatibility 3.12": "pass",
+    "S24 MCP compatibility 3.14": "pass",
+    "jp-agent tests": "pass",
+    "Vercel - jpbir": "pass",
+    "Vercel - channel-sandbox": "pass"
+  },
+  "live_probes_against_the_preview": {
+    "GET /api/s24-group": "200, six sections listed",
+    "GET /api/vivobook-group": "200, one section listed",
+    "GET /api/s24-ultra without key": "401",
+    "GET /api/vivobook without key": "401",
+    "POST /api/s24-ultra": "405",
+    "GET /api/jp-stack (untouched endpoint)": "401, unchanged"
+  },
+  "not_done": [
+    "No merge to main and no production release: that is the owner's release approval (T-30).",
+    "The other four section folders (JTE, Operate, Shared platform, The website) are untouched and untracked."
+  ],
+  "uncertainty": "The 200-with-data path of each section was not exercised against the preview, because that needs STATS_KEY, which was not read or printed. The gate, the indexes, the method guard and the unchanged neighbouring endpoint were verified live; the data projection is covered by the two test suites and by CI's Lint & Test."
+}
