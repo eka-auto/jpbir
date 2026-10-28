@@ -74,16 +74,16 @@ const fakeRes = () => {
   const data = await dashboardMod.load(stub({
     'from devices': [{ device_id: 'samsung-s24-ultra', display_name: 'S24 Ultra', online: true, last_seen_at: '2026-10-15T20:50:27Z' }],
     'from device_telemetry': [{ kind: 'mobile', model: 'SM-S928B', battery_level: 30, cpu_temp_c: 31.5, observed_at: '2026-10-15T20:50:00Z' }],
-    'from device_commands': [{ waiting: 5 }],
+    'from s24_commands': [{ waiting: 5 }],
   }));
-  assert.equal(data.commands_waiting, 5, 'unacknowledged commands are reported, not hidden');
+  assert.equal(data.commands_waiting, 5, 'commands on record for the device are reported, not hidden');
   assert.equal(data.telemetry.length, 1);
   assert.equal(data.telemetry[0].model, 'SM-S928B');
   assert.equal(data.telemetry[0].cpu_temp_c, 31.5);
 
   const noTelemetry = await dashboardMod.load(stub({
     'from devices': [{ device_id: 'samsung-s24-ultra' }],
-    'from device_commands': [{ waiting: 0 }],
+    'from s24_commands': [{ waiting: 0 }],
   }, ['device_telemetry']));
   assert.equal(noTelemetry.telemetry_missing, true);
   assert.deepEqual(noTelemetry.telemetry, []);
