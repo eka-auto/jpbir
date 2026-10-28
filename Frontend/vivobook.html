@@ -125,6 +125,7 @@
              nothing above this comment is touched. -->
         <section class="panel" id="ownCodePanel" style="margin-top:18px">
             <h2 style="font-size:15px;margin:0 0 4px">VivoBook section — served by their own code</h2>
+            <p style="margin:0 0 2px;font-size:12px;opacity:.7">Source: the warehouse mirror, not the live Firestore record. The KPI tiles above read Firestore, so these counts can differ.</p>
             <p style="margin:0 0 10px;font-size:12px;opacity:.7">Each row is one section reading its own endpoint. Record age is how long since the device last wrote; a stale record is reported, never hidden.</p>
             <div id="ownCodeBody"><div class="state">Loading section status…</div></div>
         </section>
@@ -140,7 +141,7 @@
                 if (d.migrated === false) return 'tables not migrated here yet';
                 if (slug === 's24' || slug === 'device' || slug === 'vivobook') {
                     if (d.present === false) return 'no record for ' + esc(d.device);
-                    const bits = [(d.stale ? 'record stale' : 'record fresh') + ' · written ' + age(d.age_seconds) + ' ago'];
+                    const bits = [d.age_seconds == null ? 'no timestamp on the record' : (d.stale ? 'record stale' : 'record fresh') + ' · written ' + age(d.age_seconds) + ' ago'];
                     if (d.commands_waiting != null) bits.push(d.commands_waiting + ' command(s) on record for this device');
                     if (d.telemetry) bits.push(d.telemetry.length + ' telemetry row(s)');
                     if (d.battery != null) bits.push('battery ' + d.battery + '%');

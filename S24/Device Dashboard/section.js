@@ -102,7 +102,7 @@ export async function load(query) {
       agent: t.agent_version || null,
       online: t.online === true,
       last_seen: iso(t.last_seen_at),
-      battery: n(t.battery_level),
+      battery: t.battery_level == null ? null : n(t.battery_level),
       cpu_temp_c: n(t.cpu_temp_c),
       carrier: t.carrier || null,
       network: t.network_type || null,

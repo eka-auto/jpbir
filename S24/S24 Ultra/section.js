@@ -86,7 +86,7 @@ export async function load(query) {
     stale: ageSeconds == null ? true : ageSeconds > 900,
     daemon_version: row.daemon_version || null,
     platform: row.platform || null,
-    battery: n(row.battery_level),
+    battery: row.battery_level == null ? null : n(row.battery_level),
     network: row.network_type || null,
     carrier: row.carrier || null,
     public_ip: row.public_ip || null,
