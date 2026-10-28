@@ -163,6 +163,56 @@
             </table>
         </div>
     </div>
+
+        <!-- Section endpoints served by their own self-contained code. Additive:
+             nothing above this comment is touched. -->
+        <section class="panel" id="ownCodePanel" style="margin-top:18px">
+            <h2 style="font-size:15px;margin:0 0 4px">VivoBook section — served by their own code</h2>
+            <p style="margin:0 0 10px;font-size:12px;opacity:.7">Each row is one section reading its own endpoint. Record age is how long since the device last wrote; a stale record is reported, never hidden.</p>
+            <div id="ownCodeBody"><div class="state">Loading section status…</div></div>
+        </section>
+        <script>
+        (function () {
+            const KEY = sessionStorage.getItem('jbt_stats_key') || '';
+            const HEAD = KEY ? { 'x-stats-key': KEY } : {};
+            const ROWS = [{"slug":"vivobook","title":"VivoBook","endpoint":"/api/vivobook"}];
+            const esc = (v) => String(v == null ? '' : v).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+            const age = (s) => (s == null ? 'unknown' : s < 90 ? s + 's' : s < 5400 ? Math.round(s / 60) + 'm' : Math.round(s / 86400) + 'd');
+            function summarise(slug, d) {
+                if (!d) return 'no answer';
+                if (d.migrated === false) return 'tables not migrated here yet';
+                if (slug === 's24' || slug === 'device' || slug === 'vivobook') {
+                    if (d.present === false) return 'no record for ' + esc(d.device);
+                    const bits = [(d.stale ? 'record stale' : 'record fresh') + ' · written ' + age(d.age_seconds) + ' ago'];
+                    if (d.commands_waiting != null) bits.push(d.commands_waiting + ' command(s) queued and unacknowledged');
+                    if (d.telemetry) bits.push(d.telemetry.length + ' telemetry row(s)');
+                    if (d.battery != null) bits.push('battery ' + d.battery + '%');
+                    return bits.join(' · ');
+                }
+                if (slug === 'whatsapp') return d.chats + ' chats · ' + d.messages + ' messages · ' + d.attachments + ' attachments';
+                if (slug === 'media') return d.count + ' attachments · ' + Math.round((d.bytes || 0) / 1048576) + ' MB';
+                if (slug === 'telegram') return d.chats + ' chats · ' + d.messages + ' messages · ' + d.runs + ' sync runs';
+                if (slug === 'live') return d.messages.length + ' recent messages · ' + d.events.length + ' recent events';
+                return 'ok';
+            }
+            function paint(results) {
+                const body = document.getElementById('ownCodeBody');
+                if (!body) return;
+                body.innerHTML = '<table class="table"><thead><tr><th>Section</th><th>Endpoint</th><th>Status</th></tr></thead><tbody>' +
+                    ROWS.map((r, i) => {
+                        const res = results[i];
+                        const state = res && res.status === 200 ? summarise(r.slug, res.data) :
+                            res && res.status === 401 ? 'unlock the dashboard to load this' :
+                            res && res.status === 503 ? 'storage unavailable on this deployment' :
+                            res && res.status === 0 ? 'endpoint not reachable' : 'HTTP ' + (res ? res.status : '?');
+                        return '<tr><td>' + esc(r.title) + '</td><td><code>' + esc(r.endpoint) + '</code></td><td>' + esc(state) + '</td></tr>';
+                    }).join('') + '</tbody></table>';
+            }
+            Promise.all(ROWS.map((r) => fetch(r.endpoint, { headers: HEAD })
+                .then((res) => res.json().then((j) => ({ status: res.status, data: j.data })))
+                .catch(() => ({ status: 0 })))).then(paint);
+        })();
+        </script>
 </main>
 
 <!-- There is no key box on this page, but the page is NOT open: both endpoints
