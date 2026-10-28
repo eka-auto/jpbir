@@ -223,39 +223,39 @@
       "use": "@vercel/node"
     },
     {
-      "src": "S24/S24 Ultra/section.js",
+      "src": "Backend/s24-ultra.js",
       "use": "@vercel/node"
     },
     {
-      "src": "S24/Device Dashboard/section.js",
+      "src": "Backend/device-dashboard.js",
       "use": "@vercel/node"
     },
     {
-      "src": "S24/WhatsApp/section.js",
+      "src": "Backend/s24-whatsapp.js",
       "use": "@vercel/node"
     },
     {
-      "src": "S24/Media/section.js",
+      "src": "Backend/s24-media.js",
       "use": "@vercel/node"
     },
     {
-      "src": "S24/Telegram/section.js",
+      "src": "Backend/s24-telegram.js",
       "use": "@vercel/node"
     },
     {
-      "src": "S24/Live feed/section.js",
+      "src": "Backend/s24-live.js",
       "use": "@vercel/node"
     },
     {
-      "src": "S24/api.js",
+      "src": "Backend/s24-group.js",
       "use": "@vercel/node"
     },
     {
-      "src": "VivoBook/VivoBook/section.js",
+      "src": "Backend/vivobook.js",
       "use": "@vercel/node"
     },
     {
-      "src": "VivoBook/api.js",
+      "src": "Backend/vivobook-group.js",
       "use": "@vercel/node"
     }
   ],
@@ -342,42 +342,6 @@
     {
       "src": "/api/s24-public",
       "dest": "Backend/s24-public.js"
-    },
-    {
-      "src": "/api/s24-ultra",
-      "dest": "S24/S24 Ultra/section.js"
-    },
-    {
-      "src": "/api/device-dashboard",
-      "dest": "S24/Device Dashboard/section.js"
-    },
-    {
-      "src": "/api/s24-whatsapp",
-      "dest": "S24/WhatsApp/section.js"
-    },
-    {
-      "src": "/api/s24-media",
-      "dest": "S24/Media/section.js"
-    },
-    {
-      "src": "/api/s24-telegram",
-      "dest": "S24/Telegram/section.js"
-    },
-    {
-      "src": "/api/s24-live",
-      "dest": "S24/Live feed/section.js"
-    },
-    {
-      "src": "/api/s24-group",
-      "dest": "S24/api.js"
-    },
-    {
-      "src": "/api/vivobook",
-      "dest": "VivoBook/VivoBook/section.js"
-    },
-    {
-      "src": "/api/vivobook-group",
-      "dest": "VivoBook/api.js"
     },
     {
       "src": "/api/(.*)(.js)?",
