@@ -48,7 +48,10 @@ async function safe(query, sql, params = []) {
   try {
     return await query(sql, params);
   } catch (err) {
-    if (err && err.code === '42P01') return { rows: [], _missing: true };
+    // 42P01 = undefined_table, 42703 = undefined_column: both mean this
+    // deployment's warehouse does not carry what the section asked for. The
+    // section reports that honestly instead of failing the whole panel.
+    if (err && (err.code === '42P01' || err.code === '42703')) return { rows: [], _missing: true };
     throw err;
   }
 }
@@ -67,7 +70,7 @@ export async function load(query) {
        from tg_sync_runs order by last_success_at desc nulls last limit 10`,
   );
 
-  const row = (totals.rows || [{}])[0];
+  const row = ((totals.rows || [])[0] || {});
   return {
     chats: n(row.chats),
     messages: n(row.messages),

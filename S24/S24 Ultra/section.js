@@ -54,16 +54,17 @@ async function safe(query, sql, params = []) {
   } catch (err) {
     // 42P01 = undefined_table: the schema is not applied here yet. A panel then
     // says "run the migration" instead of breaking.
-    if (err && err.code === '42P01') return { rows: [], _missing: true };
+    // 42P01 = undefined_table, 42703 = undefined_column: both mean this
+    // deployment's warehouse does not carry what the section asked for. The
+    // section reports that honestly instead of failing the whole panel.
+    if (err && (err.code === '42P01' || err.code === '42703')) return { rows: [], _missing: true };
     throw err;
   }
 }
 
 export async function load(query) {
   const { rows, _missing } = await safe(query, 
-    `select device_id, display_name, online, last_seen_at, daemon_version, platform,
-            battery_level, network_type, carrier, public_ip, updated_at
-       from devices where device_id = $1 limit 1`,
+    `select * from devices where device_id = $1 limit 1`,
     [DEVICE],
   );
   if (_missing) return { device: DEVICE, migrated: false };
