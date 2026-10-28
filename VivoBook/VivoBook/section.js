@@ -50,15 +50,17 @@ async function safe(query, sql, params = []) {
   try {
     return await query(sql, params);
   } catch (err) {
-    if (err && err.code === '42P01') return { rows: [], _missing: true };
+    // 42P01 = undefined_table, 42703 = undefined_column: both mean this deployment's
+    // warehouse does not carry what the section asked for, so the section reports
+    // that honestly instead of failing the whole panel.
+    if (err && (err.code === '42P01' || err.code === '42703')) return { rows: [], _missing: true };
     throw err;
   }
 }
 
 export async function load(query) {
   const record = await safe(query, 
-    `select device_id, display_name, online, last_seen_at, daemon_version, platform
-       from devices where device_id = $1 limit 1`,
+    `select * from devices where device_id = $1 limit 1`,
     [DEVICE],
   );
   if (record._missing) return { device: DEVICE, migrated: false };
@@ -67,9 +69,7 @@ export async function load(query) {
   if (!row) return { device: DEVICE, present: false };
 
   const telemetry = await safe(query, 
-    `select kind, display_name, model, os_version, agent_version, online, last_seen_at,
-            battery_level, cpu_temp_c, carrier, network_type, public_ip, observed_at
-       from device_telemetry where device_id = $1 order by observed_at desc nulls last limit 10`,
+    `select * from device_telemetry where device_id = $1 order by observed_at desc nulls last limit 10`,
     [DEVICE],
   );
 

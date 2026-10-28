@@ -141,7 +141,7 @@
                 if (slug === 's24' || slug === 'device' || slug === 'vivobook') {
                     if (d.present === false) return 'no record for ' + esc(d.device);
                     const bits = [(d.stale ? 'record stale' : 'record fresh') + ' · written ' + age(d.age_seconds) + ' ago'];
-                    if (d.commands_waiting != null) bits.push(d.commands_waiting + ' command(s) queued and unacknowledged');
+                    if (d.commands_waiting != null) bits.push(d.commands_waiting + ' command(s) on record for this device');
                     if (d.telemetry) bits.push(d.telemetry.length + ' telemetry row(s)');
                     if (d.battery != null) bits.push('battery ' + d.battery + '%');
                     return bits.join(' · ');
