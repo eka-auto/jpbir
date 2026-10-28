@@ -221,6 +221,42 @@
     {
       "src": "Backend/jp-telegram.js",
       "use": "@vercel/node"
+    },
+    {
+      "src": "Backend/s24-ultra.js",
+      "use": "@vercel/node"
+    },
+    {
+      "src": "Backend/device-dashboard.js",
+      "use": "@vercel/node"
+    },
+    {
+      "src": "Backend/s24-whatsapp.js",
+      "use": "@vercel/node"
+    },
+    {
+      "src": "Backend/s24-media.js",
+      "use": "@vercel/node"
+    },
+    {
+      "src": "Backend/s24-telegram.js",
+      "use": "@vercel/node"
+    },
+    {
+      "src": "Backend/s24-live.js",
+      "use": "@vercel/node"
+    },
+    {
+      "src": "Backend/s24-group.js",
+      "use": "@vercel/node"
+    },
+    {
+      "src": "Backend/vivobook.js",
+      "use": "@vercel/node"
+    },
+    {
+      "src": "Backend/vivobook-group.js",
+      "use": "@vercel/node"
     }
   ],
   "routes": [
