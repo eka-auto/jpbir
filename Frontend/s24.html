@@ -138,49 +138,6 @@
         <div class="kpi"><div class="label">Commands queued</div><div class="value" id="kpiQueue">—</div><div class="sub" id="kpiQueueSub"></div></div>
         <div class="kpi"><div class="label">WiFi signal</div><div class="value" id="kpiWifi">—</div><div class="sub" id="kpiWifiSub"></div></div>
     </div>
-
-    <div class="panel">
-        <div class="panel-head">
-            <div><h2>Live status</h2><div class="hint" id="liveHint">Firestore device state — liveness derived from lastSeen age</div></div>
-            <div class="tools"><button id="refreshBtn">Refresh</button></div>
-        </div>
-        <div id="liveDetail"><div class="state"><div class="spinner"></div>Loading…</div></div>
-    </div>
-
-    <div class="panel">
-        <div class="panel-head">
-            <div><h2>Network</h2><div class="hint" id="netHint">WiFi and connection details</div></div>
-        </div>
-        <div id="netDetail"><div class="state">No network data</div></div>
-    </div>
-
-    <div class="panel">
-        <div class="panel-head">
-            <div><h2>Tracked site activity</h2><div class="hint" id="histHint">Sites visited on tracked domains</div></div>
-            <div class="tools">
-                <button id="histRefreshBtn">Refresh</button>
-            </div>
-        </div>
-        <div class="table-wrap">
-            <table id="histTable">
-                <thead><tr><th>Visited</th><th>Title</th><th>URL</th><th>Browser</th></tr></thead>
-                <tbody><tr><td colspan="4" class="state">Loading…</td></tr></tbody>
-            </table>
-        </div>
-    </div>
-
-    <div class="panel">
-        <div class="panel-head">
-            <div><h2>Command queue</h2><div class="hint" id="queueHint">Read-only queue · use the authenticated main dashboard to send S24 commands</div></div>
-        </div>
-        <div class="table-wrap">
-            <table id="queueTable">
-                <thead><tr><th>Action</th><th>Status</th><th>Queued at</th><th>Completed at</th></tr></thead>
-                <tbody><tr><td colspan="4" class="state">No commands queued.</td></tr></tbody>
-            </table>
-        </div>
-    </div>
-
         <!-- Section endpoints served by their own self-contained code. Additive:
              nothing above this comment is touched. -->
         <section class="panel" id="ownCodePanel" style="margin-top:18px">
@@ -230,6 +187,50 @@
                 .catch(() => ({ status: 0 })))).then(paint);
         })();
         </script>
+
+    <div class="panel">
+        <div class="panel-head">
+            <div><h2>Live status</h2><div class="hint" id="liveHint">Firestore device state — liveness derived from lastSeen age</div></div>
+            <div class="tools"><button id="refreshBtn">Refresh</button></div>
+        </div>
+        <div id="liveDetail"><div class="state"><div class="spinner"></div>Loading…</div></div>
+    </div>
+
+    <div class="panel">
+        <div class="panel-head">
+            <div><h2>Network</h2><div class="hint" id="netHint">WiFi and connection details</div></div>
+        </div>
+        <div id="netDetail"><div class="state">No network data</div></div>
+    </div>
+
+    <div class="panel">
+        <div class="panel-head">
+            <div><h2>Tracked site activity</h2><div class="hint" id="histHint">Sites visited on tracked domains</div></div>
+            <div class="tools">
+                <button id="histRefreshBtn">Refresh</button>
+            </div>
+        </div>
+        <div class="table-wrap">
+            <table id="histTable">
+                <thead><tr><th>Visited</th><th>Title</th><th>URL</th><th>Browser</th></tr></thead>
+                <tbody><tr><td colspan="4" class="state">Loading…</td></tr></tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="panel">
+        <div class="panel-head">
+            <div><h2>Command queue</h2><div class="hint" id="queueHint">Read-only queue · use the authenticated main dashboard to send S24 commands</div></div>
+        </div>
+        <div class="table-wrap">
+            <table id="queueTable">
+                <thead><tr><th>Action</th><th>Status</th><th>Queued at</th><th>Completed at</th></tr></thead>
+                <tbody><tr><td colspan="4" class="state">No commands queued.</td></tr></tbody>
+            </table>
+        </div>
+    </div>
+
+        
 </main>
 
 <!-- S24 device dashboard — open to all visitors via the public projection
