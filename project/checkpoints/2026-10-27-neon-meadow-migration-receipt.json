@@ -1,0 +1,45 @@
+{
+  "operation": "neon-meadow-migration-20261027",
+  "kind": "receipt",
+  "recordedAt": "2026-10-27T14:50:00Z",
+  "ownerDirection": "option B (migrate data instead of transferring orgs) + 'YES - build this database coverage for all listed section' (batch 3)",
+  "outcome": "warehouse cutover COMPLETE; console database-coverage build PENDING (scoped below)",
+  "constraintFound": "both orgs are Vercel-managed (managed_by=vercel) so Neon's project-transfer feature cannot move projects into or out of either org; the sanctioned route was data migration into databases of the existing meadow project",
+  "migration": {
+    "strategy": "single meadow project, one database per source database, source projects left intact as rollback",
+    "target_project": "jolly-cake-01200063 (meadow), branch br-royal-wave-b8y8k9vw, pg18, aws-us-east-1",
+    "migrated": [
+      { "source": "crimson-sun-45026271/neondb", "target_db": "trainingdata", "tables": 13, "rows": 35111, "status": "PASS" },
+      { "source": "crimson-sun-45026271/jtagent_agent", "target_db": "jtagent_agent", "tables": 0, "rows": 0, "status": "PASS" },
+      { "source": "small-leaf-69604039/neondb", "target_db": "globaldevices", "tables": 13, "rows": 11, "status": "PASS" },
+      { "source": "lingering-band-61529106/neondb", "target_db": "aqua_ferry", "tables": 9, "rows": 1, "status": "PASS" },
+      { "source": "still-sunset-46940815/neondb", "target_db": "privatefilegate", "tables": 9, "rows": 1, "status": "PASS" },
+      { "source": "fancy-cloud-99501540/jpbir_live", "target_db": "jpbir_live", "tables": 29, "rows": 132496, "status": "PASS" }
+    ],
+    "notMigrated": [
+      { "source": "fancy-cloud-99501540/neondb", "reason": "stale frozen copy (D-31) - deliberately left behind" },
+      { "source": "crimson-sun-45026271/txt_file_db", "reason": "restore hung (docker ETIMEDOUT) - open item, no known consumer" }
+    ],
+    "cutover": {
+      "source_state": "intact (data duplicated in meadow) - rollback = restore the previous four secret values",
+      "secrets_repointed": ["DATABASE_URL", "POSTGRES_URL", "DATABASE_URL_UNPOOLED", "POSTGRES_URL_NON_POOLING"],
+      "propagation": "sync-keys-to-vercel run 40524376339 success (rebuilds production); asn-inventory run 40524383540 success (reads the new secret)",
+      "local_env": "repo-check/jpbir/.env.local rewritten to the new pooled URL"
+    },
+    "sourceProjectsStillExist": "all five cold-lake projects remain (deletion needs explicit owner approval - always-approve list; pg_dump archives are the backup)"
+  },
+  "incidents": [
+    "a partially-masked target role password appeared in a child-process error log; all error printing is now scrubbed and the role password was rotated via MCP (old value invalidated)",
+    "Neon MCP OAuth access tokens are short-lived - scripts now refresh on demand (mcp-auth.mjs)"
+  ],
+  "nextScopeOwnerApproved": {
+    "goal": "database coverage for every console section, with real content only (numbers, images, PDFs) and no raw JSON/metadata in the UI; Firestore-sourced data must keep updating",
+    "plan": [
+      "S1 schema: durable tables for live feeds, provider snapshots, agent conversations/runs, engineering evidence, and Telegram's own tables (reuse device/analytics/email/WhatsApp tables as they are)",
+      "S2 ingestion: Firestore remains authoritative - a refresh job materialises device/live-feed state into Neon with idempotent upserts so the console has one source of truth and keeps updating",
+      "S3 query shaping: every console endpoint returns display-ready content (numbers, signed media URLs, extracted text) instead of raw JSON payloads",
+      "S4 frontend: panels that still render raw JSON/metadata get real rendering (images inline, PDFs as links, numbers as numbers)",
+      "S5 verification: per-section live check across Sources, Live feed, Stores, Analyze, Device Dashboard, WhatsApp, Telegram, Operate and Product engineering; missing feeds render as empty/unavailable, never as fabricated data"
+    ]
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "operation": "console-coverage-parallel-session-20261027",
+  "kind": "receipt",
+  "recordedAt": "2026-10-27T16:20:00+05:30",
+  "summary": "A parallel session merged PR #206 (2026-10-27T15:38Z) implementing the owner's console-coverage scope; this session's duplicate implementation was withdrawn and the production warehouse was reconciled.",
+  "found": {
+    "duplicate_scope": "PR #206 delivered the same scope across nineteen sections (dashboard_current_records / dashboard_sync_* / dashboard_agent_exchanges / tg_chats / tg_messages / tg_sync_runs, plus Backend/lib/section-data.js, Integrations/dashboard-store.js, Frontend/section-presentation.js, docs/dashboard-section-storage.md, e2e specs).",
+    "missing_migration": "the migration behind it (Database/schema/017_dashboard_sections.sql) had never been applied to the live warehouse - migrate-production.yml has no runs at all - so the deployed console was querying tables that did not exist while the code was already live.",
+    "orphan_tables": "this session had applied its own draft migration (017_console_coverage.sql: live_feed_records, provider_snapshots, agent_runs, agent_messages, engineering_evidence, telegram_chats, telegram_messages) before the duplicate was noticed."
+  },
+  "actions": {
+    "applied": "017_dashboard_sections.sql applied directly to the live warehouse (additive, idempotent, ledgered). The console's section storage now exists.",
+    "removed": "the seven orphan tables dropped (all verified empty) and the 017_console_coverage.sql ledger row deleted, so the warehouse holds one copy of the truth and the migration ledger matches the repository.",
+    "withdrawn": "this session's duplicate schema, data module and test removed from its branch; the branch now carries only D-34, D-35 and the project/targets.json correction (the manifest still named the pre-move warehouse while production reads the meadow project)."
+  },
+  "open": [
+    "migrate-production.yml never runs - a migration that only runs when somebody remembers is not a gate (recorded in D-34)",
+    "the five pre-move Neon projects in org-cold-lake still hold their data (rollback copy; deletion needs its own approval)",
+    "crimson-sun-45026271/txt_file_db restore hung; no known consumer",
+    "two agents are pushing to main and project-state in parallel - the owner's coordination preference is worth confirming"
+  ]
+}

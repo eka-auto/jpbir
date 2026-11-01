@@ -1,0 +1,36 @@
+{
+  "operation": "dashboard-section-release-20261027",
+  "kind": "intent",
+  "contractRules": ["10", "11", "15"],
+  "declaredAt": "2026-10-27T15:26:07Z",
+  "recordedAt": "2026-10-27T15:52:30Z",
+  "approval": "project/approvals/2026-10-27-dashboard-section-release.md",
+  "recordedBy": "opencode-session (identity jaytipargal, id 313854821), devops role",
+  "honestyNote": "Contract rule 10 requires the intent to be pushed before the external action begins. It was not: the session that owned this work was terminated by a usage limit at 2026-10-27T15:39:25Z, and this file is written after the fact. The intent itself was declared in-session at 15:26:07Z, when the owner answered 'YES - release PR #206'; the merge happened at 15:38:36Z and the deployment was created at 15:38:43Z, both after the owner's answer and both before the crash. The gap is recorded here rather than presented as compliance.",
+  "identityVerified": {
+    "gitIdentity": "jaytipargal (id 313854821)",
+    "recordedIn": "project/ACCESS.md, row 'opencode-session'",
+    "scopeUsed": "project-state run-state records",
+    "scopeNotUsed": "no merge, no deploy, no direct write to main, no write to a protected control outside a reviewed pull request",
+    "repository": "eka-auto/jpbir (immutable id 1350770272, matches project/targets.json)",
+    "target": {
+      "provider": "vercel",
+      "account": "team_gcqCiU4UgkhcUJGRGLZYaQiW (jayti2)",
+      "project": "jpbir (prj_47peuCvcDnURmUqhU3aFlaBP351J)",
+      "productionDomain": "jaytipargal.tech"
+    }
+  },
+  "action": "merge the reviewed dashboard section / current-state pull request to main and let the Vercel Git integration deploy it to production",
+  "pullRequest": 206,
+  "headCommit": "4321a94da16858477c77bb73ad8eee66ab15a3dc",
+  "preconditions": [
+    "CI green on the final head",
+    "both Vercel previews READY",
+    "the deployed-preview header check confirms PDFs can be framed inside the dashboard while the other pages keep their framing protection",
+    "an expired PDF preview returns a readable message instead of a JSON error",
+    "nested device values (readings-battery, CPU, hostname) stay visible as typed values without exposing raw payloads"
+  ],
+  "authorizedScope": "the dashboard section storage and current-source-data changes, together with the previously approved Neon copy migration, application mappings, additional Free txt_file_db project and schema coverage",
+  "notAuthorized": "no paid upgrade, no deletion of the source databases, no new device commands, no messages to contacts, no unrelated control change",
+  "deployRoute": "the Vercel Git integration only; no agent shell deploys"
+}

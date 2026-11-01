@@ -1,0 +1,81 @@
+{
+  "operation": "neon-estate-owner-decisions-20261027",
+  "kind": "receipt",
+  "recordedAt": "2026-10-27T23:55:00+05:30",
+  "recordedAtUtc": "2026-10-27T18:25:00Z",
+  "actor": "devops",
+  "actor_id": "opencode-session",
+  "ownerAnswers": "1 yes, 2 no, 3 decide after 1, 4 yes",
+  "approvalRecord": "project/approvals/2026-10-27-neon-estate-decisions.md (pushed to the branch before the first external action, per contract rule 10)",
+  "target": {
+    "repository": "eka-auto/jpbir",
+    "repository_id": "1350770272",
+    "branch": "docs/neon-estate-verification",
+    "commits": ["7a50c50", "1506a0b", "546a39d"],
+    "pull_request": "https://github.com/eka-auto/jpbir/pull/208"
+  },
+  "carriedOut": {
+    "1": {
+      "answer": "YES",
+      "action": "the four connection secrets are repointed at the database production reads",
+      "mechanism": "person-run: `node .github/scripts/repoint-warehouse-secrets.mjs --yes`, which mints the pooled and unpooled connection strings for the project, branch and database project/targets.json records, straight from Neon, and hands each to `gh secret set` on standard input",
+      "whyPersonRun": "project/ACCESS.md keeps the personal identity out of secret mutations, and the only identity with permission to write repository secrets is the repository owner",
+      "stateAtTheTimeOfThisReceipt": "not yet run - the owner runs it",
+      "enforcement": "the dry-run job now proves the credential and the manifest agree on every schema change to main, so a later rotation cannot undo the repoint silently"
+    },
+    "2": {
+      "answer": "NO",
+      "action": "nothing deleted; the five source projects stay intact and the migration stays reversible"
+    },
+    "3": {
+      "answer": "decide after 1",
+      "decision": "the two empty databases in the consolidated project jolly-cake-01200063 - neondb with no tables, txt_file_db with a documents table holding zero rows - are kept, and the project becomes an inert duplicate",
+      "reasoning": "dropping them is a cloud-resource deletion, and the owner had just declined a deletion of the source projects for the sake of reversibility; they hold nothing to lose; and filling txt_file_db with its 1,219 documents would duplicate 270 MB the meadow organization already holds and recreate the two-copies pattern that caused this exercise"
+    },
+    "4": {
+      "answer": "YES",
+      "action": "a read-only dry run on every schema change to main",
+      "mechanism": ".github/workflows/migration-dry-run.yml, using migrate.mjs --dry-run, which plans the pending migrations inside a read-only transaction and writes nothing; the job reports the pending migrations in its summary and fails while any are pending, with the dispatch command in the failure message",
+      "oneDefinition": "the apply workflow's inline preflight became .github/scripts/verify-production-warehouse.mjs, called by both workflows, so the two checks cannot drift apart"
+    }
+  },
+  "enforcementDemonstrated": {
+    "method": "the shared verification script was run locally against both credentials",
+    "againstTheCredentialAsItStands": {
+      "result": "exit 1",
+      "output": [
+        "::error::project: the manifest records bitter-glade-72523152, the credential connects to jolly-cake-01200063",
+        "::error::branch: the manifest records br-hidden-leaf-b8l1j76r, the credential connects to br-royal-wave-b8y8k9vw"
+      ],
+      "meaning": "the check catches the divergence D-36 recorded, and names both sides"
+    },
+    "againstTheMirrorCredential": {
+      "result": "exit 0",
+      "output": [
+        "manifest target : neon-jaytibirthday-db",
+        "neon project    : bitter-glade-72523152 (manifest: bitter-glade-72523152)",
+        "neon branch     : br-hidden-leaf-b8l1j76r (manifest: br-hidden-leaf-b8l1j76r)",
+        "database        : jpbir_live (manifest: jpbir_live)",
+        "db events       : 15748",
+        "target verified as the production warehouse"
+      ]
+    }
+  },
+  "latentBugFound": {
+    "where": "the preflight inside .github/workflows/migrate-production.yml, inherited unchanged",
+    "defect": "the message said the target was more than an hour behind the deployed application, but the arithmetic subtracted the application's timestamp from the database's and compared that difference to an hour - so it fired when the database was AHEAD of the application. A stale copy passed the check and a fresh one was refused.",
+    "fix": "the comparison now runs in the direction the message always claimed: the application is the live writer, so a database whose newest event is older than the application's is the wrong copy; a database ahead of the application is accepted",
+    "coveredBy": "_shared/tests/warehouse-target.test.mjs, both directions"
+  },
+  "verification": {
+    "newSuites": "warehouse-target.test.mjs and warehouse-secrets.test.mjs pass",
+    "lint": "scripts/lint.mjs passes",
+    "fullSuite": "no regression: five local failures are the three suites that need a Postgres service this machine does not run (dashboard-store, section-conversations, visitor-restore - all ECONNREFUSED on 127.0.0.1:5432, which CI provides) and the two Windows line-ending failures already known (installer-pins, s24-action-gate)",
+    "manifestParses": "project/targets.json parses"
+  },
+  "notDone": {
+    "secretRepoint": "owner-run command only; this session did not write a secret value, and did not read one",
+    "merge": "project/ACCESS.md scopes the opencode-session identity to push and open pull requests, with no merge, so PR #208 is left for the owner to merge",
+    "dryRunInCi": "the new workflow cannot be dispatched until it is on the default branch; the same check was run locally against both credentials instead"
+  }
+}
