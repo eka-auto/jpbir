@@ -17,13 +17,13 @@
     "wa:export-import": "node Database/scripts/wa-export-import.mjs"
   },
   "dependencies": {
-    "@aws-sdk/client-dynamodb": "^3.1149.0",
-    "@aws-sdk/client-sts": "^3.1149.0",
-    "@aws-sdk/lib-dynamodb": "^3.1149.0",
-    "@vercel/blob": "^2.8.0",
-    "@vercel/connect": "^2.0.1",
-    "nodemailer": "^10.0.14",
-    "pg": "^8.23.0"
+    "@aws-sdk/client-dynamodb": "3.1161.0",
+    "@aws-sdk/client-sts": "3.1161.0",
+    "@aws-sdk/lib-dynamodb": "3.1161.0",
+    "@vercel/blob": "2.8.2",
+    "@vercel/connect": "2.7.0",
+    "nodemailer": "10.3.1",
+    "pg": "8.23.1"
   },
   "devDependencies": {
     "@playwright/test": "^1.63.0"

@@ -1,27 +1,9 @@
 import en from './messages/en';
-import zhCn from './messages/zh-cn';
-import zhTw from './messages/zh-tw';
-import ja from './messages/ja';
-import de from './messages/de';
-import fr from './messages/fr';
-import es from './messages/es';
-import ptBr from './messages/pt-br';
-import ko from './messages/ko';
-import ru from './messages/ru';
 
 type MessageTree = Record<string, unknown>;
 
 const messages: Record<string, MessageTree> = {
     en,
-    'zh-cn': zhCn,
-    'zh-tw': zhTw,
-    ja,
-    de,
-    fr,
-    es,
-    'pt-br': ptBr,
-    ko,
-    ru,
 };
 
 let currentLocale = 'en';
