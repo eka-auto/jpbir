@@ -47,11 +47,13 @@ for (const [k, v] of Object.entries(process.env)) {
 }
 
 loadEnvFile(join(repoRoot, ".env.development.local"))
+loadEnvFile(join(repoRoot, ".env.local"))
 loadEnvFile("/vercel/share/.env.project")
 loadEnvFile(join(repoRoot, ".env"))
 
 const routes = new Map([
   ["/", "Frontend/index.html"],
+  ["/signup", "Frontend/signup.html"],
   ["/agent", "Frontend/agent.html"],
   ["/db", "Frontend/db.html"],
   ["/jteka", "Frontend/jteka.html"],
@@ -223,7 +225,7 @@ createServer(async (request, response) => {
     response.writeHead(404)
     response.end("Not found")
   }
-}).listen(3000, "127.0.0.1", () => {
-  console.log("Frontend server running at http://127.0.0.1:3000")
+}).listen(3000, process.env.HOST || "127.0.0.1", () => {
+  console.log("Frontend server running at http://localhost:3000")
 })
   

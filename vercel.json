@@ -51,6 +51,10 @@
   ],
   "builds": [
     {
+      "src": "Backend/auth-config.js",
+      "use": "@vercel/node"
+    },
+    {
       "src": "Backend/broker-command-claim.js",
       "use": "@vercel/node"
     },
@@ -282,6 +286,10 @@
     {
       "src": "/agent",
       "dest": "/Frontend/agent.html"
+    },
+    {
+      "src": "/signup",
+      "dest": "/Frontend/signup.html"
     },
     {
       "src": "/agent/query",

@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import vm from 'node:vm';
+import './build-auth.mjs';
 
 const root = process.cwd();
 const frontend = join(root, 'Frontend');
